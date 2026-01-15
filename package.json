@@ -1,12 +1,21 @@
 {
   "name": "onixlabs-media-player",
   "version": "0.0.0",
+  "main": "electron/dist/main.js",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "dev": "concurrently -k \"ng serve\" \"wait-on http://localhost:4200 && NODE_ENV=development DEV_SERVER_URL=http://localhost:4200 electron --require tsx/cjs electron/main.ts\"",
+    "prod": "ng build --configuration production && electron --require tsx/cjs electron/main.ts",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build:all": "npm run build && npm run build:electron",
+    "package": "npm run build:all && electron-builder",
+    "package:mac": "npm run build:all && electron-builder --mac",
+    "package:win": "npm run build:all && electron-builder --win",
+    "package:linux": "npm run build:all && electron-builder --linux"
   },
   "prettier": {
     "printWidth": 100,
@@ -29,6 +38,7 @@
     "@angular/forms": "^21.0.0",
     "@angular/platform-browser": "^21.0.0",
     "@angular/router": "^21.0.0",
+    "@fortawesome/fontawesome-free": "^7.1.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },
@@ -36,8 +46,45 @@
     "@angular/build": "^21.0.4",
     "@angular/cli": "^21.0.4",
     "@angular/compiler-cli": "^21.0.0",
+    "@types/node": "^25.0.8",
+    "concurrently": "^9.2.1",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.4.0",
     "jsdom": "^27.1.0",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.2",
-    "vitest": "^4.0.8"
+    "vitest": "^4.0.8",
+    "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.onixlabs.media-player",
+    "productName": "Onixlabs Media Player",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/dist/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.entertainment",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo"
+    }
   }
 }
