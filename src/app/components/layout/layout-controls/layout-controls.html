@@ -1,28 +1,27 @@
-<div class="control-container-seek">
-
+<div class="seek-bar-container">
+  <progress value="60" max="100"></progress>
 </div>
-<div class="control-container-buttons">
+<div class="control-container">
   <div class="control-container-left">
-    <button><i class="fa-solid fa-eject"></i></button>
-    <button><i class="fa-solid fa-shuffle"></i></button>
-    <button><i class="fa-solid fa-repeat"></i></button>
+    <div class="control-container-wrapper">
+      <button><i class="fa-solid fa-eject"></i></button>
+      <button><i class="fa-solid fa-shuffle"></i></button>
+      <button><i class="fa-solid fa-repeat"></i></button>
+    </div>
   </div>
   <div class="control-container-center">
-    <button><i class="fa-solid fa-backward-step"></i></button>
-    <button>
-      <i class="fa-solid fa-play"></i>
-      <!--    <i class="fa-solid fa-pause"></i>-->
-      <!--    <i class="fa-solid fa-stop"></i>-->
-    </button>
-    <button><i class="fa-solid fa-forward-step"></i></button>
+    <div class="control-container-wrapper">
+      <button><i class="fa-solid fa-backward-step"></i></button>
+      <button><i class="fa-solid fa-play"></i></button>
+      <button><i class="fa-solid fa-forward-step"></i></button>
+    </div>
   </div>
   <div class="control-container-right">
-    <button>
-      <i class="fa-solid fa-volume-xmark"></i>
-      <!--    <i class="fa-solid fa-volume-off"></i>-->
-      <!--    <i class="fa-solid fa-volume-low"></i>-->
-      <!--    <i class="fa-solid fa-volume-high"></i>-->
-    </button>
-    <input type="range"/>
+    <div class="control-container-wrapper">
+      <button><i class="fa-solid fa-volume-high"></i></button>
+      <div class="volume-container">
+        <input type="range" min="0" max="100" value="50"/>
+      </div>
+    </div>
   </div>
 </div>
