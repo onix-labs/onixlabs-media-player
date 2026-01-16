@@ -18,9 +18,10 @@ export class VideoOutlet implements OnInit, OnDestroy {
   readonly mediaPlayer = inject(MediaPlayerService);
 
   private audioContext: AudioContext | null = null;
-  private analyser: AnalyserNode | null = null;
   private gainNode: GainNode | null = null;
   private scheduledTime = 0;
+  private scheduledSources: AudioBufferSourceNode[] = [];
+  private readonly MAX_BUFFER_AHEAD = 0.15;
 
   readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
 
@@ -28,7 +29,29 @@ export class VideoOutlet implements OnInit, OnDestroy {
     this.initAudioContext();
     this.subscribeToVideoFrames();
     this.subscribeToAudioData();
+    this.subscribeToStateChanges();
     this.setupUserGestureHandler();
+  }
+
+  private subscribeToStateChanges(): void {
+    this.electron.stateChange
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(state => {
+        if (state === 'paused' || state === 'stopped') {
+          this.clearScheduledAudio();
+        }
+      });
+  }
+
+  private clearScheduledAudio(): void {
+    for (const source of this.scheduledSources) {
+      try {
+        source.stop();
+        source.disconnect();
+      } catch {}
+    }
+    this.scheduledSources = [];
+    this.scheduledTime = 0;
   }
 
   private setupUserGestureHandler(): void {
@@ -125,12 +148,25 @@ export class VideoOutlet implements OnInit, OnDestroy {
     source.connect(this.gainNode);
 
     const currentTime = this.audioContext.currentTime;
-    const startTime = Math.max(currentTime, this.scheduledTime);
+
+    if (this.scheduledTime < currentTime) {
+      this.scheduledTime = currentTime;
+    }
+
+    if (this.scheduledTime > currentTime + this.MAX_BUFFER_AHEAD) {
+      return;
+    }
+
+    const startTime = this.scheduledTime;
     source.start(startTime);
     this.scheduledTime = startTime + audioBuffer.duration;
 
+    this.scheduledSources.push(source);
+
     source.onended = () => {
       source.disconnect();
+      const idx = this.scheduledSources.indexOf(source);
+      if (idx > -1) this.scheduledSources.splice(idx, 1);
     };
   }
 

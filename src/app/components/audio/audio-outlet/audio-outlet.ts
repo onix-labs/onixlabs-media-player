@@ -24,6 +24,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private gainNode: GainNode | null = null;
   private scheduledTime = 0;
   private isInitialized = false;
+  private scheduledSources: AudioBufferSourceNode[] = [];
+  private readonly MAX_BUFFER_AHEAD = 0.15; // Max 150ms buffer for low latency
 
   private readonly BAR_COUNT = 64;
   private readonly BAR_GAP = 2;
@@ -34,8 +36,31 @@ export class AudioOutlet implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.initAudioContext();
     this.subscribeToAudioData();
+    this.subscribeToStateChanges();
     this.startVisualization();
     this.setupUserGestureHandler();
+  }
+
+  private subscribeToStateChanges(): void {
+    this.electron.stateChange
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(state => {
+        if (state === 'paused' || state === 'stopped') {
+          this.clearScheduledAudio();
+        }
+      });
+  }
+
+  private clearScheduledAudio(): void {
+    // Stop and disconnect all scheduled sources for immediate response
+    for (const source of this.scheduledSources) {
+      try {
+        source.stop();
+        source.disconnect();
+      } catch {}
+    }
+    this.scheduledSources = [];
+    this.scheduledTime = 0;
   }
 
   private setupUserGestureHandler(): void {
@@ -114,13 +139,29 @@ export class AudioOutlet implements OnInit, OnDestroy {
     source.connect(this.analyser!);
 
     const currentTime = this.audioContext.currentTime;
-    const startTime = Math.max(currentTime, this.scheduledTime);
+
+    // Reset schedule if we've fallen behind or buffer is empty
+    if (this.scheduledTime < currentTime) {
+      this.scheduledTime = currentTime;
+    }
+
+    // Drop chunks if buffer is too far ahead (reduces latency)
+    if (this.scheduledTime > currentTime + this.MAX_BUFFER_AHEAD) {
+      return; // Skip this chunk to reduce latency
+    }
+
+    const startTime = this.scheduledTime;
     source.start(startTime);
     this.scheduledTime = startTime + audioBuffer.duration;
 
-    // Clean up old source
+    // Track source for cancellation
+    this.scheduledSources.push(source);
+
+    // Clean up completed sources
     source.onended = () => {
       source.disconnect();
+      const idx = this.scheduledSources.indexOf(source);
+      if (idx > -1) this.scheduledSources.splice(idx, 1);
     };
   }
 
