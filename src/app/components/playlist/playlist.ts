@@ -16,6 +16,7 @@ export class Playlist {
   readonly items = computed(() => this.mediaPlayer.playlistItems());
   readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
   readonly count = computed(() => this.mediaPlayer.playlistCount());
+  readonly isPlaying = computed(() => this.mediaPlayer.isPlaying());
 
   toggle(): void {
     this.isVisible.update(v => !v);

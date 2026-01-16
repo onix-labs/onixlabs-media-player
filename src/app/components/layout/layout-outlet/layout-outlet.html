@@ -9,17 +9,16 @@
   <div class="content-area">
     <div class="media-area">
       @if (isAudio()) {
-        <app-audio-outlet />
+        <app-audio-outlet/>
       } @else if (isVideo()) {
-        <app-video-outlet />
+        <app-video-outlet/>
       } @else {
         <div class="idle-state">
-          <i class="fa-solid fa-compact-disc fa-4x"></i>
+          <img alt="ONIXPlayer" src="logo.png"/>
           <p>No media loaded</p>
           <p class="hint">Click eject to add media files</p>
         </div>
       }
-
       @if (isLoading()) {
         <div class="loading-overlay">
           <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
@@ -27,7 +26,6 @@
         </div>
       }
     </div>
-
-    <app-playlist />
+    <app-playlist/>
   </div>
 </div>

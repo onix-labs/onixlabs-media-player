@@ -1,7 +1,7 @@
 :host {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 0;
 }
 
 .playlist-container {
@@ -9,8 +9,8 @@
   flex-direction: column;
   width: 280px;
   min-width: 280px;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.6);
+  min-height: 0;
+  flex: 1;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
   transition: transform 0.3s ease, opacity 0.3s ease, width 0.3s ease, min-width 0.3s ease;
 
@@ -26,8 +26,7 @@
 .playlist-header {
   display: flex;
   align-items: center;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.5rem;
   gap: 0.5rem;
 
   .playlist-title {
@@ -41,45 +40,13 @@
     color: rgba(255, 255, 255, 0.5);
     font-size: 0.75rem;
   }
-
-  .close-btn {
-    background: none;
-    border: none;
-    color: rgba(255, 255, 255, 0.5);
-    cursor: pointer;
-    padding: 0.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.2s ease;
-
-    &:hover {
-      color: white;
-    }
-  }
 }
 
 .playlist-items {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.2);
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.3);
-    }
-  }
 }
 
 .playlist-item {
@@ -98,15 +65,27 @@
     }
   }
 
-  &.active {
-    background: rgba(109, 179, 242, 0.15);
+  &.playing {
+    background: rgba(74, 222, 128, 0.15);
 
     .item-title {
-      color: #6db3f2;
+      color: #4ade80;
     }
 
     .item-icon {
-      color: #6db3f2;
+      color: #4ade80;
+    }
+  }
+
+  &.paused {
+    background: rgba(251, 146, 60, 0.15);
+
+    .item-title {
+      color: #fb923c;
+    }
+
+    .item-icon {
+      color: #fb923c;
     }
   }
 
