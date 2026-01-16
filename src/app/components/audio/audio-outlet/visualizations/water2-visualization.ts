@@ -4,14 +4,15 @@ export class Water2Visualization extends Canvas2DVisualization {
   private readonly ROTATION_SPEED = 0.009;
   private readonly FADE_RATE = 0.008;
   private readonly BACKGROUND_DARKEN = 0.7; // Darken background rings
+  private readonly HUE_CYCLE_SPEED = 0.15;  // Degrees per frame
 
-  // Color gradient: darkest at edges, lightest at center
-  private readonly GRADIENT_COLORS = [
-    {r: 20, g: 40, b: 100},   // Darkest
-    {r: 40, g: 80, b: 140},   // Dark
-    {r: 80, g: 130, b: 190},  // Mid
-    {r: 120, g: 180, b: 230}, // Light
-    {r: 160, g: 220, b: 255}  // Lightest
+  // Saturation and lightness levels for gradient (darkest to lightest)
+  private readonly GRADIENT_LEVELS = [
+    {s: 70, l: 15},  // Darkest
+    {s: 65, l: 25},  // Dark
+    {s: 60, l: 40},  // Mid
+    {s: 55, l: 55},  // Light
+    {s: 50, l: 70}   // Lightest
   ];
 
   private dataArray: Uint8Array<ArrayBuffer>;
@@ -19,6 +20,9 @@ export class Water2Visualization extends Canvas2DVisualization {
   private circleCanvas: HTMLCanvasElement | null = null;
   private trailCanvas: HTMLCanvasElement | null = null;
   private trailCtx: CanvasRenderingContext2D | null = null;
+
+  // Hue cycling
+  private hueOffset = 210; // Start at blue (210 degrees)
 
   // Bass/mid detection settings
   private readonly BASS_BINS = 16;          // Include bass and low-mids
@@ -29,6 +33,39 @@ export class Water2Visualization extends Canvas2DVisualization {
   private prevBass = 0;                     // Previous frame's bass for transient detection
   private rotationDirection = 1;            // Current rotation direction (1 or -1)
   private lastDirectionChange = 0;          // Timestamp of last direction change
+
+  // Get current gradient colors based on hue offset
+  private getGradientColors(): Array<{r: number; g: number; b: number}> {
+    return this.GRADIENT_LEVELS.map(level => {
+      return this.hslToRgb(this.hueOffset, level.s, level.l);
+    });
+  }
+
+  // Convert HSL to RGB
+  private hslToRgb(h: number, s: number, l: number): {r: number; g: number; b: number} {
+    h = h % 360;
+    s = s / 100;
+    l = l / 100;
+
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    const m = l - c / 2;
+
+    let r = 0, g = 0, b = 0;
+
+    if (h < 60) { r = c; g = x; b = 0; }
+    else if (h < 120) { r = x; g = c; b = 0; }
+    else if (h < 180) { r = 0; g = c; b = x; }
+    else if (h < 240) { r = 0; g = x; b = c; }
+    else if (h < 300) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+
+    return {
+      r: Math.round((r + m) * 255),
+      g: Math.round((g + m) * 255),
+      b: Math.round((b + m) * 255)
+    };
+  }
 
   constructor(config: VisualizationConfig) {
     super(config);
@@ -59,7 +96,8 @@ export class Water2Visualization extends Canvas2DVisualization {
     const {width, height} = this;
     const centerX = width / 2;
     const centerY = height / 2;
-    const numColors = this.GRADIENT_COLORS.length;
+    const gradientColors = this.getGradientColors();
+    const numColors = gradientColors.length;
     const maxRadius = width / 2;
 
     // Clear to black
@@ -87,7 +125,7 @@ export class Water2Visualization extends Canvas2DVisualization {
 
     // Add color stops from center outward (gradient position 0 = center, 1 = edge)
     for (let i = numColors - 1; i >= 0; i--) {
-      const color = this.GRADIENT_COLORS[i];
+      const color = gradientColors[i];
       const r = Math.round(color.r * darken);
       const g = Math.round(color.g * darken);
       const b = Math.round(color.b * darken);
@@ -113,10 +151,16 @@ export class Water2Visualization extends Canvas2DVisualization {
     const centerX = width / 2;
     const centerY = height / 2;
 
+    // Cycle hue through the spectrum
+    this.hueOffset = (this.hueOffset + this.HUE_CYCLE_SPEED) % 360;
+
     // Ensure canvases exist
     if (!this.circleCanvas || !this.trailCanvas || !this.trailCtx) {
       this.onResize();
     }
+
+    // Re-render background with current hue
+    this.renderCirclesToCanvas(this.circleCanvas!.getContext('2d')!);
 
     const trailCtx = this.trailCtx!;
     const trailCanvas = this.trailCanvas!;
@@ -179,7 +223,8 @@ export class Water2Visualization extends Canvas2DVisualization {
 
   private drawMirroredWaveform(ctx: CanvasRenderingContext2D, centerX: number, centerY: number): void {
     const {width, height, dataArray} = this;
-    const numColors = this.GRADIENT_COLORS.length;
+    const gradientColors = this.getGradientColors();
+    const numColors = gradientColors.length;
 
     // Calculate all points first
     const allPoints: Array<{x: number; y: number}> = [];
@@ -266,7 +311,7 @@ export class Water2Visualization extends Canvas2DVisualization {
         colorIndex = totalSegments - 1 - seg;
       }
 
-      const color = this.GRADIENT_COLORS[colorIndex];
+      const color = gradientColors[colorIndex];
       const startIdx = seg * pointsPerSegment;
       const endIdx = seg === totalSegments - 1 ? allPoints.length : (seg + 1) * pointsPerSegment + 1;
 
@@ -277,7 +322,7 @@ export class Water2Visualization extends Canvas2DVisualization {
     }
 
     // Draw circular waveform at center using the brightest color
-    this.drawCenterCircle(ctx, centerX, centerY, halfWidth * 0.12, this.GRADIENT_COLORS[numColors - 1]);
+    this.drawCenterCircle(ctx, centerX, centerY, halfWidth * 0.12, gradientColors[numColors - 1]);
   }
 
   private drawCenterCircle(
