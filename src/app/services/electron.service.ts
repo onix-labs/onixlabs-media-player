@@ -8,6 +8,7 @@ export type {MediaInfo, AudioChunk, VideoFrame};
 export class ElectronService implements OnDestroy {
   private readonly audioData$ = new Subject<AudioChunk>();
   private readonly videoFrame$ = new Subject<VideoFrame>();
+  private readonly videoChunk$ = new Subject<number[]>();
   private readonly timeUpdate$ = new BehaviorSubject<number>(0);
   private readonly durationChange$ = new BehaviorSubject<number>(0);
   private readonly mediaEnded$ = new Subject<void>();
@@ -37,6 +38,9 @@ export class ElectronService implements OnDestroy {
       this.api.onVideoFrame((frame: VideoFrame) => {
         this.ngZone.run(() => this.videoFrame$.next(frame));
       }),
+      this.api.onVideoChunk((chunk: number[]) => {
+        this.ngZone.run(() => this.videoChunk$.next(chunk));
+      }),
       this.api.onTimeUpdate((time: number) => {
         this.ngZone.run(() => this.timeUpdate$.next(time));
       }),
@@ -61,6 +65,10 @@ export class ElectronService implements OnDestroy {
 
   get videoFrame(): Observable<VideoFrame> {
     return this.videoFrame$.asObservable();
+  }
+
+  get videoChunk(): Observable<number[]> {
+    return this.videoChunk$.asObservable();
   }
 
   get timeUpdate(): Observable<number> {
@@ -113,6 +121,13 @@ export class ElectronService implements OnDestroy {
       throw new Error('Not running in Electron');
     }
     return this.api.loadMedia(filePath);
+  }
+
+  async getMediaUrl(filePath: string): Promise<string> {
+    if (!this.isElectron || !this.api) {
+      throw new Error('Not running in Electron');
+    }
+    return this.api.getMediaUrl(filePath);
   }
 
   async play(): Promise<void> {

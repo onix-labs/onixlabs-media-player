@@ -11,168 +11,134 @@ import {MediaPlayerService} from '../../../services/media-player.service';
   styleUrl: './video-outlet.scss'
 })
 export class VideoOutlet implements OnInit, OnDestroy {
-  @ViewChild('videoCanvas', {static: true}) canvasRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('videoElement', {static: true}) videoRef!: ElementRef<HTMLVideoElement>;
 
   private readonly electron = inject(ElectronService);
   private readonly destroyRef = inject(DestroyRef);
   readonly mediaPlayer = inject(MediaPlayerService);
 
-  private audioContext: AudioContext | null = null;
-  private gainNode: GainNode | null = null;
-  private scheduledTime = 0;
-  private scheduledSources: AudioBufferSourceNode[] = [];
-  private readonly MAX_BUFFER_AHEAD = 0.15;
-
   readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
 
+  private mediaSource: MediaSource | null = null;
+  private sourceBuffer: SourceBuffer | null = null;
+  private pendingChunks: Uint8Array[] = [];
+  private isSourceOpen = false;
+
   ngOnInit(): void {
-    this.initAudioContext();
-    this.subscribeToVideoFrames();
-    this.subscribeToAudioData();
+    this.subscribeToVideoChunks();
     this.subscribeToStateChanges();
-    this.setupUserGestureHandler();
+  }
+
+  private subscribeToVideoChunks(): void {
+    this.electron.videoChunk
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(chunk => {
+        this.appendChunk(new Uint8Array(chunk));
+      });
+
+    // Reset MediaSource when new media loads
+    this.electron.durationChange
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        const track = this.mediaPlayer.currentTrack();
+        if (track?.type === 'video') {
+          this.initMediaSource();
+        }
+      });
+  }
+
+  private initMediaSource(): void {
+    // Clean up existing
+    if (this.mediaSource) {
+      if (this.sourceBuffer) {
+        try {
+          this.mediaSource.removeSourceBuffer(this.sourceBuffer);
+        } catch {}
+      }
+    }
+
+    this.mediaSource = new MediaSource();
+    this.sourceBuffer = null;
+    this.pendingChunks = [];
+    this.isSourceOpen = false;
+
+    const video = this.videoRef.nativeElement;
+    video.src = URL.createObjectURL(this.mediaSource);
+
+    this.mediaSource.addEventListener('sourceopen', () => {
+      this.isSourceOpen = true;
+      try {
+        // WebM with VP9 and Opus
+        this.sourceBuffer = this.mediaSource!.addSourceBuffer('video/webm; codecs="vp9, opus"');
+        this.sourceBuffer.mode = 'sequence';
+
+        this.sourceBuffer.addEventListener('updateend', () => {
+          this.flushPendingChunks();
+        });
+
+        // Flush any chunks that arrived before source was ready
+        this.flushPendingChunks();
+      } catch (e) {
+        console.error('Failed to create source buffer:', e);
+      }
+    });
+  }
+
+  private appendChunk(chunk: Uint8Array): void {
+    if (!this.sourceBuffer || !this.isSourceOpen) {
+      this.pendingChunks.push(chunk);
+      return;
+    }
+
+    if (this.sourceBuffer.updating) {
+      this.pendingChunks.push(chunk);
+      return;
+    }
+
+    try {
+      this.sourceBuffer.appendBuffer(chunk.buffer as ArrayBuffer);
+    } catch (e) {
+      console.error('Failed to append buffer:', e);
+    }
+  }
+
+  private flushPendingChunks(): void {
+    if (!this.sourceBuffer || this.sourceBuffer.updating || this.pendingChunks.length === 0) {
+      return;
+    }
+
+    const chunk = this.pendingChunks.shift();
+    if (chunk) {
+      try {
+        this.sourceBuffer.appendBuffer(chunk.buffer as ArrayBuffer);
+      } catch (e) {
+        console.error('Failed to append pending buffer:', e);
+      }
+    }
   }
 
   private subscribeToStateChanges(): void {
     this.electron.stateChange
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(state => {
-        if (state === 'paused' || state === 'stopped') {
-          this.clearScheduledAudio();
+        const video = this.videoRef.nativeElement;
+        if (state === 'playing') {
+          video.play().catch(console.error);
+        } else if (state === 'paused') {
+          video.pause();
+        } else if (state === 'stopped') {
+          video.pause();
+          video.currentTime = 0;
         }
       });
   }
 
-  private clearScheduledAudio(): void {
-    for (const source of this.scheduledSources) {
-      try {
-        source.stop();
-        source.disconnect();
-      } catch {}
-    }
-    this.scheduledSources = [];
-    this.scheduledTime = 0;
-  }
-
-  private setupUserGestureHandler(): void {
-    const resumeAudio = () => {
-      if (this.audioContext && this.audioContext.state === 'suspended') {
-        this.audioContext.resume().catch(console.error);
-      }
-      document.removeEventListener('click', resumeAudio);
-      document.removeEventListener('keydown', resumeAudio);
-    };
-    document.addEventListener('click', resumeAudio);
-    document.addEventListener('keydown', resumeAudio);
-  }
-
-  private initAudioContext(): void {
-    this.audioContext = new AudioContext({sampleRate: 44100});
-    this.gainNode = this.audioContext.createGain();
-    this.gainNode.connect(this.audioContext.destination);
-  }
-
-  private subscribeToVideoFrames(): void {
-    this.electron.videoFrame
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(frame => {
-        this.renderFrame(frame.data, frame.width, frame.height);
-      });
-  }
-
-  private subscribeToAudioData(): void {
-    this.electron.audioData
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(chunk => {
-        this.processAudioChunk(chunk.data);
-      });
-  }
-
-  private renderFrame(base64Data: string, width: number, height: number): void {
-    const canvas = this.canvasRef.nativeElement;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Maintain aspect ratio
-    const containerRect = canvas.parentElement?.getBoundingClientRect();
-    if (containerRect) {
-      const aspectRatio = width / height;
-      const containerAspect = containerRect.width / containerRect.height;
-
-      if (containerAspect > aspectRatio) {
-        canvas.height = containerRect.height;
-        canvas.width = containerRect.height * aspectRatio;
-      } else {
-        canvas.width = containerRect.width;
-        canvas.height = containerRect.width / aspectRatio;
-      }
-    }
-
-    const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    };
-    img.src = `data:image/jpeg;base64,${base64Data}`;
-  }
-
-  private processAudioChunk(data: ArrayBuffer | number[]): void {
-    if (!this.audioContext || !this.gainNode) return;
-
-    if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume().catch(console.error);
-    }
-
-    // Convert array to ArrayBuffer if needed (IPC serialization workaround)
-    const buffer = Array.isArray(data) ? new Uint8Array(data).buffer : data;
-
-    const pcmData = new Int16Array(buffer);
-    const floatData = new Float32Array(pcmData.length);
-
-    for (let i = 0; i < pcmData.length; i++) {
-      floatData[i] = pcmData[i] / 32768;
-    }
-
-    const samplesPerChannel = floatData.length / 2;
-    const audioBuffer = this.audioContext.createBuffer(2, samplesPerChannel, 44100);
-
-    const leftChannel = audioBuffer.getChannelData(0);
-    const rightChannel = audioBuffer.getChannelData(1);
-
-    for (let i = 0; i < samplesPerChannel; i++) {
-      leftChannel[i] = floatData[i * 2];
-      rightChannel[i] = floatData[i * 2 + 1];
-    }
-
-    const source = this.audioContext.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(this.gainNode);
-
-    const currentTime = this.audioContext.currentTime;
-
-    if (this.scheduledTime < currentTime) {
-      this.scheduledTime = currentTime;
-    }
-
-    if (this.scheduledTime > currentTime + this.MAX_BUFFER_AHEAD) {
-      return;
-    }
-
-    const startTime = this.scheduledTime;
-    source.start(startTime);
-    this.scheduledTime = startTime + audioBuffer.duration;
-
-    this.scheduledSources.push(source);
-
-    source.onended = () => {
-      source.disconnect();
-      const idx = this.scheduledSources.indexOf(source);
-      if (idx > -1) this.scheduledSources.splice(idx, 1);
-    };
-  }
-
   ngOnDestroy(): void {
-    if (this.audioContext) {
-      this.audioContext.close();
+    const video = this.videoRef.nativeElement;
+    video.pause();
+    if (video.src) {
+      URL.revokeObjectURL(video.src);
     }
+    video.src = '';
   }
 }
