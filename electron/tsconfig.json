@@ -10,6 +10,6 @@
     "outDir": "dist",
     "types": ["node"]
   },
-  "include": ["**/*.ts"],
+  "include": ["preload.ts"],
   "exclude": ["dist"]
 }
