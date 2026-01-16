@@ -48,42 +48,52 @@ export class Water2Visualization extends Canvas2DVisualization {
     const centerX = width / 2;
     const centerY = height / 2;
     const numColors = this.GRADIENT_COLORS.length;
+    const maxRadius = width / 2;
 
     // Clear to black
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, width, height);
 
     // The waveform has 9 segments (numColors * 2 - 1) with pattern: 0-1-2-3-4-3-2-1-0
-    // Each segment is 1/9 of the width, so boundaries from center are at:
-    // Color 0 (darkest): from edge (width/2) to 7/18 * width
-    // Color 1 (dark): from 7/18 to 5/18 * width
-    // Color 2 (mid): from 5/18 to 3/18 * width
-    // Color 3 (light): from 3/18 to 1/18 * width
-    // Color 4 (lightest): from 1/18 * width to center
-
     const totalSegments = numColors * 2 - 1; // 9 segments
 
-    // Circle radii at segment boundaries (from outer to inner)
-    // Radius = (segments from center) / totalSegments * width
-    const radii = [
-      width / 2,                              // Outer edge (darkest)
-      (7 / (totalSegments * 2)) * width,      // 7/18 * width
-      (5 / (totalSegments * 2)) * width,      // 5/18 * width
-      (3 / (totalSegments * 2)) * width,      // 3/18 * width
-      (1 / (totalSegments * 2)) * width       // 1/18 * width (lightest center)
+    // Calculate ring boundaries as positions (0 = center, 1 = edge)
+    // Rings go from outer (darkest) to inner (lightest)
+    const ringPositions = [
+      1.0,                              // Outer edge (darkest)
+      7 / totalSegments,                // 7/9
+      5 / totalSegments,                // 5/9
+      3 / totalSegments,                // 3/9
+      1 / totalSegments,                // 1/9 (lightest center)
+      0                                 // Center point
     ];
 
-    // Draw circles from largest (darkest) to smallest (lightest)
+    // Create radial gradient with soft transitions between rings
+    const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius);
     const darken = this.BACKGROUND_DARKEN;
-    for (let i = 0; i < numColors; i++) {
-      const color = this.GRADIENT_COLORS[i];
-      const radius = radii[i];
+    const blendZone = 0.03; // Size of soft transition between rings
 
-      ctx.fillStyle = `rgb(${Math.round(color.r * darken)}, ${Math.round(color.g * darken)}, ${Math.round(color.b * darken)})`;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-      ctx.fill();
+    // Add color stops from center outward (gradient position 0 = center, 1 = edge)
+    for (let i = numColors - 1; i >= 0; i--) {
+      const color = this.GRADIENT_COLORS[i];
+      const r = Math.round(color.r * darken);
+      const g = Math.round(color.g * darken);
+      const b = Math.round(color.b * darken);
+      const colorStr = `rgb(${r}, ${g}, ${b})`;
+
+      const innerPos = ringPositions[i + 1]; // Inner edge of this ring
+      const outerPos = ringPositions[i];     // Outer edge of this ring
+
+      // Add stops: solid color with soft transition at outer edge
+      gradient.addColorStop(Math.min(1, innerPos + blendZone), colorStr);
+      gradient.addColorStop(Math.max(0, outerPos - blendZone), colorStr);
     }
+
+    // Fill with gradient
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, maxRadius, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   draw(): void {
