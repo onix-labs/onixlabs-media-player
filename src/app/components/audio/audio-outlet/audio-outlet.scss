@@ -24,20 +24,22 @@
 .visualizer-controls {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: start;
   gap: 0.5rem;
+  background: black;
   padding: 0.25rem;
   flex-shrink: 0;
+  border-top: 0.0625rem solid rgba(255, 255, 255, 0.1);
 
   button {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
-    background: rgba(255, 255, 255, 0.1);
+    width: 1rem;
+    height: 1rem;
+    background: rgba(255, 255, 255, 0.2);
     border: none;
-    border-radius: 3px;
+    border-radius: 50%;
     color: rgba(255, 255, 255, 0.6);
     cursor: pointer;
     transition: background 0.2s ease, color 0.2s ease;
@@ -51,7 +53,6 @@
   .visualizer-name {
     font-size: 0.75rem;
     color: rgba(255, 255, 255, 0.5);
-    min-width: 6rem;
     text-align: center;
   }
 }
