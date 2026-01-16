@@ -2,6 +2,7 @@ import {app, BrowserWindow, ipcMain, dialog, protocol, net} from "electron";
 import * as path from "path";
 import {fileURLToPath} from "url";
 import {FFmpegManager} from "./ffmpeg-manager.ts";
+import {MediaServer} from "./media-server.ts";
 
 // Allow audio autoplay without user gesture
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -39,6 +40,7 @@ class Program {
 
   private window: BrowserWindow | null = null;
   private ffmpegManager: FFmpegManager | null = null;
+  private mediaServer: MediaServer | null = null;
 
   private constructor() {
     app.whenReady().then(this.initialize.bind(this))
@@ -48,8 +50,13 @@ class Program {
     new Program();
   }
 
-  private initialize(): void {
+  private async initialize(): Promise<void> {
     this.registerMediaProtocol();
+
+    // Start the media server for video streaming
+    this.mediaServer = new MediaServer();
+    await this.mediaServer.start();
+
     this.window = this.createBrowserWindow();
     this.ffmpegManager = new FFmpegManager(this.window);
     this.setupIpcHandlers();
@@ -136,6 +143,11 @@ class Program {
     ipcMain.handle("media:getUrl", async (_, filePath: string) => {
       // Return a media:// URL that the renderer can use with <video>/<audio>
       return `media://${encodeURIComponent(filePath)}`;
+    });
+
+    ipcMain.handle("media:getVideoUrl", async (_, filePath: string) => {
+      // Return an HTTP URL from the media server for video playback
+      return this.mediaServer?.getUrl(filePath) || '';
     });
   }
 

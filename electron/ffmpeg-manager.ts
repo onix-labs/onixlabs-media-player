@@ -210,14 +210,16 @@ export class FFmpegManager {
   private startFFmpegStream(): void {
     if (!this.currentMedia) return;
 
+    // For video, we don't use FFmpeg streaming - the HTTP media server handles it
+    // Just track time for the UI
+    if (this.currentMedia.type === 'video') {
+      return;
+    }
+
     const args = this.buildFFmpegArgs();
     this.ffmpegProcess = spawn('ffmpeg', args);
 
-    if (this.currentMedia.type === 'audio') {
-      this.handleAudioStream();
-    } else {
-      this.handleVideoStream();
-    }
+    this.handleAudioStream();
 
     this.ffmpegProcess.on('close', (code) => {
       if (this.isPlaying && !this.isPaused && code === 0) {
@@ -245,33 +247,18 @@ export class FFmpegManager {
     const media = this.currentMedia!;
     const seekTime = this.currentTime.toFixed(3);
 
-    if (media.type === 'audio') {
-      return [
-        '-re',
-        '-ss', seekTime,
-        '-i', media.filePath,
-        '-f', 's16le',
-        '-acodec', 'pcm_s16le',
-        '-ar', '44100',
-        '-ac', '2',
-        '-af', `volume=${this.volume}`,
-        'pipe:1'
-      ];
-    } else {
-      // Transcode to WebM for streaming to MediaSource API
-      return [
-        '-re',
-        '-ss', seekTime,
-        '-i', media.filePath,
-        '-c:v', 'libvpx-vp9',
-        '-c:a', 'libopus',
-        '-b:v', '2M',
-        '-b:a', '128k',
-        '-f', 'webm',
-        '-dash', '1',
-        'pipe:1'
-      ];
-    }
+    // Only audio uses FFmpeg streaming - video is handled by HTTP media server
+    return [
+      '-re',
+      '-ss', seekTime,
+      '-i', media.filePath,
+      '-f', 's16le',
+      '-acodec', 'pcm_s16le',
+      '-ar', '44100',
+      '-ac', '2',
+      '-af', `volume=${this.volume}`,
+      'pipe:1'
+    ];
   }
 
   private handleAudioStream(): void {
@@ -288,53 +275,6 @@ export class FFmpegManager {
         data: Array.from(uint8Array),
         timestamp: this.currentTime
       });
-    });
-  }
-
-  private handleVideoStream(): void {
-    const stdout = this.ffmpegProcess?.stdout;
-    if (!stdout) return;
-
-    stdout.on('data', (chunk: Buffer) => {
-      if (!this.isPlaying || this.isPaused) return;
-
-      // Send WebM chunks directly to renderer for MediaSource API
-      const uint8Array = new Uint8Array(chunk);
-      this.send('media:videoChunk', Array.from(uint8Array));
-    });
-  }
-
-  private startVideoAudio(): void {
-    if (!this.currentMedia) return;
-
-    const audioProcess = spawn('ffmpeg', [
-      '-re',  // Read input at native frame rate (real-time playback)
-      '-ss', this.currentTime.toFixed(3),
-      '-i', this.currentMedia.filePath,
-      '-vn',
-      '-f', 's16le',
-      '-acodec', 'pcm_s16le',
-      '-ar', '44100',
-      '-ac', '2',
-      '-af', `volume=${this.volume}`,
-      'pipe:1'
-    ]);
-
-    audioProcess.stdout?.on('data', (chunk: Buffer) => {
-      if (!this.isPlaying || this.isPaused) return;
-
-      // Convert Buffer to Uint8Array for proper IPC serialization
-      const uint8Array = new Uint8Array(chunk);
-
-      this.send('media:audioData', {
-        data: Array.from(uint8Array),
-        timestamp: this.currentTime
-      });
-    });
-
-    // Kill audio process when main process dies
-    this.ffmpegProcess?.on('close', () => {
-      audioProcess.kill('SIGKILL');
     });
   }
 

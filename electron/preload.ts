@@ -30,6 +30,7 @@ export interface MediaPlayerAPI {
   openFileDialog: (options: OpenDialogOptions) => Promise<string[]>;
   loadMedia: (filePath: string) => Promise<MediaInfo>;
   getMediaUrl: (filePath: string) => Promise<string>;
+  getVideoUrl: (filePath: string) => Promise<string>;
   play: () => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
@@ -50,6 +51,7 @@ const api: MediaPlayerAPI = {
   openFileDialog: (options) => ipcRenderer.invoke('dialog:openFile', options),
   loadMedia: (filePath) => ipcRenderer.invoke('media:load', filePath),
   getMediaUrl: (filePath) => ipcRenderer.invoke('media:getUrl', filePath),
+  getVideoUrl: (filePath) => ipcRenderer.invoke('media:getVideoUrl', filePath),
   play: () => ipcRenderer.invoke('media:play'),
   pause: () => ipcRenderer.invoke('media:pause'),
   resume: () => ipcRenderer.invoke('media:resume'),
