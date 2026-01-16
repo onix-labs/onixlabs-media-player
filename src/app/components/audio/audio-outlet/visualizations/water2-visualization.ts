@@ -3,6 +3,7 @@ import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 export class Water2Visualization extends Canvas2DVisualization {
   private readonly ROTATION_SPEED = 0.006;
   private readonly FADE_RATE = 0.008;
+  private readonly BACKGROUND_DARKEN = 0.7; // Darken background rings
 
   // Color gradient: darkest at edges, lightest at center
   private readonly GRADIENT_COLORS = [
@@ -73,11 +74,12 @@ export class Water2Visualization extends Canvas2DVisualization {
     ];
 
     // Draw circles from largest (darkest) to smallest (lightest)
+    const darken = this.BACKGROUND_DARKEN;
     for (let i = 0; i < numColors; i++) {
       const color = this.GRADIENT_COLORS[i];
       const radius = radii[i];
 
-      ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+      ctx.fillStyle = `rgb(${Math.round(color.r * darken)}, ${Math.round(color.g * darken)}, ${Math.round(color.b * darken)})`;
       ctx.beginPath();
       ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
       ctx.fill();
