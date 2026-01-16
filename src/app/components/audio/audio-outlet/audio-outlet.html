@@ -1,3 +1,12 @@
-<div class="visualizer-container" (click)="cycleVisualization()">
+<div class="visualizer-container">
   <canvas #canvas></canvas>
+</div>
+<div class="visualizer-controls">
+  <button (click)="previousVisualization()" title="Previous visualization">
+    <i class="fa-solid fa-caret-left"></i>
+  </button>
+  <span class="visualizer-name">{{ visualizationName() }}</span>
+  <button (click)="nextVisualization()" title="Next visualization">
+    <i class="fa-solid fa-caret-right"></i>
+  </button>
 </div>
