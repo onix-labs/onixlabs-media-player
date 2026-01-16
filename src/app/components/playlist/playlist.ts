@@ -12,7 +12,7 @@ import {PlaylistItem} from '../../services/playlist.service';
 export class Playlist {
   private readonly mediaPlayer = inject(MediaPlayerService);
 
-  readonly isVisible = signal<boolean>(true);
+  readonly isVisible = signal<boolean>(false);
   readonly items = computed(() => this.mediaPlayer.playlistItems());
   readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
   readonly count = computed(() => this.mediaPlayer.playlistCount());

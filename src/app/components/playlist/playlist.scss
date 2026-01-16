@@ -47,6 +47,10 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+
+  &:has(.empty-state) {
+    overflow: hidden;
+  }
 }
 
 .playlist-item {
