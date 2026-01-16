@@ -1,10 +1,23 @@
-import {app, BrowserWindow, ipcMain, dialog} from "electron";
+import {app, BrowserWindow, ipcMain, dialog, protocol, net} from "electron";
 import * as path from "path";
 import {fileURLToPath} from "url";
 import {FFmpegManager} from "./ffmpeg-manager.ts";
 
 // Allow audio autoplay without user gesture
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
+// Register custom protocol for serving media files
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'media',
+    privileges: {
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      bypassCSP: true
+    }
+  }
+]);
 
 class Program {
   private static readonly IS_DEVELOPMENT: boolean = process.env["NODE_ENV"] === "development";
@@ -36,6 +49,7 @@ class Program {
   }
 
   private initialize(): void {
+    this.registerMediaProtocol();
     this.window = this.createBrowserWindow();
     this.ffmpegManager = new FFmpegManager(this.window);
     this.setupIpcHandlers();
@@ -46,6 +60,14 @@ class Program {
     this.window.on("closed", this.onClosed.bind(this));
     app.on("activate", this.onActivate.bind(this));
     app.on("window-all-closed", this.onAllWindowsClosed.bind(this));
+  }
+
+  private registerMediaProtocol(): void {
+    protocol.handle('media', (request) => {
+      // Convert media://path to file path
+      const filePath = decodeURIComponent(request.url.replace('media://', ''));
+      return net.fetch('file://' + filePath);
+    });
   }
 
   private createBrowserWindow(): BrowserWindow {
@@ -109,6 +131,11 @@ class Program {
 
     ipcMain.handle("media:stop", async () => {
       return this.ffmpegManager?.stop();
+    });
+
+    ipcMain.handle("media:getUrl", async (_, filePath: string) => {
+      // Return a media:// URL that the renderer can use with <video>/<audio>
+      return `media://${encodeURIComponent(filePath)}`;
     });
   }
 

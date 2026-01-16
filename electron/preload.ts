@@ -29,6 +29,7 @@ export interface VideoFrame {
 export interface MediaPlayerAPI {
   openFileDialog: (options: OpenDialogOptions) => Promise<string[]>;
   loadMedia: (filePath: string) => Promise<MediaInfo>;
+  getMediaUrl: (filePath: string) => Promise<string>;
   play: () => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
@@ -37,6 +38,7 @@ export interface MediaPlayerAPI {
   stop: () => Promise<void>;
   onAudioData: (callback: (data: AudioChunk) => void) => () => void;
   onVideoFrame: (callback: (frame: VideoFrame) => void) => () => void;
+  onVideoChunk: (callback: (chunk: number[]) => void) => () => void;
   onTimeUpdate: (callback: (time: number) => void) => () => void;
   onDurationChange: (callback: (duration: number) => void) => () => void;
   onMediaEnd: (callback: () => void) => () => void;
@@ -47,6 +49,7 @@ export interface MediaPlayerAPI {
 const api: MediaPlayerAPI = {
   openFileDialog: (options) => ipcRenderer.invoke('dialog:openFile', options),
   loadMedia: (filePath) => ipcRenderer.invoke('media:load', filePath),
+  getMediaUrl: (filePath) => ipcRenderer.invoke('media:getUrl', filePath),
   play: () => ipcRenderer.invoke('media:play'),
   pause: () => ipcRenderer.invoke('media:pause'),
   resume: () => ipcRenderer.invoke('media:resume'),
@@ -64,6 +67,12 @@ const api: MediaPlayerAPI = {
     const handler = (_: Electron.IpcRendererEvent, frame: VideoFrame) => callback(frame);
     ipcRenderer.on('media:videoFrame', handler);
     return () => { ipcRenderer.removeListener('media:videoFrame', handler); };
+  },
+
+  onVideoChunk: (callback) => {
+    const handler = (_: Electron.IpcRendererEvent, chunk: number[]) => callback(chunk);
+    ipcRenderer.on('media:videoChunk', handler);
+    return () => { ipcRenderer.removeListener('media:videoChunk', handler); };
   },
 
   onTimeUpdate: (callback) => {

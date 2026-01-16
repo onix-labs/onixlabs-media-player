@@ -247,7 +247,7 @@ export class FFmpegManager {
 
     if (media.type === 'audio') {
       return [
-        '-re',  // Read input at native frame rate (real-time playback)
+        '-re',
         '-ss', seekTime,
         '-i', media.filePath,
         '-f', 's16le',
@@ -258,17 +258,17 @@ export class FFmpegManager {
         'pipe:1'
       ];
     } else {
-      // For video, output both video frames and audio
-      // Using matroska container with mjpeg video for frame-by-frame streaming
+      // Transcode to WebM for streaming to MediaSource API
       return [
-        '-re',  // Read input at native frame rate (real-time playback)
+        '-re',
         '-ss', seekTime,
         '-i', media.filePath,
-        '-f', 'image2pipe',
-        '-vcodec', 'mjpeg',
-        '-q:v', '3',
-        '-vf', `fps=30,scale=${media.width || -1}:${media.height || -1}`,
-        '-an',
+        '-c:v', 'libvpx-vp9',
+        '-c:a', 'libopus',
+        '-b:v', '2M',
+        '-b:a', '128k',
+        '-f', 'webm',
+        '-dash', '1',
         'pipe:1'
       ];
     }
@@ -295,37 +295,13 @@ export class FFmpegManager {
     const stdout = this.ffmpegProcess?.stdout;
     if (!stdout) return;
 
-    let frameBuffer = Buffer.alloc(0);
-    const JPEG_START = Buffer.from([0xFF, 0xD8]);
-    const JPEG_END = Buffer.from([0xFF, 0xD9]);
-
     stdout.on('data', (chunk: Buffer) => {
       if (!this.isPlaying || this.isPaused) return;
 
-      frameBuffer = Buffer.concat([frameBuffer, chunk]);
-
-      // Extract complete JPEG frames
-      let startIdx = frameBuffer.indexOf(JPEG_START);
-      let endIdx = frameBuffer.indexOf(JPEG_END);
-
-      while (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-        const frame = frameBuffer.subarray(startIdx, endIdx + 2);
-
-        this.send('media:videoFrame', {
-          data: frame.toString('base64'),
-          timestamp: this.currentTime,
-          width: this.currentMedia?.width || 1920,
-          height: this.currentMedia?.height || 1080
-        });
-
-        frameBuffer = frameBuffer.subarray(endIdx + 2);
-        startIdx = frameBuffer.indexOf(JPEG_START);
-        endIdx = frameBuffer.indexOf(JPEG_END);
-      }
+      // Send WebM chunks directly to renderer for MediaSource API
+      const uint8Array = new Uint8Array(chunk);
+      this.send('media:videoChunk', Array.from(uint8Array));
     });
-
-    // Also start audio for video files in a separate process
-    this.startVideoAudio();
   }
 
   private startVideoAudio(): void {
