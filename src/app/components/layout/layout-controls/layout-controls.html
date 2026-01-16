@@ -1,26 +1,48 @@
 <div class="seek-bar-container">
-  <progress value="60" max="100"></progress>
+  <span class="time-display current">{{ currentTime() }}</span>
+  <progress [value]="progress()" max="100" (click)="onProgressClick($event)"></progress>
+  <span class="time-display total">{{ totalDuration() }}</span>
 </div>
 <div class="control-container">
   <div class="control-container-left">
     <div class="control-container-wrapper">
-      <button><i class="fa-solid fa-eject"></i></button>
-      <button><i class="fa-solid fa-shuffle"></i></button>
-      <button><i class="fa-solid fa-repeat"></i></button>
+      <button (click)="onEject()" title="Open files">
+        <i class="fa-solid fa-eject"></i>
+      </button>
+      <button (click)="onShuffle()" [class.active]="isShuffleEnabled()" title="Shuffle">
+        <i class="fa-solid fa-shuffle"></i>
+      </button>
+      <button (click)="onRepeat()" [class.active]="isRepeatEnabled()" title="Repeat">
+        <i class="fa-solid fa-repeat"></i>
+      </button>
     </div>
   </div>
   <div class="control-container-center">
     <div class="control-container-wrapper">
-      <button><i class="fa-solid fa-backward-step"></i></button>
-      <button><i class="fa-solid fa-play"></i></button>
-      <button><i class="fa-solid fa-forward-step"></i></button>
+      <button (click)="onBackward()" [disabled]="!hasTrack()" title="Previous">
+        <i class="fa-solid fa-backward-step"></i>
+      </button>
+      <button (click)="onPlayPause()" [disabled]="!hasTrack()" title="Play/Pause">
+        <i [class]="isPlaying() ? 'fa-solid fa-pause' : 'fa-solid fa-play'"></i>
+      </button>
+      <button (click)="onForward()" [disabled]="!hasTrack()" title="Next">
+        <i class="fa-solid fa-forward-step"></i>
+      </button>
     </div>
   </div>
   <div class="control-container-right">
     <div class="control-container-wrapper">
-      <button><i class="fa-solid fa-volume-high"></i></button>
+      <button (click)="onMuteToggle()" title="Mute/Unmute">
+        <i [class]="isMuted() ? 'fa-solid fa-volume-xmark' : (volume() < 50 ? 'fa-solid fa-volume-low' : 'fa-solid fa-volume-high')"></i>
+      </button>
       <div class="volume-container">
-        <input type="range" min="0" max="100" value="50"/>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          [value]="volume()"
+          (input)="onVolumeChange($event)"
+        />
       </div>
     </div>
   </div>

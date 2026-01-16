@@ -1,3 +1,33 @@
 <div class="container">
+  <div class="header-bar">
+    <span class="track-title">{{ trackTitle() }}</span>
+    <button class="playlist-toggle" (click)="togglePlaylist()" title="Toggle playlist">
+      <i class="fa-solid fa-list"></i>
+    </button>
+  </div>
 
+  <div class="content-area">
+    <div class="media-area">
+      @if (isAudio()) {
+        <app-audio-outlet />
+      } @else if (isVideo()) {
+        <app-video-outlet />
+      } @else {
+        <div class="idle-state">
+          <i class="fa-solid fa-compact-disc fa-4x"></i>
+          <p>No media loaded</p>
+          <p class="hint">Click eject to add media files</p>
+        </div>
+      }
+
+      @if (isLoading()) {
+        <div class="loading-overlay">
+          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
+          <p>Loading...</p>
+        </div>
+      }
+    </div>
+
+    <app-playlist />
+  </div>
 </div>

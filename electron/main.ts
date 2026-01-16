@@ -1,6 +1,10 @@
-import {app, BrowserWindow} from "electron";
+import {app, BrowserWindow, ipcMain, dialog} from "electron";
 import * as path from "path";
 import {fileURLToPath} from "url";
+import {FFmpegManager} from "./ffmpeg-manager.ts";
+
+// Allow audio autoplay without user gesture
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 class Program {
   private static readonly IS_DEVELOPMENT: boolean = process.env["NODE_ENV"] === "development";
@@ -21,6 +25,7 @@ class Program {
   }
 
   private window: BrowserWindow | null = null;
+  private ffmpegManager: FFmpegManager | null = null;
 
   private constructor() {
     app.whenReady().then(this.initialize.bind(this))
@@ -32,6 +37,8 @@ class Program {
 
   private initialize(): void {
     this.window = this.createBrowserWindow();
+    this.ffmpegManager = new FFmpegManager(this.window);
+    this.setupIpcHandlers();
 
     if (Program.IS_DEVELOPMENT) void this.window.loadURL(Program.DEVELOPMENT_SERVER_URL);
     else void this.window.loadFile(path.join(Program.getProjectRoot(), "dist", "onixlabs-media-player", "browser", "index.html"));
@@ -42,6 +49,10 @@ class Program {
   }
 
   private createBrowserWindow(): BrowserWindow {
+    const projectRoot = Program.getProjectRoot();
+    // Preload must always be compiled JS - Electron can't run TS preload scripts
+    const preloadPath = path.join(projectRoot, "electron", "dist", "preload.js");
+
     return new BrowserWindow({
       width: 1200,
       height: 800,
@@ -52,8 +63,52 @@ class Program {
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false
+        sandbox: false,
+        preload: preloadPath
       }
+    });
+  }
+
+  private setupIpcHandlers(): void {
+    ipcMain.handle("dialog:openFile", async (_, options: { filters: Electron.FileFilter[]; multiSelections: boolean }) => {
+      if (!this.window) return [];
+
+      const result = await dialog.showOpenDialog(this.window, {
+        properties: options.multiSelections
+          ? ["openFile", "multiSelections"]
+          : ["openFile"],
+        filters: options.filters
+      });
+
+      return result.filePaths;
+    });
+
+    ipcMain.handle("media:load", async (_, filePath: string) => {
+      return this.ffmpegManager?.loadMedia(filePath);
+    });
+
+    ipcMain.handle("media:play", async () => {
+      return this.ffmpegManager?.play();
+    });
+
+    ipcMain.handle("media:pause", async () => {
+      return this.ffmpegManager?.pause();
+    });
+
+    ipcMain.handle("media:resume", async () => {
+      return this.ffmpegManager?.resume();
+    });
+
+    ipcMain.handle("media:seek", async (_, time: number) => {
+      return this.ffmpegManager?.seek(time);
+    });
+
+    ipcMain.handle("media:setVolume", async (_, volume: number) => {
+      return this.ffmpegManager?.setVolume(volume);
+    });
+
+    ipcMain.handle("media:stop", async () => {
+      return this.ffmpegManager?.stop();
     });
   }
 
