@@ -34,7 +34,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private readonly VISUALIZATION_NAMES: Record<VisualizationType, string> = {
     bars: 'Frequency Bars',
     waveform: 'Waveform',
-    tunnel: 'Tunnel'
+    tunnel: 'Tunnel',
+    water: 'Ambience Water',
+    water2: 'Ambience Water 2'
   };
 
   readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
