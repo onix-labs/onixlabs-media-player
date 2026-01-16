@@ -1,0 +1,61 @@
+export interface VisualizationConfig {
+  canvas: HTMLCanvasElement;
+  analyser: AnalyserNode;
+}
+
+export abstract class Visualization {
+  protected canvas: HTMLCanvasElement;
+  protected analyser: AnalyserNode;
+  protected width = 0;
+  protected height = 0;
+
+  constructor(config: VisualizationConfig) {
+    this.canvas = config.canvas;
+    this.analyser = config.analyser;
+  }
+
+  resize(width: number, height: number): void {
+    this.width = width;
+    this.height = height;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.onResize();
+  }
+
+  protected onResize(): void {
+    // Override in subclass if needed
+  }
+
+  abstract draw(): void;
+
+  destroy(): void {
+    // Override in subclass to clean up resources (WebGL contexts, etc.)
+  }
+}
+
+export abstract class Canvas2DVisualization extends Visualization {
+  protected ctx: CanvasRenderingContext2D;
+
+  constructor(config: VisualizationConfig) {
+    super(config);
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) throw new Error('Failed to get 2D context');
+    this.ctx = ctx;
+  }
+}
+
+export abstract class WebGLVisualization extends Visualization {
+  protected gl: WebGLRenderingContext;
+
+  constructor(config: VisualizationConfig) {
+    super(config);
+    const gl = this.canvas.getContext('webgl') || this.canvas.getContext('experimental-webgl');
+    if (!gl) throw new Error('Failed to get WebGL context');
+    this.gl = gl as WebGLRenderingContext;
+  }
+
+  override destroy(): void {
+    const ext = this.gl.getExtension('WEBGL_lose_context');
+    if (ext) ext.loseContext();
+  }
+}
