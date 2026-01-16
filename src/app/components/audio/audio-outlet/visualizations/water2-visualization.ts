@@ -1,7 +1,7 @@
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 export class Water2Visualization extends Canvas2DVisualization {
-  private readonly ROTATION_SPEED = 0.006;
+  private readonly ROTATION_SPEED = 0.009;
   private readonly FADE_RATE = 0.008;
   private readonly BACKGROUND_DARKEN = 0.7; // Darken background rings
 
@@ -251,9 +251,13 @@ export class Water2Visualization extends Canvas2DVisualization {
     // That's 10 segments total, but the center shares the lightest color
     const totalSegments = numColors * 2 - 1; // 9 segments: 0-1-2-3-4-3-2-1-0
     const pointsPerSegment = Math.floor(allPoints.length / totalSegments);
+    const centerSegmentIndex = numColors - 1; // Index 4 = center segment
 
-    // Draw each segment with its color
+    // Draw each segment with its color, but skip the center segment
     for (let seg = 0; seg < totalSegments; seg++) {
+      // Skip the center segment - we'll draw a circle there instead
+      if (seg === centerSegmentIndex) continue;
+
       // Determine color index: 0,1,2,3,4,3,2,1,0
       let colorIndex: number;
       if (seg < numColors) {
@@ -271,6 +275,83 @@ export class Water2Visualization extends Canvas2DVisualization {
 
       this.drawWaveformSegment(ctx, segmentPoints, color);
     }
+
+    // Draw circular waveform at center using the brightest color
+    this.drawCenterCircle(ctx, centerX, centerY, halfWidth * 0.12, this.GRADIENT_COLORS[numColors - 1]);
+  }
+
+  private drawCenterCircle(
+    ctx: CanvasRenderingContext2D,
+    centerX: number,
+    centerY: number,
+    baseRadius: number,
+    color: {r: number; g: number; b: number}
+  ): void {
+    const {dataArray, height} = this;
+
+    // Sample audio data around the circle
+    const points: Array<{x: number; y: number}> = [];
+    const numPoints = 64; // Number of points around the circle
+
+    for (let i = 0; i <= numPoints; i++) {
+      const angle = (i / numPoints) * Math.PI * 2;
+
+      // Sample audio data - use different parts of the array for different angles
+      const sampleIndex = Math.floor((i / numPoints) * (dataArray.length / 4));
+      const sample = (dataArray[sampleIndex] - 128) / 128;
+      const amplitude = sample * height * 0.08;
+
+      // Modulate radius with audio
+      const radius = baseRadius + amplitude;
+
+      const x = centerX + radius * Math.cos(angle);
+      const y = centerY + radius * Math.sin(angle);
+      points.push({x, y});
+    }
+
+    // Draw glow layer
+    ctx.save();
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
+    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+
+    // Draw main circle
+    ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+
+    // Draw highlight
+    ctx.strokeStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.5)`;
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.closePath();
+    ctx.stroke();
   }
 
   private drawWaveformSegment(
