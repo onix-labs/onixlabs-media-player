@@ -3,11 +3,12 @@ import {AudioOutlet} from '../../audio/audio-outlet/audio-outlet';
 import {VideoOutlet} from '../../video/video-outlet/video-outlet';
 import {Playlist} from '../../playlist/playlist';
 import {MediaPlayerService} from '../../../services/media-player.service';
+import {NgOptimizedImage} from '@angular/common';
 
 @Component({
   selector: 'app-layout-outlet',
   standalone: true,
-  imports: [AudioOutlet, VideoOutlet, Playlist],
+  imports: [AudioOutlet, VideoOutlet, Playlist, NgOptimizedImage],
   templateUrl: './layout-outlet.html',
   styleUrl: './layout-outlet.scss',
 })

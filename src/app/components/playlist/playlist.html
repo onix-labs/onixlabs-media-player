@@ -2,20 +2,22 @@
   <div class="playlist-header">
     <span class="playlist-title">Playlist</span>
     <span class="playlist-count">{{ count() }} items</span>
-    <button class="close-btn" (click)="hide()">
-      <i class="fa-solid fa-xmark"></i>
-    </button>
   </div>
 
   <div class="playlist-items">
     @for (item of items(); track item.id) {
       <div
         class="playlist-item"
-        [class.active]="isCurrentItem(item)"
+        [class.playing]="isCurrentItem(item) && isPlaying()"
+        [class.paused]="isCurrentItem(item) && !isPlaying()"
         (click)="selectItem(item)"
       >
         <div class="item-icon">
-          <i [class]="item.type === 'audio' ? 'fa-solid fa-music' : 'fa-solid fa-film'"></i>
+          @if (isCurrentItem(item)) {
+            <i [class]="isPlaying() ? 'fa-solid fa-play' : 'fa-solid fa-pause'"></i>
+          } @else {
+            <i [class]="item.type === 'audio' ? 'fa-solid fa-music' : 'fa-solid fa-film'"></i>
+          }
         </div>
         <div class="item-info">
           <span class="item-title">{{ item.title }}</span>
