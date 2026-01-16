@@ -130,6 +130,13 @@ export class ElectronService implements OnDestroy {
     return this.api.getMediaUrl(filePath);
   }
 
+  async getVideoUrl(filePath: string): Promise<string> {
+    if (!this.isElectron || !this.api) {
+      throw new Error('Not running in Electron');
+    }
+    return this.api.getVideoUrl(filePath);
+  }
+
   async play(): Promise<void> {
     if (!this.isElectron || !this.api) return;
     return this.api.play();

@@ -2,6 +2,7 @@ import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, D
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {ElectronService} from '../../../services/electron.service';
 import {MediaPlayerService} from '../../../services/media-player.service';
+import {distinctUntilChanged, filter} from 'rxjs';
 
 @Component({
   selector: 'app-video-outlet',
@@ -19,111 +20,76 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
 
-  private mediaSource: MediaSource | null = null;
-  private sourceBuffer: SourceBuffer | null = null;
-  private pendingChunks: Uint8Array[] = [];
-  private isSourceOpen = false;
+  private currentVideoUrl: string | null = null;
+  private currentFilePath: string | null = null;
 
   ngOnInit(): void {
-    this.subscribeToVideoChunks();
+    this.setupVideoEvents();
+    this.subscribeToTrackChanges();
     this.subscribeToStateChanges();
   }
 
-  private subscribeToVideoChunks(): void {
-    this.electron.videoChunk
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(chunk => {
-        this.appendChunk(new Uint8Array(chunk));
-      });
-
-    // Reset MediaSource when new media loads
+  private subscribeToTrackChanges(): void {
+    // Watch for track changes via durationChange (fires when new media loads)
     this.electron.durationChange
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         const track = this.mediaPlayer.currentTrack();
-        if (track?.type === 'video') {
-          this.initMediaSource();
+        if (track?.type === 'video' && track.filePath !== this.currentFilePath) {
+          this.loadVideo(track.filePath);
         }
       });
   }
 
-  private initMediaSource(): void {
-    // Clean up existing
-    if (this.mediaSource) {
-      if (this.sourceBuffer) {
-        try {
-          this.mediaSource.removeSourceBuffer(this.sourceBuffer);
-        } catch {}
-      }
-    }
-
-    this.mediaSource = new MediaSource();
-    this.sourceBuffer = null;
-    this.pendingChunks = [];
-    this.isSourceOpen = false;
-
+  private async loadVideo(filePath: string): Promise<void> {
     const video = this.videoRef.nativeElement;
-    video.src = URL.createObjectURL(this.mediaSource);
+    this.currentFilePath = filePath;
 
-    this.mediaSource.addEventListener('sourceopen', () => {
-      this.isSourceOpen = true;
-      try {
-        // WebM with VP9 and Opus
-        this.sourceBuffer = this.mediaSource!.addSourceBuffer('video/webm; codecs="vp9, opus"');
-        this.sourceBuffer.mode = 'sequence';
+    // Get the HTTP URL from the media server
+    const url = await this.electron.getVideoUrl(filePath);
+    this.currentVideoUrl = url;
 
-        this.sourceBuffer.addEventListener('updateend', () => {
-          this.flushPendingChunks();
-        });
+    // Set the video source directly - browser handles buffering/seeking via HTTP range requests
+    video.src = url;
+    video.load();
+  }
 
-        // Flush any chunks that arrived before source was ready
-        this.flushPendingChunks();
-      } catch (e) {
-        console.error('Failed to create source buffer:', e);
+  private setupVideoEvents(): void {
+    const video = this.videoRef.nativeElement;
+
+    // Handle video errors
+    video.addEventListener('error', () => {
+      const error = video.error;
+      console.error('Video error:', error?.code, error?.message);
+    });
+
+    // Auto-play when video is ready and we're in playing state
+    video.addEventListener('canplay', () => {
+      console.log('Video can play');
+      if (this.mediaPlayer.isPlaying()) {
+        video.play().catch(console.error);
       }
     });
-  }
 
-  private appendChunk(chunk: Uint8Array): void {
-    if (!this.sourceBuffer || !this.isSourceOpen) {
-      this.pendingChunks.push(chunk);
-      return;
-    }
-
-    if (this.sourceBuffer.updating) {
-      this.pendingChunks.push(chunk);
-      return;
-    }
-
-    try {
-      this.sourceBuffer.appendBuffer(chunk.buffer as ArrayBuffer);
-    } catch (e) {
-      console.error('Failed to append buffer:', e);
-    }
-  }
-
-  private flushPendingChunks(): void {
-    if (!this.sourceBuffer || this.sourceBuffer.updating || this.pendingChunks.length === 0) {
-      return;
-    }
-
-    const chunk = this.pendingChunks.shift();
-    if (chunk) {
-      try {
-        this.sourceBuffer.appendBuffer(chunk.buffer as ArrayBuffer);
-      } catch (e) {
-        console.error('Failed to append pending buffer:', e);
-      }
-    }
+    // Log loading progress
+    video.addEventListener('loadedmetadata', () => {
+      console.log('Video metadata loaded, duration:', video.duration);
+    });
   }
 
   private subscribeToStateChanges(): void {
     this.electron.stateChange
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        distinctUntilChanged()
+      )
       .subscribe(state => {
         const video = this.videoRef.nativeElement;
         if (state === 'playing') {
-          video.play().catch(console.error);
+          // Only play if we have a valid source
+          if (video.src && video.readyState >= 2) {
+            video.play().catch(console.error);
+          }
         } else if (state === 'paused') {
           video.pause();
         } else if (state === 'stopped') {
@@ -131,14 +97,24 @@ export class VideoOutlet implements OnInit, OnDestroy {
           video.currentTime = 0;
         }
       });
+
+    // Sync video position with seek commands
+    this.electron.timeUpdate
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(time => {
+        const video = this.videoRef.nativeElement;
+        // Only sync if there's a significant difference (user seeked)
+        if (Math.abs(video.currentTime - time) > 1) {
+          video.currentTime = time;
+        }
+      });
   }
 
   ngOnDestroy(): void {
     const video = this.videoRef.nativeElement;
     video.pause();
-    if (video.src) {
-      URL.revokeObjectURL(video.src);
-    }
     video.src = '';
+    this.currentVideoUrl = null;
+    this.currentFilePath = null;
   }
 }

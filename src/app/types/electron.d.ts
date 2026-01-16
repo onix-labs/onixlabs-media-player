@@ -30,6 +30,7 @@ export interface MediaPlayerAPI {
   openFileDialog: (options: OpenDialogOptions) => Promise<string[]>;
   loadMedia: (filePath: string) => Promise<MediaInfo>;
   getMediaUrl: (filePath: string) => Promise<string>;
+  getVideoUrl: (filePath: string) => Promise<string>;
   play: () => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
