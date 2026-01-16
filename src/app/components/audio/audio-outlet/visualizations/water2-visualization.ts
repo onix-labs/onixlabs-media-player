@@ -186,13 +186,37 @@ export class Water2Visualization extends Canvas2DVisualization {
     const halfWidth = width / 2;
     const samplesPerHalf = Math.floor(dataArray.length / 2);
 
+    // Arc bending settings
+    // Minimum radius prevents singularity at center and controls max bend tightness
+    const minArcRadius = halfWidth * 0.12;
+    const bendStrength = 1.2;  // Multiplier for arc effect
+
     // Left half points (from left edge to center)
     for (let i = 0; i < samplesPerHalf; i++) {
       const sample = (dataArray[i] - 128) / 128;
       const amplitude = sample * height * 0.3;
       const t = i / (samplesPerHalf - 1);
-      const x = t * halfWidth;
-      const y = centerY + amplitude;
+      const baseX = t * halfWidth;
+
+      // Distance from center determines arc radius (larger distance = gentler curve)
+      const distFromCenter = centerX - baseX;
+      const arcRadius = Math.max(distFromCenter, minArcRadius);
+
+      // Convert amplitude to arc angle: angle = arcLength / radius
+      // Near center (small radius): same amplitude = larger angle = tighter curve
+      // Near edge (large radius): same amplitude = smaller angle = gentler curve
+      const arcAngle = (amplitude * bendStrength) / arcRadius;
+
+      // Base angle from center to this point (PI = pointing left)
+      const baseAngle = Math.PI;
+
+      // New angle after applying amplitude as arc (subtract for upward = counter-clockwise)
+      const newAngle = baseAngle - arcAngle;
+
+      // Calculate position on the arc
+      const x = centerX + arcRadius * Math.cos(newAngle);
+      const y = centerY + arcRadius * Math.sin(newAngle);
+
       allPoints.push({x, y});
     }
 
@@ -201,8 +225,25 @@ export class Water2Visualization extends Canvas2DVisualization {
       const sample = (dataArray[i] - 128) / 128;
       const amplitude = sample * height * 0.3;
       const t = i / (samplesPerHalf - 1);
-      const x = width - t * halfWidth;
-      const y = centerY + amplitude;
+      const baseX = width - t * halfWidth;
+
+      // Distance from center (positive for right side)
+      const distFromCenter = baseX - centerX;
+      const arcRadius = Math.max(distFromCenter, minArcRadius);
+
+      // Convert amplitude to arc angle
+      const arcAngle = (amplitude * bendStrength) / arcRadius;
+
+      // Base angle from center (0 = pointing right)
+      const baseAngle = 0;
+
+      // New angle (add for upward on right side = counter-clockwise)
+      const newAngle = baseAngle + arcAngle;
+
+      // Calculate position on the arc
+      const x = centerX + arcRadius * Math.cos(newAngle);
+      const y = centerY + arcRadius * Math.sin(newAngle);
+
       allPoints.push({x, y});
     }
 
