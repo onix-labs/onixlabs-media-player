@@ -15,14 +15,26 @@ export class Water2Visualization extends Canvas2DVisualization {
   ];
 
   private dataArray: Uint8Array<ArrayBuffer>;
+  private frequencyData: Uint8Array<ArrayBuffer>;
   private circleCanvas: HTMLCanvasElement | null = null;
   private trailCanvas: HTMLCanvasElement | null = null;
   private trailCtx: CanvasRenderingContext2D | null = null;
+
+  // Bass/mid detection settings
+  private readonly BASS_BINS = 16;          // Include bass and low-mids
+  private readonly TRANSIENT_THRESHOLD = 15; // Minimum jump to detect a transient
+  private readonly MIN_LEVEL = 50;           // Minimum level for transient to count
+  private readonly DIRECTION_COOLDOWN = 1000; // Milliseconds before direction can change again
+  private smoothedBass = 0;                 // Smoothed bass value
+  private prevBass = 0;                     // Previous frame's bass for transient detection
+  private rotationDirection = 1;            // Current rotation direction (1 or -1)
+  private lastDirectionChange = 0;          // Timestamp of last direction change
 
   constructor(config: VisualizationConfig) {
     super(config);
     this.analyser.fftSize = 2048;
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
+    this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
 
   protected override onResize(): void {
@@ -71,7 +83,7 @@ export class Water2Visualization extends Canvas2DVisualization {
     // Create radial gradient with soft transitions between rings
     const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius);
     const darken = this.BACKGROUND_DARKEN;
-    const blendZone = 0.03; // Size of soft transition between rings
+    const blendZone = 0.015; // Size of soft transition between rings
 
     // Add color stops from center outward (gradient position 0 = center, 1 = edge)
     for (let i = numColors - 1; i >= 0; i--) {
@@ -119,11 +131,37 @@ export class Water2Visualization extends Canvas2DVisualization {
     // Clear trail canvas
     trailCtx.clearRect(0, 0, width, height);
 
+    // Analyze bass/mid frequencies to detect transients
+    this.analyser.getByteFrequencyData(this.frequencyData);
+    let bassSum = 0;
+    for (let i = 0; i < this.BASS_BINS; i++) {
+      bassSum += this.frequencyData[i];
+    }
+    const bassAvg = bassSum / this.BASS_BINS;
+
+    // Detect transient: sudden increase in bass/mid
+    const bassIncrease = bassAvg - this.prevBass;
+    this.prevBass = bassAvg;
+
+    // Light smoothing
+    this.smoothedBass = this.smoothedBass * 0.5 + bassAvg * 0.5;
+
+    // Check if we can change direction (cooldown elapsed)
+    const now = performance.now();
+    const canChangeDirection = (now - this.lastDirectionChange) > this.DIRECTION_COOLDOWN;
+
+    // Flip direction on loud transients (only if cooldown has passed)
+    const isTransient = bassIncrease > this.TRANSIENT_THRESHOLD && bassAvg > this.MIN_LEVEL;
+    if (isTransient && canChangeDirection) {
+      this.rotationDirection *= -1;
+      this.lastDirectionChange = now;
+    }
+
     // Draw back previous trails with rotation and fade
     trailCtx.save();
     trailCtx.globalAlpha = 1 - this.FADE_RATE;
     trailCtx.translate(centerX, centerY);
-    trailCtx.rotate(this.ROTATION_SPEED);
+    trailCtx.rotate(this.ROTATION_SPEED * this.rotationDirection);
     trailCtx.translate(-centerX, -centerY);
     trailCtx.drawImage(tempCanvas, 0, 0);
     trailCtx.restore();
