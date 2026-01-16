@@ -31,7 +31,14 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private visualization: Visualization | null = null;
   private readonly visualizationType = signal<VisualizationType>('bars');
 
+  private readonly VISUALIZATION_NAMES: Record<VisualizationType, string> = {
+    bars: 'Frequency Bars',
+    waveform: 'Waveform',
+    tunnel: 'Tunnel'
+  };
+
   readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
+  readonly visualizationName = computed(() => this.VISUALIZATION_NAMES[this.visualizationType()]);
 
   ngOnInit(): void {
     this.initAudioContext();
@@ -42,10 +49,16 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.setupUserGestureHandler();
   }
 
-  cycleVisualization(): void {
+  nextVisualization(): void {
     const currentIndex = VISUALIZATION_TYPES.indexOf(this.visualizationType());
     const nextIndex = (currentIndex + 1) % VISUALIZATION_TYPES.length;
     this.setVisualization(VISUALIZATION_TYPES[nextIndex]);
+  }
+
+  previousVisualization(): void {
+    const currentIndex = VISUALIZATION_TYPES.indexOf(this.visualizationType());
+    const prevIndex = (currentIndex - 1 + VISUALIZATION_TYPES.length) % VISUALIZATION_TYPES.length;
+    this.setVisualization(VISUALIZATION_TYPES[prevIndex]);
   }
 
   setVisualization(type: VisualizationType): void {
