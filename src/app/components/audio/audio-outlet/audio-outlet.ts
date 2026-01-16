@@ -1,7 +1,8 @@
-import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, DestroyRef} from '@angular/core';
+import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, DestroyRef, signal} from '@angular/core';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {ElectronService} from '../../../services/electron.service';
 import {MediaPlayerService} from '../../../services/media-player.service';
+import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYPES} from './visualizations';
 
 @Component({
   selector: 'app-audio-outlet',
@@ -20,17 +21,15 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private animationId: number | null = null;
-  private dataArray: Uint8Array<ArrayBuffer> | null = null;
   private gainNode: GainNode | null = null;
   private scheduledTime = 0;
   private isInitialized = false;
   private scheduledSources: AudioBufferSourceNode[] = [];
-  private readonly MAX_BUFFER_AHEAD = 0.15; // Max 150ms buffer for low latency
-
-  private readonly BAR_COUNT = 64;
-  private readonly BAR_GAP = 2;
+  private readonly MAX_BUFFER_AHEAD = 0.15;
   private readonly SMOOTHING = 0.85;
-  private readonly FREQUENCY_RANGE = 0.75; // Use lower 75% of frequency spectrum
+
+  private visualization: Visualization | null = null;
+  private readonly visualizationType = signal<VisualizationType>('bars');
 
   readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
 
@@ -38,8 +37,65 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.initAudioContext();
     this.subscribeToAudioData();
     this.subscribeToStateChanges();
-    this.startVisualization();
+    this.initVisualization();
+    this.startAnimationLoop();
     this.setupUserGestureHandler();
+  }
+
+  cycleVisualization(): void {
+    const currentIndex = VISUALIZATION_TYPES.indexOf(this.visualizationType());
+    const nextIndex = (currentIndex + 1) % VISUALIZATION_TYPES.length;
+    this.setVisualization(VISUALIZATION_TYPES[nextIndex]);
+  }
+
+  setVisualization(type: VisualizationType): void {
+    this.visualizationType.set(type);
+
+    if (this.visualization) {
+      this.visualization.destroy();
+    }
+
+    if (this.analyser) {
+      this.visualization = createVisualization(type, {
+        canvas: this.canvasRef.nativeElement,
+        analyser: this.analyser
+      });
+
+      // Apply current size
+      const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+      this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
+    }
+  }
+
+  private initVisualization(): void {
+    if (!this.analyser) return;
+
+    this.visualization = createVisualization(this.visualizationType(), {
+      canvas: this.canvasRef.nativeElement,
+      analyser: this.analyser
+    });
+  }
+
+  private startAnimationLoop(): void {
+    const canvas = this.canvasRef.nativeElement;
+
+    const draw = () => {
+      this.animationId = requestAnimationFrame(draw);
+
+      // Handle canvas resize
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.round(rect.width);
+      const height = Math.round(rect.height);
+
+      if (canvas.width !== width || canvas.height !== height) {
+        this.visualization?.resize(width, height);
+      }
+
+      // Draw current visualization
+      this.visualization?.draw();
+    };
+
+    draw();
   }
 
   private subscribeToStateChanges(): void {
@@ -53,7 +109,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
   }
 
   private clearScheduledAudio(): void {
-    // Stop and disconnect all scheduled sources for immediate response
     for (const source of this.scheduledSources) {
       try {
         source.stop();
@@ -65,7 +120,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
   }
 
   private setupUserGestureHandler(): void {
-    // Resume AudioContext on first user interaction (required by browser autoplay policy)
     const resumeAudio = () => {
       if (this.audioContext && this.audioContext.state === 'suspended') {
         this.audioContext.resume().catch(console.error);
@@ -87,10 +141,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.gainNode.connect(this.audioContext.destination);
 
     this.analyser.connect(this.gainNode);
-
-    const bufferLength = this.analyser.frequencyBinCount;
-    this.dataArray = new Uint8Array(bufferLength) as Uint8Array<ArrayBuffer>;
-
     this.isInitialized = true;
   }
 
@@ -105,15 +155,12 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private processAudioChunk(data: ArrayBuffer | number[]): void {
     if (!this.audioContext || !this.analyser || !this.isInitialized) return;
 
-    // Resume context if suspended (with user gesture already occurred from play button)
     if (this.audioContext.state === 'suspended') {
       this.audioContext.resume().catch(console.error);
     }
 
-    // Convert array to ArrayBuffer if needed (IPC serialization workaround)
     const buffer = Array.isArray(data) ? new Uint8Array(data).buffer : data;
 
-    // Convert PCM Int16 to Float32
     const pcmData = new Int16Array(buffer);
     const floatData = new Float32Array(pcmData.length);
 
@@ -121,44 +168,37 @@ export class AudioOutlet implements OnInit, OnDestroy {
       floatData[i] = pcmData[i] / 32768;
     }
 
-    // Create stereo audio buffer
     const samplesPerChannel = floatData.length / 2;
     const audioBuffer = this.audioContext.createBuffer(2, samplesPerChannel, 44100);
 
     const leftChannel = audioBuffer.getChannelData(0);
     const rightChannel = audioBuffer.getChannelData(1);
 
-    // Deinterleave stereo data
     for (let i = 0; i < samplesPerChannel; i++) {
       leftChannel[i] = floatData[i * 2];
       rightChannel[i] = floatData[i * 2 + 1];
     }
 
-    // Schedule playback
     const source = this.audioContext.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(this.analyser!);
 
     const currentTime = this.audioContext.currentTime;
 
-    // Reset schedule if we've fallen behind or buffer is empty
     if (this.scheduledTime < currentTime) {
       this.scheduledTime = currentTime;
     }
 
-    // Drop chunks if buffer is too far ahead (reduces latency)
     if (this.scheduledTime > currentTime + this.MAX_BUFFER_AHEAD) {
-      return; // Skip this chunk to reduce latency
+      return;
     }
 
     const startTime = this.scheduledTime;
     source.start(startTime);
     this.scheduledTime = startTime + audioBuffer.duration;
 
-    // Track source for cancellation
     this.scheduledSources.push(source);
 
-    // Clean up completed sources
     source.onended = () => {
       source.disconnect();
       const idx = this.scheduledSources.indexOf(source);
@@ -166,85 +206,11 @@ export class AudioOutlet implements OnInit, OnDestroy {
     };
   }
 
-  private startVisualization(): void {
-    const canvas = this.canvasRef.nativeElement;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const draw = () => {
-      this.animationId = requestAnimationFrame(draw);
-
-      // Set canvas size to match container
-      const rect = canvas.getBoundingClientRect();
-      const width = Math.round(rect.width);
-      const height = Math.round(rect.height);
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-      }
-
-      // Clear with fade effect
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      if (!this.analyser || !this.dataArray) return;
-
-      this.analyser.getByteFrequencyData(this.dataArray);
-
-      const barWidth = (canvas.width - (this.BAR_COUNT - 1) * this.BAR_GAP) / this.BAR_COUNT;
-      const usableBins = Math.floor(this.dataArray.length * this.FREQUENCY_RANGE);
-      const step = Math.floor(usableBins / this.BAR_COUNT);
-
-      for (let i = 0; i < this.BAR_COUNT; i++) {
-        // Average nearby frequencies for smoother visualization
-        let sum = 0;
-        for (let j = 0; j < step; j++) {
-          sum += this.dataArray[i * step + j];
-        }
-        const value = sum / step;
-
-        const barHeight = (value / 255) * canvas.height * 0.85;
-        const x = i * (barWidth + this.BAR_GAP);
-        const y = canvas.height - barHeight;
-
-        // Create gradient based on frequency position
-        const hue = 200 + (i / this.BAR_COUNT) * 60; // Blue to cyan
-        const lightness = 45 + (value / 255) * 20;
-
-        const gradient = ctx.createLinearGradient(x, y, x, canvas.height);
-        gradient.addColorStop(0, `hsl(${hue}, 85%, ${lightness + 15}%)`);
-        gradient.addColorStop(1, `hsl(${hue}, 75%, ${lightness}%)`);
-
-        ctx.fillStyle = gradient;
-
-        // Draw bar with rounded top
-        const radius = Math.min(barWidth / 2, 4);
-        ctx.beginPath();
-        ctx.moveTo(x + radius, y);
-        ctx.lineTo(x + barWidth - radius, y);
-        ctx.quadraticCurveTo(x + barWidth, y, x + barWidth, y + radius);
-        ctx.lineTo(x + barWidth, canvas.height);
-        ctx.lineTo(x, canvas.height);
-        ctx.lineTo(x, y + radius);
-        ctx.quadraticCurveTo(x, y, x + radius, y);
-        ctx.fill();
-
-        // Reflection effect
-        const reflectionGradient = ctx.createLinearGradient(x, canvas.height, x, canvas.height + barHeight * 0.2);
-        reflectionGradient.addColorStop(0, `hsla(${hue}, 75%, ${lightness}%, 0.4)`);
-        reflectionGradient.addColorStop(1, `hsla(${hue}, 75%, ${lightness}%, 0)`);
-        ctx.fillStyle = reflectionGradient;
-        ctx.fillRect(x, canvas.height, barWidth, barHeight * 0.2);
-      }
-    };
-
-    draw();
-  }
-
   ngOnDestroy(): void {
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
     }
+    this.visualization?.destroy();
     if (this.audioContext) {
       this.audioContext.close();
     }
