@@ -30,6 +30,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private readonly BAR_COUNT = 64;
   private readonly BAR_GAP = 2;
   private readonly SMOOTHING = 0.85;
+  private readonly FREQUENCY_RANGE = 0.75; // Use lower 75% of frequency spectrum
 
   readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
 
@@ -175,9 +176,11 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
       // Set canvas size to match container
       const rect = canvas.getBoundingClientRect();
-      if (canvas.width !== rect.width || canvas.height !== rect.height) {
-        canvas.width = rect.width;
-        canvas.height = rect.height;
+      const width = Math.round(rect.width);
+      const height = Math.round(rect.height);
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
       }
 
       // Clear with fade effect
@@ -189,7 +192,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.analyser.getByteFrequencyData(this.dataArray);
 
       const barWidth = (canvas.width - (this.BAR_COUNT - 1) * this.BAR_GAP) / this.BAR_COUNT;
-      const step = Math.floor(this.dataArray.length / this.BAR_COUNT);
+      const usableBins = Math.floor(this.dataArray.length * this.FREQUENCY_RANGE);
+      const step = Math.floor(usableBins / this.BAR_COUNT);
 
       for (let i = 0; i < this.BAR_COUNT; i++) {
         // Average nearby frequencies for smoother visualization
