@@ -15,8 +15,8 @@ export interface MediaPlayerAPI {
 }
 
 const api: MediaPlayerAPI = {
-  openFileDialog: (options) => ipcRenderer.invoke('dialog:openFile', options),
-  getPathForFile: (file) => webUtils.getPathForFile(file),
+  openFileDialog: (options: OpenDialogOptions) => ipcRenderer.invoke('dialog:openFile', options),
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   getServerPort: () => ipcRenderer.invoke('app:getServerPort'),
 };
 

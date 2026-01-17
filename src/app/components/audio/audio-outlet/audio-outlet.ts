@@ -1,5 +1,6 @@
 import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
+import type {PlaylistItem} from '../../../services/electron.service';
 import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYPES} from './visualizations';
 
 @Component({
@@ -13,17 +14,17 @@ export class AudioOutlet implements OnInit, OnDestroy {
   @ViewChild('canvas', {static: true}) canvasRef!: ElementRef<HTMLCanvasElement>;
   @ViewChild('audioElement', {static: true}) audioRef!: ElementRef<HTMLAudioElement>;
 
-  readonly mediaPlayer = inject(MediaPlayerService);
+  readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
 
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private sourceNode: MediaElementAudioSourceNode | null = null;
   private animationId: number | null = null;
-  private isInitialized = false;
-  private readonly SMOOTHING = 0.85;
+  private isInitialized: boolean = false;
+  private readonly SMOOTHING: number = 0.85;
 
   private visualization: Visualization | null = null;
-  private readonly visualizationType = signal<VisualizationType>('bars');
+  private readonly visualizationType: ReturnType<typeof signal<VisualizationType>> = signal<VisualizationType>('bars');
 
   private readonly VISUALIZATION_NAMES: Record<VisualizationType, string> = {
     bars: 'Frequency Bars',
@@ -33,13 +34,13 @@ export class AudioOutlet implements OnInit, OnDestroy {
     water2: 'Ambience Water 2'
   };
 
-  readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
-  readonly visualizationName = computed(() => this.VISUALIZATION_NAMES[this.visualizationType()]);
+  readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed(() => this.mediaPlayer.currentTrack());
+  readonly visualizationName: ReturnType<typeof computed<string>> = computed(() => this.VISUALIZATION_NAMES[this.visualizationType()]);
 
   constructor() {
     // React to track changes - load new audio source
     effect(() => {
-      const track = this.mediaPlayer.currentTrack();
+      const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
       if (track?.type === 'audio') {
         this.loadAudioSource(track.filePath);
       }
@@ -47,8 +48,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
     // React to playback state changes
     effect(() => {
-      const state = this.mediaPlayer.playbackState();
-      const audio = this.audioRef?.nativeElement;
+      const state: string = this.mediaPlayer.playbackState();
+      const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
       if (!audio) return;
 
       if (state === 'playing') {
@@ -66,8 +67,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
     // React to seek events
     effect(() => {
-      const time = this.mediaPlayer.currentTime();
-      const audio = this.audioRef?.nativeElement;
+      const time: number = this.mediaPlayer.currentTime();
+      const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
       if (!audio || !audio.src) return;
 
       // Only sync if significantly different (avoid feedback loop)
@@ -78,8 +79,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
     // React to volume changes
     effect(() => {
-      const volume = this.mediaPlayer.volume();
-      const audio = this.audioRef?.nativeElement;
+      const volume: number = this.mediaPlayer.volume();
+      const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
       if (audio) {
         audio.volume = volume;
       }
@@ -87,8 +88,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
     // React to mute changes
     effect(() => {
-      const muted = this.mediaPlayer.muted();
-      const audio = this.audioRef?.nativeElement;
+      const muted: boolean = this.mediaPlayer.muted();
+      const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
       if (audio) {
         audio.muted = muted;
       }
@@ -102,13 +103,13 @@ export class AudioOutlet implements OnInit, OnDestroy {
   }
 
   private async loadAudioSource(filePath: string): Promise<void> {
-    const audio = this.audioRef.nativeElement;
-    const serverUrl = this.mediaPlayer.serverUrl();
+    const audio: HTMLAudioElement = this.audioRef.nativeElement;
+    const serverUrl: string = this.mediaPlayer.serverUrl();
 
     if (!serverUrl) return;
 
     // Build the stream URL
-    const url = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}`;
+    const url: string = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}`;
 
     // Initialize audio context if needed (must be after user gesture)
     if (!this.isInitialized) {
@@ -125,7 +126,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private initAudioContext(): void {
     if (this.isInitialized) return;
 
-    const audio = this.audioRef.nativeElement;
+    const audio: HTMLAudioElement = this.audioRef.nativeElement;
 
     this.audioContext = new AudioContext({sampleRate: 44100});
     this.analyser = this.audioContext.createAnalyser();
@@ -153,7 +154,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
   }
 
   private setupUserGestureHandler(): void {
-    const initOnGesture = () => {
+    const initOnGesture: () => void = () => {
       if (!this.isInitialized) {
         this.initAudioContext();
       }
@@ -166,14 +167,14 @@ export class AudioOutlet implements OnInit, OnDestroy {
   }
 
   nextVisualization(): void {
-    const currentIndex = VISUALIZATION_TYPES.indexOf(this.visualizationType());
-    const nextIndex = (currentIndex + 1) % VISUALIZATION_TYPES.length;
+    const currentIndex: number = VISUALIZATION_TYPES.indexOf(this.visualizationType());
+    const nextIndex: number = (currentIndex + 1) % VISUALIZATION_TYPES.length;
     this.setVisualization(VISUALIZATION_TYPES[nextIndex]);
   }
 
   previousVisualization(): void {
-    const currentIndex = VISUALIZATION_TYPES.indexOf(this.visualizationType());
-    const prevIndex = (currentIndex - 1 + VISUALIZATION_TYPES.length) % VISUALIZATION_TYPES.length;
+    const currentIndex: number = VISUALIZATION_TYPES.indexOf(this.visualizationType());
+    const prevIndex: number = (currentIndex - 1 + VISUALIZATION_TYPES.length) % VISUALIZATION_TYPES.length;
     this.setVisualization(VISUALIZATION_TYPES[prevIndex]);
   }
 
@@ -190,7 +191,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
         analyser: this.analyser
       });
 
-      const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+      const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
     }
   }
@@ -203,19 +204,19 @@ export class AudioOutlet implements OnInit, OnDestroy {
       analyser: this.analyser
     });
 
-    const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+    const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
   }
 
   private startAnimationLoop(): void {
-    const canvas = this.canvasRef.nativeElement;
+    const canvas: HTMLCanvasElement = this.canvasRef.nativeElement;
 
-    const draw = () => {
+    const draw: () => void = () => {
       this.animationId = requestAnimationFrame(draw);
 
-      const rect = canvas.getBoundingClientRect();
-      const width = Math.round(rect.width);
-      const height = Math.round(rect.height);
+      const rect: DOMRect = canvas.getBoundingClientRect();
+      const width: number = Math.round(rect.width);
+      const height: number = Math.round(rect.height);
 
       if (canvas.width !== width || canvas.height !== height) {
         this.visualization?.resize(width, height);

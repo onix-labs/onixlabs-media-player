@@ -1,20 +1,20 @@
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 export class WaterVisualization extends Canvas2DVisualization {
-  private readonly ZOOM_SCALE = 1.015;        // Scale factor per frame for tunnel effect
-  private readonly ROTATION_SPEED = 0.009;    // Rotation speed for waveform
-  private readonly FADE_RATE = 0.02;
-  private readonly HUE_CYCLE_SPEED = 0.15;    // Degrees per frame
+  private readonly ZOOM_SCALE: number = 1.015;        // Scale factor per frame for tunnel effect
+  private readonly ROTATION_SPEED: number = 0.009;    // Rotation speed for waveform
+  private readonly FADE_RATE: number = 0.02;
+  private readonly HUE_CYCLE_SPEED: number = 0.15;    // Degrees per frame
 
   private dataArray: Uint8Array<ArrayBuffer>;
   private trailCanvas: HTMLCanvasElement | null = null;
   private trailCtx: CanvasRenderingContext2D | null = null;
 
   // Hue cycling
-  private hueOffset = 210; // Start at blue (210 degrees)
+  private hueOffset: number = 210; // Start at blue (210 degrees)
 
   // Rotation angle for waveform
-  private rotationAngle = 0;
+  private rotationAngle: number = 0;
 
   // Convert HSL to RGB
   private hslToRgb(h: number, s: number, l: number): {r: number; g: number; b: number} {
@@ -22,11 +22,11 @@ export class WaterVisualization extends Canvas2DVisualization {
     s = s / 100;
     l = l / 100;
 
-    const c = (1 - Math.abs(2 * l - 1)) * s;
-    const x = c * (1 - Math.abs((h / 60) % 2 - 1));
-    const m = l - c / 2;
+    const c: number = (1 - Math.abs(2 * l - 1)) * s;
+    const x: number = c * (1 - Math.abs((h / 60) % 2 - 1));
+    const m: number = l - c / 2;
 
-    let r = 0, g = 0, b = 0;
+    let r: number = 0, g: number = 0, b: number = 0;
 
     if (h < 60) { r = c; g = x; b = 0; }
     else if (h < 120) { r = x; g = c; b = 0; }
@@ -62,8 +62,8 @@ export class WaterVisualization extends Canvas2DVisualization {
 
   draw(): void {
     const {ctx, width, height} = this;
-    const centerX = width / 2;
-    const centerY = height / 2;
+    const centerX: number = width / 2;
+    const centerY: number = height / 2;
 
     // Cycle hue through the spectrum
     this.hueOffset = (this.hueOffset + this.HUE_CYCLE_SPEED) % 360;
@@ -76,14 +76,14 @@ export class WaterVisualization extends Canvas2DVisualization {
       this.onResize();
     }
 
-    const trailCtx = this.trailCtx!;
-    const trailCanvas = this.trailCanvas!;
+    const trailCtx: CanvasRenderingContext2D = this.trailCtx!;
+    const trailCanvas: HTMLCanvasElement = this.trailCanvas!;
 
     // Copy current trails
-    const tempCanvas = document.createElement('canvas');
+    const tempCanvas: HTMLCanvasElement = document.createElement('canvas');
     tempCanvas.width = width;
     tempCanvas.height = height;
-    const tempCtx = tempCanvas.getContext('2d')!;
+    const tempCtx: CanvasRenderingContext2D = tempCanvas.getContext('2d')!;
     tempCtx.drawImage(trailCanvas, 0, 0);
 
     // Clear trail canvas
@@ -118,52 +118,52 @@ export class WaterVisualization extends Canvas2DVisualization {
 
   private drawMirroredWaveform(ctx: CanvasRenderingContext2D, centerX: number, centerY: number): void {
     const {width, height, dataArray} = this;
-    const darkColor = this.hslToRgb(this.hueOffset, 70, 15);
-    const lightColor = this.hslToRgb(this.hueOffset, 50, 70);
+    const darkColor: {r: number; g: number; b: number} = this.hslToRgb(this.hueOffset, 70, 15);
+    const lightColor: {r: number; g: number; b: number} = this.hslToRgb(this.hueOffset, 50, 70);
 
     // Calculate all points first
     const allPoints: Array<{x: number; y: number; t: number}> = [];
-    const halfWidth = width / 2;
-    const samplesPerHalf = Math.floor(dataArray.length / 2);
+    const halfWidth: number = width / 2;
+    const samplesPerHalf: number = Math.floor(dataArray.length / 2);
 
     // Arc bending settings
-    const minArcRadius = halfWidth * 0.12;
-    const bendStrength = 1.2;
+    const minArcRadius: number = halfWidth * 0.12;
+    const bendStrength: number = 1.2;
 
     // Left half points (from left edge to center)
-    for (let i = 0; i < samplesPerHalf; i++) {
-      const sample = (dataArray[i] - 128) / 128;
-      const amplitude = sample * height * 0.3;
-      const t = i / (samplesPerHalf - 1); // 0 at edge, 1 at center
-      const baseX = t * halfWidth;
+    for (let i: number = 0; i < samplesPerHalf; i++) {
+      const sample: number = (dataArray[i] - 128) / 128;
+      const amplitude: number = sample * height * 0.3;
+      const t: number = i / (samplesPerHalf - 1); // 0 at edge, 1 at center
+      const baseX: number = t * halfWidth;
 
-      const distFromCenter = centerX - baseX;
-      const arcRadius = Math.max(distFromCenter, minArcRadius);
-      const arcAngle = (amplitude * bendStrength) / arcRadius;
-      const baseAngle = Math.PI;
-      const newAngle = baseAngle - arcAngle;
+      const distFromCenter: number = centerX - baseX;
+      const arcRadius: number = Math.max(distFromCenter, minArcRadius);
+      const arcAngle: number = (amplitude * bendStrength) / arcRadius;
+      const baseAngle: number = Math.PI;
+      const newAngle: number = baseAngle - arcAngle;
 
-      const x = centerX + arcRadius * Math.cos(newAngle);
-      const y = centerY + arcRadius * Math.sin(newAngle);
+      const x: number = centerX + arcRadius * Math.cos(newAngle);
+      const y: number = centerY + arcRadius * Math.sin(newAngle);
 
       allPoints.push({x, y, t}); // t=0 at left edge, t=1 at center
     }
 
     // Right half points (mirrored, from center to right edge)
-    for (let i = samplesPerHalf - 1; i >= 0; i--) {
-      const sample = (dataArray[i] - 128) / 128;
-      const amplitude = sample * height * 0.3;
-      const t = i / (samplesPerHalf - 1); // Will go from 1 back to 0
-      const baseX = width - t * halfWidth;
+    for (let i: number = samplesPerHalf - 1; i >= 0; i--) {
+      const sample: number = (dataArray[i] - 128) / 128;
+      const amplitude: number = sample * height * 0.3;
+      const t: number = i / (samplesPerHalf - 1); // Will go from 1 back to 0
+      const baseX: number = width - t * halfWidth;
 
-      const distFromCenter = baseX - centerX;
-      const arcRadius = Math.max(distFromCenter, minArcRadius);
-      const arcAngle = (amplitude * bendStrength) / arcRadius;
-      const baseAngle = 0;
-      const newAngle = baseAngle + arcAngle;
+      const distFromCenter: number = baseX - centerX;
+      const arcRadius: number = Math.max(distFromCenter, minArcRadius);
+      const arcAngle: number = (amplitude * bendStrength) / arcRadius;
+      const baseAngle: number = 0;
+      const newAngle: number = baseAngle + arcAngle;
 
-      const x = centerX + arcRadius * Math.cos(newAngle);
-      const y = centerY + arcRadius * Math.sin(newAngle);
+      const x: number = centerX + arcRadius * Math.cos(newAngle);
+      const y: number = centerY + arcRadius * Math.sin(newAngle);
 
       allPoints.push({x, y, t}); // t=1 at center, t=0 at right edge
     }
@@ -184,7 +184,7 @@ export class WaterVisualization extends Canvas2DVisualization {
     if (points.length < 2) return;
 
     // Draw glow layer first (single color for performance)
-    const midColor = this.lerpColor(darkColor, lightColor, 0.5);
+    const midColor: {r: number; g: number; b: number} = this.lerpColor(darkColor, lightColor, 0.5);
     ctx.save();
     ctx.shadowBlur = 12;
     ctx.shadowColor = `rgba(${midColor.r}, ${midColor.g}, ${midColor.b}, 0.4)`;
@@ -195,7 +195,7 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
+    for (let i: number = 1; i < points.length; i++) {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.stroke();
@@ -206,13 +206,13 @@ export class WaterVisualization extends Canvas2DVisualization {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    for (let i = 0; i < points.length - 1; i++) {
-      const p1 = points[i];
-      const p2 = points[i + 1];
+    for (let i: number = 0; i < points.length - 1; i++) {
+      const p1: {x: number; y: number; t: number} = points[i];
+      const p2: {x: number; y: number; t: number} = points[i + 1];
 
       // Interpolate color based on t value (0 = dark at edges, 1 = light at center)
-      const avgT = (p1.t + p2.t) / 2;
-      const color = this.lerpColor(darkColor, lightColor, avgT);
+      const avgT: number = (p1.t + p2.t) / 2;
+      const color: {r: number; g: number; b: number} = this.lerpColor(darkColor, lightColor, avgT);
 
       ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
       ctx.beginPath();
@@ -245,21 +245,21 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     // Sample audio data around the circle
     const points: Array<{x: number; y: number}> = [];
-    const numPoints = 64; // Number of points around the circle
+    const numPoints: number = 64; // Number of points around the circle
 
-    for (let i = 0; i <= numPoints; i++) {
-      const angle = (i / numPoints) * Math.PI * 2;
+    for (let i: number = 0; i <= numPoints; i++) {
+      const angle: number = (i / numPoints) * Math.PI * 2;
 
       // Sample audio data - use different parts of the array for different angles
-      const sampleIndex = Math.floor((i / numPoints) * (dataArray.length / 4));
-      const sample = (dataArray[sampleIndex] - 128) / 128;
-      const amplitude = sample * height * 0.08;
+      const sampleIndex: number = Math.floor((i / numPoints) * (dataArray.length / 4));
+      const sample: number = (dataArray[sampleIndex] - 128) / 128;
+      const amplitude: number = sample * height * 0.08;
 
       // Modulate radius with audio
-      const radius = baseRadius + amplitude;
+      const radius: number = baseRadius + amplitude;
 
-      const x = centerX + radius * Math.cos(angle);
-      const y = centerY + radius * Math.sin(angle);
+      const x: number = centerX + radius * Math.cos(angle);
+      const y: number = centerY + radius * Math.sin(angle);
       points.push({x, y});
     }
 
@@ -274,7 +274,7 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
+    for (let i: number = 1; i < points.length; i++) {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.closePath();
@@ -289,7 +289,7 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
+    for (let i: number = 1; i < points.length; i++) {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.closePath();
@@ -301,7 +301,7 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
+    for (let i: number = 1; i < points.length; i++) {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.closePath();

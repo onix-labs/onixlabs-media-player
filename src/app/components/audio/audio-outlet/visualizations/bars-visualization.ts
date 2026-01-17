@@ -1,12 +1,12 @@
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 export class BarsVisualization extends Canvas2DVisualization {
-  private readonly BAR_COUNT = 128;
-  private readonly BAR_GAP = 2;
-  private readonly FREQUENCY_RANGE = 0.75;
+  private readonly BAR_COUNT: number = 128;
+  private readonly BAR_GAP: number = 2;
+  private readonly FREQUENCY_RANGE: number = 0.75;
   private dataArray: Uint8Array<ArrayBuffer>;
   private barGradient: CanvasGradient | null = null;
-  private gradientHeight = 0;
+  private gradientHeight: number = 0;
 
   constructor(config: VisualizationConfig) {
     super(config);
@@ -45,26 +45,26 @@ export class BarsVisualization extends Canvas2DVisualization {
 
     this.analyser.getByteFrequencyData(this.dataArray);
 
-    const barWidth = (width - (this.BAR_COUNT - 1) * this.BAR_GAP) / this.BAR_COUNT;
-    const usableBins = Math.floor(this.dataArray.length * this.FREQUENCY_RANGE);
-    const step = Math.floor(usableBins / this.BAR_COUNT);
+    const barWidth: number = (width - (this.BAR_COUNT - 1) * this.BAR_GAP) / this.BAR_COUNT;
+    const usableBins: number = Math.floor(this.dataArray.length * this.FREQUENCY_RANGE);
+    const step: number = Math.floor(usableBins / this.BAR_COUNT);
 
     ctx.fillStyle = this.barGradient!;
 
-    for (let i = 0; i < this.BAR_COUNT; i++) {
+    for (let i: number = 0; i < this.BAR_COUNT; i++) {
       // Average nearby frequencies for smoother visualization
-      let sum = 0;
-      for (let j = 0; j < step; j++) {
+      let sum: number = 0;
+      for (let j: number = 0; j < step; j++) {
         sum += this.dataArray[i * step + j];
       }
-      const value = sum / step;
+      const value: number = sum / step;
 
-      const barHeight = (value / 255) * height * 0.85;
-      const x = i * (barWidth + this.BAR_GAP);
-      const y = height - barHeight;
+      const barHeight: number = (value / 255) * height * 0.85;
+      const x: number = i * (barWidth + this.BAR_GAP);
+      const y: number = height - barHeight;
 
       // Draw bar with rounded top
-      const radius = Math.min(barWidth / 2, 4);
+      const radius: number = Math.min(barWidth / 2, 4);
       ctx.beginPath();
       ctx.moveTo(x + radius, y);
       ctx.lineTo(x + barWidth - radius, y);

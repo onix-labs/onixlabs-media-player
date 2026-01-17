@@ -1,9 +1,9 @@
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 export class WaveformVisualization extends Canvas2DVisualization {
-  private readonly FADE_RATE = 0.03; // Very slow fade for LCD ghosting effect
-  private readonly LINE_WIDTH = 2;
-  private readonly GLOW_BLUR = 15;
+  private readonly FADE_RATE: number = 0.03; // Very slow fade for LCD ghosting effect
+  private readonly LINE_WIDTH: number = 2;
+  private readonly GLOW_BLUR: number = 15;
   private dataArray: Uint8Array<ArrayBuffer>;
 
   constructor(config: VisualizationConfig) {
@@ -28,8 +28,8 @@ export class WaveformVisualization extends Canvas2DVisualization {
     // Get time domain data (waveform)
     this.analyser.getByteTimeDomainData(dataArray);
 
-    const centerY = height / 2;
-    const sliceWidth = width / dataArray.length;
+    const centerY: number = height / 2;
+    const sliceWidth: number = width / dataArray.length;
 
     // Draw glow layer (larger, blurred line underneath)
     ctx.save();
@@ -41,12 +41,12 @@ export class WaveformVisualization extends Canvas2DVisualization {
     ctx.lineJoin = 'round';
 
     ctx.beginPath();
-    let x = 0;
+    let x: number = 0;
 
-    for (let i = 0; i < dataArray.length; i++) {
+    for (let i: number = 0; i < dataArray.length; i++) {
       // Convert byte (0-255) to amplitude (-1 to 1)
-      const amplitude = (dataArray[i] - 128) / 128;
-      const y = centerY + amplitude * (height * 0.4);
+      const amplitude: number = (dataArray[i] - 128) / 128;
+      const y: number = centerY + amplitude * (height * 0.4);
 
       if (i === 0) {
         ctx.moveTo(x, y);
@@ -69,9 +69,9 @@ export class WaveformVisualization extends Canvas2DVisualization {
     ctx.beginPath();
     x = 0;
 
-    for (let i = 0; i < dataArray.length; i++) {
-      const amplitude = (dataArray[i] - 128) / 128;
-      const y = centerY + amplitude * (height * 0.4);
+    for (let i: number = 0; i < dataArray.length; i++) {
+      const amplitude: number = (dataArray[i] - 128) / 128;
+      const y: number = centerY + amplitude * (height * 0.4);
 
       if (i === 0) {
         ctx.moveTo(x, y);
@@ -91,9 +91,9 @@ export class WaveformVisualization extends Canvas2DVisualization {
     ctx.beginPath();
     x = 0;
 
-    for (let i = 0; i < dataArray.length; i++) {
-      const amplitude = (dataArray[i] - 128) / 128;
-      const y = centerY + amplitude * (height * 0.4);
+    for (let i: number = 0; i < dataArray.length; i++) {
+      const amplitude: number = (dataArray[i] - 128) / 128;
+      const y: number = centerY + amplitude * (height * 0.4);
 
       if (i === 0) {
         ctx.moveTo(x, y);
