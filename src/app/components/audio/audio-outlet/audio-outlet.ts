@@ -19,6 +19,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private sourceNode: MediaElementAudioSourceNode | null = null;
+  private gainNode: GainNode | null = null;
   private animationId: number | null = null;
   private isInitialized: boolean = false;
   private readonly SMOOTHING: number = 0.85;
@@ -75,21 +76,20 @@ export class AudioOutlet implements OnInit, OnDestroy {
       }
     });
 
-    // React to volume changes
+    // React to volume changes - use GainNode for volume control
+    // This keeps the analyser receiving full signal for visualization
     effect(() => {
       const volume: number = this.mediaPlayer.volume();
-      const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
-      if (audio) {
-        audio.volume = volume;
+      if (this.gainNode) {
+        this.gainNode.gain.value = volume;
       }
     });
 
-    // React to mute changes
+    // React to mute changes - use GainNode for muting
     effect(() => {
       const muted: boolean = this.mediaPlayer.muted();
-      const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
-      if (audio) {
-        audio.muted = muted;
+      if (this.gainNode) {
+        this.gainNode.gain.value = muted ? 0 : this.mediaPlayer.volume();
       }
     });
   }
@@ -133,10 +133,16 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.analyser.fftSize = 256;
     this.analyser.smoothingTimeConstant = this.SMOOTHING;
 
-    // Connect audio element to Web Audio API via MediaElementSource
+    // Create GainNode for volume control (keeps analyser at full signal)
+    this.gainNode = this.audioContext.createGain();
+    this.gainNode.gain.value = this.mediaPlayer.muted() ? 0 : this.mediaPlayer.volume();
+
+    // Connect: source → analyser → gainNode → destination
+    // This ensures analyser sees full signal regardless of volume
     this.sourceNode = this.audioContext.createMediaElementSource(audio);
     this.sourceNode.connect(this.analyser);
-    this.analyser.connect(this.audioContext.destination);
+    this.analyser.connect(this.gainNode);
+    this.gainNode.connect(this.audioContext.destination);
 
     this.isInitialized = true;
 

@@ -49,8 +49,8 @@ export class WaveformVisualization extends Canvas2DVisualization {
     let x: number = 0;
 
     for (let i: number = 0; i < dataArray.length; i++) {
-      // Convert byte (0-255) to amplitude (-1 to 1)
-      const amplitude: number = (dataArray[i] - 128) / 128;
+      // Convert byte (0-255) to amplitude (-1 to 1), scaled by sensitivity
+      const amplitude: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
       const y: number = centerY + amplitude * (height * 0.4);
 
       if (i === 0) {
@@ -75,7 +75,7 @@ export class WaveformVisualization extends Canvas2DVisualization {
     x = 0;
 
     for (let i: number = 0; i < dataArray.length; i++) {
-      const amplitude: number = (dataArray[i] - 128) / 128;
+      const amplitude: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
       const y: number = centerY + amplitude * (height * 0.4);
 
       if (i === 0) {
@@ -97,7 +97,7 @@ export class WaveformVisualization extends Canvas2DVisualization {
     x = 0;
 
     for (let i: number = 0; i < dataArray.length; i++) {
-      const amplitude: number = (dataArray[i] - 128) / 128;
+      const amplitude: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
       const y: number = centerY + amplitude * (height * 0.4);
 
       if (i === 0) {
