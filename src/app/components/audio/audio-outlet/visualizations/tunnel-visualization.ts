@@ -84,7 +84,7 @@ export class TunnelVisualization extends Canvas2DVisualization {
     let x: number = 0;
 
     for (let i: number = 0; i < dataArray.length; i++) {
-      const sample: number = (dataArray[i] - 128) / 128;
+      const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
       const y: number = centerY + sample * amplitude;
 
       if (i === 0) {
@@ -108,7 +108,7 @@ export class TunnelVisualization extends Canvas2DVisualization {
     x = 0;
 
     for (let i: number = 0; i < dataArray.length; i++) {
-      const sample: number = (dataArray[i] - 128) / 128;
+      const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
       const y: number = centerY + sample * amplitude;
 
       if (i === 0) {
@@ -129,7 +129,7 @@ export class TunnelVisualization extends Canvas2DVisualization {
     x = 0;
 
     for (let i: number = 0; i < dataArray.length; i++) {
-      const sample: number = (dataArray[i] - 128) / 128;
+      const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
       const y: number = centerY + sample * amplitude;
 
       if (i === 0) {

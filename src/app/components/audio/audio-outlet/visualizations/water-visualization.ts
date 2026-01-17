@@ -151,7 +151,7 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     // Left half points (from left edge to center)
     for (let i: number = 0; i < samplesPerHalf; i++) {
-      const sample: number = (dataArray[i] - 128) / 128;
+      const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
       const amplitude: number = sample * height * 0.3;
       const t: number = i / (samplesPerHalf - 1);
       const baseX: number = t * halfWidth;
@@ -180,7 +180,7 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     // Right half points (mirrored, from center to right edge)
     for (let i: number = samplesPerHalf - 1; i >= 0; i--) {
-      const sample: number = (dataArray[i] - 128) / 128;
+      const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
       const amplitude: number = sample * height * 0.3;
       const t: number = i / (samplesPerHalf - 1);
       const baseX: number = width - t * halfWidth;
@@ -247,7 +247,7 @@ export class WaterVisualization extends Canvas2DVisualization {
 
       // Sample audio data - use different parts of the array for different angles
       const sampleIndex: number = Math.floor((i / numPoints) * (dataArray.length / 4));
-      const sample: number = (dataArray[sampleIndex] - 128) / 128;
+      const sample: number = ((dataArray[sampleIndex] - 128) / 128) * (this.sensitivity * 2);
       const amplitude: number = sample * height * 0.08;
 
       // Modulate radius with audio
