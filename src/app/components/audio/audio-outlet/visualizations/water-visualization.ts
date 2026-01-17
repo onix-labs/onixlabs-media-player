@@ -55,9 +55,8 @@ export class WaterVisualization extends Canvas2DVisualization {
     this.trailCanvas.height = this.height;
     this.trailCtx = this.trailCanvas.getContext('2d')!;
 
-    // Clear main canvas to black
-    this.ctx.fillStyle = 'black';
-    this.ctx.fillRect(0, 0, this.width, this.height);
+    // Clear main canvas (transparent)
+    this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
   draw(): void {
@@ -110,9 +109,8 @@ export class WaterVisualization extends Canvas2DVisualization {
     this.drawMirroredWaveform(trailCtx, centerX, centerY);
     trailCtx.restore();
 
-    // Composite - black background, then trails on top
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, width, height);
+    // Composite - clear then draw trails (transparent background)
+    ctx.clearRect(0, 0, width, height);
     ctx.drawImage(trailCanvas, 0, 0);
   }
 

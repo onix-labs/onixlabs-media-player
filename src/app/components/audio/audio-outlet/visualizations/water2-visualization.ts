@@ -87,9 +87,8 @@ export class Water2Visualization extends Canvas2DVisualization {
     this.trailCanvas.height = this.height;
     this.trailCtx = this.trailCanvas.getContext('2d')!;
 
-    // Clear main canvas to black
-    this.ctx.fillStyle = 'black';
-    this.ctx.fillRect(0, 0, this.width, this.height);
+    // Clear main canvas (transparent)
+    this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
   private renderCirclesToCanvas(ctx: CanvasRenderingContext2D): void {
@@ -100,9 +99,8 @@ export class Water2Visualization extends Canvas2DVisualization {
     const numColors: number = gradientColors.length;
     const maxRadius: number = width / 2;
 
-    // Clear to black
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, width, height);
+    // Clear to transparent
+    ctx.clearRect(0, 0, width, height);
 
     // The waveform has 9 segments (numColors * 2 - 1) with pattern: 0-1-2-3-4-3-2-1-0
     const totalSegments: number = numColors * 2 - 1; // 9 segments
