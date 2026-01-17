@@ -3,7 +3,7 @@ import {MediaPlayerService} from '../../services/media-player.service';
 import {ElectronService, PlaylistItem} from '../../services/electron.service';
 
 // Supported media extensions
-const MEDIA_EXTENSIONS = new Set([
+const MEDIA_EXTENSIONS: Set<string> = new Set([
   '.mp3', '.mp4', '.flac', '.mkv', '.avi', '.wav',
   '.ogg', '.webm', '.m4a', '.aac', '.wma', '.mov'
 ]);
@@ -16,15 +16,15 @@ const MEDIA_EXTENSIONS = new Set([
   styleUrl: './playlist.scss'
 })
 export class Playlist {
-  private readonly mediaPlayer = inject(MediaPlayerService);
-  private readonly electron = inject(ElectronService);
+  private readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
+  private readonly electron: ElectronService = inject(ElectronService);
 
-  readonly isVisible = signal<boolean>(false);
-  readonly isDragOver = signal<boolean>(false);
-  readonly items = computed(() => this.mediaPlayer.playlistItems());
-  readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
-  readonly count = computed(() => this.mediaPlayer.playlistCount());
-  readonly isPlaying = computed(() => this.mediaPlayer.isPlaying());
+  readonly isVisible: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+  readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+  readonly items: ReturnType<typeof computed<PlaylistItem[]>> = computed(() => this.mediaPlayer.playlistItems());
+  readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed(() => this.mediaPlayer.currentTrack());
+  readonly count: ReturnType<typeof computed<number>> = computed(() => this.mediaPlayer.playlistCount());
+  readonly isPlaying: ReturnType<typeof computed<boolean>> = computed(() => this.mediaPlayer.isPlaying());
 
   toggle(): void {
     this.isVisible.update(v => !v);
@@ -76,18 +76,18 @@ export class Playlist {
     event.stopPropagation();
     this.isDragOver.set(false);
 
-    const files = event.dataTransfer?.files;
+    const files: FileList | undefined = event.dataTransfer?.files;
     if (!files || files.length === 0) return;
 
     // Filter for supported media files and get their paths
     const filePaths: string[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    for (let i: number = 0; i < files.length; i++) {
+      const file: File = files[i];
+      const ext: string = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
 
       if (MEDIA_EXTENSIONS.has(ext)) {
         try {
-          const filePath = this.electron.getPathForFile(file);
+          const filePath: string = this.electron.getPathForFile(file);
           if (filePath) {
             filePaths.push(filePath);
           }
@@ -104,7 +104,7 @@ export class Playlist {
   }
 
   private async addFilesToPlaylist(filePaths: string[]): Promise<void> {
-    const wasEmpty = this.count() === 0;
+    const wasEmpty: boolean = this.count() === 0;
 
     // Server will probe each file for metadata
     await this.mediaPlayer.addFiles(filePaths);

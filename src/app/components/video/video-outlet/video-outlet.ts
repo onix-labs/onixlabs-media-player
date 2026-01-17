@@ -1,8 +1,9 @@
 import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, effect} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
+import type {PlaylistItem} from '../../../services/electron.service';
 
 // Formats that Chromium can play natively (support HTTP range seeking)
-const NATIVE_VIDEO_FORMATS = new Set(['.mp4', '.webm', '.ogg']);
+const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.webm', '.ogg']);
 
 @Component({
   selector: 'app-video-outlet',
@@ -14,20 +15,20 @@ const NATIVE_VIDEO_FORMATS = new Set(['.mp4', '.webm', '.ogg']);
 export class VideoOutlet implements OnInit, OnDestroy {
   @ViewChild('videoElement', {static: true}) videoRef!: ElementRef<HTMLVideoElement>;
 
-  readonly mediaPlayer = inject(MediaPlayerService);
+  readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
 
-  readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
+  readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed(() => this.mediaPlayer.currentTrack());
 
   private currentFilePath: string | null = null;
-  private isTranscoded = false;
-  private seekPending = false;
-  private transcodeSeekOffset = 0;
-  private lastSeekTime = 0;
+  private isTranscoded: boolean = false;
+  private seekPending: boolean = false;
+  private transcodeSeekOffset: number = 0;
+  private lastSeekTime: number = 0;
 
   constructor() {
     // React to track changes - load new video source
     effect(() => {
-      const track = this.mediaPlayer.currentTrack();
+      const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
       if (track?.type === 'video' && track.filePath !== this.currentFilePath) {
         this.loadVideo(track.filePath);
       }
@@ -35,8 +36,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     // React to playback state changes
     effect(() => {
-      const state = this.mediaPlayer.playbackState();
-      const video = this.videoRef?.nativeElement;
+      const state: string = this.mediaPlayer.playbackState();
+      const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
       if (!video) return;
 
       if (state === 'playing') {
@@ -53,17 +54,17 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     // React to seek events (time updates from server)
     effect(() => {
-      const time = this.mediaPlayer.currentTime();
-      const video = this.videoRef?.nativeElement;
+      const time: number = this.mediaPlayer.currentTime();
+      const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
       if (!video || !video.src) return;
 
       if (this.isTranscoded) {
         // For transcoded files, account for seek offset
-        const expectedVideoTime = time - this.transcodeSeekOffset;
-        const timeDiff = Math.abs(video.currentTime - expectedVideoTime);
+        const expectedVideoTime: number = time - this.transcodeSeekOffset;
+        const timeDiff: number = Math.abs(video.currentTime - expectedVideoTime);
 
-        const now = Date.now();
-        const timeSinceLastSeek = now - this.lastSeekTime;
+        const now: number = Date.now();
+        const timeSinceLastSeek: number = now - this.lastSeekTime;
 
         if (timeDiff > 2 && timeSinceLastSeek > 1000 && !this.seekPending && this.currentFilePath) {
           this.seekPending = true;
@@ -86,8 +87,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     // React to volume changes
     effect(() => {
-      const volume = this.mediaPlayer.volume();
-      const video = this.videoRef?.nativeElement;
+      const volume: number = this.mediaPlayer.volume();
+      const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
       if (video) {
         video.volume = volume;
       }
@@ -95,8 +96,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     // React to mute changes
     effect(() => {
-      const muted = this.mediaPlayer.muted();
-      const video = this.videoRef?.nativeElement;
+      const muted: boolean = this.mediaPlayer.muted();
+      const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
       if (video) {
         video.muted = muted;
       }
@@ -108,19 +109,19 @@ export class VideoOutlet implements OnInit, OnDestroy {
   }
 
   private async loadVideo(filePath: string, seekTime: number = 0): Promise<void> {
-    const video = this.videoRef.nativeElement;
-    const serverUrl = this.mediaPlayer.serverUrl();
+    const video: HTMLVideoElement = this.videoRef.nativeElement;
+    const serverUrl: string = this.mediaPlayer.serverUrl();
 
     if (!serverUrl) return;
 
     this.currentFilePath = filePath;
 
     // Determine if this format needs transcoding
-    const ext = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
+    const ext: string = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
     this.isTranscoded = !NATIVE_VIDEO_FORMATS.has(ext);
 
     // Build the stream URL
-    let url = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}`;
+    let url: string = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}`;
 
     // For transcoded files, track the offset
     if (this.isTranscoded) {
@@ -139,10 +140,10 @@ export class VideoOutlet implements OnInit, OnDestroy {
   }
 
   private setupVideoEvents(): void {
-    const video = this.videoRef.nativeElement;
+    const video: HTMLVideoElement = this.videoRef.nativeElement;
 
     video.addEventListener('error', () => {
-      const error = video.error;
+      const error: MediaError | null = video.error;
       console.error('Video error:', error?.code, error?.message);
     });
 
@@ -159,7 +160,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    const video = this.videoRef.nativeElement;
+    const video: HTMLVideoElement = this.videoRef.nativeElement;
     video.pause();
     video.src = '';
     this.currentFilePath = null;

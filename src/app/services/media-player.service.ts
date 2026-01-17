@@ -5,64 +5,64 @@ export type PlaybackState = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped
 
 @Injectable({providedIn: 'root'})
 export class MediaPlayerService {
-  private readonly electron = inject(ElectronService);
+  private readonly electron: ElectronService = inject(ElectronService);
 
   // Expose signals from ElectronService (server is source of truth)
-  readonly playbackState = computed(() => this.electron.playbackState() as PlaybackState);
-  readonly currentTime = computed(() => this.electron.currentTime());
-  readonly duration = computed(() => this.electron.duration());
-  readonly volume = computed(() => this.electron.volume());
-  readonly muted = computed(() => this.electron.muted());
-  readonly serverUrl = computed(() => this.electron.serverUrl());
-  readonly errorMessage = computed(() => this.electron.errorMessage());
+  readonly playbackState: ReturnType<typeof computed<PlaybackState>> = computed(() => this.electron.playbackState() as PlaybackState);
+  readonly currentTime: ReturnType<typeof computed<number>> = computed(() => this.electron.currentTime());
+  readonly duration: ReturnType<typeof computed<number>> = computed(() => this.electron.duration());
+  readonly volume: ReturnType<typeof computed<number>> = computed(() => this.electron.volume());
+  readonly muted: ReturnType<typeof computed<boolean>> = computed(() => this.electron.muted());
+  readonly serverUrl: ReturnType<typeof computed<string>> = computed(() => this.electron.serverUrl());
+  readonly errorMessage: ReturnType<typeof computed<string | null>> = computed(() => this.electron.errorMessage());
 
   // Playlist state from server
-  readonly playlist = computed(() => this.electron.playlist());
-  readonly playlistItems = computed(() => this.electron.playlist().items);
-  readonly playlistCount = computed(() => this.electron.playlist().items.length);
-  readonly isShuffleEnabled = computed(() => this.electron.playlist().shuffleEnabled);
-  readonly isRepeatEnabled = computed(() => this.electron.playlist().repeatEnabled);
+  readonly playlist: ReturnType<typeof computed<ReturnType<typeof this.electron.playlist>>> = computed(() => this.electron.playlist());
+  readonly playlistItems: ReturnType<typeof computed<PlaylistItem[]>> = computed(() => this.electron.playlist().items);
+  readonly playlistCount: ReturnType<typeof computed<number>> = computed(() => this.electron.playlist().items.length);
+  readonly isShuffleEnabled: ReturnType<typeof computed<boolean>> = computed(() => this.electron.playlist().shuffleEnabled);
+  readonly isRepeatEnabled: ReturnType<typeof computed<boolean>> = computed(() => this.electron.playlist().repeatEnabled);
 
   // Current track from server
-  readonly currentTrack = computed(() => {
-    const p = this.electron.playlist();
+  readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed(() => {
+    const p: ReturnType<typeof this.electron.playlist> = this.electron.playlist();
     if (p.currentIndex >= 0 && p.currentIndex < p.items.length) {
       return p.items[p.currentIndex];
     }
     return null;
   });
 
-  readonly currentMedia = computed(() => this.electron.currentMedia());
-  readonly currentMediaType = computed(() => this.electron.currentMedia()?.type ?? null);
+  readonly currentMedia: ReturnType<typeof computed<MediaInfo | null>> = computed(() => this.electron.currentMedia());
+  readonly currentMediaType: ReturnType<typeof computed<'audio' | 'video' | null>> = computed(() => this.electron.currentMedia()?.type ?? null);
 
   // Derived state
-  readonly isPlaying = computed(() => this.playbackState() === 'playing');
-  readonly isPaused = computed(() => this.playbackState() === 'paused');
-  readonly isLoading = computed(() => this.playbackState() === 'loading');
-  readonly isEmpty = computed(() => this.playlistCount() === 0);
+  readonly isPlaying: ReturnType<typeof computed<boolean>> = computed(() => this.playbackState() === 'playing');
+  readonly isPaused: ReturnType<typeof computed<boolean>> = computed(() => this.playbackState() === 'paused');
+  readonly isLoading: ReturnType<typeof computed<boolean>> = computed(() => this.playbackState() === 'loading');
+  readonly isEmpty: ReturnType<typeof computed<boolean>> = computed(() => this.playlistCount() === 0);
 
-  readonly progress = computed(() => {
-    const dur = this.duration();
+  readonly progress: ReturnType<typeof computed<number>> = computed(() => {
+    const dur: number = this.duration();
     return dur > 0 ? (this.currentTime() / dur) * 100 : 0;
   });
 
   // Aliases for compatibility
-  readonly state = this.playbackState;
-  readonly time = this.currentTime;
-  readonly totalDuration = this.duration;
-  readonly currentVolume = this.volume;
-  readonly isMuted = this.muted;
-  readonly error = this.errorMessage;
+  readonly state: typeof this.playbackState = this.playbackState;
+  readonly time: typeof this.currentTime = this.currentTime;
+  readonly totalDuration: typeof this.duration = this.duration;
+  readonly currentVolume: typeof this.volume = this.volume;
+  readonly isMuted: typeof this.muted = this.muted;
+  readonly error: typeof this.errorMessage = this.errorMessage;
 
   // ============================================================================
   // File Operations
   // ============================================================================
 
   async eject(): Promise<void> {
-    const files = await this.electron.openFileDialog(true);
+    const files: string[] = await this.electron.openFileDialog(true);
     if (files.length === 0) return;
 
-    const wasEmpty = this.isEmpty();
+    const wasEmpty: boolean = this.isEmpty();
 
     // Server will probe files and add to playlist
     await this.electron.addToPlaylist(files);
@@ -107,12 +107,12 @@ export class MediaPlayerService {
   }
 
   async seek(timeSeconds: number): Promise<void> {
-    const clampedTime = Math.max(0, Math.min(timeSeconds, this.duration()));
+    const clampedTime: number = Math.max(0, Math.min(timeSeconds, this.duration()));
     await this.electron.seek(clampedTime);
   }
 
   async seekToProgress(percent: number): Promise<void> {
-    const time = (percent / 100) * this.duration();
+    const time: number = (percent / 100) * this.duration();
     await this.seek(time);
   }
 
@@ -121,7 +121,7 @@ export class MediaPlayerService {
   // ============================================================================
 
   async setVolume(value: number): Promise<void> {
-    const normalized = Math.max(0, Math.min(1, value));
+    const normalized: number = Math.max(0, Math.min(1, value));
     // Volume is handled client-side in AudioOutlet/VideoOutlet
     // but we also tell the server for persistence
     await this.electron.setVolume(normalized);
@@ -153,7 +153,7 @@ export class MediaPlayerService {
   }
 
   async selectTrackByIndex(index: number): Promise<void> {
-    const items = this.playlistItems();
+    const items: PlaylistItem[] = this.playlistItems();
     if (index >= 0 && index < items.length) {
       await this.electron.selectTrack(items[index].id);
     }
@@ -185,8 +185,8 @@ export class MediaPlayerService {
 
   formatTime(seconds: number): string {
     if (!isFinite(seconds) || seconds < 0) return '0:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
+    const mins: number = Math.floor(seconds / 60);
+    const secs: number = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 }

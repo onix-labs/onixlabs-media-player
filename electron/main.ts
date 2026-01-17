@@ -29,11 +29,11 @@ class Program {
     if (app.isPackaged) {
       return app.getAppPath();
     }
-    const filename = fileURLToPath(import.meta.url);
-    const dirname = path.dirname(filename);
+    const filename: string = fileURLToPath(import.meta.url);
+    const dirname: string = path.dirname(filename);
     // When running TS via tsx: electron/main.ts -> go up 1 level
     // When running compiled JS: electron/dist/main.js -> go up 2 levels
-    const levels = filename.endsWith('.ts') ? 1 : 2;
+    const levels: number = filename.endsWith('.ts') ? 1 : 2;
     return path.resolve(dirname, ...Array(levels).fill('..'));
   }
 
@@ -67,17 +67,17 @@ class Program {
   }
 
   private registerMediaProtocol(): void {
-    protocol.handle('media', (request) => {
+    protocol.handle('media', (request: Request) => {
       // Convert media://path to file path
-      const filePath = decodeURIComponent(request.url.replace('media://', ''));
+      const filePath: string = decodeURIComponent(request.url.replace('media://', ''));
       return net.fetch('file://' + filePath);
     });
   }
 
   private createBrowserWindow(): BrowserWindow {
-    const projectRoot = Program.getProjectRoot();
+    const projectRoot: string = Program.getProjectRoot();
     // Preload must always be compiled JS - Electron can't run TS preload scripts
-    const preloadPath = path.join(projectRoot, "electron", "dist", "preload.js");
+    const preloadPath: string = path.join(projectRoot, "electron", "dist", "preload.js");
 
     return new BrowserWindow({
       width: 1200,
@@ -97,10 +97,10 @@ class Program {
 
   private setupIpcHandlers(): void {
     // File dialog - requires native dialog
-    ipcMain.handle("dialog:openFile", async (_, options: { filters: Electron.FileFilter[]; multiSelections: boolean }) => {
+    ipcMain.handle("dialog:openFile", async (_: Electron.IpcMainInvokeEvent, options: { filters: Electron.FileFilter[]; multiSelections: boolean }) => {
       if (!this.window) return [];
 
-      const result = await dialog.showOpenDialog(this.window, {
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
         properties: options.multiSelections
           ? ["openFile", "multiSelections"]
           : ["openFile"],

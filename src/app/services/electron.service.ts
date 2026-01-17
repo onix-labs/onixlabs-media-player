@@ -6,27 +6,27 @@ export type {MediaInfo, PlaylistItem, PlaylistState};
 @Injectable({providedIn: 'root'})
 export class ElectronService implements OnDestroy {
   // Server connection
-  private serverPort = 0;
+  private serverPort: number = 0;
   private eventSource: EventSource | null = null;
-  private reconnectAttempts = 0;
-  private readonly MAX_RECONNECT_DELAY = 30000;
+  private reconnectAttempts: number = 0;
+  private readonly MAX_RECONNECT_DELAY: number = 30000;
 
   // Signals for state (updated via SSE)
-  readonly serverUrl = signal<string>('');
-  readonly playbackState = signal<string>('idle');
-  readonly currentTime = signal<number>(0);
-  readonly duration = signal<number>(0);
-  readonly volume = signal<number>(1);
-  readonly muted = signal<boolean>(false);
-  readonly currentMedia = signal<MediaInfo | null>(null);
-  readonly errorMessage = signal<string | null>(null);
-  readonly playlist = signal<PlaylistState>({
+  readonly serverUrl: ReturnType<typeof signal<string>> = signal<string>('');
+  readonly playbackState: ReturnType<typeof signal<string>> = signal<string>('idle');
+  readonly currentTime: ReturnType<typeof signal<number>> = signal<number>(0);
+  readonly duration: ReturnType<typeof signal<number>> = signal<number>(0);
+  readonly volume: ReturnType<typeof signal<number>> = signal<number>(1);
+  readonly muted: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+  readonly currentMedia: ReturnType<typeof signal<MediaInfo | null>> = signal<MediaInfo | null>(null);
+  readonly errorMessage: ReturnType<typeof signal<string | null>> = signal<string | null>(null);
+  readonly playlist: ReturnType<typeof signal<PlaylistState>> = signal<PlaylistState>({
     items: [],
     currentIndex: -1,
     shuffleEnabled: false,
     repeatEnabled: false,
   });
-  readonly mediaEnded = signal<boolean>(false);
+  readonly mediaEnded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   constructor(private ngZone: NgZone) {
     this.initialize();
@@ -67,7 +67,7 @@ export class ElectronService implements OnDestroy {
       this.eventSource?.close();
 
       // Exponential backoff reconnection
-      const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), this.MAX_RECONNECT_DELAY);
+      const delay: number = Math.min(1000 * Math.pow(2, this.reconnectAttempts), this.MAX_RECONNECT_DELAY);
       this.reconnectAttempts++;
       setTimeout(() => this.connectSSE(), delay);
     };
@@ -75,7 +75,7 @@ export class ElectronService implements OnDestroy {
     // Playback state events
     this.eventSource.addEventListener('playback:state', (e: MessageEvent) => {
       this.ngZone.run(() => {
-        const data = JSON.parse(e.data);
+        const data: { state: string; errorMessage?: string } = JSON.parse(e.data);
         this.playbackState.set(data.state);
         this.errorMessage.set(data.errorMessage || null);
       });
@@ -83,7 +83,7 @@ export class ElectronService implements OnDestroy {
 
     this.eventSource.addEventListener('playback:time', (e: MessageEvent) => {
       this.ngZone.run(() => {
-        const data = JSON.parse(e.data);
+        const data: { currentTime: number; duration: number } = JSON.parse(e.data);
         this.currentTime.set(data.currentTime);
         this.duration.set(data.duration);
       });
@@ -91,7 +91,7 @@ export class ElectronService implements OnDestroy {
 
     this.eventSource.addEventListener('playback:loaded', (e: MessageEvent) => {
       this.ngZone.run(() => {
-        const data = JSON.parse(e.data);
+        const data: MediaInfo = JSON.parse(e.data);
         this.currentMedia.set(data);
         this.duration.set(data.duration);
       });
@@ -99,7 +99,7 @@ export class ElectronService implements OnDestroy {
 
     this.eventSource.addEventListener('playback:volume', (e: MessageEvent) => {
       this.ngZone.run(() => {
-        const data = JSON.parse(e.data);
+        const data: { volume: number; muted: boolean } = JSON.parse(e.data);
         this.volume.set(data.volume);
         this.muted.set(data.muted);
       });
@@ -116,15 +116,15 @@ export class ElectronService implements OnDestroy {
     // Playlist events
     this.eventSource.addEventListener('playlist:updated', (e: MessageEvent) => {
       this.ngZone.run(() => {
-        const data = JSON.parse(e.data);
+        const data: PlaylistState = JSON.parse(e.data);
         this.playlist.set(data);
       });
     });
 
     this.eventSource.addEventListener('playlist:selection', (e: MessageEvent) => {
       this.ngZone.run(() => {
-        const data = JSON.parse(e.data);
-        this.playlist.update(p => ({...p, currentIndex: data.currentIndex}));
+        const data: { currentIndex: number; currentItem?: PlaylistItem } = JSON.parse(e.data);
+        this.playlist.update((p: PlaylistState) => ({...p, currentIndex: data.currentIndex}));
         if (data.currentItem) {
           this.currentMedia.set(data.currentItem);
         }
@@ -133,8 +133,8 @@ export class ElectronService implements OnDestroy {
 
     this.eventSource.addEventListener('playlist:mode', (e: MessageEvent) => {
       this.ngZone.run(() => {
-        const data = JSON.parse(e.data);
-        this.playlist.update(p => ({
+        const data: { shuffleEnabled: boolean; repeatEnabled: boolean } = JSON.parse(e.data);
+        this.playlist.update((p: PlaylistState) => ({
           ...p,
           shuffleEnabled: data.shuffleEnabled,
           repeatEnabled: data.repeatEnabled,
@@ -147,7 +147,7 @@ export class ElectronService implements OnDestroy {
   // IPC Methods (file operations only)
   // ============================================================================
 
-  async openFileDialog(multiSelect = true): Promise<string[]> {
+  async openFileDialog(multiSelect: boolean = true): Promise<string[]> {
     if (!this.isElectron || !this.api) return [];
 
     return this.api.openFileDialog({
@@ -247,7 +247,7 @@ export class ElectronService implements OnDestroy {
   }
 
   getStreamUrl(filePath: string, seekTime?: number): string {
-    let url = `${this.serverUrl()}/media/stream?path=${encodeURIComponent(filePath)}`;
+    let url: string = `${this.serverUrl()}/media/stream?path=${encodeURIComponent(filePath)}`;
     if (seekTime !== undefined && seekTime > 0) {
       url += `&t=${seekTime}`;
     }
@@ -259,7 +259,7 @@ export class ElectronService implements OnDestroy {
   // ============================================================================
 
   private async get<T>(endpoint: string): Promise<T> {
-    const response = await fetch(`${this.serverUrl()}${endpoint}`);
+    const response: Response = await fetch(`${this.serverUrl()}${endpoint}`);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
@@ -267,7 +267,7 @@ export class ElectronService implements OnDestroy {
   }
 
   private async post<T>(endpoint: string, body?: unknown): Promise<T> {
-    const response = await fetch(`${this.serverUrl()}${endpoint}`, {
+    const response: Response = await fetch(`${this.serverUrl()}${endpoint}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: body ? JSON.stringify(body) : undefined,
@@ -279,7 +279,7 @@ export class ElectronService implements OnDestroy {
   }
 
   private async delete<T>(endpoint: string): Promise<T> {
-    const response = await fetch(`${this.serverUrl()}${endpoint}`, {
+    const response: Response = await fetch(`${this.serverUrl()}${endpoint}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
