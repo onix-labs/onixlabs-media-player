@@ -1,6 +1,4 @@
-import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, DestroyRef, signal} from '@angular/core';
-import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
-import {ElectronService} from '../../../services/electron.service';
+import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYPES} from './visualizations';
 
@@ -13,19 +11,15 @@ import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYP
 })
 export class AudioOutlet implements OnInit, OnDestroy {
   @ViewChild('canvas', {static: true}) canvasRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('audioElement', {static: true}) audioRef!: ElementRef<HTMLAudioElement>;
 
-  private readonly electron = inject(ElectronService);
-  private readonly destroyRef = inject(DestroyRef);
   readonly mediaPlayer = inject(MediaPlayerService);
 
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
+  private sourceNode: MediaElementAudioSourceNode | null = null;
   private animationId: number | null = null;
-  private gainNode: GainNode | null = null;
-  private scheduledTime = 0;
   private isInitialized = false;
-  private scheduledSources: AudioBufferSourceNode[] = [];
-  private readonly MAX_BUFFER_AHEAD = 0.15;
   private readonly SMOOTHING = 0.85;
 
   private visualization: Visualization | null = null;
@@ -42,13 +36,133 @@ export class AudioOutlet implements OnInit, OnDestroy {
   readonly currentTrack = computed(() => this.mediaPlayer.currentTrack());
   readonly visualizationName = computed(() => this.VISUALIZATION_NAMES[this.visualizationType()]);
 
+  constructor() {
+    // React to track changes - load new audio source
+    effect(() => {
+      const track = this.mediaPlayer.currentTrack();
+      if (track?.type === 'audio') {
+        this.loadAudioSource(track.filePath);
+      }
+    });
+
+    // React to playback state changes
+    effect(() => {
+      const state = this.mediaPlayer.playbackState();
+      const audio = this.audioRef?.nativeElement;
+      if (!audio) return;
+
+      if (state === 'playing') {
+        this.resumeAudioContext();
+        if (audio.src && audio.paused) {
+          audio.play().catch(console.error);
+        }
+      } else if (state === 'paused') {
+        audio.pause();
+      } else if (state === 'stopped') {
+        audio.pause();
+        audio.currentTime = 0;
+      }
+    });
+
+    // React to seek events
+    effect(() => {
+      const time = this.mediaPlayer.currentTime();
+      const audio = this.audioRef?.nativeElement;
+      if (!audio || !audio.src) return;
+
+      // Only sync if significantly different (avoid feedback loop)
+      if (Math.abs(audio.currentTime - time) > 1) {
+        audio.currentTime = time;
+      }
+    });
+
+    // React to volume changes
+    effect(() => {
+      const volume = this.mediaPlayer.volume();
+      const audio = this.audioRef?.nativeElement;
+      if (audio) {
+        audio.volume = volume;
+      }
+    });
+
+    // React to mute changes
+    effect(() => {
+      const muted = this.mediaPlayer.muted();
+      const audio = this.audioRef?.nativeElement;
+      if (audio) {
+        audio.muted = muted;
+      }
+    });
+  }
+
   ngOnInit(): void {
-    this.initAudioContext();
-    this.subscribeToAudioData();
-    this.subscribeToStateChanges();
+    this.setupUserGestureHandler();
     this.initVisualization();
     this.startAnimationLoop();
-    this.setupUserGestureHandler();
+  }
+
+  private async loadAudioSource(filePath: string): Promise<void> {
+    const audio = this.audioRef.nativeElement;
+    const serverUrl = this.mediaPlayer.serverUrl();
+
+    if (!serverUrl) return;
+
+    // Build the stream URL
+    const url = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}`;
+
+    // Initialize audio context if needed (must be after user gesture)
+    if (!this.isInitialized) {
+      this.initAudioContext();
+    }
+
+    // Set the source and load
+    audio.src = url;
+    audio.load();
+
+    console.log(`Audio source loaded: ${filePath}`);
+  }
+
+  private initAudioContext(): void {
+    if (this.isInitialized) return;
+
+    const audio = this.audioRef.nativeElement;
+
+    this.audioContext = new AudioContext({sampleRate: 44100});
+    this.analyser = this.audioContext.createAnalyser();
+    this.analyser.fftSize = 256;
+    this.analyser.smoothingTimeConstant = this.SMOOTHING;
+
+    // Connect audio element to Web Audio API via MediaElementSource
+    this.sourceNode = this.audioContext.createMediaElementSource(audio);
+    this.sourceNode.connect(this.analyser);
+    this.analyser.connect(this.audioContext.destination);
+
+    this.isInitialized = true;
+
+    // Re-initialize visualization with the new analyser
+    if (this.visualization) {
+      this.visualization.destroy();
+      this.initVisualization();
+    }
+  }
+
+  private resumeAudioContext(): void {
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      this.audioContext.resume().catch(console.error);
+    }
+  }
+
+  private setupUserGestureHandler(): void {
+    const initOnGesture = () => {
+      if (!this.isInitialized) {
+        this.initAudioContext();
+      }
+      this.resumeAudioContext();
+      document.removeEventListener('click', initOnGesture);
+      document.removeEventListener('keydown', initOnGesture);
+    };
+    document.addEventListener('click', initOnGesture);
+    document.addEventListener('keydown', initOnGesture);
   }
 
   nextVisualization(): void {
@@ -76,7 +190,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
         analyser: this.analyser
       });
 
-      // Apply current size
       const rect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
     }
@@ -90,7 +203,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
       analyser: this.analyser
     });
 
-    // Apply current size (same as setVisualization)
     const rect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
   }
@@ -101,7 +213,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const draw = () => {
       this.animationId = requestAnimationFrame(draw);
 
-      // Handle canvas resize
       const rect = canvas.getBoundingClientRect();
       const width = Math.round(rect.width);
       const height = Math.round(rect.height);
@@ -110,119 +221,10 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.visualization?.resize(width, height);
       }
 
-      // Draw current visualization
       this.visualization?.draw();
     };
 
     draw();
-  }
-
-  private subscribeToStateChanges(): void {
-    this.electron.stateChange
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(state => {
-        if (state === 'paused' || state === 'stopped') {
-          this.clearScheduledAudio();
-        }
-      });
-  }
-
-  private clearScheduledAudio(): void {
-    for (const source of this.scheduledSources) {
-      try {
-        source.stop();
-        source.disconnect();
-      } catch {}
-    }
-    this.scheduledSources = [];
-    this.scheduledTime = 0;
-  }
-
-  private setupUserGestureHandler(): void {
-    const resumeAudio = () => {
-      if (this.audioContext && this.audioContext.state === 'suspended') {
-        this.audioContext.resume().catch(console.error);
-      }
-      document.removeEventListener('click', resumeAudio);
-      document.removeEventListener('keydown', resumeAudio);
-    };
-    document.addEventListener('click', resumeAudio);
-    document.addEventListener('keydown', resumeAudio);
-  }
-
-  private initAudioContext(): void {
-    this.audioContext = new AudioContext({sampleRate: 44100});
-    this.analyser = this.audioContext.createAnalyser();
-    this.analyser.fftSize = 256;
-    this.analyser.smoothingTimeConstant = this.SMOOTHING;
-
-    this.gainNode = this.audioContext.createGain();
-    this.gainNode.connect(this.audioContext.destination);
-
-    this.analyser.connect(this.gainNode);
-    this.isInitialized = true;
-  }
-
-  private subscribeToAudioData(): void {
-    this.electron.audioData
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(chunk => {
-        this.processAudioChunk(chunk.data);
-      });
-  }
-
-  private processAudioChunk(data: ArrayBuffer | number[]): void {
-    if (!this.audioContext || !this.analyser || !this.isInitialized) return;
-
-    if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume().catch(console.error);
-    }
-
-    const buffer = Array.isArray(data) ? new Uint8Array(data).buffer : data;
-
-    const pcmData = new Int16Array(buffer);
-    const floatData = new Float32Array(pcmData.length);
-
-    for (let i = 0; i < pcmData.length; i++) {
-      floatData[i] = pcmData[i] / 32768;
-    }
-
-    const samplesPerChannel = floatData.length / 2;
-    const audioBuffer = this.audioContext.createBuffer(2, samplesPerChannel, 44100);
-
-    const leftChannel = audioBuffer.getChannelData(0);
-    const rightChannel = audioBuffer.getChannelData(1);
-
-    for (let i = 0; i < samplesPerChannel; i++) {
-      leftChannel[i] = floatData[i * 2];
-      rightChannel[i] = floatData[i * 2 + 1];
-    }
-
-    const source = this.audioContext.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(this.analyser!);
-
-    const currentTime = this.audioContext.currentTime;
-
-    if (this.scheduledTime < currentTime) {
-      this.scheduledTime = currentTime;
-    }
-
-    if (this.scheduledTime > currentTime + this.MAX_BUFFER_AHEAD) {
-      return;
-    }
-
-    const startTime = this.scheduledTime;
-    source.start(startTime);
-    this.scheduledTime = startTime + audioBuffer.duration;
-
-    this.scheduledSources.push(source);
-
-    source.onended = () => {
-      source.disconnect();
-      const idx = this.scheduledSources.indexOf(source);
-      if (idx > -1) this.scheduledSources.splice(idx, 1);
-    };
   }
 
   ngOnDestroy(): void {

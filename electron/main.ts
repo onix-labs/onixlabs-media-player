@@ -1,8 +1,7 @@
 import {app, BrowserWindow, ipcMain, dialog, protocol, net} from "electron";
 import * as path from "path";
 import {fileURLToPath} from "url";
-import {FFmpegManager} from "./ffmpeg-manager.ts";
-import {MediaServer} from "./media-server.ts";
+import {UnifiedMediaServer} from "./unified-media-server.ts";
 
 // Allow audio autoplay without user gesture
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -39,8 +38,7 @@ class Program {
   }
 
   private window: BrowserWindow | null = null;
-  private ffmpegManager: FFmpegManager | null = null;
-  private mediaServer: MediaServer | null = null;
+  private mediaServer: UnifiedMediaServer | null = null;
 
   private constructor() {
     app.whenReady().then(this.initialize.bind(this))
@@ -53,12 +51,11 @@ class Program {
   private async initialize(): Promise<void> {
     this.registerMediaProtocol();
 
-    // Start the media server for video streaming
-    this.mediaServer = new MediaServer();
+    // Start the unified media server (HTTP API + SSE)
+    this.mediaServer = new UnifiedMediaServer();
     await this.mediaServer.start();
 
     this.window = this.createBrowserWindow();
-    this.ffmpegManager = new FFmpegManager(this.window);
     this.setupIpcHandlers();
 
     if (Program.IS_DEVELOPMENT) void this.window.loadURL(Program.DEVELOPMENT_SERVER_URL);
@@ -99,6 +96,7 @@ class Program {
   }
 
   private setupIpcHandlers(): void {
+    // File dialog - requires native dialog
     ipcMain.handle("dialog:openFile", async (_, options: { filters: Electron.FileFilter[]; multiSelections: boolean }) => {
       if (!this.window) return [];
 
@@ -112,42 +110,9 @@ class Program {
       return result.filePaths;
     });
 
-    ipcMain.handle("media:load", async (_, filePath: string) => {
-      return this.ffmpegManager?.loadMedia(filePath);
-    });
-
-    ipcMain.handle("media:play", async () => {
-      return this.ffmpegManager?.play();
-    });
-
-    ipcMain.handle("media:pause", async () => {
-      return this.ffmpegManager?.pause();
-    });
-
-    ipcMain.handle("media:resume", async () => {
-      return this.ffmpegManager?.resume();
-    });
-
-    ipcMain.handle("media:seek", async (_, time: number) => {
-      return this.ffmpegManager?.seek(time);
-    });
-
-    ipcMain.handle("media:setVolume", async (_, volume: number) => {
-      return this.ffmpegManager?.setVolume(volume);
-    });
-
-    ipcMain.handle("media:stop", async () => {
-      return this.ffmpegManager?.stop();
-    });
-
-    ipcMain.handle("media:getUrl", async (_, filePath: string) => {
-      // Return a media:// URL that the renderer can use with <video>/<audio>
-      return `media://${encodeURIComponent(filePath)}`;
-    });
-
-    ipcMain.handle("media:getVideoUrl", async (_, filePath: string) => {
-      // Return an HTTP URL from the media server for video playback
-      return this.mediaServer?.getUrl(filePath) || '';
+    // Get server port - needed for renderer to connect to HTTP API
+    ipcMain.handle("app:getServerPort", () => {
+      return this.mediaServer?.getPort() || 0;
     });
   }
 
