@@ -6,27 +6,38 @@ export class BarsVisualization extends Canvas2DVisualization {
   private readonly FREQUENCY_RANGE = 0.75;
   private dataArray: Uint8Array<ArrayBuffer>;
   private barGradient: CanvasGradient | null = null;
+  private gradientHeight = 0;
 
   constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
 
-  protected override onResize(): void {
+  private createGradient(): void {
+    if (this.height <= 0) return;
+
     // Create gradient spanning full canvas height: green (bottom) -> yellow (middle) -> red (top)
     this.barGradient = this.ctx.createLinearGradient(0, this.height, 0, 0);
     this.barGradient.addColorStop(0, '#00cc00');    // Green at bottom
     this.barGradient.addColorStop(0.5, '#cccc00');  // Yellow in middle
     this.barGradient.addColorStop(1, '#cc0000');    // Red at top
+    this.gradientHeight = this.height;
+  }
+
+  protected override onResize(): void {
+    this.createGradient();
   }
 
   draw(): void {
     const {ctx, width, height} = this;
 
-    // Ensure gradient exists
-    if (!this.barGradient) {
-      this.onResize();
+    // Ensure gradient exists and matches current height
+    if (!this.barGradient || this.gradientHeight !== height) {
+      this.createGradient();
     }
+
+    // Skip drawing if no valid gradient
+    if (!this.barGradient) return;
 
     // Clear with fade effect
     ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';

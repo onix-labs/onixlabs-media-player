@@ -89,6 +89,10 @@ export class AudioOutlet implements OnInit, OnDestroy {
       canvas: this.canvasRef.nativeElement,
       analyser: this.analyser
     });
+
+    // Apply current size (same as setVisualization)
+    const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+    this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
   }
 
   private startAnimationLoop(): void {
