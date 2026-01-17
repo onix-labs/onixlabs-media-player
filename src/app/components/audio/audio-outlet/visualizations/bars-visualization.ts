@@ -4,7 +4,7 @@ export class BarsVisualization extends Canvas2DVisualization {
   readonly name: string = 'Frequency Bars';
   readonly category: VisualizationCategory = 'frequency';
 
-  private readonly BAR_COUNT: number = 128;
+  private readonly BAR_COUNT: number = 96;
   private readonly BAR_GAP: number = 2;
   private readonly FREQUENCY_RANGE: number = 0.75;
   private dataArray: Uint8Array<ArrayBuffer>;
