@@ -7,7 +7,7 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly ROTATION_SPEED: number = 0.009;
   private readonly WAVEFORM_ROTATION_SPEED: number = 0.005;  // Slower counter-clockwise rotation
   private readonly FADE_RATE: number = 0.008;
-  private readonly ZOOM_SCALE: number = 1.012;      // Scale factor per frame for tunnel effect
+  private readonly ZOOM_SCALE: number = 1.02;      // Scale factor per frame for tunnel effect
   private readonly HUE_CYCLE_SPEED: number = 0.15;  // Degrees per frame
 
   // Saturation and lightness levels for gradient (darkest to lightest)
