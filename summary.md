@@ -5,9 +5,10 @@
 ### Audio Playback
 - Native `<audio>` element with HTTP streaming
 - Frequency visualizations via Web Audio API (`createMediaElementSource()`)
-- 5 visualization modes: Frequency Bars, Waveform, Tunnel, Ambience Water, Ambience Water 2
+- 5 visualization modes: Frequency Bars, Waveform, Tunnel, Pulsar, Ambience Water 2
+- Volume-independent visualizations with configurable sensitivity (default 25%)
 - Transparent canvas backgrounds (CSS gradient shows through)
-- Instant volume control (client-side, no latency)
+- Instant volume control via GainNode (no latency, doesn't affect visualizations)
 - Seek support via HTTP range requests (native formats) or stream reload (transcoded)
 
 ### Video Playback
@@ -19,6 +20,7 @@
 ### Playlist & Controls
 - Server-managed playlist with shuffle (Fisher-Yates) and repeat modes
 - Play/pause, next/previous, seek, volume all responsive
+- Skip buttons disabled when playlist has only one item
 - Auto-advance to next track when current ends
 - Drag-and-drop file support
 
@@ -108,7 +110,10 @@ MediaElementAudioSourceNode
     ▼
 AnalyserNode (fftSize=256, smoothing=0.85)
     │
-    ├──► getByteFrequencyData() ──► Visualization Canvas
+    ├──► getByteFrequencyData() ──► Visualization Canvas (sensitivity-scaled)
+    │
+    ▼
+GainNode (volume control - keeps analyser at full signal)
     │
     ▼
 AudioContext.destination (speakers)
@@ -133,11 +138,11 @@ AudioContext.destination (speakers)
 
 **Visualizations:**
 - `src/app/components/audio/audio-outlet/visualizations/` - Visualization implementations
-  - `visualization.ts` - Base class with abstract `name` and `category` properties
-  - `bars-visualization.ts` - Frequency Bars (category: frequency) - maps frequency bins evenly across bars
+  - `visualization.ts` - Base class with `name`, `category`, and `sensitivity` properties
+  - `bars-visualization.ts` - Frequency Bars (category: frequency) - 96 bars mapped evenly across frequency bins
   - `waveform-visualization.ts` - Waveform (category: waveform)
   - `tunnel-visualization.ts` - Tunnel (category: waveform)
-  - `water-visualization.ts` - Ambience Water (category: ambience)
+  - `water-visualization.ts` - Pulsar (category: ambience) - tunnel zoom, rotating waveforms, cycling colors
   - `water2-visualization.ts` - Ambience Water 2 (category: ambience)
 
 ## HTTP API Reference
