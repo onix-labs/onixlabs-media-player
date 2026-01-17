@@ -215,6 +215,10 @@ export class MediaPlayerService {
     this.mediaType.set(null);
   }
 
+  addItems(items: Omit<PlaylistItem, 'id'>[]): void {
+    this.playlist.addItems(items);
+  }
+
   private async playCurrentItem(): Promise<void> {
     const item = this.playlist.currentItem();
     if (!item) return;
