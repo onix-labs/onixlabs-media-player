@@ -47,6 +47,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
       const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
       if (!audio) return;
 
+      // Update visualization fade state
+      this.visualization?.setPlaying(state === 'playing');
+
       if (state === 'playing') {
         this.resumeAudioContext();
         // Ensure visualization is initialized when playback starts
@@ -197,6 +200,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
         analyser: this.analyser
       });
       this.visualizationNameSignal.set(this.visualization.name);
+      this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
 
       const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
@@ -211,6 +215,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       analyser: this.analyser
     });
     this.visualizationNameSignal.set(this.visualization.name);
+    this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
 
     const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));

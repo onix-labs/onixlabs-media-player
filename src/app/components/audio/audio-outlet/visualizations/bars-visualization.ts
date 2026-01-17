@@ -36,6 +36,8 @@ export class BarsVisualization extends Canvas2DVisualization {
   }
 
   public draw(): void {
+    this.updateFade();
+
     const ctx: CanvasRenderingContext2D = this.ctx;
     const width: number = this.width;
     const height: number = this.height;
@@ -88,5 +90,7 @@ export class BarsVisualization extends Canvas2DVisualization {
       ctx.quadraticCurveTo(x, y, x + radius, y);
       ctx.fill();
     }
+
+    this.applyFadeOverlay();
   }
 }
