@@ -3,7 +3,12 @@ export interface VisualizationConfig {
   analyser: AnalyserNode;
 }
 
+export type VisualizationCategory = 'frequency' | 'waveform' | 'ambience';
+
 export abstract class Visualization {
+  abstract readonly name: string;
+  abstract readonly category: VisualizationCategory;
+
   protected canvas: HTMLCanvasElement;
   protected analyser: AnalyserNode;
   protected width: number = 0;
