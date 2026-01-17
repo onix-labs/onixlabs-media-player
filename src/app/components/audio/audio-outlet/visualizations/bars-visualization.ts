@@ -17,7 +17,11 @@ export class BarsVisualization extends Canvas2DVisualization {
   }
 
   private createGradient(): void {
-    if (this.height <= 0) return;
+    if (this.height <= 0) {
+      this.barGradient = null;
+      this.gradientHeight = 0;
+      return;
+    }
 
     // Create gradient spanning full canvas height: green (bottom) -> yellow (middle) -> red (top)
     this.barGradient = this.ctx.createLinearGradient(0, this.height, 0, 0);
@@ -34,13 +38,13 @@ export class BarsVisualization extends Canvas2DVisualization {
   draw(): void {
     const {ctx, width, height} = this;
 
+    // Skip if canvas has no valid size
+    if (width <= 0 || height <= 0) return;
+
     // Ensure gradient exists and matches current height
     if (!this.barGradient || this.gradientHeight !== height) {
       this.createGradient();
     }
-
-    // Skip drawing if no valid gradient
-    if (!this.barGradient) return;
 
     // Clear canvas (transparent)
     ctx.clearRect(0, 0, width, height);
@@ -49,17 +53,22 @@ export class BarsVisualization extends Canvas2DVisualization {
 
     const barWidth: number = (width - (this.BAR_COUNT - 1) * this.BAR_GAP) / this.BAR_COUNT;
     const usableBins: number = Math.floor(this.dataArray.length * this.FREQUENCY_RANGE);
-    const step: number = Math.floor(usableBins / this.BAR_COUNT);
 
-    ctx.fillStyle = this.barGradient!;
+    // Use gradient if available, fallback to green
+    ctx.fillStyle = this.barGradient || '#00cc00';
 
     for (let i: number = 0; i < this.BAR_COUNT; i++) {
-      // Average nearby frequencies for smoother visualization
+      // Map bar index to bin range, spreading usableBins evenly across all bars
+      const startBin: number = Math.floor(i * usableBins / this.BAR_COUNT);
+      const endBin: number = Math.floor((i + 1) * usableBins / this.BAR_COUNT);
+      const count: number = Math.max(1, endBin - startBin);
+
+      // Average the bins in this range
       let sum: number = 0;
-      for (let j: number = 0; j < step; j++) {
-        sum += this.dataArray[i * step + j];
+      for (let j: number = startBin; j < startBin + count; j++) {
+        sum += this.dataArray[j];
       }
-      const value: number = sum / step;
+      const value: number = sum / count;
 
       const barHeight: number = (value / 255) * height * 0.85;
       const x: number = i * (barWidth + this.BAR_GAP);

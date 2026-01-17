@@ -134,7 +134,7 @@ AudioContext.destination (speakers)
 **Visualizations:**
 - `src/app/components/audio/audio-outlet/visualizations/` - Visualization implementations
   - `visualization.ts` - Base class with abstract `name` and `category` properties
-  - `bars-visualization.ts` - Frequency Bars (category: frequency)
+  - `bars-visualization.ts` - Frequency Bars (category: frequency) - maps frequency bins evenly across bars
   - `waveform-visualization.ts` - Waveform (category: waveform)
   - `tunnel-visualization.ts` - Tunnel (category: waveform)
   - `water-visualization.ts` - Ambience Water (category: ambience)
