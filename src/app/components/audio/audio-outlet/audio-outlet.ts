@@ -25,6 +25,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
   private visualization: Visualization | null = null;
   private readonly visualizationType: ReturnType<typeof signal<VisualizationType>> = signal<VisualizationType>('bars');
+  private currentFilePath: string | null = null;
 
   private readonly VISUALIZATION_NAMES: Record<VisualizationType, string> = {
     bars: 'Frequency Bars',
@@ -41,7 +42,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     // React to track changes - load new audio source
     effect(() => {
       const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
-      if (track?.type === 'audio') {
+      if (track?.type === 'audio' && track.filePath !== this.currentFilePath) {
         this.loadAudioSource(track.filePath);
       }
     });
@@ -107,6 +108,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const serverUrl: string = this.mediaPlayer.serverUrl();
 
     if (!serverUrl) return;
+
+    this.currentFilePath = filePath;
 
     // Build the stream URL
     const url: string = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}`;
