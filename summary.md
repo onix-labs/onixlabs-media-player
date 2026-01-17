@@ -5,9 +5,10 @@
 ### Audio Playback
 - Native `<audio>` element with HTTP streaming
 - Frequency visualizations via Web Audio API (`createMediaElementSource()`)
-- 5 visualization modes: Frequency Bars, Waveform, Tunnel, Pulsar, Ambience Water 2
+- 6 visualization modes: Frequency Bars, Waveform, Tunnel, Neon, Pulsar, Ambience Water 2
 - Volume-independent visualizations with configurable sensitivity (default 25%)
 - Transparent canvas backgrounds (CSS gradient shows through)
+- Fade-to-black effect (~5 seconds) when playback is paused or stopped
 - Instant volume control via GainNode (no latency, doesn't affect visualizations)
 - Seek support via HTTP range requests (native formats) or stream reload (transcoded)
 
@@ -142,10 +143,11 @@ AudioContext.destination (speakers)
 
 **Visualizations:**
 - `src/app/components/audio/audio-outlet/visualizations/` - Visualization implementations
-  - `visualization.ts` - Base class with `name`, `category`, and `sensitivity` properties
+  - `visualization.ts` - Base class with `name`, `category`, `sensitivity`, and fade-to-black support
   - `bars-visualization.ts` - Frequency Bars (category: frequency) - 96 bars mapped evenly across frequency bins
-  - `waveform-visualization.ts` - Waveform (category: waveform)
-  - `tunnel-visualization.ts` - Tunnel (category: waveform)
+  - `waveform-visualization.ts` - Waveform (category: waveform) - oscilloscope-style with glow effect
+  - `tunnel-visualization.ts` - Tunnel (category: waveform) - dual red/blue waveforms with zoom effect
+  - `neon-visualization.ts` - Neon (category: waveform) - rotating cyan/magenta waveforms with tunnel zoom
   - `water-visualization.ts` - Pulsar (category: ambience) - tunnel zoom, rotating waveforms, cycling colors
   - `water2-visualization.ts` - Ambience Water 2 (category: ambience)
 
@@ -218,6 +220,7 @@ npm run package      # Package with electron-builder
 - tsx (for running TypeScript directly)
 - ESLint + @typescript-eslint (strict type safety rules)
 - electron/tsconfig.json uses `allowImportingTsExtensions` + `noEmit` for tsx compatibility
+- electron/tsconfig.preload.json compiles preload.ts to ESM (required for Electron preload scripts)
 
 ## Architecture Benefits
 

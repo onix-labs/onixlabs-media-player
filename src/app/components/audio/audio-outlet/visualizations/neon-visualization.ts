@@ -1,14 +1,16 @@
 import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
-export class TunnelVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Tunnel';
+export class NeonVisualization extends Canvas2DVisualization {
+  public readonly name: string = 'Neon';
   public readonly category: VisualizationCategory = 'waveform';
 
   private readonly FADE_RATE: number = 0.05;
-  private readonly ZOOM_SCALE: number = 1.02; // Scale factor per frame for tunnel effect
+  private readonly ZOOM_SCALE: number = 1.02;
+  private readonly ROTATION_SPEED: number = 0.008;
   private readonly LINE_WIDTH: number = 2;
   private readonly GLOW_BLUR: number = 12;
   private readonly dataArray: Uint8Array<ArrayBuffer>;
+  private rotationAngle: number = 0;
 
   constructor(config: VisualizationConfig) {
     super(config);
@@ -26,25 +28,32 @@ export class TunnelVisualization extends Canvas2DVisualization {
     const ctx: CanvasRenderingContext2D = this.ctx;
     const width: number = this.width;
     const height: number = this.height;
-    const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
 
-    // Apply zoom effect with fade (handled via globalAlpha)
+    // Apply zoom effect with fade and rotation
     this.applyZoomEffect();
 
     // Get time domain data
-    this.analyser.getByteTimeDomainData(dataArray);
+    this.analyser.getByteTimeDomainData(this.dataArray);
 
-    // Split canvas into thirds: 1/3 above top waveform, 1/3 between them, 1/3 below bottom
-    const thirdHeight: number = height / 3;
-    const topCenterY: number = thirdHeight;           // Top waveform at 1/3 from top
-    const bottomCenterY: number = thirdHeight * 2;    // Bottom waveform at 2/3 from top
-    const waveformAmplitude: number = thirdHeight * 0.4;
+    // Update rotation angle
+    this.rotationAngle += this.ROTATION_SPEED;
 
-    // Draw top waveform (pure blue)
-    this.drawWaveform(topCenterY, waveformAmplitude, 'rgb(0, 0, 255)', 'rgba(0, 0, 255, 0.8)');
+    // Calculate waveform positions (relative to center)
+    const waveformOffset: number = height / 6;
+    const waveformAmplitude: number = height / 8;
 
-    // Draw bottom waveform (pure red)
-    this.drawWaveform(bottomCenterY, waveformAmplitude, 'rgb(255, 0, 0)', 'rgba(255, 0, 0, 0.8)');
+    // Draw rotated waveforms around center
+    ctx.save();
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate(this.rotationAngle);
+
+    // Draw cyan waveform (top, offset from center)
+    this.drawWaveform(-waveformOffset, waveformAmplitude, 'rgb(0, 255, 255)', 'rgba(0, 255, 255, 0.8)');
+
+    // Draw magenta waveform (bottom, offset from center)
+    this.drawWaveform(waveformOffset, waveformAmplitude, 'rgb(255, 0, 255)', 'rgba(255, 0, 255, 0.8)');
+
+    ctx.restore();
 
     this.applyFadeOverlay();
   }
@@ -92,7 +101,7 @@ export class TunnelVisualization extends Canvas2DVisualization {
     ctx.lineJoin = 'round';
 
     ctx.beginPath();
-    let x: number = 0;
+    let x: number = -width / 2;
 
     for (let i: number = 0; i < dataArray.length; i++) {
       const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
@@ -116,7 +125,7 @@ export class TunnelVisualization extends Canvas2DVisualization {
     ctx.lineJoin = 'round';
 
     ctx.beginPath();
-    x = 0;
+    x = -width / 2;
 
     for (let i: number = 0; i < dataArray.length; i++) {
       const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
@@ -133,11 +142,11 @@ export class TunnelVisualization extends Canvas2DVisualization {
     ctx.stroke();
 
     // Highlight
-    ctx.strokeStyle = `rgba(255, 255, 255, 0.4)`;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
     ctx.lineWidth = 1;
 
     ctx.beginPath();
-    x = 0;
+    x = -width / 2;
 
     for (let i: number = 0; i < dataArray.length; i++) {
       const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);

@@ -149,6 +149,8 @@ export class Water2Visualization extends Canvas2DVisualization {
   }
 
   public draw(): void {
+    this.updateFade();
+
     const ctx: CanvasRenderingContext2D = this.ctx;
     const width: number = this.width;
     const height: number = this.height;
@@ -223,6 +225,8 @@ export class Water2Visualization extends Canvas2DVisualization {
     // Composite - circles background, then trails on top
     ctx.drawImage(this.circleCanvas!, 0, 0);
     ctx.drawImage(trailCanvas, 0, 0);
+
+    this.applyFadeOverlay();
   }
 
   private drawMirroredWaveform(ctx: CanvasRenderingContext2D, centerX: number, centerY: number): void {

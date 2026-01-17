@@ -3,6 +3,7 @@ export type {VisualizationConfig, VisualizationCategory} from './visualization';
 export {BarsVisualization} from './bars-visualization';
 export {WaveformVisualization} from './waveform-visualization';
 export {TunnelVisualization} from './tunnel-visualization';
+export {NeonVisualization} from './neon-visualization';
 export {WaterVisualization} from './water-visualization';
 export {Water2Visualization} from './water2-visualization';
 
@@ -10,16 +11,18 @@ import {Visualization, VisualizationConfig} from './visualization';
 import {BarsVisualization} from './bars-visualization';
 import {WaveformVisualization} from './waveform-visualization';
 import {TunnelVisualization} from './tunnel-visualization';
+import {NeonVisualization} from './neon-visualization';
 import {WaterVisualization} from './water-visualization';
 import {Water2Visualization} from './water2-visualization';
 
-export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'water' | 'water2';
+export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'neon' | 'water' | 'water2';
 
 // Visualization constructors indexed by type
 const VISUALIZATION_CONSTRUCTORS: Record<VisualizationType, new (config: VisualizationConfig) => Visualization> = {
   bars: BarsVisualization,
   waveform: WaveformVisualization,
   tunnel: TunnelVisualization,
+  neon: NeonVisualization,
   water: WaterVisualization,
   water2: Water2Visualization,
 };
@@ -32,4 +35,4 @@ export function createVisualization(type: VisualizationType, config: Visualizati
   return new Constructor(config);
 }
 
-export const VISUALIZATION_TYPES: VisualizationType[] = ['bars', 'waveform', 'tunnel', 'water', 'water2'];
+export const VISUALIZATION_TYPES: VisualizationType[] = ['bars', 'waveform', 'tunnel', 'neon', 'water', 'water2'];
