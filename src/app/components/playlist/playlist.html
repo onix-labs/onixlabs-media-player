@@ -1,4 +1,11 @@
-<div class="playlist-container" [class.hidden]="!isVisible()">
+<div
+  class="playlist-container"
+  [class.hidden]="!isVisible()"
+  [class.drag-over]="isDragOver()"
+  (dragover)="onDragOver($event)"
+  (dragleave)="onDragLeave($event)"
+  (drop)="onDrop($event)"
+>
   <div class="playlist-header">
     <span class="playlist-title">Playlist</span>
     <span class="playlist-count">{{ count() }} items</span>
@@ -36,7 +43,7 @@
       <div class="empty-state">
         <i class="fa-solid fa-music fa-2x"></i>
         <p>No items in playlist</p>
-        <p class="hint">Click eject to add media files</p>
+        <p class="hint">Drag files here or click eject</p>
       </div>
     }
   </div>

@@ -12,7 +12,7 @@
   min-height: 0;
   flex: 1;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
-  transition: transform 0.3s ease, opacity 0.3s ease, width 0.3s ease, min-width 0.3s ease;
+  transition: transform 0.3s ease, opacity 0.3s ease, width 0.3s ease, min-width 0.3s ease, border-color 0.2s ease, background 0.2s ease;
 
   &.hidden {
     width: 0;
@@ -20,6 +20,11 @@
     opacity: 0;
     pointer-events: none;
     border-left: none;
+  }
+
+  &.drag-over {
+    background: rgba(74, 222, 128, 0.1);
+    border-left-color: rgba(74, 222, 128, 0.5);
   }
 }
 
@@ -159,6 +164,7 @@
   text-align: center;
   padding: 2rem;
   gap: 0.5rem;
+  transition: color 0.2s ease;
 
   p {
     margin: 0;
@@ -168,5 +174,9 @@
   .hint {
     font-size: 0.75rem;
     color: rgba(255, 255, 255, 0.3);
+  }
+
+  .drag-over & {
+    color: rgba(74, 222, 128, 0.8);
   }
 }

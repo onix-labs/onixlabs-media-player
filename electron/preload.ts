@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 export interface OpenDialogOptions {
   filters: { name: string; extensions: string[] }[];
@@ -31,6 +31,7 @@ export interface MediaPlayerAPI {
   loadMedia: (filePath: string) => Promise<MediaInfo>;
   getMediaUrl: (filePath: string) => Promise<string>;
   getVideoUrl: (filePath: string) => Promise<string>;
+  getPathForFile: (file: File) => string;
   play: () => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
@@ -52,6 +53,7 @@ const api: MediaPlayerAPI = {
   loadMedia: (filePath) => ipcRenderer.invoke('media:load', filePath),
   getMediaUrl: (filePath) => ipcRenderer.invoke('media:getUrl', filePath),
   getVideoUrl: (filePath) => ipcRenderer.invoke('media:getVideoUrl', filePath),
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   play: () => ipcRenderer.invoke('media:play'),
   pause: () => ipcRenderer.invoke('media:pause'),
   resume: () => ipcRenderer.invoke('media:resume'),
