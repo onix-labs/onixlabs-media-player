@@ -6,6 +6,7 @@
 - Native `<audio>` element with HTTP streaming
 - Frequency visualizations via Web Audio API (`createMediaElementSource()`)
 - 5 visualization modes: Frequency Bars, Waveform, Tunnel, Ambience Water, Ambience Water 2
+- Transparent canvas backgrounds (CSS gradient shows through)
 - Instant volume control (client-side, no latency)
 - Seek support via HTTP range requests (native formats) or stream reload (transcoded)
 
@@ -27,6 +28,7 @@
 - Server-Sent Events (SSE) for real-time state synchronization
 - FFprobe for metadata extraction
 - Minimal IPC (3 channels vs 18 previously)
+- ESLint with strict TypeScript typedef rules (explicit type annotations enforced)
 
 ## Architecture
 
@@ -204,6 +206,7 @@ npm run package      # Package with electron-builder
 - Angular 21
 - FFmpeg/FFprobe (must be installed: `brew install ffmpeg`)
 - tsx (for running TypeScript directly)
+- ESLint + @typescript-eslint (strict typedef rules)
 
 ## Architecture Benefits
 
