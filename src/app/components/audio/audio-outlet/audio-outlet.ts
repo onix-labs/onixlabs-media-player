@@ -48,6 +48,10 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
       if (state === 'playing') {
         this.resumeAudioContext();
+        // Ensure visualization is initialized when playback starts
+        if (!this.visualization && this.analyser) {
+          this.initVisualization();
+        }
         if (audio.src && audio.paused) {
           audio.play().catch(console.error);
         }
@@ -136,11 +140,11 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
     this.isInitialized = true;
 
-    // Re-initialize visualization with the new analyser
+    // Initialize visualization now that analyser is available
     if (this.visualization) {
       this.visualization.destroy();
-      this.initVisualization();
     }
+    this.initVisualization();
   }
 
   private resumeAudioContext(): void {
