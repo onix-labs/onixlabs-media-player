@@ -3,103 +3,192 @@
 ## What Works
 
 ### Audio Playback
-- MP3 files play successfully with audio output
-- Frequency bars visualizer displays correctly
-- Controls (play/pause, next/previous, seek, volume) are responsive (~150ms latency)
-- Playlist with shuffle (Fisher-Yates) and repeat modes
-- Auto-advance to next track when current ends
-
-### Infrastructure
-- Electron + Angular 21 integration
-- FFmpeg for media probing (metadata extraction)
-- IPC communication between main process and renderer
-- Custom `media://` protocol registered for serving local files
-- Autoplay policy disabled for audio
-
-## What Doesn't Work
+- Native `<audio>` element with HTTP streaming
+- Frequency visualizations via Web Audio API (`createMediaElementSource()`)
+- 5 visualization modes: Frequency Bars, Waveform, Tunnel, Ambience Water, Ambience Water 2
+- Instant volume control (client-side, no latency)
+- Seek support via HTTP range requests (native formats) or stream reload (transcoded)
 
 ### Video Playback
-Multiple approaches tried, none successful:
+- Native `<video>` element with HTTP streaming
+- Native formats (.mp4, .webm, .ogg) use HTTP range requests for seeking
+- Non-native formats (.mkv, .avi, .mov) transcoded to fragmented MP4 on-the-fly
+- Synchronized with server-side time tracking
 
-1. **MJPEG Frame Streaming** (original approach)
-   - FFmpeg outputs MJPEG frames via IPC
-   - Canvas renders each frame
-   - Issues: Flickering, jitter, A/V desync, high latency
+### Playlist & Controls
+- Server-managed playlist with shuffle (Fisher-Yates) and repeat modes
+- Play/pause, next/previous, seek, volume all responsive
+- Auto-advance to next track when current ends
+- Drag-and-drop file support
 
-2. **Native `<video>` with `media://` protocol**
-   - Register custom protocol to serve local files
-   - Use HTML5 video element directly
-   - Issue: Video doesn't load/play (format compatibility?)
-
-3. **WebM Streaming via MediaSource API** (current approach)
-   - FFmpeg transcodes to WebM (VP9 + Opus) with `-dash 1`
-   - Chunks sent via IPC to renderer
-   - MediaSource API creates blob URL, appends chunks
-   - Issue: Video still doesn't play
+### Infrastructure
+- Electron 39 + Angular 21
+- Unified HTTP media server for both audio and video
+- Server-Sent Events (SSE) for real-time state synchronization
+- FFprobe for metadata extraction
+- Minimal IPC (3 channels vs 18 previously)
 
 ## Architecture
 
+### Unified HTTP Media Server
+
 ```
-[Angular Component] → [Service] → [Preload IPC] → [Main Process] → [FFmpeg]
-                                       ↓
-[Audio/Video Data] ← [IPC Events] ← [Streaming]
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           RENDERER (Angular)                            │
+│                                                                         │
+│  ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐       │
+│  │  AudioOutlet    │   │  VideoOutlet    │   │  Playlist UI    │       │
+│  │                 │   │                 │   │                 │       │
+│  │  <audio> ──────────────────────────────────────────────────────┐    │
+│  │     │           │   │  <video> ───────────────────────────┐   │    │
+│  │     ▼           │   │                 │   │               │   │    │
+│  │  MediaElement   │   └─────────────────┘   └───────────────│───│────┘
+│  │  SourceNode     │                                         │   │     │
+│  │     │           │                                         │   │     │
+│  │     ▼           │   ┌─────────────────────────────────────│───│────┐│
+│  │  AnalyserNode ──────│─► Canvas Visualization              │   │    ││
+│  │     │           │   │   (Bars/Waveform/Tunnel/Water)      │   │    ││
+│  │     ▼           │   └─────────────────────────────────────│───│────┘│
+│  │  Destination    │                                         │   │     │
+│  │  (speakers)     │                                         │   │     │
+│  └─────────────────┘                                         │   │     │
+│                                                              │   │     │
+│  ┌───────────────────────────────────────────────────────────│───│────┐│
+│  │                    ElectronService                        │   │    ││
+│  │  • HTTP fetch() for commands ─────────────────────────────│───│──┐ ││
+│  │  • EventSource for SSE state updates ◄────────────────────│───│──│─┘│
+│  └───────────────────────────────────────────────────────────│───│──│──┘│
+└──────────────────────────────────────────────────────────────│───│──│───┘
+                                                               │   │  │
+                           HTTP: /media/stream ────────────────┘   │  │
+                           HTTP: /player/* ────────────────────────┘  │
+                           SSE:  /events ─────────────────────────────┘
+                                                               │
+┌──────────────────────────────────────────────────────────────▼──────────┐
+│                      MAIN PROCESS (Electron)                            │
+│                                                                         │
+│  ┌───────────────────────────────────────────────────────────────────┐ │
+│  │                     UnifiedMediaServer                            │ │
+│  │                                                                   │ │
+│  │  HTTP Endpoints:                                                  │ │
+│  │  ├── GET  /media/stream?path=...&t=...  (stream media)           │ │
+│  │  ├── GET  /media/info?path=...          (ffprobe metadata)       │ │
+│  │  ├── POST /player/play|pause|stop|seek  (playback control)       │ │
+│  │  ├── GET  /playlist                     (get playlist state)     │ │
+│  │  ├── POST /playlist/add|next|previous   (playlist control)       │ │
+│  │  └── GET  /events                       (SSE stream)             │ │
+│  │                                                                   │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │ │
+│  │  │ SSEManager  │  │ Playlist    │  │ Playback    │               │ │
+│  │  │ (broadcast) │  │ Manager     │  │ State       │               │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
+│  └───────────────────────────────────────────────────────────────────┘ │
+│                                                                         │
+│  IPC (minimal - 3 channels):                                           │
+│  ├── dialog:openFile      (native file picker)                         │
+│  ├── app:getServerPort    (get HTTP server port)                       │
+│  └── webUtils:getPathForFile (drag-and-drop paths)                     │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Audio Visualization Pipeline
+
+```
+<audio src="http://.../media/stream?path=...">
+    │
+    ▼
+AudioContext.createMediaElementSource(audioElement)
+    │
+    ▼
+MediaElementAudioSourceNode
+    │
+    ▼
+AnalyserNode (fftSize=256, smoothing=0.85)
+    │
+    ├──► getByteFrequencyData() ──► Visualization Canvas
+    │
+    ▼
+AudioContext.destination (speakers)
 ```
 
 ### Key Files
 
 **Electron Layer:**
-- `electron/main.ts` - Main process, IPC handlers, media:// protocol
-- `electron/preload.ts` - IPC bridge (contextBridge)
-- `electron/ffmpeg-manager.ts` - FFmpeg process spawning, streaming
+- `electron/main.ts` - App initialization, minimal IPC handlers
+- `electron/preload.ts` - IPC bridge (3 methods only)
+- `electron/unified-media-server.ts` - HTTP API, SSE, playlist management
 
 **Angular Services:**
-- `src/app/services/electron.service.ts` - Wraps IPC, exposes Observables
-- `src/app/services/playlist.service.ts` - Playlist state, shuffle, repeat
-- `src/app/services/media-player.service.ts` - Playback orchestration
+- `src/app/services/electron.service.ts` - HTTP client + SSE connection
+- `src/app/services/media-player.service.ts` - Playback orchestration (delegates to HTTP)
 
 **Angular Components:**
-- `src/app/components/audio/audio-outlet/` - Audio visualizer (Web Audio API)
-- `src/app/components/video/video-outlet/` - Video renderer (currently MediaSource)
+- `src/app/components/audio/audio-outlet/` - Audio + Web Audio API visualization
+- `src/app/components/video/video-outlet/` - Video playback
 - `src/app/components/playlist/` - Playlist UI panel
 - `src/app/components/layout/layout-controls/` - Playback controls
-- `src/app/components/layout/layout-outlet/` - Main layout
 
-## Current FFmpeg Commands
+**Visualizations:**
+- `src/app/components/audio/audio-outlet/visualizations/` - Visualization implementations
+  - `bars.ts` - Frequency bars
+  - `waveform.ts` - Waveform display
+  - `tunnel.ts` - 3D tunnel effect
+  - `water.ts` - Ambience Water 1
+  - `water2.ts` - Ambience Water 2
 
-**Audio:**
+## HTTP API Reference
+
+### Media Streaming
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/media/stream?path={path}&t={time}` | Stream media file |
+| GET | `/media/info?path={path}` | Get metadata via ffprobe |
+
+### Playback Control
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/player/play` | Start/resume playback |
+| POST | `/player/pause` | Pause playback |
+| POST | `/player/stop` | Stop and reset |
+| POST | `/player/seek` | Body: `{ time: number }` |
+| POST | `/player/volume` | Body: `{ volume: number, muted?: boolean }` |
+| GET | `/player/state` | Get current state |
+
+### Playlist
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/playlist` | Get full playlist state |
+| POST | `/playlist/add` | Body: `{ paths: string[] }` |
+| DELETE | `/playlist/remove/{id}` | Remove item |
+| DELETE | `/playlist/clear` | Clear all |
+| POST | `/playlist/select/{id}` | Select and play |
+| POST | `/playlist/next` | Next track |
+| POST | `/playlist/previous` | Previous track |
+| POST | `/playlist/shuffle` | Body: `{ enabled: boolean }` |
+| POST | `/playlist/repeat` | Body: `{ enabled: boolean }` |
+
+### Server-Sent Events
+| Endpoint | Events |
+|----------|--------|
+| GET `/events` | `playback:state`, `playback:time`, `playback:loaded`, `playback:ended`, `playback:volume`, `playlist:updated`, `playlist:selection`, `playlist:mode`, `heartbeat` |
+
+## FFmpeg Commands
+
+**Video Transcoding (non-native formats):**
 ```bash
-ffmpeg -re -ss <time> -i <file> -f s16le -acodec pcm_s16le -ar 44100 -ac 2 -af volume=<vol> pipe:1
+ffmpeg -ss <time> -i <file> \
+  -c:v libx264 -preset veryfast -tune zerolatency \
+  -profile:v high -level 4.1 -pix_fmt yuv420p -crf 23 \
+  -c:a aac -b:a 192k -ar 48000 \
+  -movflags frag_keyframe+empty_moov+default_base_moof \
+  -f mp4 pipe:1
 ```
 
-**Video (current - not working):**
+**Metadata Extraction:**
 ```bash
-ffmpeg -re -ss <time> -i <file> -c:v libvpx-vp9 -c:a libopus -b:v 2M -b:a 128k -f webm -dash 1 pipe:1
+ffprobe -v quiet -print_format json -show_format -show_streams <file>
 ```
-
-## Ideas to Try Next
-
-1. **Transcode to temp file first**
-   - FFmpeg writes complete WebM/MP4 to temp file
-   - Serve via media:// protocol after transcoding completes
-   - Downside: Delay before playback starts
-
-2. **Use fragmented MP4 (fMP4) instead of WebM**
-   - Better MediaSource compatibility
-   - `ffmpeg -movflags frag_keyframe+empty_moov+default_base_moof`
-
-3. **Local HTTP server**
-   - Run express/http server in main process
-   - Serve files or FFmpeg stream via HTTP
-   - Video element uses http://localhost:PORT/file URL
-
-4. **Check Chromium codec support**
-   - Verify VP9/Opus codecs are available
-   - Try H.264/AAC in MP4 container instead
-
-5. **Debug MediaSource**
-   - Add logging to see if chunks are being appended
-   - Check for errors in sourceBuffer
-   - Verify MIME type matches actual stream
 
 ## Commands
 
@@ -115,3 +204,12 @@ npm run package      # Package with electron-builder
 - Angular 21
 - FFmpeg/FFprobe (must be installed: `brew install ffmpeg`)
 - tsx (for running TypeScript directly)
+
+## Architecture Benefits
+
+1. **Unified playback** - Audio and video use same HTTP streaming approach
+2. **Minimal IPC** - Only 3 channels vs 18 previously
+3. **Server as source of truth** - Playlist and playback state managed centrally
+4. **Instant volume** - Client-side control, no FFmpeg restart needed
+5. **Native browser decoding** - Leverages Chromium's optimized media stack
+6. **Visualization support** - `createMediaElementSource()` enables Web Audio API analysis

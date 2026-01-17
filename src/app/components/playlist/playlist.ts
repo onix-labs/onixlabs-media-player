@@ -1,7 +1,6 @@
 import {Component, inject, signal, computed} from '@angular/core';
 import {MediaPlayerService} from '../../services/media-player.service';
-import {PlaylistItem} from '../../services/playlist.service';
-import {ElectronService} from '../../services/electron.service';
+import {ElectronService, PlaylistItem} from '../../services/electron.service';
 
 // Supported media extensions
 const MEDIA_EXTENSIONS = new Set([
@@ -105,32 +104,14 @@ export class Playlist {
   }
 
   private async addFilesToPlaylist(filePaths: string[]): Promise<void> {
-    const items: Omit<PlaylistItem, 'id'>[] = [];
+    const wasEmpty = this.count() === 0;
 
-    for (const filePath of filePaths) {
-      try {
-        const info = await this.electron.loadMedia(filePath);
-        items.push({
-          filePath,
-          title: info.title,
-          artist: info.artist,
-          album: info.album,
-          duration: info.duration,
-          type: info.type
-        });
-      } catch (e) {
-        console.error(`Failed to load ${filePath}:`, e);
-      }
-    }
+    // Server will probe each file for metadata
+    await this.mediaPlayer.addFiles(filePaths);
 
-    if (items.length > 0) {
-      const wasEmpty = this.count() === 0;
-      this.mediaPlayer.addItems(items);
-
-      // Auto-play first item if playlist was empty
-      if (wasEmpty) {
-        await this.mediaPlayer.play();
-      }
+    // Auto-play first item if playlist was empty
+    if (wasEmpty && filePaths.length > 0) {
+      await this.mediaPlayer.play();
     }
   }
 }

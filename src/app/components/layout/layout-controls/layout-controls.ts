@@ -25,12 +25,12 @@ export class LayoutControls {
     await this.mediaPlayer.eject();
   }
 
-  onShuffle(): void {
-    this.mediaPlayer.toggleShuffle();
+  async onShuffle(): Promise<void> {
+    await this.mediaPlayer.toggleShuffle();
   }
 
-  onRepeat(): void {
-    this.mediaPlayer.toggleRepeat();
+  async onRepeat(): Promise<void> {
+    await this.mediaPlayer.toggleRepeat();
   }
 
   async onBackward(): Promise<void> {

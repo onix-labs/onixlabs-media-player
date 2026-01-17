@@ -14,38 +14,40 @@ export interface MediaInfo {
   height?: number;
 }
 
-export interface AudioChunk {
-  data: ArrayBuffer | number[];
-  timestamp: number;
+export interface PlaylistItem {
+  id: string;
+  filePath: string;
+  title: string;
+  artist?: string;
+  album?: string;
+  duration: number;
+  type: 'audio' | 'video';
+  width?: number;
+  height?: number;
 }
 
-export interface VideoFrame {
-  data: string;
-  timestamp: number;
-  width: number;
-  height: number;
+export interface PlaylistState {
+  items: PlaylistItem[];
+  currentIndex: number;
+  shuffleEnabled: boolean;
+  repeatEnabled: boolean;
 }
 
+export interface PlaybackState {
+  state: 'idle' | 'loading' | 'playing' | 'paused' | 'stopped' | 'error';
+  currentTime: number;
+  duration: number;
+  volume: number;
+  muted: boolean;
+  currentMedia: MediaInfo | null;
+  errorMessage: string | null;
+}
+
+// Simplified preload API - only IPC-required operations
 export interface MediaPlayerAPI {
   openFileDialog: (options: OpenDialogOptions) => Promise<string[]>;
-  loadMedia: (filePath: string) => Promise<MediaInfo>;
-  getMediaUrl: (filePath: string) => Promise<string>;
-  getVideoUrl: (filePath: string) => Promise<string>;
   getPathForFile: (file: File) => string;
-  play: () => Promise<void>;
-  pause: () => Promise<void>;
-  resume: () => Promise<void>;
-  seek: (timeSeconds: number) => Promise<void>;
-  setVolume: (volume: number) => Promise<void>;
-  stop: () => Promise<void>;
-  onAudioData: (callback: (data: AudioChunk) => void) => () => void;
-  onVideoFrame: (callback: (frame: VideoFrame) => void) => () => void;
-  onVideoChunk: (callback: (chunk: number[]) => void) => () => void;
-  onTimeUpdate: (callback: (time: number) => void) => () => void;
-  onDurationChange: (callback: (duration: number) => void) => () => void;
-  onMediaEnd: (callback: () => void) => () => void;
-  onError: (callback: (error: string) => void) => () => void;
-  onStateChange: (callback: (state: string) => void) => () => void;
+  getServerPort: () => Promise<number>;
 }
 
 declare global {
