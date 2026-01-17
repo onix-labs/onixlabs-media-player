@@ -1,6 +1,9 @@
-import {Canvas2DVisualization, VisualizationConfig} from './visualization';
+import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
 export class Water2Visualization extends Canvas2DVisualization {
+  readonly name: string = 'Ambience Water 2';
+  readonly category: VisualizationCategory = 'ambience';
+
   private readonly ROTATION_SPEED: number = 0.009;
   private readonly FADE_RATE: number = 0.008;
   private readonly BACKGROUND_DARKEN: number = 0.7; // Darken background rings

@@ -1,6 +1,9 @@
-import {Canvas2DVisualization, VisualizationConfig} from './visualization';
+import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
 export class WaterVisualization extends Canvas2DVisualization {
+  readonly name: string = 'Ambience Water';
+  readonly category: VisualizationCategory = 'ambience';
+
   private readonly ZOOM_SCALE: number = 1.015;        // Scale factor per frame for tunnel effect
   private readonly ROTATION_SPEED: number = 0.009;    // Rotation speed for waveform
   private readonly FADE_RATE: number = 0.02;

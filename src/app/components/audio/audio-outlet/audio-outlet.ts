@@ -25,18 +25,11 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
   private visualization: Visualization | null = null;
   private readonly visualizationType: ReturnType<typeof signal<VisualizationType>> = signal<VisualizationType>('bars');
+  private readonly visualizationNameSignal: ReturnType<typeof signal<string>> = signal<string>('Frequency Bars');
   private currentFilePath: string | null = null;
 
-  private readonly VISUALIZATION_NAMES: Record<VisualizationType, string> = {
-    bars: 'Frequency Bars',
-    waveform: 'Waveform',
-    tunnel: 'Tunnel',
-    water: 'Ambience Water',
-    water2: 'Ambience Water 2'
-  };
-
   readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed(() => this.mediaPlayer.currentTrack());
-  readonly visualizationName: ReturnType<typeof computed<string>> = computed(() => this.VISUALIZATION_NAMES[this.visualizationType()]);
+  readonly visualizationName: ReturnType<typeof computed<string>> = computed(() => this.visualizationNameSignal());
 
   constructor() {
     // React to track changes - load new audio source
@@ -193,6 +186,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
         canvas: this.canvasRef.nativeElement,
         analyser: this.analyser
       });
+      this.visualizationNameSignal.set(this.visualization.name);
 
       const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
@@ -206,6 +200,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       canvas: this.canvasRef.nativeElement,
       analyser: this.analyser
     });
+    this.visualizationNameSignal.set(this.visualization.name);
 
     const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));

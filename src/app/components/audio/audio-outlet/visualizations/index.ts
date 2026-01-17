@@ -1,5 +1,5 @@
 export {Visualization, Canvas2DVisualization, WebGLVisualization} from './visualization';
-export type {VisualizationConfig} from './visualization';
+export type {VisualizationConfig, VisualizationCategory} from './visualization';
 export {BarsVisualization} from './bars-visualization';
 export {WaveformVisualization} from './waveform-visualization';
 export {TunnelVisualization} from './tunnel-visualization';
@@ -15,21 +15,21 @@ import {Water2Visualization} from './water2-visualization';
 
 export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'water' | 'water2';
 
+// Visualization constructors indexed by type
+const VISUALIZATION_CONSTRUCTORS: Record<VisualizationType, new (config: VisualizationConfig) => Visualization> = {
+  bars: BarsVisualization,
+  waveform: WaveformVisualization,
+  tunnel: TunnelVisualization,
+  water: WaterVisualization,
+  water2: Water2Visualization,
+};
+
 export function createVisualization(type: VisualizationType, config: VisualizationConfig): Visualization {
-  switch (type) {
-    case 'bars':
-      return new BarsVisualization(config);
-    case 'waveform':
-      return new WaveformVisualization(config);
-    case 'tunnel':
-      return new TunnelVisualization(config);
-    case 'water':
-      return new WaterVisualization(config);
-    case 'water2':
-      return new Water2Visualization(config);
-    default:
-      throw new Error(`Unknown visualization type: ${type}`);
+  const Constructor: new (config: VisualizationConfig) => Visualization = VISUALIZATION_CONSTRUCTORS[type];
+  if (!Constructor) {
+    throw new Error(`Unknown visualization type: ${type}`);
   }
+  return new Constructor(config);
 }
 
 export const VISUALIZATION_TYPES: VisualizationType[] = ['bars', 'waveform', 'tunnel', 'water', 'water2'];

@@ -1,6 +1,9 @@
-import {Canvas2DVisualization, VisualizationConfig} from './visualization';
+import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
 export class WaveformVisualization extends Canvas2DVisualization {
+  readonly name: string = 'Waveform';
+  readonly category: VisualizationCategory = 'waveform';
+
   private readonly FADE_RATE: number = 0.03; // Very slow fade for LCD ghosting effect
   private readonly LINE_WIDTH: number = 2;
   private readonly GLOW_BLUR: number = 15;

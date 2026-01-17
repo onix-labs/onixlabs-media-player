@@ -1,6 +1,9 @@
-import {Canvas2DVisualization, VisualizationConfig} from './visualization';
+import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
 export class TunnelVisualization extends Canvas2DVisualization {
+  readonly name: string = 'Tunnel';
+  readonly category: VisualizationCategory = 'waveform';
+
   private readonly FADE_RATE: number = 0.05;
   private readonly ZOOM_SCALE: number = 1.02; // Scale factor per frame for tunnel effect
   private readonly LINE_WIDTH: number = 2;
