@@ -12,31 +12,31 @@ export class ElectronService implements OnDestroy {
   private readonly MAX_RECONNECT_DELAY: number = 30000;
 
   // Signals for state (updated via SSE)
-  readonly serverUrl: ReturnType<typeof signal<string>> = signal<string>('');
-  readonly playbackState: ReturnType<typeof signal<string>> = signal<string>('idle');
-  readonly currentTime: ReturnType<typeof signal<number>> = signal<number>(0);
-  readonly duration: ReturnType<typeof signal<number>> = signal<number>(0);
-  readonly volume: ReturnType<typeof signal<number>> = signal<number>(1);
-  readonly muted: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-  readonly currentMedia: ReturnType<typeof signal<MediaInfo | null>> = signal<MediaInfo | null>(null);
-  readonly errorMessage: ReturnType<typeof signal<string | null>> = signal<string | null>(null);
-  readonly playlist: ReturnType<typeof signal<PlaylistState>> = signal<PlaylistState>({
+  public readonly serverUrl: ReturnType<typeof signal<string>> = signal<string>('');
+  public readonly playbackState: ReturnType<typeof signal<string>> = signal<string>('idle');
+  public readonly currentTime: ReturnType<typeof signal<number>> = signal<number>(0);
+  public readonly duration: ReturnType<typeof signal<number>> = signal<number>(0);
+  public readonly volume: ReturnType<typeof signal<number>> = signal<number>(1);
+  public readonly muted: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+  public readonly currentMedia: ReturnType<typeof signal<MediaInfo | null>> = signal<MediaInfo | null>(null);
+  public readonly errorMessage: ReturnType<typeof signal<string | null>> = signal<string | null>(null);
+  public readonly playlist: ReturnType<typeof signal<PlaylistState>> = signal<PlaylistState>({
     items: [],
     currentIndex: -1,
     shuffleEnabled: false,
     repeatEnabled: false,
   });
-  readonly mediaEnded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+  public readonly mediaEnded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
-  constructor(private ngZone: NgZone) {
+  constructor(private readonly ngZone: NgZone) {
     this.initialize();
   }
 
-  get isElectron(): boolean {
+  public get isElectron(): boolean {
     return !!window.mediaPlayer;
   }
 
-  private get api() {
+  private get api(): typeof window.mediaPlayer {
     return window.mediaPlayer;
   }
 
@@ -57,84 +57,84 @@ export class ElectronService implements OnDestroy {
 
     this.eventSource = new EventSource(`${this.serverUrl()}/events`);
 
-    this.eventSource.onopen = () => {
+    this.eventSource.onopen = (): void => {
       console.log('SSE connection established');
       this.reconnectAttempts = 0;
     };
 
-    this.eventSource.onerror = () => {
+    this.eventSource.onerror = (): void => {
       console.error('SSE connection error');
       this.eventSource?.close();
 
       // Exponential backoff reconnection
       const delay: number = Math.min(1000 * Math.pow(2, this.reconnectAttempts), this.MAX_RECONNECT_DELAY);
       this.reconnectAttempts++;
-      setTimeout(() => this.connectSSE(), delay);
+      setTimeout((): void => { this.connectSSE(); }, delay);
     };
 
     // Playback state events
-    this.eventSource.addEventListener('playback:state', (e: MessageEvent) => {
-      this.ngZone.run(() => {
+    this.eventSource.addEventListener('playback:state', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
         const data: { state: string; errorMessage?: string } = JSON.parse(e.data);
         this.playbackState.set(data.state);
         this.errorMessage.set(data.errorMessage || null);
       });
     });
 
-    this.eventSource.addEventListener('playback:time', (e: MessageEvent) => {
-      this.ngZone.run(() => {
+    this.eventSource.addEventListener('playback:time', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
         const data: { currentTime: number; duration: number } = JSON.parse(e.data);
         this.currentTime.set(data.currentTime);
         this.duration.set(data.duration);
       });
     });
 
-    this.eventSource.addEventListener('playback:loaded', (e: MessageEvent) => {
-      this.ngZone.run(() => {
+    this.eventSource.addEventListener('playback:loaded', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
         const data: MediaInfo = JSON.parse(e.data);
         this.currentMedia.set(data);
         this.duration.set(data.duration);
       });
     });
 
-    this.eventSource.addEventListener('playback:volume', (e: MessageEvent) => {
-      this.ngZone.run(() => {
+    this.eventSource.addEventListener('playback:volume', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
         const data: { volume: number; muted: boolean } = JSON.parse(e.data);
         this.volume.set(data.volume);
         this.muted.set(data.muted);
       });
     });
 
-    this.eventSource.addEventListener('playback:ended', () => {
-      this.ngZone.run(() => {
+    this.eventSource.addEventListener('playback:ended', (): void => {
+      this.ngZone.run((): void => {
         // Trigger media ended signal briefly
         this.mediaEnded.set(true);
-        setTimeout(() => this.mediaEnded.set(false), 100);
+        setTimeout((): void => { this.mediaEnded.set(false); }, 100);
       });
     });
 
     // Playlist events
-    this.eventSource.addEventListener('playlist:updated', (e: MessageEvent) => {
-      this.ngZone.run(() => {
+    this.eventSource.addEventListener('playlist:updated', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
         const data: PlaylistState = JSON.parse(e.data);
         this.playlist.set(data);
       });
     });
 
-    this.eventSource.addEventListener('playlist:selection', (e: MessageEvent) => {
-      this.ngZone.run(() => {
+    this.eventSource.addEventListener('playlist:selection', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
         const data: { currentIndex: number; currentItem?: PlaylistItem } = JSON.parse(e.data);
-        this.playlist.update((p: PlaylistState) => ({...p, currentIndex: data.currentIndex}));
+        this.playlist.update((p: PlaylistState): PlaylistState => ({...p, currentIndex: data.currentIndex}));
         if (data.currentItem) {
           this.currentMedia.set(data.currentItem);
         }
       });
     });
 
-    this.eventSource.addEventListener('playlist:mode', (e: MessageEvent) => {
-      this.ngZone.run(() => {
+    this.eventSource.addEventListener('playlist:mode', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
         const data: { shuffleEnabled: boolean; repeatEnabled: boolean } = JSON.parse(e.data);
-        this.playlist.update((p: PlaylistState) => ({
+        this.playlist.update((p: PlaylistState): PlaylistState => ({
           ...p,
           shuffleEnabled: data.shuffleEnabled,
           repeatEnabled: data.repeatEnabled,
@@ -147,7 +147,7 @@ export class ElectronService implements OnDestroy {
   // IPC Methods (file operations only)
   // ============================================================================
 
-  async openFileDialog(multiSelect: boolean = true): Promise<string[]> {
+  public async openFileDialog(multiSelect: boolean = true): Promise<string[]> {
     if (!this.isElectron || !this.api) return [];
 
     return this.api.openFileDialog({
@@ -160,7 +160,7 @@ export class ElectronService implements OnDestroy {
     });
   }
 
-  getPathForFile(file: File): string {
+  public getPathForFile(file: File): string {
     if (!this.isElectron || !this.api) {
       throw new Error('Not running in Electron');
     }
@@ -171,30 +171,30 @@ export class ElectronService implements OnDestroy {
   // HTTP API Methods - Playback Control
   // ============================================================================
 
-  async play(): Promise<void> {
+  public async play(): Promise<void> {
     await this.post('/player/play');
   }
 
-  async pause(): Promise<void> {
+  public async pause(): Promise<void> {
     await this.post('/player/pause');
   }
 
-  async stop(): Promise<void> {
+  public async stop(): Promise<void> {
     await this.post('/player/stop');
   }
 
-  async seek(timeSeconds: number): Promise<void> {
+  public async seek(timeSeconds: number): Promise<void> {
     await this.post('/player/seek', {time: timeSeconds});
   }
 
-  async setVolume(volume: number, muted?: boolean): Promise<void> {
+  public async setVolume(volume: number, muted?: boolean): Promise<void> {
     const body: {volume?: number; muted?: boolean} = {};
     if (typeof volume === 'number') body.volume = volume;
     if (typeof muted === 'boolean') body.muted = muted;
     await this.post('/player/volume', body);
   }
 
-  async getPlayerState(): Promise<unknown> {
+  public async getPlayerState(): Promise<unknown> {
     return this.get('/player/state');
   }
 
@@ -202,39 +202,39 @@ export class ElectronService implements OnDestroy {
   // HTTP API Methods - Playlist
   // ============================================================================
 
-  async getPlaylist(): Promise<PlaylistState> {
+  public async getPlaylist(): Promise<PlaylistState> {
     return this.get('/playlist');
   }
 
-  async addToPlaylist(paths: string[]): Promise<{added: PlaylistItem[]}> {
+  public async addToPlaylist(paths: string[]): Promise<{added: PlaylistItem[]}> {
     return this.post('/playlist/add', {paths});
   }
 
-  async removeFromPlaylist(id: string): Promise<void> {
+  public async removeFromPlaylist(id: string): Promise<void> {
     await this.delete(`/playlist/remove/${id}`);
   }
 
-  async clearPlaylist(): Promise<void> {
+  public async clearPlaylist(): Promise<void> {
     await this.delete('/playlist/clear');
   }
 
-  async selectTrack(id: string): Promise<void> {
+  public async selectTrack(id: string): Promise<void> {
     await this.post(`/playlist/select/${id}`);
   }
 
-  async nextTrack(): Promise<void> {
+  public async nextTrack(): Promise<void> {
     await this.post('/playlist/next');
   }
 
-  async previousTrack(): Promise<void> {
+  public async previousTrack(): Promise<void> {
     await this.post('/playlist/previous');
   }
 
-  async setShuffle(enabled: boolean): Promise<void> {
+  public async setShuffle(enabled: boolean): Promise<void> {
     await this.post('/playlist/shuffle', {enabled});
   }
 
-  async setRepeat(enabled: boolean): Promise<void> {
+  public async setRepeat(enabled: boolean): Promise<void> {
     await this.post('/playlist/repeat', {enabled});
   }
 
@@ -242,11 +242,11 @@ export class ElectronService implements OnDestroy {
   // HTTP API Methods - Media Info
   // ============================================================================
 
-  async getMediaInfo(filePath: string): Promise<MediaInfo> {
+  public async getMediaInfo(filePath: string): Promise<MediaInfo> {
     return this.get(`/media/info?path=${encodeURIComponent(filePath)}`);
   }
 
-  getStreamUrl(filePath: string, seekTime?: number): string {
+  public getStreamUrl(filePath: string, seekTime?: number): string {
     let url: string = `${this.serverUrl()}/media/stream?path=${encodeURIComponent(filePath)}`;
     if (seekTime !== undefined && seekTime > 0) {
       url += `&t=${seekTime}`;
@@ -288,7 +288,7 @@ export class ElectronService implements OnDestroy {
     return response.json();
   }
 
-  ngOnDestroy(): void {
+  public ngOnDestroy(): void {
     this.eventSource?.close();
   }
 }

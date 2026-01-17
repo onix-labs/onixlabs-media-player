@@ -1,14 +1,14 @@
 import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
 export class TunnelVisualization extends Canvas2DVisualization {
-  readonly name: string = 'Tunnel';
-  readonly category: VisualizationCategory = 'waveform';
+  public readonly name: string = 'Tunnel';
+  public readonly category: VisualizationCategory = 'waveform';
 
   private readonly FADE_RATE: number = 0.05;
   private readonly ZOOM_SCALE: number = 1.02; // Scale factor per frame for tunnel effect
   private readonly LINE_WIDTH: number = 2;
   private readonly GLOW_BLUR: number = 12;
-  private dataArray: Uint8Array<ArrayBuffer>;
+  private readonly dataArray: Uint8Array<ArrayBuffer>;
 
   constructor(config: VisualizationConfig) {
     super(config);
@@ -20,8 +20,11 @@ export class TunnelVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
-  draw(): void {
-    const {ctx, width, height, dataArray} = this;
+  public draw(): void {
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const height: number = this.height;
+    const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
 
     // Apply zoom effect with fade (handled via globalAlpha)
     this.applyZoomEffect();
@@ -43,7 +46,9 @@ export class TunnelVisualization extends Canvas2DVisualization {
   }
 
   private applyZoomEffect(): void {
-    const {ctx, width, height} = this;
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const height: number = this.height;
 
     // Create offscreen canvas to hold current content
     const tempCanvas: HTMLCanvasElement = document.createElement('canvas');
@@ -68,7 +73,9 @@ export class TunnelVisualization extends Canvas2DVisualization {
   }
 
   private drawWaveform(centerY: number, amplitude: number, color: string, glowColor: string): void {
-    const {ctx, width, dataArray} = this;
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
     const sliceWidth: number = width / dataArray.length;
 
     // Glow layer

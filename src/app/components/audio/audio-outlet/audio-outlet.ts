@@ -11,10 +11,10 @@ import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYP
   styleUrl: './audio-outlet.scss'
 })
 export class AudioOutlet implements OnInit, OnDestroy {
-  @ViewChild('canvas', {static: true}) canvasRef!: ElementRef<HTMLCanvasElement>;
-  @ViewChild('audioElement', {static: true}) audioRef!: ElementRef<HTMLAudioElement>;
+  @ViewChild('canvas', {static: true}) public canvasRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('audioElement', {static: true}) public audioRef!: ElementRef<HTMLAudioElement>;
 
-  readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
+  public readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
 
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
@@ -29,20 +29,20 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private readonly visualizationNameSignal: ReturnType<typeof signal<string>> = signal<string>('Frequency Bars');
   private currentFilePath: string | null = null;
 
-  readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed(() => this.mediaPlayer.currentTrack());
-  readonly visualizationName: ReturnType<typeof computed<string>> = computed(() => this.visualizationNameSignal());
+  public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
+  public readonly visualizationName: ReturnType<typeof computed<string>> = computed((): string => this.visualizationNameSignal());
 
   constructor() {
     // React to track changes - load new audio source
-    effect(() => {
+    effect((): void => {
       const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
       if (track?.type === 'audio' && track.filePath !== this.currentFilePath) {
-        this.loadAudioSource(track.filePath);
+        void this.loadAudioSource(track.filePath);
       }
     });
 
     // React to playback state changes
-    effect(() => {
+    effect((): void => {
       const state: string = this.mediaPlayer.playbackState();
       const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
       if (!audio) return;
@@ -65,7 +65,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     });
 
     // React to seek events
-    effect(() => {
+    effect((): void => {
       const time: number = this.mediaPlayer.currentTime();
       const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
       if (!audio || !audio.src) return;
@@ -78,7 +78,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
     // React to volume changes - use GainNode for volume control
     // This keeps the analyser receiving full signal for visualization
-    effect(() => {
+    effect((): void => {
       const volume: number = this.mediaPlayer.volume();
       if (this.gainNode) {
         this.gainNode.gain.value = volume;
@@ -86,7 +86,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     });
 
     // React to mute changes - use GainNode for muting
-    effect(() => {
+    effect((): void => {
       const muted: boolean = this.mediaPlayer.muted();
       if (this.gainNode) {
         this.gainNode.gain.value = muted ? 0 : this.mediaPlayer.volume();
@@ -94,7 +94,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     });
   }
 
-  ngOnInit(): void {
+  public ngOnInit(): void {
     this.setupUserGestureHandler();
     this.initVisualization();
     this.startAnimationLoop();
@@ -160,7 +160,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
   }
 
   private setupUserGestureHandler(): void {
-    const initOnGesture: () => void = () => {
+    const initOnGesture: () => void = (): void => {
       if (!this.isInitialized) {
         this.initAudioContext();
       }
@@ -172,19 +172,19 @@ export class AudioOutlet implements OnInit, OnDestroy {
     document.addEventListener('keydown', initOnGesture);
   }
 
-  nextVisualization(): void {
+  public nextVisualization(): void {
     const currentIndex: number = VISUALIZATION_TYPES.indexOf(this.visualizationType());
     const nextIndex: number = (currentIndex + 1) % VISUALIZATION_TYPES.length;
     this.setVisualization(VISUALIZATION_TYPES[nextIndex]);
   }
 
-  previousVisualization(): void {
+  public previousVisualization(): void {
     const currentIndex: number = VISUALIZATION_TYPES.indexOf(this.visualizationType());
     const prevIndex: number = (currentIndex - 1 + VISUALIZATION_TYPES.length) % VISUALIZATION_TYPES.length;
     this.setVisualization(VISUALIZATION_TYPES[prevIndex]);
   }
 
-  setVisualization(type: VisualizationType): void {
+  public setVisualization(type: VisualizationType): void {
     this.visualizationType.set(type);
 
     if (this.visualization) {
@@ -219,7 +219,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private startAnimationLoop(): void {
     const canvas: HTMLCanvasElement = this.canvasRef.nativeElement;
 
-    const draw: () => void = () => {
+    const draw: () => void = (): void => {
       this.animationId = requestAnimationFrame(draw);
 
       const rect: DOMRect = canvas.getBoundingClientRect();
@@ -236,7 +236,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     draw();
   }
 
-  ngOnDestroy(): void {
+  public ngOnDestroy(): void {
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
     }

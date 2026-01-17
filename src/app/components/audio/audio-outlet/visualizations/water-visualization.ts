@@ -1,8 +1,8 @@
 import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
 export class WaterVisualization extends Canvas2DVisualization {
-  readonly name: string = 'Pulsar';
-  readonly category: VisualizationCategory = 'ambience';
+  public readonly name: string = 'Pulsar';
+  public readonly category: VisualizationCategory = 'ambience';
 
   private readonly ROTATION_SPEED: number = 0.009;
   private readonly WAVEFORM_ROTATION_SPEED: number = 0.005;  // Slower counter-clockwise rotation
@@ -19,7 +19,7 @@ export class WaterVisualization extends Canvas2DVisualization {
     {s: 75, l: 50}   // Vibrant (used for center circle)
   ];
 
-  private dataArray: Uint8Array<ArrayBuffer>;
+  private readonly dataArray: Uint8Array<ArrayBuffer>;
   private trailCanvas: HTMLCanvasElement | null = null;
   private trailCtx: CanvasRenderingContext2D | null = null;
 
@@ -31,7 +31,7 @@ export class WaterVisualization extends Canvas2DVisualization {
 
   // Get current gradient colors based on hue offset
   private getGradientColors(): Array<{r: number; g: number; b: number}> {
-    return this.GRADIENT_LEVELS.map(level => {
+    return this.GRADIENT_LEVELS.map((level: {s: number; l: number}): {r: number; g: number; b: number} => {
       return this.hslToRgb(this.hueOffset, level.s, level.l);
     });
   }
@@ -79,8 +79,10 @@ export class WaterVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
-  draw(): void {
-    const {ctx, width, height} = this;
+  public draw(): void {
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const height: number = this.height;
     const centerX: number = width / 2;
     const centerY: number = height / 2;
 
@@ -135,7 +137,9 @@ export class WaterVisualization extends Canvas2DVisualization {
   }
 
   private drawMirroredWaveform(ctx: CanvasRenderingContext2D, centerX: number, centerY: number): void {
-    const {width, height, dataArray} = this;
+    const width: number = this.width;
+    const height: number = this.height;
+    const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
     const gradientColors: Array<{r: number; g: number; b: number}> = this.getGradientColors();
     const numColors: number = gradientColors.length;
 
@@ -236,7 +240,8 @@ export class WaterVisualization extends Canvas2DVisualization {
     baseRadius: number,
     color: {r: number; g: number; b: number}
   ): void {
-    const {dataArray, height} = this;
+    const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
+    const height: number = this.height;
 
     // Sample audio data around the circle
     const points: Array<{x: number; y: number}> = [];
