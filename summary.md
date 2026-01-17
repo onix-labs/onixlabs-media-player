@@ -30,7 +30,11 @@
 - Server-Sent Events (SSE) for real-time state synchronization
 - FFprobe for metadata extraction
 - Minimal IPC (3 channels vs 18 previously)
-- ESLint with strict TypeScript typedef rules (explicit type annotations enforced)
+- ESLint with strict TypeScript rules:
+  - `typedef` - explicit type annotations on all variables/parameters
+  - `explicit-function-return-type` - return types on all functions
+  - `explicit-member-accessibility` - public/private on all class members
+  - `prefer-readonly` - readonly on never-reassigned members
 
 ## Architecture
 
@@ -212,7 +216,8 @@ npm run package      # Package with electron-builder
 - Angular 21
 - FFmpeg/FFprobe (must be installed: `brew install ffmpeg`)
 - tsx (for running TypeScript directly)
-- ESLint + @typescript-eslint (strict typedef rules)
+- ESLint + @typescript-eslint (strict type safety rules)
+- electron/tsconfig.json uses `allowImportingTsExtensions` + `noEmit` for tsx compatibility
 
 ## Architecture Benefits
 

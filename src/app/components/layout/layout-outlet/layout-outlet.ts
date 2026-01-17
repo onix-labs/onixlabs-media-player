@@ -13,22 +13,22 @@ import type {PlaylistItem} from '../../../types/electron';
   styleUrl: './layout-outlet.scss',
 })
 export class LayoutOutlet {
-  @ViewChild(Playlist) playlistComponent?: Playlist;
+  @ViewChild(Playlist) public playlistComponent?: Playlist;
 
   private readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
 
-  readonly mediaType: ReturnType<typeof computed<'audio' | 'video' | null>> = computed(() => this.mediaPlayer.currentMediaType());
-  readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed(() => this.mediaPlayer.currentTrack());
-  readonly isAudio: ReturnType<typeof computed<boolean>> = computed(() => this.mediaType() === 'audio');
-  readonly isVideo: ReturnType<typeof computed<boolean>> = computed(() => this.mediaType() === 'video');
-  readonly isLoading: ReturnType<typeof computed<boolean>> = computed(() => this.mediaPlayer.isLoading());
-  readonly trackTitle: ReturnType<typeof computed<string>> = computed(() => {
+  public readonly mediaType: ReturnType<typeof computed<'audio' | 'video' | null>> = computed((): 'audio' | 'video' | null => this.mediaPlayer.currentMediaType());
+  public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
+  public readonly isAudio: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaType() === 'audio');
+  public readonly isVideo: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaType() === 'video');
+  public readonly isLoading: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.isLoading());
+  public readonly trackTitle: ReturnType<typeof computed<string>> = computed((): string => {
     const track: PlaylistItem | null = this.currentTrack();
     if (!track) return '';
     return track.artist ? `${track.artist} - ${track.title}` : track.title;
   });
 
-  togglePlaylist(): void {
+  public togglePlaylist(): void {
     this.playlistComponent?.toggle();
   }
 }

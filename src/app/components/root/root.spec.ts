@@ -2,11 +2,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { Root } from './root';
 
-describe('Root', () => {
+describe('Root', (): void => {
   let component: Root;
   let fixture: ComponentFixture<Root>;
 
-  beforeEach(async () => {
+  beforeEach(async (): Promise<void> => {
     await TestBed.configureTestingModule({
       imports: [Root]
     })
@@ -17,7 +17,7 @@ describe('Root', () => {
     await fixture.whenStable();
   });
 
-  it('should create', () => {
+  it('should create', (): void => {
     expect(component).toBeTruthy();
   });
 });

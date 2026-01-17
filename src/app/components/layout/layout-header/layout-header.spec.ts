@@ -2,11 +2,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { LayoutHeader } from './layout-header';
 
-describe('LayoutHeader', () => {
+describe('LayoutHeader', (): void => {
   let component: LayoutHeader;
   let fixture: ComponentFixture<LayoutHeader>;
 
-  beforeEach(async () => {
+  beforeEach(async (): Promise<void> => {
     await TestBed.configureTestingModule({
       imports: [LayoutHeader]
     })
@@ -17,7 +17,7 @@ describe('LayoutHeader', () => {
     await fixture.whenStable();
   });
 
-  it('should create', () => {
+  it('should create', (): void => {
     expect(component).toBeTruthy();
   });
 });

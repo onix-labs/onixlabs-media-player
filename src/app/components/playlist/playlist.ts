@@ -19,59 +19,59 @@ export class Playlist {
   private readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
   private readonly electron: ElectronService = inject(ElectronService);
 
-  readonly isVisible: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-  readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-  readonly items: ReturnType<typeof computed<PlaylistItem[]>> = computed(() => this.mediaPlayer.playlistItems());
-  readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed(() => this.mediaPlayer.currentTrack());
-  readonly count: ReturnType<typeof computed<number>> = computed(() => this.mediaPlayer.playlistCount());
-  readonly isPlaying: ReturnType<typeof computed<boolean>> = computed(() => this.mediaPlayer.isPlaying());
+  public readonly isVisible: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+  public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+  public readonly items: ReturnType<typeof computed<PlaylistItem[]>> = computed((): PlaylistItem[] => this.mediaPlayer.playlistItems());
+  public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
+  public readonly count: ReturnType<typeof computed<number>> = computed((): number => this.mediaPlayer.playlistCount());
+  public readonly isPlaying: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.isPlaying());
 
-  toggle(): void {
-    this.isVisible.update(v => !v);
+  public toggle(): void {
+    this.isVisible.update((v: boolean): boolean => !v);
   }
 
-  show(): void {
+  public show(): void {
     this.isVisible.set(true);
   }
 
-  hide(): void {
+  public hide(): void {
     this.isVisible.set(false);
   }
 
-  async selectItem(item: PlaylistItem): Promise<void> {
+  public async selectItem(item: PlaylistItem): Promise<void> {
     await this.mediaPlayer.selectTrack(item.id);
   }
 
-  removeItem(event: Event, item: PlaylistItem): void {
+  public removeItem(event: Event, item: PlaylistItem): void {
     event.stopPropagation();
-    this.mediaPlayer.removeTrack(item.id);
+    void this.mediaPlayer.removeTrack(item.id);
   }
 
-  formatDuration(seconds: number): string {
+  public formatDuration(seconds: number): string {
     return this.mediaPlayer.formatTime(seconds);
   }
 
-  isCurrentItem(item: PlaylistItem): boolean {
+  public isCurrentItem(item: PlaylistItem): boolean {
     return this.currentTrack()?.id === item.id;
   }
 
-  trackByFn(index: number, item: PlaylistItem): string {
+  public trackByFn(index: number, item: PlaylistItem): string {
     return item.id;
   }
 
-  onDragOver(event: DragEvent): void {
+  public onDragOver(event: DragEvent): void {
     event.preventDefault();
     event.stopPropagation();
     this.isDragOver.set(true);
   }
 
-  onDragLeave(event: DragEvent): void {
+  public onDragLeave(event: DragEvent): void {
     event.preventDefault();
     event.stopPropagation();
     this.isDragOver.set(false);
   }
 
-  async onDrop(event: DragEvent): Promise<void> {
+  public async onDrop(event: DragEvent): Promise<void> {
     event.preventDefault();
     event.stopPropagation();
     this.isDragOver.set(false);

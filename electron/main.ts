@@ -1,7 +1,7 @@
-import {app, BrowserWindow, ipcMain, dialog, protocol, net} from "electron";
+import {app, BrowserWindow, dialog, ipcMain, net, protocol} from "electron";
 import * as path from "path";
 import {fileURLToPath} from "url";
-import {UnifiedMediaServer} from "./unified-media-server.ts";
+import {UnifiedMediaServer} from './unified-media-server.ts';
 
 // Allow audio autoplay without user gesture
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -67,7 +67,7 @@ class Program {
   }
 
   private registerMediaProtocol(): void {
-    protocol.handle('media', (request: Request) => {
+    protocol.handle('media', (request: Readonly<Request>): Response | Promise<Response> => {
       // Convert media://path to file path
       const filePath: string = decodeURIComponent(request.url.replace('media://', ''));
       return net.fetch('file://' + filePath);
@@ -97,21 +97,24 @@ class Program {
 
   private setupIpcHandlers(): void {
     // File dialog - requires native dialog
-    ipcMain.handle("dialog:openFile", async (_: Electron.IpcMainInvokeEvent, options: { filters: Electron.FileFilter[]; multiSelections: boolean }) => {
+    ipcMain.handle("dialog:openFile", async (_: Readonly<Electron.IpcMainInvokeEvent>, options: Readonly<{
+      filters: readonly Electron.FileFilter[];
+      multiSelections: boolean
+    }>): Promise<string[]> => {
       if (!this.window) return [];
 
       const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
         properties: options.multiSelections
           ? ["openFile", "multiSelections"]
           : ["openFile"],
-        filters: options.filters
+        filters: options.filters as Electron.FileFilter[]
       });
 
       return result.filePaths;
     });
 
     // Get server port - needed for renderer to connect to HTTP API
-    ipcMain.handle("app:getServerPort", () => {
+    ipcMain.handle("app:getServerPort", (): number => {
       return this.mediaServer?.getPort() || 0;
     });
   }

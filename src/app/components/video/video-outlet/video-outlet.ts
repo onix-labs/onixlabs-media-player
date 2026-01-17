@@ -13,11 +13,11 @@ const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.webm', '.ogg']);
   styleUrl: './video-outlet.scss'
 })
 export class VideoOutlet implements OnInit, OnDestroy {
-  @ViewChild('videoElement', {static: true}) videoRef!: ElementRef<HTMLVideoElement>;
+  @ViewChild('videoElement', {static: true}) public videoRef!: ElementRef<HTMLVideoElement>;
 
-  readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
+  public readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
 
-  readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed(() => this.mediaPlayer.currentTrack());
+  public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
 
   private currentFilePath: string | null = null;
   private isTranscoded: boolean = false;
@@ -27,15 +27,15 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   constructor() {
     // React to track changes - load new video source
-    effect(() => {
+    effect((): void => {
       const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
       if (track?.type === 'video' && track.filePath !== this.currentFilePath) {
-        this.loadVideo(track.filePath);
+        void this.loadVideo(track.filePath);
       }
     });
 
     // React to playback state changes
-    effect(() => {
+    effect((): void => {
       const state: string = this.mediaPlayer.playbackState();
       const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
       if (!video) return;
@@ -53,7 +53,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     });
 
     // React to seek events (time updates from server)
-    effect(() => {
+    effect((): void => {
       const time: number = this.mediaPlayer.currentTime();
       const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
       if (!video || !video.src) return;
@@ -70,7 +70,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
           this.seekPending = true;
           this.lastSeekTime = now;
           console.log(`Seeking transcoded video to ${time}s (diff: ${timeDiff}s)`);
-          this.loadVideo(this.currentFilePath, time).then(() => {
+          void this.loadVideo(this.currentFilePath, time).then((): void => {
             this.seekPending = false;
             if (this.mediaPlayer.isPlaying()) {
               video.play().catch(console.error);
@@ -86,7 +86,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     });
 
     // React to volume changes
-    effect(() => {
+    effect((): void => {
       const volume: number = this.mediaPlayer.volume();
       const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
       if (video) {
@@ -95,7 +95,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     });
 
     // React to mute changes
-    effect(() => {
+    effect((): void => {
       const muted: boolean = this.mediaPlayer.muted();
       const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
       if (video) {
@@ -104,7 +104,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     });
   }
 
-  ngOnInit(): void {
+  public ngOnInit(): void {
     this.setupVideoEvents();
   }
 
@@ -142,24 +142,24 @@ export class VideoOutlet implements OnInit, OnDestroy {
   private setupVideoEvents(): void {
     const video: HTMLVideoElement = this.videoRef.nativeElement;
 
-    video.addEventListener('error', () => {
+    video.addEventListener('error', (): void => {
       const error: MediaError | null = video.error;
       console.error('Video error:', error?.code, error?.message);
     });
 
-    video.addEventListener('canplay', () => {
+    video.addEventListener('canplay', (): void => {
       console.log('Video can play');
       if (this.mediaPlayer.isPlaying()) {
         video.play().catch(console.error);
       }
     });
 
-    video.addEventListener('loadedmetadata', () => {
+    video.addEventListener('loadedmetadata', (): void => {
       console.log('Video metadata loaded, duration:', video.duration);
     });
   }
 
-  ngOnDestroy(): void {
+  public ngOnDestroy(): void {
     const video: HTMLVideoElement = this.videoRef.nativeElement;
     video.pause();
     video.src = '';

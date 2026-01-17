@@ -1,13 +1,13 @@
 import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
 export class WaveformVisualization extends Canvas2DVisualization {
-  readonly name: string = 'Waveform';
-  readonly category: VisualizationCategory = 'waveform';
+  public readonly name: string = 'Waveform';
+  public readonly category: VisualizationCategory = 'waveform';
 
   private readonly FADE_RATE: number = 0.03; // Very slow fade for LCD ghosting effect
   private readonly LINE_WIDTH: number = 2;
   private readonly GLOW_BLUR: number = 15;
-  private dataArray: Uint8Array<ArrayBuffer>;
+  private readonly dataArray: Uint8Array<ArrayBuffer>;
 
   constructor(config: VisualizationConfig) {
     super(config);
@@ -20,8 +20,11 @@ export class WaveformVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
-  draw(): void {
-    const {ctx, width, height, dataArray} = this;
+  public draw(): void {
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const height: number = this.height;
+    const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
 
     // Slow fade effect - creates the LCD ghosting/persistence (transparent background)
     ctx.save();

@@ -8,33 +8,33 @@ import * as path from 'path';
 // ============================================================================
 
 export interface PlaylistItem {
-  id: string;
-  filePath: string;
-  title: string;
-  artist?: string;
-  album?: string;
-  duration: number;
-  type: 'audio' | 'video';
-  width?: number;
-  height?: number;
+  readonly id: string;
+  readonly filePath: string;
+  readonly title: string;
+  readonly artist?: string;
+  readonly album?: string;
+  readonly duration: number;
+  readonly type: 'audio' | 'video';
+  readonly width?: number;
+  readonly height?: number;
 }
 
 export interface MediaInfo {
-  duration: number;
-  type: 'audio' | 'video';
-  title: string;
-  artist?: string;
-  album?: string;
-  filePath: string;
-  width?: number;
-  height?: number;
+  readonly duration: number;
+  readonly type: 'audio' | 'video';
+  readonly title: string;
+  readonly artist?: string;
+  readonly album?: string;
+  readonly filePath: string;
+  readonly width?: number;
+  readonly height?: number;
 }
 
 interface PlaylistState {
-  items: PlaylistItem[];
-  currentIndex: number;
-  shuffleEnabled: boolean;
-  repeatEnabled: boolean;
+  readonly items: readonly PlaylistItem[];
+  readonly currentIndex: number;
+  readonly shuffleEnabled: boolean;
+  readonly repeatEnabled: boolean;
 }
 
 interface PlaybackState {
@@ -84,17 +84,17 @@ const MIME_TYPES: Record<string, string> = {
 // ============================================================================
 
 class SSEManager {
-  private clients: Set<ServerResponse> = new Set<ServerResponse>();
+  private readonly clients: Set<ServerResponse> = new Set<ServerResponse>();
   private heartbeatInterval: NodeJS.Timeout | null = null;
 
-  start(): void {
+  public start(): void {
     // Send heartbeat every 30 seconds to keep connections alive
-    this.heartbeatInterval = setInterval(() => {
+    this.heartbeatInterval = setInterval((): void => {
       this.broadcast('heartbeat', { timestamp: Date.now() });
     }, 30000);
   }
 
-  stop(): void {
+  public stop(): void {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
@@ -105,12 +105,12 @@ class SSEManager {
     this.clients.clear();
   }
 
-  addClient(res: ServerResponse): void {
-    this.clients.add(res);
-    res.on('close', () => this.clients.delete(res));
+  public addClient(res: Readonly<ServerResponse>): void {
+    this.clients.add(res as ServerResponse);
+    res.on('close', (): void => { this.clients.delete(res as ServerResponse); });
   }
 
-  broadcast(event: SSEEventType, data: unknown): void {
+  public broadcast(event: SSEEventType, data: Readonly<unknown>): void {
     const message: string = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const client of this.clients) {
       client.write(message);
@@ -130,13 +130,13 @@ class PlaylistManager {
   private shuffleOrder: number[] = [];
   private shufflePosition: number = 0;
   private playHistory: number[] = [];
-  private sse: SSEManager;
+  private readonly sse: SSEManager;
 
-  constructor(sse: SSEManager) {
-    this.sse = sse;
+  constructor(sse: Readonly<SSEManager>) {
+    this.sse = sse as SSEManager;
   }
 
-  getState(): PlaylistState {
+  public getState(): PlaylistState {
     return {
       items: this.items,
       currentIndex: this.currentIndex,
@@ -145,15 +145,15 @@ class PlaylistManager {
     };
   }
 
-  getCurrentItem(): PlaylistItem | null {
+  public getCurrentItem(): PlaylistItem | null {
     if (this.currentIndex >= 0 && this.currentIndex < this.items.length) {
       return this.items[this.currentIndex];
     }
     return null;
   }
 
-  addItems(newItems: Omit<PlaylistItem, 'id'>[]): PlaylistItem[] {
-    const itemsWithIds: PlaylistItem[] = newItems.map((item: Omit<PlaylistItem, 'id'>) => ({
+  public addItems(newItems: readonly Omit<PlaylistItem, 'id'>[]): PlaylistItem[] {
+    const itemsWithIds: PlaylistItem[] = newItems.map((item: Readonly<Omit<PlaylistItem, 'id'>>): PlaylistItem => ({
       ...item,
       id: this.generateId(),
     }));
@@ -175,12 +175,12 @@ class PlaylistManager {
     return itemsWithIds;
   }
 
-  removeItem(id: string): boolean {
-    const idx: number = this.items.findIndex((item: PlaylistItem) => item.id === id);
+  public removeItem(id: string): boolean {
+    const idx: number = this.items.findIndex((item: Readonly<PlaylistItem>): boolean => item.id === id);
     if (idx === -1) return false;
 
     const currentIdx: number = this.currentIndex;
-    this.items = this.items.filter((item: PlaylistItem) => item.id !== id);
+    this.items = this.items.filter((item: Readonly<PlaylistItem>): boolean => item.id !== id);
 
     if (idx < currentIdx) {
       this.currentIndex--;
@@ -200,7 +200,7 @@ class PlaylistManager {
     return true;
   }
 
-  clear(): void {
+  public clear(): void {
     this.items = [];
     this.currentIndex = -1;
     this.shuffleOrder = [];
@@ -209,8 +209,8 @@ class PlaylistManager {
     this.broadcastPlaylistUpdate();
   }
 
-  selectItem(id: string): PlaylistItem | null {
-    const idx: number = this.items.findIndex((item: PlaylistItem) => item.id === id);
+  public selectItem(id: string): PlaylistItem | null {
+    const idx: number = this.items.findIndex((item: Readonly<PlaylistItem>): boolean => item.id === id);
     if (idx === -1) return null;
 
     this.currentIndex = idx;
@@ -224,7 +224,7 @@ class PlaylistManager {
     return this.getCurrentItem();
   }
 
-  selectIndex(index: number): PlaylistItem | null {
+  public selectIndex(index: number): PlaylistItem | null {
     if (index < 0 || index >= this.items.length) return null;
 
     this.currentIndex = index;
@@ -238,7 +238,7 @@ class PlaylistManager {
     return this.getCurrentItem();
   }
 
-  next(): PlaylistItem | null {
+  public next(): PlaylistItem | null {
     if (this.items.length === 0) return null;
 
     if (this.repeatEnabled && !this.canGoNext()) {
@@ -269,7 +269,7 @@ class PlaylistManager {
     return this.getCurrentItem();
   }
 
-  previous(): PlaylistItem | null {
+  public previous(): PlaylistItem | null {
     if (this.items.length === 0) return null;
 
     // Check play history first
@@ -313,7 +313,7 @@ class PlaylistManager {
     return this.getCurrentItem();
   }
 
-  setShuffle(enabled: boolean): void {
+  public setShuffle(enabled: boolean): void {
     if (this.shuffleEnabled === enabled) return;
 
     this.shuffleEnabled = enabled;
@@ -328,7 +328,7 @@ class PlaylistManager {
     this.broadcastModeChange();
   }
 
-  setRepeat(enabled: boolean): void {
+  public setRepeat(enabled: boolean): void {
     if (this.repeatEnabled === enabled) return;
     this.repeatEnabled = enabled;
     this.broadcastModeChange();
@@ -357,7 +357,7 @@ class PlaylistManager {
       return;
     }
 
-    this.shuffleOrder = Array.from({ length }, (_: unknown, i: number) => i);
+    this.shuffleOrder = Array.from({ length }, (_: unknown, i: number): number => i);
 
     // Fisher-Yates shuffle
     for (let i: number = length - 1; i > 0; i--) {
@@ -408,10 +408,10 @@ export class UnifiedMediaServer {
   private server: Server | null = null;
   private port: number = 0;
 
-  private sse: SSEManager = new SSEManager();
-  private playlist: PlaylistManager;
+  private readonly sse: SSEManager = new SSEManager();
+  private readonly playlist: PlaylistManager;
 
-  private playback: PlaybackState = {
+  private readonly playback: PlaybackState = {
     state: 'idle',
     currentTime: 0,
     duration: 0,
@@ -429,12 +429,12 @@ export class UnifiedMediaServer {
     this.playlist = new PlaylistManager(this.sse);
   }
 
-  async start(): Promise<number> {
-    return new Promise((resolve: (value: number) => void, reject: (reason: Error) => void) => {
+  public async start(): Promise<number> {
+    return new Promise((resolve: (value: number) => void, reject: (reason: Readonly<Error>) => void): void => {
       this.server = createServer(this.handleRequest.bind(this));
       this.server.on('error', reject);
 
-      this.server.listen(0, '127.0.0.1', () => {
+      this.server.listen(0, '127.0.0.1', (): void => {
         const address: ReturnType<Server['address']> = this.server!.address();
         if (typeof address === 'object' && address) {
           this.port = address.port;
@@ -448,7 +448,7 @@ export class UnifiedMediaServer {
     });
   }
 
-  stop(): void {
+  public stop(): void {
     this.stopTimeTracking();
     this.sse.stop();
     if (this.server) {
@@ -457,7 +457,7 @@ export class UnifiedMediaServer {
     }
   }
 
-  getPort(): number {
+  public getPort(): number {
     return this.port;
   }
 
@@ -465,7 +465,7 @@ export class UnifiedMediaServer {
   // HTTP Request Router
   // ============================================================================
 
-  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async handleRequest(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const url: URL = new URL(req.url || '/', `http://127.0.0.1:${this.port}`);
     const method: string = req.method || 'GET';
     const pathname: string = url.pathname;
@@ -535,7 +535,7 @@ export class UnifiedMediaServer {
   // SSE Handler
   // ============================================================================
 
-  private handleSSE(req: IncomingMessage, res: ServerResponse): void {
+  private handleSSE(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): void {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -555,7 +555,7 @@ export class UnifiedMediaServer {
       res.write(`event: playback:loaded\ndata: ${JSON.stringify(this.playback.currentMedia)}\n\n`);
     }
 
-    req.on('close', () => {
+    req.on('close', (): void => {
       // Client handled by SSEManager
     });
   }
@@ -564,7 +564,7 @@ export class UnifiedMediaServer {
   // Media Streaming
   // ============================================================================
 
-  private handleMediaStream(req: IncomingMessage, res: ServerResponse, url: URL): void {
+  private handleMediaStream(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): void {
     const filePath: string | null = url.searchParams.get('path');
     if (!filePath) {
       res.writeHead(400);
@@ -583,7 +583,7 @@ export class UnifiedMediaServer {
     }
   }
 
-  private serveDirectFile(req: IncomingMessage, res: ServerResponse, filePath: string, ext: string): void {
+  private serveDirectFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string, ext: string): void {
     try {
       const stat: ReturnType<typeof statSync> = statSync(filePath);
       const fileSize: number = stat.size;
@@ -622,7 +622,7 @@ export class UnifiedMediaServer {
     }
   }
 
-  private serveTranscodedFile(req: IncomingMessage, res: ServerResponse, filePath: string, url: URL): void {
+  private serveTranscodedFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string, url: Readonly<URL>): void {
     const seekTime: string = url.searchParams.get('t') || '0';
     const ext: string = path.extname(filePath).toLowerCase();
 
@@ -684,26 +684,26 @@ export class UnifiedMediaServer {
     const ffmpeg: ChildProcess = spawn('ffmpeg', ffmpegArgs);
     ffmpeg.stdout?.pipe(res);
 
-    ffmpeg.stderr?.on('data', (data: Buffer) => {
+    ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
       const msg: string = data.toString().trim();
       if (msg) console.log('FFmpeg:', msg);
     });
 
-    ffmpeg.on('error', (err: Error) => {
+    ffmpeg.on('error', (err: Readonly<Error>): void => {
       console.error('FFmpeg spawn error:', err);
       if (!res.headersSent) {
-        res.writeHead(500);
+        (res as ServerResponse).writeHead(500);
       }
-      res.end();
+      (res as ServerResponse).end();
     });
 
-    ffmpeg.on('close', (code: number | null) => {
+    ffmpeg.on('close', (code: number | null): void => {
       if (code !== 0 && code !== null) {
         console.error(`FFmpeg exited with code ${code}`);
       }
     });
 
-    const cleanup: () => void = () => {
+    const cleanup: () => void = (): void => {
       if (ffmpeg.exitCode === null) {
         ffmpeg.kill('SIGKILL');
       }
@@ -717,7 +717,7 @@ export class UnifiedMediaServer {
   // Media Info (ffprobe)
   // ============================================================================
 
-  private async handleMediaInfo(res: ServerResponse, url: URL): Promise<void> {
+  private async handleMediaInfo(res: Readonly<ServerResponse>, url: Readonly<URL>): Promise<void> {
     const filePath: string | null = url.searchParams.get('path');
     if (!filePath) {
       res.writeHead(400);
@@ -736,7 +736,7 @@ export class UnifiedMediaServer {
   }
 
   private probeMedia(filePath: string): Promise<MediaInfo> {
-    return new Promise((resolve: (value: MediaInfo) => void, reject: (reason: Error) => void) => {
+    return new Promise((resolve: (value: Readonly<MediaInfo>) => void, reject: (reason: Readonly<Error>) => void): void => {
       const ffprobe: ChildProcess = spawn('ffprobe', [
         '-v', 'quiet',
         '-print_format', 'json',
@@ -748,10 +748,10 @@ export class UnifiedMediaServer {
       let output: string = '';
       let errorOutput: string = '';
 
-      ffprobe.stdout?.on('data', (data: Buffer) => { output += data; });
-      ffprobe.stderr?.on('data', (data: Buffer) => { errorOutput += data; });
+      ffprobe.stdout?.on('data', (data: Readonly<Buffer>): void => { output += data; });
+      ffprobe.stderr?.on('data', (data: Readonly<Buffer>): void => { errorOutput += data; });
 
-      ffprobe.on('close', (code: number | null) => {
+      ffprobe.on('close', (code: number | null): void => {
         if (code !== 0) {
           reject(new Error(`ffprobe failed: ${errorOutput}`));
           return;
@@ -762,7 +762,7 @@ export class UnifiedMediaServer {
           const format: Record<string, unknown> = data.format || {};
           const streams: Array<Record<string, unknown>> = data.streams || [];
 
-          const videoStream: Record<string, unknown> | undefined = streams.find((s: Record<string, unknown>) =>
+          const videoStream: Record<string, unknown> | undefined = streams.find((s: Readonly<Record<string, unknown>>): boolean =>
             s.codec_type === 'video' && s.codec_name !== 'mjpeg'
           );
           const hasVideo: boolean = !!videoStream;
@@ -770,21 +770,21 @@ export class UnifiedMediaServer {
           const tags: Record<string, string> = (format.tags as Record<string, string>) || {};
 
           resolve({
-            duration: parseFloat(format.duration) || 0,
+            duration: parseFloat(format.duration as string) || 0,
             type: hasVideo ? 'video' : 'audio',
             title: tags.title || tags.TITLE || path.basename(filePath, path.extname(filePath)),
             artist: tags.artist || tags.ARTIST || tags.album_artist || tags.ALBUM_ARTIST,
             album: tags.album || tags.ALBUM,
             filePath,
-            width: videoStream?.width,
-            height: videoStream?.height,
+            width: videoStream?.width as number | undefined,
+            height: videoStream?.height as number | undefined,
           });
         } catch (e) {
           reject(new Error(`Failed to parse ffprobe output: ${e}`));
         }
       });
 
-      ffprobe.on('error', (err: Error) => {
+      ffprobe.on('error', (err: Readonly<Error>): void => {
         reject(new Error(`ffprobe error: ${err.message}`));
       });
     });
@@ -794,7 +794,7 @@ export class UnifiedMediaServer {
   // Playback Control Handlers
   // ============================================================================
 
-  private async handlePlay(res: ServerResponse): Promise<void> {
+  private async handlePlay(res: Readonly<ServerResponse>): Promise<void> {
     // If paused, resume
     if (this.playback.state === 'paused') {
       this.playback.state = 'playing';
@@ -842,7 +842,7 @@ export class UnifiedMediaServer {
     }
   }
 
-  private handlePause(res: ServerResponse): void {
+  private handlePause(res: Readonly<ServerResponse>): void {
     if (this.playback.state !== 'playing') {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Not playing' }));
@@ -858,7 +858,7 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true }));
   }
 
-  private handleStop(res: ServerResponse): void {
+  private handleStop(res: Readonly<ServerResponse>): void {
     this.playback.state = 'stopped';
     this.playback.currentTime = 0;
     this.stopTimeTracking();
@@ -869,7 +869,7 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true }));
   }
 
-  private async handleSeek(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async handleSeek(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { time }: { time: unknown } = JSON.parse(body);
 
@@ -894,7 +894,7 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true, time: clampedTime }));
   }
 
-  private async handleVolume(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async handleVolume(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { volume, muted }: { volume?: number; muted?: boolean } = JSON.parse(body);
 
@@ -914,7 +914,7 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true, volume: this.playback.volume, muted: this.playback.muted }));
   }
 
-  private handlePlayerState(res: ServerResponse): void {
+  private handlePlayerState(res: Readonly<ServerResponse>): void {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       state: this.playback.state,
@@ -931,12 +931,12 @@ export class UnifiedMediaServer {
   // Playlist Handlers
   // ============================================================================
 
-  private handlePlaylistGet(res: ServerResponse): void {
+  private handlePlaylistGet(res: Readonly<ServerResponse>): void {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(this.playlist.getState()));
   }
 
-  private async handlePlaylistAdd(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async handlePlaylistAdd(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { paths }: { paths: unknown } = JSON.parse(body);
 
@@ -972,7 +972,7 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true, added }));
   }
 
-  private handlePlaylistRemove(res: ServerResponse, pathname: string): void {
+  private handlePlaylistRemove(res: Readonly<ServerResponse>, pathname: string): void {
     const id: string = pathname.replace('/playlist/remove/', '');
     const success: boolean = this.playlist.removeItem(id);
 
@@ -980,7 +980,7 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success }));
   }
 
-  private handlePlaylistClear(res: ServerResponse): void {
+  private handlePlaylistClear(res: Readonly<ServerResponse>): void {
     this.playlist.clear();
     this.playback.state = 'idle';
     this.playback.currentMedia = null;
@@ -993,7 +993,7 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true }));
   }
 
-  private async handlePlaylistSelect(res: ServerResponse, pathname: string): Promise<void> {
+  private async handlePlaylistSelect(res: Readonly<ServerResponse>, pathname: string): Promise<void> {
     const id: string = pathname.replace('/playlist/select/', '');
     const item: PlaylistItem | null = this.playlist.selectItem(id);
 
@@ -1031,7 +1031,7 @@ export class UnifiedMediaServer {
     }
   }
 
-  private async handlePlaylistNext(res: ServerResponse): Promise<void> {
+  private async handlePlaylistNext(res: Readonly<ServerResponse>): Promise<void> {
     const item: PlaylistItem | null = this.playlist.next();
 
     if (!item) {
@@ -1075,7 +1075,7 @@ export class UnifiedMediaServer {
     }
   }
 
-  private async handlePlaylistPrevious(res: ServerResponse): Promise<void> {
+  private async handlePlaylistPrevious(res: Readonly<ServerResponse>): Promise<void> {
     const item: PlaylistItem | null = this.playlist.previous();
 
     if (!item) {
@@ -1112,7 +1112,7 @@ export class UnifiedMediaServer {
     }
   }
 
-  private async handlePlaylistShuffle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async handlePlaylistShuffle(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { enabled }: { enabled: unknown } = JSON.parse(body);
 
@@ -1122,7 +1122,7 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true, shuffleEnabled: enabled }));
   }
 
-  private async handlePlaylistRepeat(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async handlePlaylistRepeat(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { enabled }: { enabled: unknown } = JSON.parse(body);
 
@@ -1136,11 +1136,11 @@ export class UnifiedMediaServer {
   // Helpers
   // ============================================================================
 
-  private readBody(req: IncomingMessage): Promise<string> {
-    return new Promise((resolve: (value: string) => void, reject: (reason: Error) => void) => {
+  private readBody(req: Readonly<IncomingMessage>): Promise<string> {
+    return new Promise((resolve: (value: string) => void, reject: (reason: Readonly<Error>) => void): void => {
       let body: string = '';
-      req.on('data', (chunk: Buffer) => body += chunk);
-      req.on('end', () => resolve(body));
+      req.on('data', (chunk: Readonly<Buffer>): void => { body += chunk; });
+      req.on('end', (): void => { resolve(body); });
       req.on('error', reject);
     });
   }
@@ -1148,14 +1148,14 @@ export class UnifiedMediaServer {
   private startTimeTracking(): void {
     this.stopTimeTracking();
 
-    this.timeUpdateInterval = setInterval(() => {
+    this.timeUpdateInterval = setInterval((): void => {
       if (this.playback.state !== 'playing') return;
 
       this.playback.currentTime = (Date.now() - this.startTime) / 1000;
 
       if (this.playback.currentTime >= this.playback.duration) {
         this.playback.currentTime = this.playback.duration;
-        this.onMediaEnded();
+        void this.onMediaEnded();
         return;
       }
 

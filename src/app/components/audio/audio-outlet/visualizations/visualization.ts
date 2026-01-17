@@ -6,8 +6,8 @@ export interface VisualizationConfig {
 export type VisualizationCategory = 'frequency' | 'waveform' | 'ambience';
 
 export abstract class Visualization {
-  abstract readonly name: string;
-  abstract readonly category: VisualizationCategory;
+  public abstract readonly name: string;
+  public abstract readonly category: VisualizationCategory;
 
   protected canvas: HTMLCanvasElement;
   protected analyser: AnalyserNode;
@@ -22,15 +22,15 @@ export abstract class Visualization {
     this.analyser = config.analyser;
   }
 
-  setSensitivity(value: number): void {
+  public setSensitivity(value: number): void {
     this.sensitivity = Math.max(0, Math.min(1, value));
   }
 
-  getSensitivity(): number {
+  public getSensitivity(): number {
     return this.sensitivity;
   }
 
-  resize(width: number, height: number): void {
+  public resize(width: number, height: number): void {
     this.width = width;
     this.height = height;
     this.canvas.width = width;
@@ -42,9 +42,9 @@ export abstract class Visualization {
     // Override in subclass if needed
   }
 
-  abstract draw(): void;
+  public abstract draw(): void;
 
-  destroy(): void {
+  public destroy(): void {
     // Override in subclass to clean up resources (WebGL contexts, etc.)
   }
 }
@@ -70,7 +70,7 @@ export abstract class WebGLVisualization extends Visualization {
     this.gl = gl as WebGLRenderingContext;
   }
 
-  override destroy(): void {
+  public override destroy(): void {
     const ext: WEBGL_lose_context | null = this.gl.getExtension('WEBGL_lose_context');
     if (ext) ext.loseContext();
   }

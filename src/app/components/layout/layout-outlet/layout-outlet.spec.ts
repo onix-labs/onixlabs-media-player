@@ -2,11 +2,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { LayoutOutlet } from './layout-outlet';
 
-describe('LayoutOutlet', () => {
+describe('LayoutOutlet', (): void => {
   let component: LayoutOutlet;
   let fixture: ComponentFixture<LayoutOutlet>;
 
-  beforeEach(async () => {
+  beforeEach(async (): Promise<void> => {
     await TestBed.configureTestingModule({
       imports: [LayoutOutlet]
     })
@@ -17,7 +17,7 @@ describe('LayoutOutlet', () => {
     await fixture.whenStable();
   });
 
-  it('should create', () => {
+  it('should create', (): void => {
     expect(component).toBeTruthy();
   });
 });
