@@ -15,7 +15,7 @@ export abstract class Visualization {
   protected height: number = 0;
 
   // Sensitivity controls visualization amplitude independent of master volume (0-1, default 0.5)
-  protected sensitivity: number = 0.5;
+  protected sensitivity: number = 0.25;
 
   constructor(config: VisualizationConfig) {
     this.canvas = config.canvas;

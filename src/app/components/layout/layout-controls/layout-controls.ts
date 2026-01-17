@@ -20,6 +20,7 @@ export class LayoutControls {
   readonly currentTime: ReturnType<typeof computed<string>> = computed(() => this.mediaPlayer.formatTime(this.mediaPlayer.time()));
   readonly totalDuration: ReturnType<typeof computed<string>> = computed(() => this.mediaPlayer.formatTime(this.mediaPlayer.totalDuration()));
   readonly hasTrack: ReturnType<typeof computed<boolean>> = computed(() => !!this.mediaPlayer.currentTrack());
+  readonly canSkip: ReturnType<typeof computed<boolean>> = computed(() => this.mediaPlayer.playlistCount() > 1);
 
   async onEject(): Promise<void> {
     await this.mediaPlayer.eject();
