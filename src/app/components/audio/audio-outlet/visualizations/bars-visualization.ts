@@ -39,9 +39,8 @@ export class BarsVisualization extends Canvas2DVisualization {
     // Skip drawing if no valid gradient
     if (!this.barGradient) return;
 
-    // Clear with fade effect
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.fillRect(0, 0, width, height);
+    // Clear canvas (transparent)
+    ctx.clearRect(0, 0, width, height);
 
     this.analyser.getByteFrequencyData(this.dataArray);
 

@@ -13,17 +13,19 @@ export class WaveformVisualization extends Canvas2DVisualization {
   }
 
   protected override onResize(): void {
-    // Clear to black on resize to avoid artifacts
-    this.ctx.fillStyle = 'black';
-    this.ctx.fillRect(0, 0, this.width, this.height);
+    // Clear canvas on resize (transparent)
+    this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
   draw(): void {
     const {ctx, width, height, dataArray} = this;
 
-    // Slow fade effect - creates the LCD ghosting/persistence
+    // Slow fade effect - creates the LCD ghosting/persistence (transparent background)
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
     ctx.fillStyle = `rgba(0, 0, 0, ${this.FADE_RATE})`;
     ctx.fillRect(0, 0, width, height);
+    ctx.restore();
 
     // Get time domain data (waveform)
     this.analyser.getByteTimeDomainData(dataArray);

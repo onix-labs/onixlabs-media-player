@@ -14,32 +14,13 @@ export class TunnelVisualization extends Canvas2DVisualization {
   }
 
   protected override onResize(): void {
-    this.ctx.fillStyle = 'black';
-    this.ctx.fillRect(0, 0, this.width, this.height);
+    this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
   draw(): void {
     const {ctx, width, height, dataArray} = this;
 
-    // Save current canvas content, scale it (zoom effect), then fade
-    ctx.save();
-
-    // Translate to center, scale, translate back - creates zoom from center
-    ctx.translate(width / 2, height / 2);
-    ctx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
-    ctx.translate(-width / 2, -height / 2);
-
-    // Draw the previous frame (already on canvas) with slight zoom
-    // This is implicit - we're just transforming the context
-
-    ctx.restore();
-
-    // Apply fade over the zoomed content
-    ctx.fillStyle = `rgba(0, 0, 0, ${this.FADE_RATE})`;
-    ctx.fillRect(0, 0, width, height);
-
-    // To actually achieve the zoom effect, we need to copy, clear, and redraw scaled
-    // Let's use a different approach - draw to temp canvas, scale back
+    // Apply zoom effect with fade (handled via globalAlpha)
     this.applyZoomEffect();
 
     // Get time domain data
@@ -70,21 +51,17 @@ export class TunnelVisualization extends Canvas2DVisualization {
     // Copy current canvas to temp
     tempCtx.drawImage(ctx.canvas, 0, 0);
 
-    // Clear main canvas
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, width, height);
+    // Clear main canvas (transparent)
+    ctx.clearRect(0, 0, width, height);
 
-    // Draw back scaled from center
+    // Draw back scaled from center with reduced opacity for fade effect
     ctx.save();
+    ctx.globalAlpha = 1 - this.FADE_RATE;
     ctx.translate(width / 2, height / 2);
     ctx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
     ctx.translate(-width / 2, -height / 2);
     ctx.drawImage(tempCanvas, 0, 0);
     ctx.restore();
-
-    // Apply fade
-    ctx.fillStyle = `rgba(0, 0, 0, ${this.FADE_RATE})`;
-    ctx.fillRect(0, 0, width, height);
   }
 
   private drawWaveform(centerY: number, amplitude: number, color: string, glowColor: string): void {
