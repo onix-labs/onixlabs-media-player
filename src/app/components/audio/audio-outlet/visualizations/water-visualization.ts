@@ -5,16 +5,18 @@ export class WaterVisualization extends Canvas2DVisualization {
   readonly category: VisualizationCategory = 'ambience';
 
   private readonly ROTATION_SPEED: number = 0.009;
+  private readonly WAVEFORM_ROTATION_SPEED: number = 0.005;  // Slower counter-clockwise rotation
   private readonly FADE_RATE: number = 0.008;
+  private readonly ZOOM_SCALE: number = 1.012;      // Scale factor per frame for tunnel effect
   private readonly HUE_CYCLE_SPEED: number = 0.15;  // Degrees per frame
 
   // Saturation and lightness levels for gradient (darkest to lightest)
   private readonly GRADIENT_LEVELS: Array<{s: number; l: number}> = [
-    {s: 70, l: 15},  // Darkest
-    {s: 65, l: 25},  // Dark
-    {s: 60, l: 40},  // Mid
-    {s: 55, l: 55},  // Light
-    {s: 50, l: 70}   // Lightest
+    {s: 85, l: 12},  // Darkest
+    {s: 80, l: 22},  // Dark
+    {s: 75, l: 35},  // Mid
+    {s: 70, l: 45},  // Light
+    {s: 75, l: 50}   // Vibrant (used for center circle)
   ];
 
   private dataArray: Uint8Array<ArrayBuffer>;
@@ -23,6 +25,9 @@ export class WaterVisualization extends Canvas2DVisualization {
 
   // Hue cycling
   private hueOffset: number = 210; // Start at blue (210 degrees)
+
+  // Waveform rotation (anticlockwise)
+  private waveformAngle: number = 0;
 
   // Get current gradient colors based on hue offset
   private getGradientColors(): Array<{r: number; g: number; b: number}> {
@@ -100,11 +105,12 @@ export class WaterVisualization extends Canvas2DVisualization {
     // Clear trail canvas
     trailCtx.clearRect(0, 0, width, height);
 
-    // Draw back previous trails with clockwise rotation and fade
+    // Draw back previous trails with clockwise rotation, zoom, and fade
     trailCtx.save();
     trailCtx.globalAlpha = 1 - this.FADE_RATE;
     trailCtx.translate(centerX, centerY);
     trailCtx.rotate(this.ROTATION_SPEED);
+    trailCtx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
     trailCtx.translate(-centerX, -centerY);
     trailCtx.drawImage(tempCanvas, 0, 0);
     trailCtx.restore();
@@ -112,8 +118,16 @@ export class WaterVisualization extends Canvas2DVisualization {
     // Get waveform data
     this.analyser.getByteTimeDomainData(this.dataArray);
 
-    // Draw the mirrored waveforms
+    // Update waveform rotation (anticlockwise, slower than trail rotation)
+    this.waveformAngle -= this.WAVEFORM_ROTATION_SPEED;
+
+    // Draw the mirrored waveforms with anticlockwise rotation
+    trailCtx.save();
+    trailCtx.translate(centerX, centerY);
+    trailCtx.rotate(this.waveformAngle);
+    trailCtx.translate(-centerX, -centerY);
     this.drawMirroredWaveform(trailCtx, centerX, centerY);
+    trailCtx.restore();
 
     // Clear and draw trails (transparent background)
     ctx.clearRect(0, 0, width, height);
@@ -132,7 +146,7 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     // Arc bending settings
     // Minimum radius prevents singularity at center and controls max bend tightness
-    const minArcRadius: number = halfWidth * 0.12;
+    const minArcRadius: number = halfWidth * 0.18;
     const bendStrength: number = 1.2;  // Multiplier for arc effect
 
     // Left half points (from left edge to center)
@@ -196,23 +210,23 @@ export class WaterVisualization extends Canvas2DVisualization {
     const pointsPerSegment: number = Math.floor(allPoints.length / totalSegments);
     const centerSegmentIndex: number = numColors - 1; // Index 4 = center segment
 
-    // Draw left portion (segments 0-3) in white
+    // Draw left portion (segments 0-3) in lighter version of center color
     const leftEndIdx: number = centerSegmentIndex * pointsPerSegment;
     const leftPoints: Array<{x: number; y: number}> = allPoints.slice(0, leftEndIdx + 1);
-    const white: {r: number; g: number; b: number} = {r: 255, g: 255, b: 255};
+    const lighterColor: {r: number; g: number; b: number} = this.hslToRgb(this.hueOffset, 60, 75);
     if (leftPoints.length >= 2) {
-      this.drawWaveformSegment(ctx, leftPoints, white);
+      this.drawWaveformSegment(ctx, leftPoints, lighterColor, 0.6);
     }
 
-    // Draw right portion (segments 5-8) in white
+    // Draw right portion (segments 5-8) in lighter version of center color
     const rightStartIdx: number = (centerSegmentIndex + 1) * pointsPerSegment;
     const rightPoints: Array<{x: number; y: number}> = allPoints.slice(rightStartIdx);
     if (rightPoints.length >= 2) {
-      this.drawWaveformSegment(ctx, rightPoints, white);
+      this.drawWaveformSegment(ctx, rightPoints, lighterColor, 0.6);
     }
 
     // Draw circular waveform at center using the cycling gradient color
-    this.drawCenterCircle(ctx, centerX, centerY, halfWidth * 0.12, gradientColors[numColors - 1]);
+    this.drawCenterCircle(ctx, centerX, centerY, halfWidth * 0.18, gradientColors[numColors - 1]);
   }
 
   private drawCenterCircle(
@@ -292,15 +306,16 @@ export class WaterVisualization extends Canvas2DVisualization {
   private drawWaveformSegment(
     ctx: CanvasRenderingContext2D,
     points: Array<{x: number; y: number}>,
-    color: {r: number; g: number; b: number}
+    color: {r: number; g: number; b: number},
+    alpha: number = 1.0
   ): void {
     if (points.length < 2) return;
 
     // Draw glow layer
     ctx.save();
     ctx.shadowBlur = 12;
-    ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
-    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
+    ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${0.6 * alpha})`;
+    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${0.3 * alpha})`;
     ctx.lineWidth = 5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -314,7 +329,7 @@ export class WaterVisualization extends Canvas2DVisualization {
     ctx.restore();
 
     // Draw main waveform
-    ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -327,7 +342,7 @@ export class WaterVisualization extends Canvas2DVisualization {
     ctx.stroke();
 
     // Draw highlight
-    ctx.strokeStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.5)`;
+    ctx.strokeStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, ${0.5 * alpha})`;
     ctx.lineWidth = 1;
 
     ctx.beginPath();
