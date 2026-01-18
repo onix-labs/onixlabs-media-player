@@ -15,10 +15,14 @@
       } @else if (isVideo()) {
         <app-video-outlet/>
       } @else {
-        <div class="idle-state">
+        <div class="idle-state"
+             [class.drag-over]="isDragOver()"
+             (dragover)="onDragOver($event)"
+             (dragleave)="onDragLeave($event)"
+             (drop)="onDrop($event)">
           <img alt="ONIXPlayer" src="logo.png"/>
           <p>No media loaded</p>
-          <p class="hint">Click eject to add media files</p>
+          <p class="hint">Drag files here or click eject to add media</p>
         </div>
       }
       @if (isLoading()) {

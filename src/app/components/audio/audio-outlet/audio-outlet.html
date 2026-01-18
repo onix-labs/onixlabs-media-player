@@ -1,5 +1,10 @@
 <audio #audioElement crossorigin="anonymous" style="display: none;"></audio>
-<div class="visualizer-container" (dblclick)="onDoubleClick()">
+<div class="visualizer-container"
+     [class.drag-over]="isDragOver()"
+     (dblclick)="onDoubleClick()"
+     (dragover)="onDragOver($event)"
+     (dragleave)="onDragLeave($event)"
+     (drop)="onDrop($event)">
   <canvas #canvas></canvas>
 </div>
 @if (!isFullscreen()) {
