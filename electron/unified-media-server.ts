@@ -1,5 +1,5 @@
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
-import { createReadStream, statSync } from 'fs';
+import { createReadStream, statSync, existsSync, readFileSync } from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 
@@ -64,6 +64,15 @@ type SSEEventType =
 
 const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.webm', '.ogg']);
 const NATIVE_AUDIO_FORMATS: Set<string> = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac']);
+const MIDI_FORMATS: Set<string> = new Set(['.mid', '.midi']);
+
+// SoundFont paths to search (in order of preference)
+const SOUNDFONT_SEARCH_PATHS: string[] = [
+  '/usr/local/Cellar/fluid-synth/2.5.1/share/fluid-synth/sf2/VintageDreamsWaves-v2.sf2',
+  '/usr/share/sounds/sf2/FluidR3_GM.sf2',
+  '/usr/share/soundfonts/FluidR3_GM.sf2',
+  '/usr/local/share/soundfonts/default.sf2',
+];
 
 const MIME_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -78,6 +87,144 @@ const MIME_TYPES: Record<string, string> = {
   '.avi': 'video/mp4',
   '.mov': 'video/mp4',
 };
+
+// ============================================================================
+// MIDI Duration Parser
+// ============================================================================
+
+function parseMidiDuration(filePath: string): number {
+  try {
+    const buffer: Buffer = readFileSync(filePath);
+    let offset: number = 0;
+
+    // Verify MIDI header "MThd"
+    if (buffer.toString('ascii', 0, 4) !== 'MThd') {
+      return 0;
+    }
+    offset += 8; // Skip "MThd" + header length
+
+    // Read format (2 bytes), numTracks (2 bytes), division (2 bytes)
+    const division: number = buffer.readUInt16BE(offset + 4);
+    offset += 6;
+
+    // Check if division is SMPTE (negative) or ticks per beat (positive)
+    const ticksPerBeat: number = division & 0x8000 ? 0 : division;
+    if (ticksPerBeat === 0) {
+      return 0; // SMPTE timing not supported
+    }
+
+    let maxTick: number = 0;
+    const tempoChanges: Array<{ tick: number; tempo: number }> = [{ tick: 0, tempo: 500000 }]; // Default 120 BPM
+
+    // Parse all tracks
+    while (offset < buffer.length - 8) {
+      // Look for track chunk "MTrk"
+      if (buffer.toString('ascii', offset, offset + 4) !== 'MTrk') {
+        offset++;
+        continue;
+      }
+      offset += 4;
+
+      const trackLength: number = buffer.readUInt32BE(offset);
+      offset += 4;
+
+      const trackEnd: number = offset + trackLength;
+      let currentTick: number = 0;
+
+      // Parse track events
+      while (offset < trackEnd && offset < buffer.length) {
+        // Read variable-length delta time
+        let deltaTime: number = 0;
+        let byte: number;
+        do {
+          byte = buffer[offset++];
+          deltaTime = (deltaTime << 7) | (byte & 0x7f);
+        } while (byte & 0x80 && offset < trackEnd);
+
+        currentTick += deltaTime;
+
+        if (offset >= buffer.length) break;
+
+        const eventType: number = buffer[offset++];
+
+        // Meta event
+        if (eventType === 0xff) {
+          if (offset >= buffer.length) break;
+          const metaType: number = buffer[offset++];
+
+          // Read variable-length length
+          let length: number = 0;
+          do {
+            if (offset >= buffer.length) break;
+            byte = buffer[offset++];
+            length = (length << 7) | (byte & 0x7f);
+          } while (byte & 0x80);
+
+          // Tempo change (meta type 0x51)
+          if (metaType === 0x51 && length === 3 && offset + 3 <= buffer.length) {
+            const tempo: number = (buffer[offset] << 16) | (buffer[offset + 1] << 8) | buffer[offset + 2];
+            tempoChanges.push({ tick: currentTick, tempo });
+          }
+
+          offset += length;
+        }
+        // SysEx event
+        else if (eventType === 0xf0 || eventType === 0xf7) {
+          let length: number = 0;
+          do {
+            if (offset >= buffer.length) break;
+            byte = buffer[offset++];
+            length = (length << 7) | (byte & 0x7f);
+          } while (byte & 0x80);
+          offset += length;
+        }
+        // Channel event
+        else {
+          const highNibble: number = eventType & 0xf0;
+          // Events with 2 data bytes
+          if (highNibble === 0x80 || highNibble === 0x90 || highNibble === 0xa0 ||
+              highNibble === 0xb0 || highNibble === 0xe0) {
+            offset += 2;
+          }
+          // Events with 1 data byte
+          else if (highNibble === 0xc0 || highNibble === 0xd0) {
+            offset += 1;
+          }
+        }
+      }
+
+      maxTick = Math.max(maxTick, currentTick);
+      offset = trackEnd;
+    }
+
+    // Convert ticks to seconds using tempo changes
+    tempoChanges.sort((a, b): number => a.tick - b.tick);
+
+    let totalSeconds: number = 0;
+    let lastTick: number = 0;
+    let currentTempo: number = 500000; // microseconds per beat
+
+    for (const change of tempoChanges) {
+      if (change.tick > lastTick) {
+        const ticksDelta: number = change.tick - lastTick;
+        totalSeconds += (ticksDelta / ticksPerBeat) * (currentTempo / 1000000);
+      }
+      currentTempo = change.tempo;
+      lastTick = change.tick;
+    }
+
+    // Add remaining time after last tempo change
+    if (maxTick > lastTick) {
+      const ticksDelta: number = maxTick - lastTick;
+      totalSeconds += (ticksDelta / ticksPerBeat) * (currentTempo / 1000000);
+    }
+
+    return totalSeconds;
+  } catch (err) {
+    console.error('Failed to parse MIDI duration:', err);
+    return 0;
+  }
+}
 
 // ============================================================================
 // SSE Manager
@@ -575,8 +722,11 @@ export class UnifiedMediaServer {
     const ext: string = path.extname(filePath).toLowerCase();
     const isNativeVideo: boolean = NATIVE_VIDEO_FORMATS.has(ext);
     const isNativeAudio: boolean = NATIVE_AUDIO_FORMATS.has(ext);
+    const isMidi: boolean = MIDI_FORMATS.has(ext);
 
-    if (isNativeVideo || isNativeAudio) {
+    if (isMidi) {
+      this.serveMidiFile(req, res, filePath);
+    } else if (isNativeVideo || isNativeAudio) {
       this.serveDirectFile(req, res, filePath, ext);
     } else {
       this.serveTranscodedFile(req, res, filePath, url);
@@ -713,6 +863,118 @@ export class UnifiedMediaServer {
     res.on('close', cleanup);
   }
 
+  private serveMidiFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string): void {
+    // Find available SoundFont
+    const soundfont: string | undefined = this.findSoundFont();
+    if (!soundfont) {
+      console.error('No SoundFont found for MIDI playback');
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'No SoundFont available for MIDI playback' }));
+      return;
+    }
+
+    console.log(`Converting MIDI: ${filePath} (using SoundFont: ${soundfont})`);
+
+    // FluidSynth converts MIDI to WAV and outputs to stdout
+    // We then pipe through FFmpeg to convert to MP3 for streaming
+    const fluidsynth: ChildProcess = spawn('fluidsynth', [
+      '-ni',           // No interactive mode
+      '-T', 'raw',     // Output raw audio
+      '-F', '-',       // Output to stdout
+      '-r', '44100',   // Sample rate
+      soundfont,
+      filePath
+    ]);
+
+    // Pipe FluidSynth output through FFmpeg to convert to MP3
+    const ffmpeg: ChildProcess = spawn('ffmpeg', [
+      '-hide_banner',
+      '-loglevel', 'warning',
+      '-f', 's16le',        // Input format: signed 16-bit little-endian
+      '-ar', '44100',       // Input sample rate
+      '-ac', '2',           // Input channels (stereo)
+      '-i', 'pipe:0',       // Read from stdin
+      '-c:a', 'libmp3lame', // Encode as MP3
+      '-b:a', '192k',       // Bitrate
+      '-f', 'mp3',          // Output format
+      'pipe:1'              // Output to stdout
+    ]);
+
+    res.writeHead(200, {
+      'Content-Type': 'audio/mpeg',
+      'Transfer-Encoding': 'chunked',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache',
+    });
+
+    // Pipe: FluidSynth → FFmpeg → HTTP Response
+    fluidsynth.stdout?.pipe(ffmpeg.stdin!);
+    ffmpeg.stdout?.pipe(res);
+
+    fluidsynth.stderr?.on('data', (data: Readonly<Buffer>): void => {
+      const msg: string = data.toString().trim();
+      if (msg && !msg.includes('FluidSynth')) {
+        console.log('FluidSynth:', msg);
+      }
+    });
+
+    ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
+      const msg: string = data.toString().trim();
+      if (msg) console.log('FFmpeg (MIDI):', msg);
+    });
+
+    fluidsynth.on('error', (err: Readonly<Error>): void => {
+      console.error('FluidSynth spawn error:', err);
+      if (!res.headersSent) {
+        (res as ServerResponse).writeHead(500);
+      }
+      (res as ServerResponse).end();
+    });
+
+    ffmpeg.on('error', (err: Readonly<Error>): void => {
+      console.error('FFmpeg spawn error:', err);
+      if (!res.headersSent) {
+        (res as ServerResponse).writeHead(500);
+      }
+      (res as ServerResponse).end();
+    });
+
+    fluidsynth.on('close', (code: number | null): void => {
+      if (code !== 0 && code !== null) {
+        console.error(`FluidSynth exited with code ${code}`);
+      }
+      // Close FFmpeg stdin when FluidSynth is done
+      ffmpeg.stdin?.end();
+    });
+
+    ffmpeg.on('close', (code: number | null): void => {
+      if (code !== 0 && code !== null) {
+        console.error(`FFmpeg exited with code ${code}`);
+      }
+    });
+
+    const cleanup: () => void = (): void => {
+      if (fluidsynth.exitCode === null) {
+        fluidsynth.kill('SIGKILL');
+      }
+      if (ffmpeg.exitCode === null) {
+        ffmpeg.kill('SIGKILL');
+      }
+    };
+
+    req.on('close', cleanup);
+    res.on('close', cleanup);
+  }
+
+  private findSoundFont(): string | undefined {
+    for (const sfPath of SOUNDFONT_SEARCH_PATHS) {
+      if (existsSync(sfPath)) {
+        return sfPath;
+      }
+    }
+    return undefined;
+  }
+
   // ============================================================================
   // Media Info (ffprobe)
   // ============================================================================
@@ -736,6 +998,18 @@ export class UnifiedMediaServer {
   }
 
   private probeMedia(filePath: string): Promise<MediaInfo> {
+    // MIDI files cannot be probed by ffprobe - parse duration from MIDI data
+    const ext: string = path.extname(filePath).toLowerCase();
+    if (MIDI_FORMATS.has(ext)) {
+      const duration: number = parseMidiDuration(filePath);
+      return Promise.resolve({
+        duration,
+        type: 'audio',
+        title: path.basename(filePath, ext),
+        filePath,
+      });
+    }
+
     return new Promise((resolve: (value: Readonly<MediaInfo>) => void, reject: (reason: Readonly<Error>) => void): void => {
       const ffprobe: ChildProcess = spawn('ffprobe', [
         '-v', 'quiet',
