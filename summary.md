@@ -44,6 +44,18 @@
 - Floating playback controls appear on mouse movement, hide after 5s inactivity
 - Gradient overlay for floating controls at bottom of screen
 
+### Settings/Configuration
+- Gear icon in header opens settings view (replaces media player view)
+- Settings persisted to `settings.json` in Electron userData folder:
+  - Dev mode: `~/Library/Application Support/Electron/settings.json`
+  - Packaged: `~/Library/Application Support/ONIXPlayer/settings.json`
+- Real-time settings sync via SSE (`settings:updated` event)
+- Settings fetched on service init (handles missed initial SSE event)
+- Atomic file writes (write to temp, then rename) prevent corruption
+- Current settings:
+  - **Default Visualization**: Select which visualization plays on audio startup
+- Extensible category-based UI with search filtering
+
 ### Infrastructure
 - Electron 39 + Angular 21
 - Unified HTTP media server for both audio and video
@@ -152,16 +164,19 @@ AudioContext.destination (speakers)
 - `electron/main.ts` - App initialization, IPC handlers, fullscreen window events
 - `electron/preload.ts` - IPC bridge (file dialog, server port, fullscreen control)
 - `electron/unified-media-server.ts` - HTTP API, SSE, playlist management
+- `electron/settings-manager.ts` - Persistent settings storage (JSON file in userData)
 
 **Angular Services:**
 - `src/app/services/electron.service.ts` - HTTP client + SSE connection + fullscreen state
 - `src/app/services/media-player.service.ts` - Playback orchestration (delegates to HTTP)
+- `src/app/services/settings.service.ts` - Settings state management with SSE sync
 
 **Angular Components:**
 - `src/app/components/audio/audio-outlet/` - Audio + Web Audio API visualization
 - `src/app/components/video/video-outlet/` - Video playback
 - `src/app/components/playlist/` - Playlist UI panel
 - `src/app/components/layout/layout-controls/` - Playback controls
+- `src/app/components/configuration/configuration-view/` - Settings UI with sidebar and panels
 
 **Visualizations:**
 - `src/app/components/audio/audio-outlet/visualizations/` - Visualization implementations
@@ -206,10 +221,16 @@ AudioContext.destination (speakers)
 | POST | `/playlist/shuffle` | Body: `{ enabled: boolean }` |
 | POST | `/playlist/repeat` | Body: `{ enabled: boolean }` |
 
+### Settings
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/settings` | Get all settings |
+| PUT | `/settings/visualization` | Body: `{ defaultType: string }` |
+
 ### Server-Sent Events
 | Endpoint | Events |
 |----------|--------|
-| GET `/events` | `playback:state`, `playback:time`, `playback:loaded`, `playback:ended`, `playback:volume`, `playlist:updated`, `playlist:selection`, `playlist:mode`, `heartbeat` |
+| GET `/events` | `playback:state`, `playback:time`, `playback:loaded`, `playback:ended`, `playback:volume`, `playlist:updated`, `playlist:selection`, `playlist:mode`, `settings:updated`, `heartbeat` |
 
 ## FFmpeg Commands
 
@@ -283,13 +304,15 @@ The entire TypeScript codebase is documented with comprehensive TSDoc comments f
 **Services:**
 - `electron.service.ts` - HTTP/SSE bridge with reactive signals
 - `media-player.service.ts` - High-level playback facade
+- `settings.service.ts` - Settings state with SSE sync and HTTP fetch fallback
 
 **Components:**
-- `root.ts` - Application shell, fullscreen handling, control visibility
+- `root.ts` - Application shell, fullscreen handling, control visibility, config mode switching
 - `layout-header.ts`, `layout-controls.ts`, `layout-outlet.ts` - Layout components
-- `audio-outlet.ts` - Web Audio API integration, visualization management
+- `audio-outlet.ts` - Web Audio API integration, visualization management, default viz from settings
 - `video-outlet.ts` - Video playback, transcoding support
 - `playlist.ts` - Playlist panel with drag-and-drop
+- `configuration-view.ts` - Settings panel with category navigation and visualization config
 
 **Visualizations:**
 - `visualization.ts` - Base classes with sensitivity, fade, and resize support

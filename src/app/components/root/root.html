@@ -1,7 +1,11 @@
-@if (!isFullscreen()) {
-  <app-layout-header/>
-}
-<app-layout-outlet/>
-@if (!isFullscreen() || showControls()) {
-  <app-layout-controls [class.fullscreen-overlay]="isFullscreen()"/>
+@if (isConfigurationMode()) {
+  <app-configuration-view (close)="exitConfigurationMode()"/>
+} @else {
+  @if (!isFullscreen()) {
+    <app-layout-header (openSettings)="enterConfigurationMode()"/>
+  }
+  <app-layout-outlet/>
+  @if (!isFullscreen() || showControls()) {
+    <app-layout-controls [class.fullscreen-overlay]="isFullscreen()"/>
+  }
 }

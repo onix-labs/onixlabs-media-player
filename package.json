@@ -63,7 +63,7 @@
   },
   "build": {
     "appId": "com.onixlabs.media-player",
-    "productName": "Onixlabs Media Player",
+    "productName": "ONIXPlayer",
     "directories": {
       "output": "release"
     },

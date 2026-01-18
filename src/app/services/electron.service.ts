@@ -18,6 +18,7 @@
 
 import {Injectable, NgZone, OnDestroy, signal} from '@angular/core';
 import type {MediaInfo, PlaylistItem, PlaylistState} from '../types/electron';
+import type {AppSettings} from './settings.service';
 
 /**
  * Re-export types for consumers that import from this service.
@@ -112,6 +113,19 @@ export class ElectronService implements OnDestroy {
 
   /** Cleanup function for fullscreen change listener */
   private fullscreenCleanup: (() => void) | null = null;
+
+  /** Callback for settings updates (registered by SettingsService) */
+  private settingsUpdateCallback: ((settings: AppSettings) => void) | null = null;
+
+  /**
+   * Registers a callback to receive settings updates from SSE.
+   * Called by SettingsService to avoid circular dependency.
+   *
+   * @param callback - Function to call when settings are updated
+   */
+  public onSettingsUpdate(callback: (settings: AppSettings) => void): void {
+    this.settingsUpdateCallback = callback;
+  }
 
   /**
    * Creates the ElectronService and initializes connections.
@@ -307,6 +321,14 @@ export class ElectronService implements OnDestroy {
           shuffleEnabled: data.shuffleEnabled,
           repeatEnabled: data.repeatEnabled,
         }));
+      });
+    });
+
+    // Settings events
+    this.eventSource.addEventListener('settings:updated', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
+        const data: AppSettings = JSON.parse(e.data);
+        this.settingsUpdateCallback?.(data);
       });
     });
   }
