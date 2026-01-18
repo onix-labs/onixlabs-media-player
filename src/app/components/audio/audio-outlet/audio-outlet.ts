@@ -1,5 +1,6 @@
-import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect} from '@angular/core';
+import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, HostBinding} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
+import {ElectronService} from '../../../services/electron.service';
 import type {PlaylistItem} from '../../../services/electron.service';
 import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYPES} from './visualizations';
 
@@ -15,6 +16,18 @@ export class AudioOutlet implements OnInit, OnDestroy {
   @ViewChild('audioElement', {static: true}) public audioRef!: ElementRef<HTMLAudioElement>;
 
   public readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
+  private readonly electron: ElectronService = inject(ElectronService);
+
+  public readonly isFullscreen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isFullscreen());
+
+  @HostBinding('class.fullscreen')
+  public get fullscreenClass(): boolean {
+    return this.isFullscreen();
+  }
+
+  public onDoubleClick(): void {
+    void this.electron.toggleFullscreen();
+  }
 
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;

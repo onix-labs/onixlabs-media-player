@@ -57,6 +57,7 @@ class Program {
 
     this.window = this.createBrowserWindow();
     this.setupIpcHandlers();
+    this.setupWindowEvents();
 
     if (Program.IS_DEVELOPMENT) void this.window.loadURL(Program.DEVELOPMENT_SERVER_URL);
     else void this.window.loadFile(path.join(Program.getProjectRoot(), "dist", "onixlabs-media-player", "browser", "index.html"));
@@ -118,6 +119,32 @@ class Program {
     // Get server port - needed for renderer to connect to HTTP API
     ipcMain.handle("app:getServerPort", (): number => {
       return this.mediaServer?.getPort() || 0;
+    });
+
+    // Fullscreen control
+    ipcMain.handle("window:enterFullscreen", (): void => {
+      this.window?.setFullScreen(true);
+    });
+
+    ipcMain.handle("window:exitFullscreen", (): void => {
+      this.window?.setFullScreen(false);
+    });
+
+    ipcMain.handle("window:isFullscreen", (): boolean => {
+      return this.window?.isFullScreen() || false;
+    });
+  }
+
+  private setupWindowEvents(): void {
+    if (!this.window) return;
+
+    // Notify renderer when fullscreen state changes (including via green button)
+    this.window.on('enter-full-screen', (): void => {
+      this.window?.webContents.send('window:fullscreenChanged', true);
+    });
+
+    this.window.on('leave-full-screen', (): void => {
+      this.window?.webContents.send('window:fullscreenChanged', false);
     });
   }
 

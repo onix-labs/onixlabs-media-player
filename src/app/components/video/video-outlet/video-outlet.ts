@@ -1,5 +1,6 @@
 import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, effect} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
+import {ElectronService} from '../../../services/electron.service';
 import type {PlaylistItem} from '../../../services/electron.service';
 
 // Formats that Chromium can play natively (support HTTP range seeking)
@@ -16,8 +17,13 @@ export class VideoOutlet implements OnInit, OnDestroy {
   @ViewChild('videoElement', {static: true}) public videoRef!: ElementRef<HTMLVideoElement>;
 
   public readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
+  private readonly electron: ElectronService = inject(ElectronService);
 
   public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
+
+  public onDoubleClick(): void {
+    void this.electron.toggleFullscreen();
+  }
 
   private currentFilePath: string | null = null;
   private isTranscoded: boolean = false;

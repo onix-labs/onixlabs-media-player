@@ -25,12 +25,21 @@
 - Auto-advance to next track when current ends
 - Drag-and-drop file support
 
+### Fullscreen Mode
+- Fullscreen button in header bar (or macOS green traffic light)
+- Double-click visualization or video to toggle fullscreen
+- Escape key exits fullscreen
+- Audio fullscreen: only visualization visible (no controls or toggles)
+- Video fullscreen: clean video view with floating controls
+- Floating playback controls appear on mouse movement, hide after 5s inactivity
+- Gradient overlay for floating controls at bottom of screen
+
 ### Infrastructure
 - Electron 39 + Angular 21
 - Unified HTTP media server for both audio and video
 - Server-Sent Events (SSE) for real-time state synchronization
 - FFprobe for metadata extraction
-- Minimal IPC (3 channels vs 18 previously)
+- Minimal IPC (6 channels vs 18 previously)
 - ESLint with strict TypeScript rules:
   - `typedef` - explicit type annotations on all variables/parameters
   - `explicit-function-return-type` - return types on all functions
@@ -93,10 +102,13 @@
 │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
-│  IPC (minimal - 3 channels):                                           │
-│  ├── dialog:openFile      (native file picker)                         │
-│  ├── app:getServerPort    (get HTTP server port)                       │
-│  └── webUtils:getPathForFile (drag-and-drop paths)                     │
+│  IPC (minimal - 6 channels):                                           │
+│  ├── dialog:openFile         (native file picker)                      │
+│  ├── app:getServerPort       (get HTTP server port)                    │
+│  ├── webUtils:getPathForFile (drag-and-drop paths)                     │
+│  ├── window:enterFullscreen  (enter fullscreen mode)                   │
+│  ├── window:exitFullscreen   (exit fullscreen mode)                    │
+│  └── window:isFullscreen     (query fullscreen state)                  │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -127,12 +139,12 @@ AudioContext.destination (speakers)
 ### Key Files
 
 **Electron Layer:**
-- `electron/main.ts` - App initialization, minimal IPC handlers
-- `electron/preload.ts` - IPC bridge (3 methods only)
+- `electron/main.ts` - App initialization, IPC handlers, fullscreen window events
+- `electron/preload.ts` - IPC bridge (file dialog, server port, fullscreen control)
 - `electron/unified-media-server.ts` - HTTP API, SSE, playlist management
 
 **Angular Services:**
-- `src/app/services/electron.service.ts` - HTTP client + SSE connection
+- `src/app/services/electron.service.ts` - HTTP client + SSE connection + fullscreen state
 - `src/app/services/media-player.service.ts` - Playback orchestration (delegates to HTTP)
 
 **Angular Components:**
@@ -225,8 +237,9 @@ npm run package      # Package with electron-builder
 ## Architecture Benefits
 
 1. **Unified playback** - Audio and video use same HTTP streaming approach
-2. **Minimal IPC** - Only 3 channels vs 18 previously
+2. **Minimal IPC** - Only 6 channels vs 18 previously
 3. **Server as source of truth** - Playlist and playback state managed centrally
 4. **Instant volume** - Client-side control, no FFmpeg restart needed
 5. **Native browser decoding** - Leverages Chromium's optimized media stack
 6. **Visualization support** - `createMediaElementSource()` enables Web Audio API analysis
+7. **Immersive fullscreen** - Clean viewing experience with auto-hiding controls

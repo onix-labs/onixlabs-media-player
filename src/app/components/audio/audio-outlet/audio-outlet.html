@@ -1,13 +1,15 @@
 <audio #audioElement crossorigin="anonymous" style="display: none;"></audio>
-<div class="visualizer-container">
+<div class="visualizer-container" (dblclick)="onDoubleClick()">
   <canvas #canvas></canvas>
 </div>
-<div class="visualizer-controls">
-  <button (click)="previousVisualization()" title="Previous visualization">
-    <i class="fa-solid fa-caret-left"></i>
-  </button>
-  <button (click)="nextVisualization()" title="Next visualization">
-    <i class="fa-solid fa-caret-right"></i>
-  </button>
-  <span class="visualizer-name">{{ visualizationName() }}</span>
-</div>
+@if (!isFullscreen()) {
+  <div class="visualizer-controls">
+    <button (click)="previousVisualization()" title="Previous visualization">
+      <i class="fa-solid fa-caret-left"></i>
+    </button>
+    <button (click)="nextVisualization()" title="Next visualization">
+      <i class="fa-solid fa-caret-right"></i>
+    </button>
+    <span class="visualizer-name">{{ visualizationName() }}</span>
+  </div>
+}

@@ -48,6 +48,10 @@ export interface MediaPlayerAPI {
   openFileDialog: (options: OpenDialogOptions) => Promise<string[]>;
   getPathForFile: (file: File) => string;
   getServerPort: () => Promise<number>;
+  enterFullscreen: () => Promise<void>;
+  exitFullscreen: () => Promise<void>;
+  isFullscreen: () => Promise<boolean>;
+  onFullscreenChange: (callback: (isFullscreen: boolean) => void) => () => void;
 }
 
 declare global {

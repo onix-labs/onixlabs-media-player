@@ -3,6 +3,13 @@
   flex-direction: column;
   flex: 1;
   overflow: hidden;
+
+  &.fullscreen {
+    .visualizer-container {
+      background: black;
+      border-radius: 0;
+    }
+  }
 }
 
 .visualizer-container {
