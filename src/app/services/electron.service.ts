@@ -27,6 +27,9 @@ export class ElectronService implements OnDestroy {
     repeatEnabled: false,
   });
   public readonly mediaEnded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+  public readonly isFullscreen: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  private fullscreenCleanup: (() => void) | null = null;
 
   constructor(private readonly ngZone: NgZone) {
     this.initialize();
@@ -50,6 +53,27 @@ export class ElectronService implements OnDestroy {
 
     // Connect to SSE for real-time updates
     this.connectSSE();
+
+    // Setup fullscreen listener
+    this.setupFullscreenListener();
+  }
+
+  private setupFullscreenListener(): void {
+    if (!this.isElectron || !this.api) return;
+
+    // Get initial fullscreen state
+    this.api.isFullscreen().then((isFullscreen: boolean): void => {
+      this.ngZone.run((): void => {
+        this.isFullscreen.set(isFullscreen);
+      });
+    });
+
+    // Listen for fullscreen changes
+    this.fullscreenCleanup = this.api.onFullscreenChange((isFullscreen: boolean): void => {
+      this.ngZone.run((): void => {
+        this.isFullscreen.set(isFullscreen);
+      });
+    });
   }
 
   private connectSSE(): void {
@@ -165,6 +189,28 @@ export class ElectronService implements OnDestroy {
       throw new Error('Not running in Electron');
     }
     return this.api.getPathForFile(file);
+  }
+
+  // ============================================================================
+  // IPC Methods - Fullscreen Control
+  // ============================================================================
+
+  public async enterFullscreen(): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.enterFullscreen();
+  }
+
+  public async exitFullscreen(): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.exitFullscreen();
+  }
+
+  public async toggleFullscreen(): Promise<void> {
+    if (this.isFullscreen()) {
+      await this.exitFullscreen();
+    } else {
+      await this.enterFullscreen();
+    }
   }
 
   // ============================================================================
@@ -290,5 +336,6 @@ export class ElectronService implements OnDestroy {
 
   public ngOnDestroy(): void {
     this.eventSource?.close();
+    this.fullscreenCleanup?.();
   }
 }

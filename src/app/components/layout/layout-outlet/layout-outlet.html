@@ -1,10 +1,12 @@
 <div class="container">
-  <div class="header-bar">
-    <span class="track-title">{{ trackTitle() }}</span>
-    <button class="playlist-toggle" (click)="togglePlaylist()" title="Toggle playlist">
-      <i class="fa-solid fa-list"></i>
-    </button>
-  </div>
+  @if (!isFullscreen()) {
+    <div class="header-bar">
+      <span class="track-title">{{ trackTitle() }}</span>
+      <button class="playlist-toggle" (click)="togglePlaylist()" title="Toggle playlist">
+        <i class="fa-solid fa-list"></i>
+      </button>
+    </div>
+  }
 
   <div class="content-area">
     <div class="media-area">
@@ -26,6 +28,8 @@
         </div>
       }
     </div>
-    <app-playlist/>
+    @if (!isFullscreen()) {
+      <app-playlist/>
+    }
   </div>
 </div>
