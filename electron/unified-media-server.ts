@@ -1,3 +1,24 @@
+/**
+ * @fileoverview Unified HTTP media server for audio and video streaming.
+ *
+ * This module provides the core backend functionality for the media player:
+ * - HTTP API for playback control, playlist management, and media streaming
+ * - Server-Sent Events (SSE) for real-time state synchronization
+ * - Media streaming with support for native formats and transcoding
+ * - MIDI file playback via FluidSynth synthesis
+ * - FFprobe integration for metadata extraction
+ *
+ * Architecture:
+ * The server acts as the single source of truth for all media state.
+ * The renderer (Angular) communicates exclusively via HTTP/SSE, with no
+ * direct file system access. This design:
+ * - Simplifies state management (server is authoritative)
+ * - Enables streaming of non-native formats via transcoding
+ * - Provides a clean separation between UI and media handling
+ *
+ * @module electron/unified-media-server
+ */
+
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { createReadStream, statSync, existsSync, readFileSync } from 'fs';
 import { spawn, ChildProcess } from 'child_process';
@@ -7,66 +28,139 @@ import * as path from 'path';
 // Types
 // ============================================================================
 
+/**
+ * Represents an item in the playlist.
+ *
+ * Playlist items contain all metadata needed for display and playback.
+ * The id is generated server-side to ensure uniqueness.
+ */
 export interface PlaylistItem {
+  /** Unique identifier for this playlist item */
   readonly id: string;
+  /** Absolute path to the media file */
   readonly filePath: string;
+  /** Display title (from metadata or filename) */
   readonly title: string;
+  /** Artist name from metadata (optional) */
   readonly artist?: string;
+  /** Album name from metadata (optional) */
   readonly album?: string;
+  /** Duration in seconds */
   readonly duration: number;
+  /** Media type: audio or video */
   readonly type: 'audio' | 'video';
+  /** Video width in pixels (video only) */
   readonly width?: number;
+  /** Video height in pixels (video only) */
   readonly height?: number;
 }
 
+/**
+ * Media information returned by ffprobe.
+ *
+ * Contains metadata and stream information for a media file.
+ * Used when adding items to the playlist and loading tracks.
+ */
 export interface MediaInfo {
+  /** Duration in seconds */
   readonly duration: number;
+  /** Media type determined from streams */
   readonly type: 'audio' | 'video';
+  /** Display title */
   readonly title: string;
+  /** Artist name (optional) */
   readonly artist?: string;
+  /** Album name (optional) */
   readonly album?: string;
+  /** Absolute path to the file */
   readonly filePath: string;
+  /** Video width in pixels (video only) */
   readonly width?: number;
+  /** Video height in pixels (video only) */
   readonly height?: number;
 }
 
+/**
+ * Complete playlist state for synchronization.
+ *
+ * This is the shape of data sent to clients when the playlist changes.
+ */
 interface PlaylistState {
+  /** All items in the playlist */
   readonly items: readonly PlaylistItem[];
+  /** Index of currently selected item (-1 if none) */
   readonly currentIndex: number;
+  /** Whether shuffle mode is enabled */
   readonly shuffleEnabled: boolean;
+  /** Whether repeat mode is enabled */
   readonly repeatEnabled: boolean;
 }
 
+/**
+ * Current playback state managed by the server.
+ *
+ * This is the authoritative state for playback. The renderer
+ * receives updates via SSE and should not maintain independent state.
+ */
 interface PlaybackState {
+  /** Current playback state */
   state: 'idle' | 'loading' | 'playing' | 'paused' | 'stopped' | 'error';
+  /** Current playback position in seconds */
   currentTime: number;
+  /** Total duration of current media in seconds */
   duration: number;
+  /** Volume level (0.0 to 1.0) */
   volume: number;
+  /** Whether audio is muted */
   muted: boolean;
+  /** Currently loaded media info, null if nothing loaded */
   currentMedia: MediaInfo | null;
+  /** Error message if state is 'error', null otherwise */
   errorMessage: string | null;
 }
 
+/**
+ * SSE event types for real-time communication.
+ *
+ * Each event type corresponds to a specific state change that
+ * the renderer needs to react to.
+ */
 type SSEEventType =
-  | 'playback:state'
-  | 'playback:time'
-  | 'playback:loaded'
-  | 'playback:ended'
-  | 'playback:volume'
-  | 'playlist:updated'
-  | 'playlist:selection'
-  | 'playlist:mode'
-  | 'heartbeat';
+  | 'playback:state'      // Playback state changed (playing/paused/etc)
+  | 'playback:time'       // Current time or duration changed
+  | 'playback:loaded'     // New media loaded
+  | 'playback:ended'      // Playback reached end of playlist
+  | 'playback:volume'     // Volume or mute state changed
+  | 'playlist:updated'    // Playlist items changed
+  | 'playlist:selection'  // Current track selection changed
+  | 'playlist:mode'       // Shuffle or repeat mode changed
+  | 'heartbeat';          // Keep-alive ping
 
 // ============================================================================
 // Constants
 // ============================================================================
 
+/**
+ * Video formats that Chromium can play natively.
+ * These support HTTP range requests for seeking.
+ */
 const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.webm', '.ogg']);
+
+/**
+ * Audio formats that Chromium can play natively.
+ * These support HTTP range requests for seeking.
+ */
 const NATIVE_AUDIO_FORMATS: Set<string> = new Set(['.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac']);
+
+/**
+ * MIDI file extensions that require FluidSynth synthesis.
+ */
 const MIDI_FORMATS: Set<string> = new Set(['.mid', '.midi']);
 
-// SoundFont paths to search (in order of preference)
+/**
+ * Paths to search for SoundFont files (in order of preference).
+ * The first existing file will be used for MIDI synthesis.
+ */
 const SOUNDFONT_SEARCH_PATHS: string[] = [
   '/usr/local/Cellar/fluid-synth/2.5.1/share/fluid-synth/sf2/VintageDreamsWaves-v2.sf2',
   '/usr/share/sounds/sf2/FluidR3_GM.sf2',
@@ -74,6 +168,10 @@ const SOUNDFONT_SEARCH_PATHS: string[] = [
   '/usr/local/share/soundfonts/default.sf2',
 ];
 
+/**
+ * MIME types for supported media formats.
+ * Non-native formats are transcoded to container formats that browsers support.
+ */
 const MIME_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
@@ -83,15 +181,34 @@ const MIME_TYPES: Record<string, string> = {
   '.flac': 'audio/flac',
   '.m4a': 'audio/mp4',
   '.aac': 'audio/aac',
-  '.mkv': 'video/mp4',
-  '.avi': 'video/mp4',
-  '.mov': 'video/mp4',
+  '.mkv': 'video/mp4',   // Transcoded to MP4
+  '.avi': 'video/mp4',   // Transcoded to MP4
+  '.mov': 'video/mp4',   // Transcoded to MP4
 };
 
 // ============================================================================
 // MIDI Duration Parser
 // ============================================================================
 
+/**
+ * Parses a MIDI file to calculate its duration in seconds.
+ *
+ * MIDI files cannot be probed by ffprobe because they contain musical
+ * instructions rather than audio data. This function parses the binary
+ * MIDI format to calculate the actual duration.
+ *
+ * MIDI timing works as follows:
+ * - Header contains "division" (ticks per quarter note)
+ * - Tempo meta events specify microseconds per quarter note
+ * - Duration = (total ticks / division) * (tempo / 1,000,000)
+ *
+ * @param filePath - Absolute path to the MIDI file
+ * @returns Duration in seconds, or 0 if parsing fails
+ *
+ * @example
+ * const duration = parseMidiDuration('/path/to/song.mid');
+ * // Returns: 180.5 (3 minutes, 0.5 seconds)
+ */
 function parseMidiDuration(filePath: string): number {
   try {
     const buffer: Buffer = readFileSync(filePath);
@@ -147,7 +264,7 @@ function parseMidiDuration(filePath: string): number {
 
         const eventType: number = buffer[offset++];
 
-        // Meta event
+        // Meta event (0xFF)
         if (eventType === 0xff) {
           if (offset >= buffer.length) break;
           const metaType: number = buffer[offset++];
@@ -160,7 +277,7 @@ function parseMidiDuration(filePath: string): number {
             length = (length << 7) | (byte & 0x7f);
           } while (byte & 0x80);
 
-          // Tempo change (meta type 0x51)
+          // Tempo change (meta type 0x51) - 3 bytes: microseconds per quarter note
           if (metaType === 0x51 && length === 3 && offset + 3 <= buffer.length) {
             const tempo: number = (buffer[offset] << 16) | (buffer[offset + 1] << 8) | buffer[offset + 2];
             tempoChanges.push({ tick: currentTick, tempo });
@@ -168,7 +285,7 @@ function parseMidiDuration(filePath: string): number {
 
           offset += length;
         }
-        // SysEx event
+        // SysEx event (0xF0 or 0xF7)
         else if (eventType === 0xf0 || eventType === 0xf7) {
           let length: number = 0;
           do {
@@ -178,15 +295,15 @@ function parseMidiDuration(filePath: string): number {
           } while (byte & 0x80);
           offset += length;
         }
-        // Channel event
+        // Channel event (0x80-0xEF)
         else {
           const highNibble: number = eventType & 0xf0;
-          // Events with 2 data bytes
+          // Events with 2 data bytes: note on/off, aftertouch, control, pitch bend
           if (highNibble === 0x80 || highNibble === 0x90 || highNibble === 0xa0 ||
               highNibble === 0xb0 || highNibble === 0xe0) {
             offset += 2;
           }
-          // Events with 1 data byte
+          // Events with 1 data byte: program change, channel pressure
           else if (highNibble === 0xc0 || highNibble === 0xd0) {
             offset += 1;
           }
@@ -202,7 +319,7 @@ function parseMidiDuration(filePath: string): number {
 
     let totalSeconds: number = 0;
     let lastTick: number = 0;
-    let currentTempo: number = 500000; // microseconds per beat
+    let currentTempo: number = 500000; // microseconds per beat (120 BPM default)
 
     for (const change of tempoChanges) {
       if (change.tick > lastTick) {
@@ -230,10 +347,29 @@ function parseMidiDuration(filePath: string): number {
 // SSE Manager
 // ============================================================================
 
+/**
+ * Manages Server-Sent Events connections for real-time state updates.
+ *
+ * SSE provides a unidirectional channel from server to client that's
+ * perfect for broadcasting state changes. Unlike WebSockets, SSE:
+ * - Works over standard HTTP (no upgrade needed)
+ * - Automatically reconnects on disconnect
+ * - Is simpler to implement for broadcast scenarios
+ *
+ * The manager maintains a set of connected clients and broadcasts
+ * events to all of them simultaneously.
+ */
 class SSEManager {
+  /** Set of active SSE client connections */
   private readonly clients: Set<ServerResponse> = new Set<ServerResponse>();
+
+  /** Interval for sending heartbeat pings */
   private heartbeatInterval: NodeJS.Timeout | null = null;
 
+  /**
+   * Starts the SSE manager and begins heartbeat pings.
+   * Heartbeats keep connections alive through proxies and firewalls.
+   */
   public start(): void {
     // Send heartbeat every 30 seconds to keep connections alive
     this.heartbeatInterval = setInterval((): void => {
@@ -241,6 +377,10 @@ class SSEManager {
     }, 30000);
   }
 
+  /**
+   * Stops the SSE manager and closes all client connections.
+   * Called during server shutdown.
+   */
   public stop(): void {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
@@ -252,11 +392,23 @@ class SSEManager {
     this.clients.clear();
   }
 
+  /**
+   * Adds a new SSE client connection.
+   * Automatically removes the client when the connection closes.
+   *
+   * @param res - The HTTP response object to use for SSE
+   */
   public addClient(res: Readonly<ServerResponse>): void {
     this.clients.add(res as ServerResponse);
     res.on('close', (): void => { this.clients.delete(res as ServerResponse); });
   }
 
+  /**
+   * Broadcasts an event to all connected SSE clients.
+   *
+   * @param event - The event type (e.g., 'playback:state')
+   * @param data - The event data (will be JSON serialized)
+   */
   public broadcast(event: SSEEventType, data: Readonly<unknown>): void {
     const message: string = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const client of this.clients) {
@@ -269,20 +421,58 @@ class SSEManager {
 // Playlist Manager
 // ============================================================================
 
+/**
+ * Manages the media playlist with shuffle and repeat functionality.
+ *
+ * The playlist manager is the authoritative source for:
+ * - The list of media items
+ * - Current track selection
+ * - Shuffle/repeat mode state
+ * - Navigation history (for "previous" functionality)
+ *
+ * Shuffle uses Fisher-Yates algorithm to generate a random order.
+ * The current track is always placed first in the shuffle order
+ * to avoid repeating it immediately when shuffle is enabled.
+ */
 class PlaylistManager {
+  /** The list of playlist items */
   private items: PlaylistItem[] = [];
+
+  /** Index of the currently selected item (-1 if none) */
   private currentIndex: number = -1;
+
+  /** Whether shuffle mode is enabled */
   private shuffleEnabled: boolean = false;
+
+  /** Whether repeat mode is enabled */
   private repeatEnabled: boolean = false;
+
+  /** Randomized order for shuffle mode */
   private shuffleOrder: number[] = [];
+
+  /** Current position within the shuffle order */
   private shufflePosition: number = 0;
+
+  /** History of played track indices for "previous" navigation */
   private playHistory: number[] = [];
+
+  /** Reference to SSE manager for broadcasting updates */
   private readonly sse: SSEManager;
 
+  /**
+   * Creates a new playlist manager.
+   *
+   * @param sse - SSE manager for broadcasting playlist updates
+   */
   constructor(sse: Readonly<SSEManager>) {
     this.sse = sse as SSEManager;
   }
 
+  /**
+   * Gets the complete playlist state for synchronization.
+   *
+   * @returns Current playlist state including items and settings
+   */
   public getState(): PlaylistState {
     return {
       items: this.items,
@@ -292,6 +482,11 @@ class PlaylistManager {
     };
   }
 
+  /**
+   * Gets the currently selected playlist item.
+   *
+   * @returns The current item, or null if nothing is selected
+   */
   public getCurrentItem(): PlaylistItem | null {
     if (this.currentIndex >= 0 && this.currentIndex < this.items.length) {
       return this.items[this.currentIndex];
@@ -299,6 +494,16 @@ class PlaylistManager {
     return null;
   }
 
+  /**
+   * Adds new items to the playlist.
+   *
+   * Items are assigned unique IDs and added to the end of the playlist.
+   * If the playlist was empty, the first item is automatically selected.
+   * Shuffle order is regenerated if shuffle mode is enabled.
+   *
+   * @param newItems - Items to add (without IDs, which will be generated)
+   * @returns The items that were added (with generated IDs)
+   */
   public addItems(newItems: readonly Omit<PlaylistItem, 'id'>[]): PlaylistItem[] {
     const itemsWithIds: PlaylistItem[] = newItems.map((item: Readonly<Omit<PlaylistItem, 'id'>>): PlaylistItem => ({
       ...item,
@@ -322,6 +527,15 @@ class PlaylistManager {
     return itemsWithIds;
   }
 
+  /**
+   * Removes an item from the playlist by ID.
+   *
+   * Adjusts the current index if necessary to maintain valid selection.
+   * Regenerates shuffle order if shuffle mode is enabled.
+   *
+   * @param id - The ID of the item to remove
+   * @returns True if the item was found and removed, false otherwise
+   */
   public removeItem(id: string): boolean {
     const idx: number = this.items.findIndex((item: Readonly<PlaylistItem>): boolean => item.id === id);
     if (idx === -1) return false;
@@ -347,6 +561,10 @@ class PlaylistManager {
     return true;
   }
 
+  /**
+   * Clears all items from the playlist.
+   * Resets all state including shuffle order and play history.
+   */
   public clear(): void {
     this.items = [];
     this.currentIndex = -1;
@@ -356,6 +574,12 @@ class PlaylistManager {
     this.broadcastPlaylistUpdate();
   }
 
+  /**
+   * Selects a specific item by ID.
+   *
+   * @param id - The ID of the item to select
+   * @returns The selected item, or null if not found
+   */
   public selectItem(id: string): PlaylistItem | null {
     const idx: number = this.items.findIndex((item: Readonly<PlaylistItem>): boolean => item.id === id);
     if (idx === -1) return null;
@@ -371,6 +595,12 @@ class PlaylistManager {
     return this.getCurrentItem();
   }
 
+  /**
+   * Selects a specific item by index.
+   *
+   * @param index - The index of the item to select
+   * @returns The selected item, or null if index is invalid
+   */
   public selectIndex(index: number): PlaylistItem | null {
     if (index < 0 || index >= this.items.length) return null;
 
@@ -385,6 +615,14 @@ class PlaylistManager {
     return this.getCurrentItem();
   }
 
+  /**
+   * Advances to the next track in the playlist.
+   *
+   * In shuffle mode, advances through the shuffle order.
+   * In repeat mode, wraps to the beginning when reaching the end.
+   *
+   * @returns The next item, or null if at end of playlist (and not repeating)
+   */
   public next(): PlaylistItem | null {
     if (this.items.length === 0) return null;
 
@@ -416,6 +654,15 @@ class PlaylistManager {
     return this.getCurrentItem();
   }
 
+  /**
+   * Goes to the previous track in the playlist.
+   *
+   * First checks play history for the previously played track.
+   * Falls back to sequential/shuffle navigation if no history.
+   * In repeat mode, wraps to the end when at the beginning.
+   *
+   * @returns The previous item, or null if at beginning (and not repeating)
+   */
   public previous(): PlaylistItem | null {
     if (this.items.length === 0) return null;
 
@@ -460,6 +707,14 @@ class PlaylistManager {
     return this.getCurrentItem();
   }
 
+  /**
+   * Enables or disables shuffle mode.
+   *
+   * When enabling shuffle, generates a new random order with the
+   * current track at the front. Resets play history.
+   *
+   * @param enabled - Whether to enable shuffle mode
+   */
   public setShuffle(enabled: boolean): void {
     if (this.shuffleEnabled === enabled) return;
 
@@ -475,12 +730,22 @@ class PlaylistManager {
     this.broadcastModeChange();
   }
 
+  /**
+   * Enables or disables repeat mode.
+   *
+   * When repeat is enabled, the playlist wraps around instead of stopping.
+   *
+   * @param enabled - Whether to enable repeat mode
+   */
   public setRepeat(enabled: boolean): void {
     if (this.repeatEnabled === enabled) return;
     this.repeatEnabled = enabled;
     this.broadcastModeChange();
   }
 
+  /**
+   * Checks if there's a next track available (without repeat).
+   */
   private canGoNext(): boolean {
     if (this.items.length === 0) return false;
     if (this.shuffleEnabled) {
@@ -489,6 +754,9 @@ class PlaylistManager {
     return this.currentIndex < this.items.length - 1;
   }
 
+  /**
+   * Checks if there's a previous track available (without repeat).
+   */
   private canGoPrevious(): boolean {
     if (this.items.length === 0) return false;
     if (this.shuffleEnabled) {
@@ -497,6 +765,12 @@ class PlaylistManager {
     return this.currentIndex > 0;
   }
 
+  /**
+   * Regenerates the shuffle order using Fisher-Yates algorithm.
+   *
+   * The current track is moved to the front of the shuffle order
+   * to avoid immediately repeating it when shuffle is enabled.
+   */
   private regenerateShuffleOrder(): void {
     const length: number = this.items.length;
     if (length === 0) {
@@ -524,14 +798,20 @@ class PlaylistManager {
     this.shufflePosition = 0;
   }
 
+  /**
+   * Generates a unique ID for a playlist item.
+   * Combines timestamp with random string for uniqueness.
+   */
   private generateId(): string {
     return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
 
+  /** Broadcasts full playlist state to all clients */
   private broadcastPlaylistUpdate(): void {
     this.sse.broadcast('playlist:updated', this.getState());
   }
 
+  /** Broadcasts current selection change to all clients */
   private broadcastSelectionChange(): void {
     this.sse.broadcast('playlist:selection', {
       currentIndex: this.currentIndex,
@@ -539,6 +819,7 @@ class PlaylistManager {
     });
   }
 
+  /** Broadcasts shuffle/repeat mode change to all clients */
   private broadcastModeChange(): void {
     this.sse.broadcast('playlist:mode', {
       shuffleEnabled: this.shuffleEnabled,
@@ -551,13 +832,42 @@ class PlaylistManager {
 // Unified Media Server
 // ============================================================================
 
+/**
+ * HTTP server providing the complete media player backend.
+ *
+ * This server provides:
+ * - Media streaming (native formats with range requests, transcoded formats)
+ * - MIDI playback via FluidSynth synthesis
+ * - Playback control API (play, pause, seek, volume)
+ * - Playlist management API (add, remove, next, previous, shuffle, repeat)
+ * - Real-time state updates via Server-Sent Events
+ * - Media metadata extraction via ffprobe
+ *
+ * The server maintains authoritative state for:
+ * - Current playback position (tracked via interval timer)
+ * - Volume and mute state
+ * - Playlist contents and current selection
+ * - Shuffle/repeat mode
+ *
+ * @example
+ * const server = new UnifiedMediaServer();
+ * const port = await server.start();
+ * console.log(`Server running on http://127.0.0.1:${port}`);
+ */
 export class UnifiedMediaServer {
+  /** The Node.js HTTP server instance */
   private server: Server | null = null;
+
+  /** The port the server is listening on */
   private port: number = 0;
 
+  /** SSE manager for real-time client updates */
   private readonly sse: SSEManager = new SSEManager();
+
+  /** Playlist manager instance */
   private readonly playlist: PlaylistManager;
 
+  /** Current playback state */
   private readonly playback: PlaybackState = {
     state: 'idle',
     currentTime: 0,
@@ -568,14 +878,32 @@ export class UnifiedMediaServer {
     errorMessage: null,
   };
 
+  /** Interval for updating playback time */
   private timeUpdateInterval: NodeJS.Timeout | null = null;
+
+  /** Timestamp when playback started (for calculating current time) */
   private startTime: number = 0;
+
+  /** Time position when playback was paused (for resume) */
   private pausedTime: number = 0;
 
+  /**
+   * Creates a new unified media server.
+   * Call start() to begin listening for connections.
+   */
   constructor() {
     this.playlist = new PlaylistManager(this.sse);
   }
 
+  /**
+   * Starts the HTTP server on a random available port.
+   *
+   * Binds to localhost only for security (127.0.0.1).
+   * The port is chosen automatically by the OS.
+   *
+   * @returns Promise resolving to the port number
+   * @throws Error if server fails to start
+   */
   public async start(): Promise<number> {
     return new Promise((resolve: (value: number) => void, reject: (reason: Readonly<Error>) => void): void => {
       this.server = createServer(this.handleRequest.bind(this));
@@ -595,6 +923,9 @@ export class UnifiedMediaServer {
     });
   }
 
+  /**
+   * Stops the HTTP server and cleans up resources.
+   */
   public stop(): void {
     this.stopTimeTracking();
     this.sse.stop();
@@ -604,6 +935,11 @@ export class UnifiedMediaServer {
     }
   }
 
+  /**
+   * Gets the port the server is listening on.
+   *
+   * @returns The port number, or 0 if not started
+   */
   public getPort(): number {
     return this.port;
   }
@@ -612,17 +948,26 @@ export class UnifiedMediaServer {
   // HTTP Request Router
   // ============================================================================
 
+  /**
+   * Main request handler that routes HTTP requests to appropriate handlers.
+   *
+   * Handles CORS preflight requests and routes based on path/method.
+   * All errors are caught and returned as JSON error responses.
+   *
+   * @param req - Incoming HTTP request
+   * @param res - HTTP response to write to
+   */
   private async handleRequest(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const url: URL = new URL(req.url || '/', `http://127.0.0.1:${this.port}`);
     const method: string = req.method || 'GET';
     const pathname: string = url.pathname;
 
-    // Set CORS headers
+    // Set CORS headers for browser access
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    // Handle preflight
+    // Handle CORS preflight
     if (method === 'OPTIONS') {
       res.writeHead(204);
       res.end();
@@ -682,6 +1027,15 @@ export class UnifiedMediaServer {
   // SSE Handler
   // ============================================================================
 
+  /**
+   * Handles SSE connection requests.
+   *
+   * Sets up the response for SSE streaming and sends initial state.
+   * The connection is kept alive and used for broadcasting updates.
+   *
+   * @param req - Incoming HTTP request
+   * @param res - HTTP response (becomes SSE stream)
+   */
   private handleSSE(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): void {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -692,7 +1046,7 @@ export class UnifiedMediaServer {
 
     this.sse.addClient(res);
 
-    // Send initial state
+    // Send initial state so client is immediately synchronized
     res.write(`event: playback:state\ndata: ${JSON.stringify({ state: this.playback.state, errorMessage: this.playback.errorMessage })}\n\n`);
     res.write(`event: playback:time\ndata: ${JSON.stringify({ currentTime: this.playback.currentTime, duration: this.playback.duration })}\n\n`);
     res.write(`event: playback:volume\ndata: ${JSON.stringify({ volume: this.playback.volume, muted: this.playback.muted })}\n\n`);
@@ -703,7 +1057,7 @@ export class UnifiedMediaServer {
     }
 
     req.on('close', (): void => {
-      // Client handled by SSEManager
+      // Client cleanup handled by SSEManager
     });
   }
 
@@ -711,6 +1065,18 @@ export class UnifiedMediaServer {
   // Media Streaming
   // ============================================================================
 
+  /**
+   * Routes media stream requests based on file type.
+   *
+   * Determines whether the file needs:
+   * - Direct serving (native formats with range request support)
+   * - Transcoding (non-native video/audio formats via FFmpeg)
+   * - MIDI synthesis (MIDI files via FluidSynth)
+   *
+   * @param req - Incoming HTTP request
+   * @param res - HTTP response to write to
+   * @param url - Parsed URL with path parameter
+   */
   private handleMediaStream(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): void {
     const filePath: string | null = url.searchParams.get('path');
     if (!filePath) {
@@ -733,6 +1099,19 @@ export class UnifiedMediaServer {
     }
   }
 
+  /**
+   * Serves a native format file directly with HTTP range request support.
+   *
+   * Range requests enable:
+   * - Seeking without downloading the entire file
+   * - Efficient partial content delivery
+   * - Standard browser media element behavior
+   *
+   * @param req - Incoming HTTP request (may contain Range header)
+   * @param res - HTTP response to write to
+   * @param filePath - Absolute path to the file
+   * @param ext - File extension (for MIME type lookup)
+   */
   private serveDirectFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string, ext: string): void {
     try {
       const stat: ReturnType<typeof statSync> = statSync(filePath);
@@ -741,6 +1120,7 @@ export class UnifiedMediaServer {
       const range: string | undefined = req.headers.range;
 
       if (range) {
+        // Partial content response (206)
         const parts: string[] = range.replace(/bytes=/, '').split('-');
         const start: number = parseInt(parts[0], 10);
         const end: number = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
@@ -756,6 +1136,7 @@ export class UnifiedMediaServer {
 
         createReadStream(filePath, { start, end }).pipe(res);
       } else {
+        // Full file response (200)
         res.writeHead(200, {
           'Content-Length': fileSize,
           'Content-Type': mimeType,
@@ -772,6 +1153,24 @@ export class UnifiedMediaServer {
     }
   }
 
+  /**
+   * Serves a non-native format via FFmpeg transcoding.
+   *
+   * For video files (.mkv, .avi, .mov):
+   * - Transcodes to H.264 video in fragmented MP4 container
+   * - Uses fast preset with zero latency tuning for streaming
+   * - Supports seeking via the 't' query parameter
+   *
+   * For audio files (.wma, .ape, .tak):
+   * - Transcodes to AAC in ADTS container
+   *
+   * The transcoded stream is piped directly to the HTTP response.
+   *
+   * @param req - Incoming HTTP request
+   * @param res - HTTP response to write to
+   * @param filePath - Absolute path to the file
+   * @param url - URL containing optional 't' (time) parameter for seeking
+   */
   private serveTranscodedFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string, url: Readonly<URL>): void {
     const seekTime: string = url.searchParams.get('t') || '0';
     const ext: string = path.extname(filePath).toLowerCase();
@@ -784,7 +1183,7 @@ export class UnifiedMediaServer {
     let ffmpegArgs: string[];
 
     if (isAudioTranscode) {
-      // Audio-only transcoding to AAC
+      // Audio-only transcoding to AAC/ADTS
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
@@ -807,19 +1206,19 @@ export class UnifiedMediaServer {
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
-        '-ss', seekTime,
+        '-ss', seekTime,          // Seek before input (fast seek)
         '-i', filePath,
         '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-tune', 'zerolatency',
+        '-preset', 'veryfast',    // Fast encoding for streaming
+        '-tune', 'zerolatency',   // Minimize latency
         '-profile:v', 'high',
         '-level', '4.1',
-        '-pix_fmt', 'yuv420p',
-        '-crf', '23',
+        '-pix_fmt', 'yuv420p',    // Maximum compatibility
+        '-crf', '23',             // Quality level
         '-c:a', 'aac',
         '-b:a', '192k',
         '-ar', '48000',
-        '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+        '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
         '-f', 'mp4',
         'pipe:1'
       ];
@@ -853,6 +1252,7 @@ export class UnifiedMediaServer {
       }
     });
 
+    // Clean up FFmpeg process when client disconnects
     const cleanup: () => void = (): void => {
       if (ffmpeg.exitCode === null) {
         ffmpeg.kill('SIGKILL');
@@ -863,6 +1263,19 @@ export class UnifiedMediaServer {
     res.on('close', cleanup);
   }
 
+  /**
+   * Serves a MIDI file by synthesizing it via FluidSynth.
+   *
+   * MIDI files contain musical instructions, not audio data.
+   * FluidSynth renders them to raw audio using a SoundFont.
+   * The raw audio is then encoded to MP3 via FFmpeg for streaming.
+   *
+   * Pipeline: MIDI → FluidSynth (raw PCM) → FFmpeg (MP3) → HTTP response
+   *
+   * @param req - Incoming HTTP request
+   * @param res - HTTP response to write to
+   * @param filePath - Absolute path to the MIDI file
+   */
   private serveMidiFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string): void {
     // Find available SoundFont
     const soundfont: string | undefined = this.findSoundFont();
@@ -875,27 +1288,26 @@ export class UnifiedMediaServer {
 
     console.log(`Converting MIDI: ${filePath} (using SoundFont: ${soundfont})`);
 
-    // FluidSynth converts MIDI to WAV and outputs to stdout
-    // We then pipe through FFmpeg to convert to MP3 for streaming
+    // FluidSynth converts MIDI to raw PCM and outputs to stdout
     const fluidsynth: ChildProcess = spawn('fluidsynth', [
-      '-ni',           // No interactive mode
-      '-T', 'raw',     // Output raw audio
+      '-ni',           // Non-interactive mode
+      '-T', 'raw',     // Output format: raw PCM
       '-F', '-',       // Output to stdout
-      '-r', '44100',   // Sample rate
+      '-r', '44100',   // Sample rate: 44.1kHz
       soundfont,
       filePath
     ]);
 
-    // Pipe FluidSynth output through FFmpeg to convert to MP3
+    // Pipe FluidSynth output through FFmpeg to encode as MP3
     const ffmpeg: ChildProcess = spawn('ffmpeg', [
       '-hide_banner',
       '-loglevel', 'warning',
-      '-f', 's16le',        // Input format: signed 16-bit little-endian
+      '-f', 's16le',        // Input: signed 16-bit little-endian PCM
       '-ar', '44100',       // Input sample rate
-      '-ac', '2',           // Input channels (stereo)
+      '-ac', '2',           // Input channels: stereo
       '-i', 'pipe:0',       // Read from stdin
       '-c:a', 'libmp3lame', // Encode as MP3
-      '-b:a', '192k',       // Bitrate
+      '-b:a', '192k',       // Bitrate: 192kbps
       '-f', 'mp3',          // Output format
       'pipe:1'              // Output to stdout
     ]);
@@ -907,7 +1319,7 @@ export class UnifiedMediaServer {
       'Cache-Control': 'no-cache',
     });
 
-    // Pipe: FluidSynth → FFmpeg → HTTP Response
+    // Connect the pipeline: FluidSynth → FFmpeg → HTTP Response
     fluidsynth.stdout?.pipe(ffmpeg.stdin!);
     ffmpeg.stdout?.pipe(res);
 
@@ -953,6 +1365,7 @@ export class UnifiedMediaServer {
       }
     });
 
+    // Clean up processes when client disconnects
     const cleanup: () => void = (): void => {
       if (fluidsynth.exitCode === null) {
         fluidsynth.kill('SIGKILL');
@@ -966,6 +1379,11 @@ export class UnifiedMediaServer {
     res.on('close', cleanup);
   }
 
+  /**
+   * Finds the first available SoundFont file from the search paths.
+   *
+   * @returns Path to SoundFont file, or undefined if none found
+   */
   private findSoundFont(): string | undefined {
     for (const sfPath of SOUNDFONT_SEARCH_PATHS) {
       if (existsSync(sfPath)) {
@@ -979,6 +1397,12 @@ export class UnifiedMediaServer {
   // Media Info (ffprobe)
   // ============================================================================
 
+  /**
+   * Handles requests for media file metadata.
+   *
+   * @param res - HTTP response to write to
+   * @param url - URL containing 'path' parameter
+   */
   private async handleMediaInfo(res: Readonly<ServerResponse>, url: Readonly<URL>): Promise<void> {
     const filePath: string | null = url.searchParams.get('path');
     if (!filePath) {
@@ -997,6 +1421,22 @@ export class UnifiedMediaServer {
     }
   }
 
+  /**
+   * Extracts metadata from a media file using ffprobe or MIDI parser.
+   *
+   * For most formats, spawns ffprobe to extract:
+   * - Duration
+   * - Stream types (determines audio vs video)
+   * - Metadata tags (title, artist, album)
+   * - Video dimensions
+   *
+   * For MIDI files, uses the custom parseMidiDuration function
+   * since ffprobe cannot read MIDI files.
+   *
+   * @param filePath - Absolute path to the media file
+   * @returns Promise resolving to media information
+   * @throws Error if probing fails
+   */
   private probeMedia(filePath: string): Promise<MediaInfo> {
     // MIDI files cannot be probed by ffprobe - parse duration from MIDI data
     const ext: string = path.extname(filePath).toLowerCase();
@@ -1036,11 +1476,13 @@ export class UnifiedMediaServer {
           const format: Record<string, unknown> = data.format || {};
           const streams: Array<Record<string, unknown>> = data.streams || [];
 
+          // Find video stream (exclude mjpeg which is often album art)
           const videoStream: Record<string, unknown> | undefined = streams.find((s: Readonly<Record<string, unknown>>): boolean =>
             s.codec_type === 'video' && s.codec_name !== 'mjpeg'
           );
           const hasVideo: boolean = !!videoStream;
 
+          // Extract metadata tags (handle various case conventions)
           const tags: Record<string, string> = (format.tags as Record<string, string>) || {};
 
           resolve({
@@ -1068,8 +1510,16 @@ export class UnifiedMediaServer {
   // Playback Control Handlers
   // ============================================================================
 
+  /**
+   * Handles play requests.
+   *
+   * If paused: resumes from paused position
+   * If idle/stopped: loads and plays the current track
+   *
+   * @param res - HTTP response to write to
+   */
   private async handlePlay(res: Readonly<ServerResponse>): Promise<void> {
-    // If paused, resume
+    // If paused, resume from where we left off
     if (this.playback.state === 'paused') {
       this.playback.state = 'playing';
       this.startTime = Date.now() - (this.pausedTime * 1000);
@@ -1080,7 +1530,7 @@ export class UnifiedMediaServer {
       return;
     }
 
-    // If no current track, try to select first
+    // If no current track, cannot play
     const currentItem: PlaylistItem | null = this.playlist.getCurrentItem();
     if (!currentItem) {
       res.writeHead(400);
@@ -1116,6 +1566,13 @@ export class UnifiedMediaServer {
     }
   }
 
+  /**
+   * Handles pause requests.
+   *
+   * Stores the current position for resuming later.
+   *
+   * @param res - HTTP response to write to
+   */
   private handlePause(res: Readonly<ServerResponse>): void {
     if (this.playback.state !== 'playing') {
       res.writeHead(400);
@@ -1132,6 +1589,13 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true }));
   }
 
+  /**
+   * Handles stop requests.
+   *
+   * Resets playback position to the beginning.
+   *
+   * @param res - HTTP response to write to
+   */
   private handleStop(res: Readonly<ServerResponse>): void {
     this.playback.state = 'stopped';
     this.playback.currentTime = 0;
@@ -1143,6 +1607,14 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true }));
   }
 
+  /**
+   * Handles seek requests.
+   *
+   * Updates the playback position. Time is clamped to valid range.
+   *
+   * @param req - Incoming HTTP request with { time: number } body
+   * @param res - HTTP response to write to
+   */
   private async handleSeek(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { time }: { time: unknown } = JSON.parse(body);
@@ -1168,6 +1640,12 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true, time: clampedTime }));
   }
 
+  /**
+   * Handles volume change requests.
+   *
+   * @param req - Incoming HTTP request with { volume?: number, muted?: boolean } body
+   * @param res - HTTP response to write to
+   */
   private async handleVolume(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { volume, muted }: { volume?: number; muted?: boolean } = JSON.parse(body);
@@ -1188,6 +1666,13 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true, volume: this.playback.volume, muted: this.playback.muted }));
   }
 
+  /**
+   * Handles player state requests.
+   *
+   * Returns the complete current playback state.
+   *
+   * @param res - HTTP response to write to
+   */
   private handlePlayerState(res: Readonly<ServerResponse>): void {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
@@ -1205,11 +1690,25 @@ export class UnifiedMediaServer {
   // Playlist Handlers
   // ============================================================================
 
+  /**
+   * Handles playlist state requests.
+   *
+   * @param res - HTTP response to write to
+   */
   private handlePlaylistGet(res: Readonly<ServerResponse>): void {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(this.playlist.getState()));
   }
 
+  /**
+   * Handles add to playlist requests.
+   *
+   * Probes each file for metadata and adds to the playlist.
+   * Files that fail probing are silently skipped.
+   *
+   * @param req - Incoming HTTP request with { paths: string[] } body
+   * @param res - HTTP response to write to
+   */
   private async handlePlaylistAdd(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { paths }: { paths: unknown } = JSON.parse(body);
@@ -1246,6 +1745,12 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true, added }));
   }
 
+  /**
+   * Handles remove from playlist requests.
+   *
+   * @param res - HTTP response to write to
+   * @param pathname - URL path containing item ID
+   */
   private handlePlaylistRemove(res: Readonly<ServerResponse>, pathname: string): void {
     const id: string = pathname.replace('/playlist/remove/', '');
     const success: boolean = this.playlist.removeItem(id);
@@ -1254,6 +1759,11 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success }));
   }
 
+  /**
+   * Handles clear playlist requests.
+   *
+   * @param res - HTTP response to write to
+   */
   private handlePlaylistClear(res: Readonly<ServerResponse>): void {
     this.playlist.clear();
     this.playback.state = 'idle';
@@ -1267,6 +1777,14 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true }));
   }
 
+  /**
+   * Handles track selection requests.
+   *
+   * Selects the track and automatically starts playback.
+   *
+   * @param res - HTTP response to write to
+   * @param pathname - URL path containing item ID
+   */
   private async handlePlaylistSelect(res: Readonly<ServerResponse>, pathname: string): Promise<void> {
     const id: string = pathname.replace('/playlist/select/', '');
     const item: PlaylistItem | null = this.playlist.selectItem(id);
@@ -1305,11 +1823,19 @@ export class UnifiedMediaServer {
     }
   }
 
+  /**
+   * Handles next track requests.
+   *
+   * Advances to the next track and starts playback.
+   * If at the end of the playlist, returns ended: true.
+   *
+   * @param res - HTTP response to write to
+   */
   private async handlePlaylistNext(res: Readonly<ServerResponse>): Promise<void> {
     const item: PlaylistItem | null = this.playlist.next();
 
     if (!item) {
-      // End of playlist
+      // End of playlist reached
       this.playback.state = 'idle';
       this.playback.currentTime = 0;
       this.stopTimeTracking();
@@ -1349,6 +1875,13 @@ export class UnifiedMediaServer {
     }
   }
 
+  /**
+   * Handles previous track requests.
+   *
+   * Goes to the previous track and starts playback.
+   *
+   * @param res - HTTP response to write to
+   */
   private async handlePlaylistPrevious(res: Readonly<ServerResponse>): Promise<void> {
     const item: PlaylistItem | null = this.playlist.previous();
 
@@ -1386,6 +1919,12 @@ export class UnifiedMediaServer {
     }
   }
 
+  /**
+   * Handles shuffle mode toggle requests.
+   *
+   * @param req - Incoming HTTP request with { enabled: boolean } body
+   * @param res - HTTP response to write to
+   */
   private async handlePlaylistShuffle(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { enabled }: { enabled: unknown } = JSON.parse(body);
@@ -1396,6 +1935,12 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ success: true, shuffleEnabled: enabled }));
   }
 
+  /**
+   * Handles repeat mode toggle requests.
+   *
+   * @param req - Incoming HTTP request with { enabled: boolean } body
+   * @param res - HTTP response to write to
+   */
   private async handlePlaylistRepeat(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { enabled }: { enabled: unknown } = JSON.parse(body);
@@ -1410,6 +1955,12 @@ export class UnifiedMediaServer {
   // Helpers
   // ============================================================================
 
+  /**
+   * Reads the body of an HTTP request as a string.
+   *
+   * @param req - Incoming HTTP request
+   * @returns Promise resolving to the body string
+   */
   private readBody(req: Readonly<IncomingMessage>): Promise<string> {
     return new Promise((resolve: (value: string) => void, reject: (reason: Readonly<Error>) => void): void => {
       let body: string = '';
@@ -1419,6 +1970,12 @@ export class UnifiedMediaServer {
     });
   }
 
+  /**
+   * Starts the playback time tracking interval.
+   *
+   * Updates currentTime every 100ms based on elapsed time since startTime.
+   * Automatically triggers onMediaEnded when duration is reached.
+   */
   private startTimeTracking(): void {
     this.stopTimeTracking();
 
@@ -1437,6 +1994,9 @@ export class UnifiedMediaServer {
     }, 100);
   }
 
+  /**
+   * Stops the playback time tracking interval.
+   */
   private stopTimeTracking(): void {
     if (this.timeUpdateInterval) {
       clearInterval(this.timeUpdateInterval);
@@ -1444,6 +2004,12 @@ export class UnifiedMediaServer {
     }
   }
 
+  /**
+   * Handles media ended event.
+   *
+   * Attempts to play the next track. If no next track is available,
+   * transitions to idle state and broadcasts ended event.
+   */
   private async onMediaEnded(): Promise<void> {
     this.stopTimeTracking();
 
@@ -1481,6 +2047,9 @@ export class UnifiedMediaServer {
     }
   }
 
+  /**
+   * Broadcasts current playback state to all SSE clients.
+   */
   private broadcastState(): void {
     this.sse.broadcast('playback:state', {
       state: this.playback.state,
@@ -1488,6 +2057,9 @@ export class UnifiedMediaServer {
     });
   }
 
+  /**
+   * Broadcasts current time and duration to all SSE clients.
+   */
   private broadcastTime(): void {
     this.sse.broadcast('playback:time', {
       currentTime: this.playback.currentTime,

@@ -1,5 +1,28 @@
+/**
+ * @fileoverview Rotating neon waveform visualization.
+ *
+ * Creates a spinning neon effect with two waveforms (cyan and magenta)
+ * that rotate around the center while zooming. The rotation combined
+ * with persistence creates mesmerizing spiral patterns.
+ *
+ * Technical details:
+ * - Dual waveforms offset from center
+ * - Continuous rotation around canvas center
+ * - Zoom effect with fade creates spiral trails
+ * - Cyan and magenta color scheme (complementary)
+ * - Rotation speed is constant, independent of audio
+ *
+ * @module app/components/audio/audio-outlet/visualizations/neon-visualization
+ */
+
 import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
+/**
+ * Rotating neon visualization with spiral trails.
+ *
+ * Renders two rotating waveforms (cyan and magenta) that create
+ * spiral patterns as they spin and fade.
+ */
 export class NeonVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Neon';
   public readonly category: VisualizationCategory = 'waveform';

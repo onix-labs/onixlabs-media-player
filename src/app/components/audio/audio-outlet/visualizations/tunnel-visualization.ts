@@ -1,5 +1,28 @@
+/**
+ * @fileoverview Tunnel effect visualization with dual waveforms.
+ *
+ * Creates a hypnotic tunnel/vortex effect with two mirrored waveforms
+ * (blue and red) that zoom toward the center. The persistence and zoom
+ * create an infinite tunnel illusion.
+ *
+ * Technical details:
+ * - Dual waveforms at 1/3 and 2/3 vertical positions
+ * - Zoom effect scales previous frame from center
+ * - Fade combined with zoom creates depth illusion
+ * - Blue (top) and red (bottom) color scheme
+ * - Each waveform has glow, main, and highlight layers
+ *
+ * @module app/components/audio/audio-outlet/visualizations/tunnel-visualization
+ */
+
 import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
+/**
+ * Tunnel visualization with zooming dual waveforms.
+ *
+ * Renders two mirrored waveforms (blue and red) that appear to zoom
+ * into infinity, creating a hypnotic tunnel effect.
+ */
 export class TunnelVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Tunnel';
   public readonly category: VisualizationCategory = 'waveform';

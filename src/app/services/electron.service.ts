@@ -1,48 +1,166 @@
+/**
+ * @fileoverview Angular service providing communication with Electron and the media server.
+ *
+ * This service acts as the primary bridge between the Angular application and:
+ * 1. Electron's main process (via IPC through the preload API)
+ * 2. The unified media server (via HTTP API and Server-Sent Events)
+ *
+ * Architecture:
+ * - SSE connection for real-time state updates (playback, playlist, volume)
+ * - HTTP API for commands (play, pause, seek, add tracks)
+ * - IPC for native operations (file dialogs, fullscreen)
+ *
+ * State management uses Angular signals, updated reactively via SSE events.
+ * The server is the single source of truth; this service just reflects its state.
+ *
+ * @module app/services/electron.service
+ */
+
 import {Injectable, NgZone, OnDestroy, signal} from '@angular/core';
 import type {MediaInfo, PlaylistItem, PlaylistState} from '../types/electron';
 
+/**
+ * Re-export types for consumers that import from this service.
+ * This allows components to import both the service and types from one location.
+ */
 export type {MediaInfo, PlaylistItem, PlaylistState};
 
+/**
+ * Service that manages communication with Electron and the media server.
+ *
+ * This service is provided at the root level (singleton) and handles:
+ * - Establishing SSE connection for real-time state updates
+ * - Exposing reactive signals for UI binding
+ * - HTTP API calls for playback and playlist control
+ * - IPC calls for native Electron features
+ *
+ * Lifecycle:
+ * 1. On construction, initializes connection to media server
+ * 2. Opens SSE connection for continuous state updates
+ * 3. Updates signals as events arrive (via NgZone for change detection)
+ * 4. Cleans up SSE connection on destroy
+ *
+ * @example
+ * // Inject and use in a component
+ * export class MyComponent {
+ *   private electron = inject(ElectronService);
+ *
+ *   async play() {
+ *     await this.electron.play();
+ *   }
+ * }
+ */
 @Injectable({providedIn: 'root'})
 export class ElectronService implements OnDestroy {
-  // Server connection
+  // ============================================================================
+  // Private State
+  // ============================================================================
+
+  /** Port number of the media server (obtained via IPC at startup) */
   private serverPort: number = 0;
+
+  /** Active SSE connection for receiving state updates */
   private eventSource: EventSource | null = null;
+
+  /** Counter for exponential backoff on SSE reconnection */
   private reconnectAttempts: number = 0;
+
+  /** Maximum delay between reconnection attempts (30 seconds) */
   private readonly MAX_RECONNECT_DELAY: number = 30000;
 
-  // Signals for state (updated via SSE)
+  // ============================================================================
+  // Public Signals - Reactive State (updated via SSE)
+  // ============================================================================
+
+  /** Base URL of the media server (e.g., "http://127.0.0.1:54545") */
   public readonly serverUrl: ReturnType<typeof signal<string>> = signal<string>('');
+
+  /** Current playback state: idle, loading, playing, paused, stopped, or error */
   public readonly playbackState: ReturnType<typeof signal<string>> = signal<string>('idle');
+
+  /** Current playback position in seconds */
   public readonly currentTime: ReturnType<typeof signal<number>> = signal<number>(0);
+
+  /** Total duration of current media in seconds */
   public readonly duration: ReturnType<typeof signal<number>> = signal<number>(0);
+
+  /** Current volume level (0.0 to 1.0) */
   public readonly volume: ReturnType<typeof signal<number>> = signal<number>(1);
+
+  /** Whether audio output is muted */
   public readonly muted: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /** Information about the currently loaded media file */
   public readonly currentMedia: ReturnType<typeof signal<MediaInfo | null>> = signal<MediaInfo | null>(null);
+
+  /** Error message if playback failed, null otherwise */
   public readonly errorMessage: ReturnType<typeof signal<string | null>> = signal<string | null>(null);
+
+  /** Current playlist state including items, index, and mode flags */
   public readonly playlist: ReturnType<typeof signal<PlaylistState>> = signal<PlaylistState>({
     items: [],
     currentIndex: -1,
     shuffleEnabled: false,
     repeatEnabled: false,
   });
+
+  /** Brief pulse signal when media ends (true for 100ms) */
   public readonly mediaEnded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /** Whether the application is in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
+  /** Cleanup function for fullscreen change listener */
   private fullscreenCleanup: (() => void) | null = null;
 
+  /**
+   * Creates the ElectronService and initializes connections.
+   *
+   * @param ngZone - Angular's NgZone for running callbacks in Angular's zone
+   *                 (required because SSE callbacks run outside Angular)
+   */
   constructor(private readonly ngZone: NgZone) {
     this.initialize();
   }
 
+  // ============================================================================
+  // Property Accessors
+  // ============================================================================
+
+  /**
+   * Checks if running in Electron environment.
+   * The preload API is only available when running in Electron.
+   *
+   * @returns true if window.mediaPlayer exists (Electron), false otherwise
+   */
   public get isElectron(): boolean {
     return !!window.mediaPlayer;
   }
 
+  /**
+   * Gets the preload API for IPC calls.
+   * Private because consumers should use the public methods instead.
+   *
+   * @returns The window.mediaPlayer API or undefined
+   */
   private get api(): typeof window.mediaPlayer {
     return window.mediaPlayer;
   }
 
+  // ============================================================================
+  // Initialization
+  // ============================================================================
+
+  /**
+   * Initializes the service by connecting to the media server.
+   *
+   * Sequence:
+   * 1. Check if running in Electron
+   * 2. Get server port via IPC
+   * 3. Construct server URL
+   * 4. Open SSE connection for state updates
+   * 5. Setup fullscreen state listener
+   */
   private async initialize(): Promise<void> {
     if (!this.isElectron || !this.api) return;
 
@@ -58,6 +176,12 @@ export class ElectronService implements OnDestroy {
     this.setupFullscreenListener();
   }
 
+  /**
+   * Sets up fullscreen state tracking via IPC.
+   *
+   * Gets the initial state and registers a listener for changes.
+   * All updates run through NgZone to trigger Angular change detection.
+   */
   private setupFullscreenListener(): void {
     if (!this.isElectron || !this.api) return;
 
@@ -76,6 +200,26 @@ export class ElectronService implements OnDestroy {
     });
   }
 
+  // ============================================================================
+  // SSE Connection Management
+  // ============================================================================
+
+  /**
+   * Establishes Server-Sent Events connection for real-time state updates.
+   *
+   * The SSE connection receives events for:
+   * - playback:state - Transport state changes (playing, paused, etc.)
+   * - playback:time - Position/duration updates (every 100ms during playback)
+   * - playback:loaded - New media loaded
+   * - playback:volume - Volume/mute changes
+   * - playback:ended - Track finished playing
+   * - playlist:updated - Playlist items changed
+   * - playlist:selection - Current track changed
+   * - playlist:mode - Shuffle/repeat mode changed
+   *
+   * On connection error, uses exponential backoff for reconnection
+   * (1s, 2s, 4s, 8s, ... up to 30s max).
+   */
   private connectSSE(): void {
     if (!this.serverUrl()) return;
 
@@ -171,6 +315,21 @@ export class ElectronService implements OnDestroy {
   // IPC Methods (file operations only)
   // ============================================================================
 
+  /**
+   * Opens the native file picker dialog for selecting media files.
+   *
+   * Uses IPC because native dialogs must be shown from the main process.
+   * Includes filters for common audio and video formats including MIDI.
+   *
+   * @param multiSelect - Whether to allow selecting multiple files (default: true)
+   * @returns Promise resolving to array of selected file paths, empty if cancelled
+   *
+   * @example
+   * const files = await electron.openFileDialog();
+   * if (files.length > 0) {
+   *   await electron.addToPlaylist(files);
+   * }
+   */
   public async openFileDialog(multiSelect: boolean = true): Promise<string[]> {
     if (!this.isElectron || !this.api) return [];
 
@@ -184,6 +343,23 @@ export class ElectronService implements OnDestroy {
     });
   }
 
+  /**
+   * Gets the absolute file system path for a File object.
+   *
+   * Used for drag-and-drop where browser provides File objects but
+   * the server needs absolute paths to access files.
+   *
+   * @param file - File object from a drag-and-drop DataTransfer
+   * @returns The absolute path to the file
+   * @throws Error if not running in Electron
+   *
+   * @example
+   * onDrop(event: DragEvent) {
+   *   const file = event.dataTransfer.files[0];
+   *   const path = this.electron.getPathForFile(file);
+   *   await this.electron.addToPlaylist([path]);
+   * }
+   */
   public getPathForFile(file: File): string {
     if (!this.isElectron || !this.api) {
       throw new Error('Not running in Electron');
@@ -195,16 +371,34 @@ export class ElectronService implements OnDestroy {
   // IPC Methods - Fullscreen Control
   // ============================================================================
 
+  /**
+   * Enters native fullscreen mode.
+   *
+   * Uses Electron's BrowserWindow fullscreen (not HTML5 fullscreen API)
+   * for better OS integration and keyboard shortcut handling.
+   */
   public async enterFullscreen(): Promise<void> {
     if (!this.isElectron || !this.api) return;
     await this.api.enterFullscreen();
   }
 
+  /**
+   * Exits native fullscreen mode.
+   */
   public async exitFullscreen(): Promise<void> {
     if (!this.isElectron || !this.api) return;
     await this.api.exitFullscreen();
   }
 
+  /**
+   * Toggles fullscreen mode based on current state.
+   *
+   * @example
+   * // In a component
+   * onDoubleClick() {
+   *   this.electron.toggleFullscreen();
+   * }
+   */
   public async toggleFullscreen(): Promise<void> {
     if (this.isFullscreen()) {
       await this.exitFullscreen();
@@ -217,22 +411,43 @@ export class ElectronService implements OnDestroy {
   // HTTP API Methods - Playback Control
   // ============================================================================
 
+  /**
+   * Starts or resumes playback.
+   * If a track is selected, plays from current position.
+   */
   public async play(): Promise<void> {
     await this.post('/player/play');
   }
 
+  /**
+   * Pauses playback at the current position.
+   */
   public async pause(): Promise<void> {
     await this.post('/player/pause');
   }
 
+  /**
+   * Stops playback and resets position to the beginning.
+   */
   public async stop(): Promise<void> {
     await this.post('/player/stop');
   }
 
+  /**
+   * Seeks to a specific position in the current track.
+   *
+   * @param timeSeconds - Target position in seconds
+   */
   public async seek(timeSeconds: number): Promise<void> {
     await this.post('/player/seek', {time: timeSeconds});
   }
 
+  /**
+   * Sets the volume level and/or mute state.
+   *
+   * @param volume - Volume level from 0.0 to 1.0
+   * @param muted - Optional mute state
+   */
   public async setVolume(volume: number, muted?: boolean): Promise<void> {
     const body: {volume?: number; muted?: boolean} = {};
     if (typeof volume === 'number') body.volume = volume;
@@ -240,6 +455,12 @@ export class ElectronService implements OnDestroy {
     await this.post('/player/volume', body);
   }
 
+  /**
+   * Gets the current player state from the server.
+   * Primarily used for debugging; normal state comes via SSE.
+   *
+   * @returns Promise resolving to the current player state
+   */
   public async getPlayerState(): Promise<unknown> {
     return this.get('/player/state');
   }
@@ -248,38 +469,95 @@ export class ElectronService implements OnDestroy {
   // HTTP API Methods - Playlist
   // ============================================================================
 
+  /**
+   * Gets the current playlist state from the server.
+   * Primarily used for initial sync; updates come via SSE.
+   *
+   * @returns Promise resolving to the playlist state
+   */
   public async getPlaylist(): Promise<PlaylistState> {
     return this.get('/playlist');
   }
 
+  /**
+   * Adds media files to the playlist.
+   *
+   * The server probes each file for metadata (duration, type, title, etc.)
+   * and adds valid media files to the playlist.
+   *
+   * @param paths - Array of absolute file paths to add
+   * @returns Promise resolving to object with array of added items
+   *
+   * @example
+   * const result = await electron.addToPlaylist(['/path/to/song.mp3']);
+   * console.log(`Added ${result.added.length} tracks`);
+   */
   public async addToPlaylist(paths: string[]): Promise<{added: PlaylistItem[]}> {
     return this.post('/playlist/add', {paths});
   }
 
+  /**
+   * Removes a track from the playlist by its ID.
+   *
+   * @param id - The unique ID of the track to remove
+   */
   public async removeFromPlaylist(id: string): Promise<void> {
     await this.delete(`/playlist/remove/${id}`);
   }
 
+  /**
+   * Clears all tracks from the playlist.
+   * Also stops playback if anything is playing.
+   */
   public async clearPlaylist(): Promise<void> {
     await this.delete('/playlist/clear');
   }
 
+  /**
+   * Selects and plays a specific track by its ID.
+   *
+   * @param id - The unique ID of the track to select
+   */
   public async selectTrack(id: string): Promise<void> {
     await this.post(`/playlist/select/${id}`);
   }
 
+  /**
+   * Advances to the next track in the playlist.
+   * Respects shuffle mode if enabled.
+   */
   public async nextTrack(): Promise<void> {
     await this.post('/playlist/next');
   }
 
+  /**
+   * Returns to the previous track in the playlist.
+   * Respects shuffle mode if enabled.
+   */
   public async previousTrack(): Promise<void> {
     await this.post('/playlist/previous');
   }
 
+  /**
+   * Enables or disables shuffle mode.
+   *
+   * When shuffle is enabled, next/previous use a randomized order
+   * (Fisher-Yates shuffle) instead of the display order.
+   *
+   * @param enabled - Whether shuffle should be enabled
+   */
   public async setShuffle(enabled: boolean): Promise<void> {
     await this.post('/playlist/shuffle', {enabled});
   }
 
+  /**
+   * Enables or disables repeat mode.
+   *
+   * When repeat is enabled, the playlist loops; otherwise playback
+   * stops after the last track.
+   *
+   * @param enabled - Whether repeat should be enabled
+   */
   public async setRepeat(enabled: boolean): Promise<void> {
     await this.post('/playlist/repeat', {enabled});
   }
@@ -288,10 +566,30 @@ export class ElectronService implements OnDestroy {
   // HTTP API Methods - Media Info
   // ============================================================================
 
+  /**
+   * Gets metadata for a media file without adding it to the playlist.
+   *
+   * @param filePath - Absolute path to the media file
+   * @returns Promise resolving to the media metadata
+   */
   public async getMediaInfo(filePath: string): Promise<MediaInfo> {
     return this.get(`/media/info?path=${encodeURIComponent(filePath)}`);
   }
 
+  /**
+   * Constructs a streaming URL for a media file.
+   *
+   * The URL points to the server's /media/stream endpoint which handles
+   * format transcoding (for non-native formats) and range requests.
+   *
+   * @param filePath - Absolute path to the media file
+   * @param seekTime - Optional start time in seconds (for transcoded seek)
+   * @returns The complete streaming URL
+   *
+   * @example
+   * const url = electron.getStreamUrl('/path/to/video.mkv', 30);
+   * videoElement.src = url;  // Starts 30 seconds in
+   */
   public getStreamUrl(filePath: string, seekTime?: number): string {
     let url: string = `${this.serverUrl()}/media/stream?path=${encodeURIComponent(filePath)}`;
     if (seekTime !== undefined && seekTime > 0) {
@@ -304,6 +602,14 @@ export class ElectronService implements OnDestroy {
   // HTTP Helpers
   // ============================================================================
 
+  /**
+   * Makes a GET request to the media server.
+   *
+   * @typeParam T - Expected response type
+   * @param endpoint - API endpoint path (e.g., '/player/state')
+   * @returns Promise resolving to the parsed JSON response
+   * @throws Error if the request fails
+   */
   private async get<T>(endpoint: string): Promise<T> {
     const response: Response = await fetch(`${this.serverUrl()}${endpoint}`);
     if (!response.ok) {
@@ -312,6 +618,15 @@ export class ElectronService implements OnDestroy {
     return response.json();
   }
 
+  /**
+   * Makes a POST request to the media server.
+   *
+   * @typeParam T - Expected response type
+   * @param endpoint - API endpoint path
+   * @param body - Optional request body (will be JSON stringified)
+   * @returns Promise resolving to the parsed JSON response
+   * @throws Error if the request fails
+   */
   private async post<T>(endpoint: string, body?: unknown): Promise<T> {
     const response: Response = await fetch(`${this.serverUrl()}${endpoint}`, {
       method: 'POST',
@@ -324,6 +639,14 @@ export class ElectronService implements OnDestroy {
     return response.json();
   }
 
+  /**
+   * Makes a DELETE request to the media server.
+   *
+   * @typeParam T - Expected response type
+   * @param endpoint - API endpoint path
+   * @returns Promise resolving to the parsed JSON response
+   * @throws Error if the request fails
+   */
   private async delete<T>(endpoint: string): Promise<T> {
     const response: Response = await fetch(`${this.serverUrl()}${endpoint}`, {
       method: 'DELETE',
@@ -334,6 +657,16 @@ export class ElectronService implements OnDestroy {
     return response.json();
   }
 
+  // ============================================================================
+  // Lifecycle
+  // ============================================================================
+
+  /**
+   * Cleanup when the service is destroyed.
+   *
+   * Closes the SSE connection and removes the fullscreen listener
+   * to prevent memory leaks.
+   */
   public ngOnDestroy(): void {
     this.eventSource?.close();
     this.fullscreenCleanup?.();

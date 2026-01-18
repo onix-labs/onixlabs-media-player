@@ -264,3 +264,33 @@ npm run package      # Package with electron-builder
 5. **Native browser decoding** - Leverages Chromium's optimized media stack
 6. **Visualization support** - `createMediaElementSource()` enables Web Audio API analysis
 7. **Immersive fullscreen** - Clean viewing experience with auto-hiding controls
+
+## Code Documentation
+
+The entire TypeScript codebase is documented with comprehensive TSDoc comments for human review and AI context:
+
+**Electron Layer:**
+- `electron/main.ts` - Main process entry, window creation, IPC handlers, media protocol
+- `electron/preload.ts` - Context bridge API, IPC interface definitions
+- `electron/unified-media-server.ts` - HTTP server, SSE manager, playlist logic, MIDI parsing
+
+**Angular Application:**
+- `src/main.ts` - Bootstrap entry point
+- `src/app/app.config.ts` - Application-wide providers
+- `src/app/app.routes.ts` - Route definitions
+- `src/app/types/electron.d.ts` - Type definitions with detailed interface docs
+
+**Services:**
+- `electron.service.ts` - HTTP/SSE bridge with reactive signals
+- `media-player.service.ts` - High-level playback facade
+
+**Components:**
+- `root.ts` - Application shell, fullscreen handling, control visibility
+- `layout-header.ts`, `layout-controls.ts`, `layout-outlet.ts` - Layout components
+- `audio-outlet.ts` - Web Audio API integration, visualization management
+- `video-outlet.ts` - Video playback, transcoding support
+- `playlist.ts` - Playlist panel with drag-and-drop
+
+**Visualizations:**
+- `visualization.ts` - Base classes with sensitivity, fade, and resize support
+- Individual visualizations documented with technical details and rendering approach

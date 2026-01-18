@@ -1,5 +1,35 @@
+/**
+ * @fileoverview Ambience Water 2 visualization with reactive rotation.
+ *
+ * An ambient visualization featuring mirrored curved waveforms over
+ * a radial gradient background. The rotation direction changes based
+ * on bass transients detected in the audio, creating a reactive feel.
+ *
+ * Technical details:
+ * - Radial gradient background with color bands
+ * - Mirrored waveforms with segment coloring
+ * - Central circle at the focal point
+ * - Bass transient detection for rotation direction changes
+ * - HSL color cycling with smooth transitions
+ * - Optimized canvas reuse pattern
+ *
+ * Audio reactivity:
+ * - Monitors bass frequencies (first 16 FFT bins)
+ * - Detects sudden increases (transients)
+ * - Reverses rotation direction on strong transients
+ * - Cooldown prevents rapid direction changes
+ *
+ * @module app/components/audio/audio-outlet/visualizations/water2-visualization
+ */
+
 import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
+/**
+ * Ambience Water 2 visualization with bass-reactive rotation.
+ *
+ * Renders curved waveforms over a radial gradient, with rotation
+ * direction that changes based on bass transients in the audio.
+ */
 export class Water2Visualization extends Canvas2DVisualization {
   public readonly name: string = 'Ambience Water 2';
   public readonly category: VisualizationCategory = 'ambience';

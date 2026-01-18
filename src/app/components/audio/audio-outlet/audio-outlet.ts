@@ -1,16 +1,67 @@
+/**
+ * @fileoverview Audio outlet component with visualization support.
+ *
+ * This component handles audio playback and renders real-time visualizations
+ * based on the audio frequency data. It uses the Web Audio API to analyze
+ * the audio signal without affecting the volume heard by the user.
+ *
+ * Architecture:
+ * ```
+ * Audio Element → MediaElementSource → Analyser → GainNode → Destination
+ *                                         ↓
+ *                                   Visualization
+ * ```
+ *
+ * The analyser node receives the full audio signal (unaffected by volume),
+ * while the gain node controls the actual output volume. This allows
+ * visualizations to remain active and responsive even at low volumes.
+ *
+ * Features:
+ * - Real-time audio visualization with multiple modes
+ * - Volume-independent analysis (visualizations work at any volume)
+ * - Drag-and-drop file support
+ * - Double-click for fullscreen toggle
+ * - Smooth fade effects when pausing/playing
+ *
+ * @module app/components/audio/audio-outlet
+ */
+
 import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, HostBinding} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import type {PlaylistItem} from '../../../services/electron.service';
 import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYPES} from './visualizations';
 
-// Supported media extensions for drag and drop
+/**
+ * Supported media file extensions for drag-and-drop filtering.
+ * Files with other extensions are ignored when dropped.
+ */
 const MEDIA_EXTENSIONS: Set<string> = new Set([
   '.mp3', '.mp4', '.flac', '.mkv', '.avi', '.wav',
   '.ogg', '.webm', '.m4a', '.aac', '.wma', '.mov',
   '.mid', '.midi'
 ]);
 
+/**
+ * Audio outlet component that plays audio and renders visualizations.
+ *
+ * This component is displayed when the current media is audio (not video).
+ * It manages:
+ * - HTML5 audio element for playback
+ * - Web Audio API for frequency analysis
+ * - Canvas-based visualizations
+ * - Playback state synchronization with the server
+ *
+ * The component uses Angular effects to react to state changes from the
+ * MediaPlayerService, keeping the audio element synchronized with the
+ * server's playback state.
+ *
+ * @example
+ * <!-- In layout-outlet template -->
+ * @if (isAudio()) {
+ *   <app-audio-outlet />
+ * }
+ */
 @Component({
   selector: 'app-audio-outlet',
   standalone: true,
@@ -19,87 +70,109 @@ const MEDIA_EXTENSIONS: Set<string> = new Set([
   styleUrl: './audio-outlet.scss'
 })
 export class AudioOutlet implements OnInit, OnDestroy {
+  // ============================================================================
+  // View References
+  // ============================================================================
+
+  /** Reference to the canvas element for visualizations */
   @ViewChild('canvas', {static: true}) public canvasRef!: ElementRef<HTMLCanvasElement>;
+
+  /** Reference to the hidden audio element for playback */
   @ViewChild('audioElement', {static: true}) public audioRef!: ElementRef<HTMLAudioElement>;
 
+  // ============================================================================
+  // Services
+  // ============================================================================
+
+  /** Media player service for playback state and control */
   public readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
+
+  /** Electron service for file operations and fullscreen */
   private readonly electron: ElectronService = inject(ElectronService);
 
+  // ============================================================================
+  // Reactive State
+  // ============================================================================
+
+  /** Whether the application is in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isFullscreen());
+
+  /** Whether files are being dragged over this component */
   public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
+  /** Currently playing track (for display purposes) */
+  public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
+
+  /** Display name of the current visualization mode */
+  public readonly visualizationName: ReturnType<typeof computed<string>> = computed((): string => this.visualizationNameSignal());
+
+  // ============================================================================
+  // Host Bindings
+  // ============================================================================
+
+  /**
+   * Adds 'fullscreen' CSS class when in fullscreen mode.
+   */
   @HostBinding('class.fullscreen')
   public get fullscreenClass(): boolean {
     return this.isFullscreen();
   }
 
-  public onDoubleClick(): void {
-    void this.electron.toggleFullscreen();
-  }
+  // ============================================================================
+  // Web Audio API State
+  // ============================================================================
 
-  public onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(true);
-  }
-
-  public onDragLeave(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-  }
-
-  public async onDrop(event: DragEvent): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-
-    const files: FileList | undefined = event.dataTransfer?.files;
-    if (!files || files.length === 0) return;
-
-    // Filter for supported media files and get their paths
-    const filePaths: string[] = [];
-    for (let i: number = 0; i < files.length; i++) {
-      const file: File = files[i];
-      const ext: string = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-
-      if (MEDIA_EXTENSIONS.has(ext)) {
-        try {
-          const filePath: string = this.electron.getPathForFile(file);
-          if (filePath) {
-            filePaths.push(filePath);
-          }
-        } catch (e) {
-          console.error('Failed to get path for file:', file.name, e);
-        }
-      }
-    }
-
-    if (filePaths.length === 0) return;
-
-    // Add files to playlist and select the first one to play immediately
-    const result: {added: PlaylistItem[]} = await this.electron.addToPlaylist(filePaths);
-    if (result.added.length > 0) {
-      await this.electron.selectTrack(result.added[0].id);
-    }
-  }
-
+  /** The Web Audio context for audio processing */
   private audioContext: AudioContext | null = null;
+
+  /** Analyser node for frequency data extraction */
   private analyser: AnalyserNode | null = null;
+
+  /** Source node connected to the audio element */
   private sourceNode: MediaElementAudioSourceNode | null = null;
+
+  /** Gain node for volume control (separate from analyser) */
   private gainNode: GainNode | null = null;
+
+  /** Animation frame ID for the visualization loop */
   private animationId: number | null = null;
+
+  /** Whether the audio context has been initialized */
   private isInitialized: boolean = false;
+
+  /** Smoothing factor for frequency data (0-1, higher = smoother) */
   private readonly SMOOTHING: number = 0.85;
 
+  // ============================================================================
+  // Visualization State
+  // ============================================================================
+
+  /** Current visualization instance */
   private visualization: Visualization | null = null;
+
+  /** Signal for the current visualization type */
   private readonly visualizationType: ReturnType<typeof signal<VisualizationType>> = signal<VisualizationType>('bars');
+
+  /** Signal for the visualization display name */
   private readonly visualizationNameSignal: ReturnType<typeof signal<string>> = signal<string>('Frequency Bars');
+
+  /** File path of currently loaded audio (for change detection) */
   private currentFilePath: string | null = null;
 
-  public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
-  public readonly visualizationName: ReturnType<typeof computed<string>> = computed((): string => this.visualizationNameSignal());
+  // ============================================================================
+  // Constructor - Reactive Effects
+  // ============================================================================
 
+  /**
+   * Sets up reactive effects for playback synchronization.
+   *
+   * Effects react to:
+   * - Track changes: loads new audio source
+   * - Playback state: plays/pauses/stops the audio element
+   * - Seek events: synchronizes audio element position
+   * - Volume changes: adjusts gain node
+   * - Mute changes: sets gain to 0 or restores volume
+   */
   constructor() {
     // React to track changes - load new audio source
     effect((): void => {
@@ -165,12 +238,121 @@ export class AudioOutlet implements OnInit, OnDestroy {
     });
   }
 
+  // ============================================================================
+  // Lifecycle Hooks
+  // ============================================================================
+
+  /**
+   * Initializes the component after view is ready.
+   *
+   * Sets up:
+   * - User gesture handler (required to start AudioContext)
+   * - Initial visualization
+   * - Animation loop for continuous rendering
+   */
   public ngOnInit(): void {
     this.setupUserGestureHandler();
     this.initVisualization();
     this.startAnimationLoop();
   }
 
+  /**
+   * Cleanup when component is destroyed.
+   *
+   * Stops animation loop, destroys visualization, and closes audio context.
+   */
+  public ngOnDestroy(): void {
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId);
+    }
+    this.visualization?.destroy();
+    if (this.audioContext) {
+      this.audioContext.close();
+    }
+  }
+
+  // ============================================================================
+  // Event Handlers
+  // ============================================================================
+
+  /**
+   * Toggles fullscreen mode on double-click.
+   */
+  public onDoubleClick(): void {
+    void this.electron.toggleFullscreen();
+  }
+
+  /**
+   * Handles dragover to enable drop target.
+   */
+  public onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragOver.set(true);
+  }
+
+  /**
+   * Handles dragleave to reset visual feedback.
+   */
+  public onDragLeave(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragOver.set(false);
+  }
+
+  /**
+   * Handles file drop to add media to playlist.
+   *
+   * Filters for supported extensions, adds to playlist, and
+   * immediately starts playing the first added file.
+   */
+  public async onDrop(event: DragEvent): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragOver.set(false);
+
+    const files: FileList | undefined = event.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+
+    // Filter for supported media files and get their paths
+    const filePaths: string[] = [];
+    for (let i: number = 0; i < files.length; i++) {
+      const file: File = files[i];
+      const ext: string = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+
+      if (MEDIA_EXTENSIONS.has(ext)) {
+        try {
+          const filePath: string = this.electron.getPathForFile(file);
+          if (filePath) {
+            filePaths.push(filePath);
+          }
+        } catch (e) {
+          console.error('Failed to get path for file:', file.name, e);
+        }
+      }
+    }
+
+    if (filePaths.length === 0) return;
+
+    // Add files to playlist and select the first one to play immediately
+    const result: {added: PlaylistItem[]} = await this.electron.addToPlaylist(filePaths);
+    if (result.added.length > 0) {
+      await this.electron.selectTrack(result.added[0].id);
+    }
+  }
+
+  // ============================================================================
+  // Audio Loading
+  // ============================================================================
+
+  /**
+   * Loads a new audio source from the media server.
+   *
+   * Initializes the audio context if needed (after user gesture),
+   * sets the audio element source, and triggers loading.
+   *
+   * @param filePath - Absolute path to the audio file
+   */
   private async loadAudioSource(filePath: string): Promise<void> {
     const audio: HTMLAudioElement = this.audioRef.nativeElement;
     const serverUrl: string = this.mediaPlayer.serverUrl();
@@ -194,6 +376,19 @@ export class AudioOutlet implements OnInit, OnDestroy {
     console.log(`Audio source loaded: ${filePath}`);
   }
 
+  // ============================================================================
+  // Web Audio API Initialization
+  // ============================================================================
+
+  /**
+   * Initializes the Web Audio API graph.
+   *
+   * Creates the audio processing chain:
+   * Source → Analyser → GainNode → Destination
+   *
+   * The analyser receives full signal for visualization, while
+   * the gain node controls the actual output volume.
+   */
   private initAudioContext(): void {
     if (this.isInitialized) return;
 
@@ -224,12 +419,25 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.initVisualization();
   }
 
+  /**
+   * Resumes the audio context if it was suspended.
+   *
+   * AudioContext starts suspended and requires a user gesture to resume.
+   * This is called when playback starts.
+   */
   private resumeAudioContext(): void {
     if (this.audioContext && this.audioContext.state === 'suspended') {
       this.audioContext.resume().catch(console.error);
     }
   }
 
+  /**
+   * Sets up listeners to initialize audio context on first user interaction.
+   *
+   * Web browsers require a user gesture before starting an AudioContext.
+   * This method adds click and keydown listeners that initialize the
+   * context on first interaction, then remove themselves.
+   */
   private setupUserGestureHandler(): void {
     const initOnGesture: () => void = (): void => {
       if (!this.isInitialized) {
@@ -243,18 +451,36 @@ export class AudioOutlet implements OnInit, OnDestroy {
     document.addEventListener('keydown', initOnGesture);
   }
 
+  // ============================================================================
+  // Visualization Control
+  // ============================================================================
+
+  /**
+   * Cycles to the next visualization type.
+   */
   public nextVisualization(): void {
     const currentIndex: number = VISUALIZATION_TYPES.indexOf(this.visualizationType());
     const nextIndex: number = (currentIndex + 1) % VISUALIZATION_TYPES.length;
     this.setVisualization(VISUALIZATION_TYPES[nextIndex]);
   }
 
+  /**
+   * Cycles to the previous visualization type.
+   */
   public previousVisualization(): void {
     const currentIndex: number = VISUALIZATION_TYPES.indexOf(this.visualizationType());
     const prevIndex: number = (currentIndex - 1 + VISUALIZATION_TYPES.length) % VISUALIZATION_TYPES.length;
     this.setVisualization(VISUALIZATION_TYPES[prevIndex]);
   }
 
+  /**
+   * Sets the visualization to a specific type.
+   *
+   * Destroys the current visualization and creates a new one of the
+   * specified type. Updates the display name signal.
+   *
+   * @param type - The visualization type to activate
+   */
   public setVisualization(type: VisualizationType): void {
     this.visualizationType.set(type);
 
@@ -275,6 +501,12 @@ export class AudioOutlet implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Initializes the current visualization.
+   *
+   * Called during component initialization and when the analyser
+   * becomes available. Creates the visualization and sets initial size.
+   */
   private initVisualization(): void {
     if (!this.analyser) return;
 
@@ -289,6 +521,12 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
   }
 
+  /**
+   * Starts the animation loop for continuous visualization rendering.
+   *
+   * Uses requestAnimationFrame for smooth 60fps rendering. The loop
+   * handles canvas resizing and delegates drawing to the visualization.
+   */
   private startAnimationLoop(): void {
     const canvas: HTMLCanvasElement = this.canvasRef.nativeElement;
 
@@ -307,15 +545,5 @@ export class AudioOutlet implements OnInit, OnDestroy {
     };
 
     draw();
-  }
-
-  public ngOnDestroy(): void {
-    if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
-    }
-    this.visualization?.destroy();
-    if (this.audioContext) {
-      this.audioContext.close();
-    }
   }
 }
