@@ -26,6 +26,7 @@ import {Component, inject, computed, HostBinding, OnDestroy, HostListener, signa
 import {LayoutHeader} from '../layout/layout-header/layout-header';
 import {LayoutOutlet} from '../layout/layout-outlet/layout-outlet';
 import {LayoutControls} from '../layout/layout-controls/layout-controls';
+import {ConfigurationView} from '../configuration/configuration-view/configuration-view';
 import {ElectronService} from '../../services/electron.service';
 import {MediaPlayerService} from '../../services/media-player.service';
 
@@ -52,7 +53,7 @@ import {MediaPlayerService} from '../../services/media-player.service';
  */
 @Component({
   selector: 'app-root',
-  imports: [LayoutHeader, LayoutOutlet, LayoutControls],
+  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView],
   templateUrl: './root.html',
   styleUrl: './root.scss',
 })
@@ -76,6 +77,9 @@ export class Root implements OnDestroy {
 
   /** Whether the current media is video (used for styling) */
   public readonly isVideo: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.currentMediaType() === 'video');
+
+  /** Whether the configuration view is displayed (settings mode) */
+  public readonly isConfigurationMode: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** Internal signal tracking if controls should be visible in fullscreen */
   private readonly controlsVisible: ReturnType<typeof signal<boolean>> = signal<boolean>(true);
@@ -154,6 +158,26 @@ export class Root implements OnDestroy {
     if (this.mouseTimeout) {
       clearTimeout(this.mouseTimeout);
     }
+  }
+
+  // ============================================================================
+  // Public Methods - Configuration Mode
+  // ============================================================================
+
+  /**
+   * Enters configuration mode, displaying the settings view.
+   * Called when the settings button in the header is clicked.
+   */
+  public enterConfigurationMode(): void {
+    this.isConfigurationMode.set(true);
+  }
+
+  /**
+   * Exits configuration mode, returning to the media player view.
+   * Called when the close button in the configuration view is clicked.
+   */
+  public exitConfigurationMode(): void {
+    this.isConfigurationMode.set(false);
   }
 
   // ============================================================================

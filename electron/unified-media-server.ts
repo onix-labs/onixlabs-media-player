@@ -23,6 +23,8 @@ import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { createReadStream, statSync, existsSync, readFileSync } from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
+import { SettingsManager } from './settings-manager.ts';
+import type { AppSettings, VisualizationSettingsUpdate } from './settings-manager.ts';
 
 // ============================================================================
 // Types
@@ -134,6 +136,7 @@ type SSEEventType =
   | 'playlist:updated'    // Playlist items changed
   | 'playlist:selection'  // Current track selection changed
   | 'playlist:mode'       // Shuffle or repeat mode changed
+  | 'settings:updated'    // Application settings changed
   | 'heartbeat';          // Keep-alive ping
 
 // ============================================================================
@@ -864,6 +867,9 @@ export class UnifiedMediaServer {
   /** SSE manager for real-time client updates */
   private readonly sse: SSEManager = new SSEManager();
 
+  /** Settings manager for persistent user preferences */
+  private readonly settings: SettingsManager = new SettingsManager();
+
   /** Playlist manager instance */
   private readonly playlist: PlaylistManager;
 
@@ -1012,6 +1018,10 @@ export class UnifiedMediaServer {
         await this.handlePlaylistShuffle(req, res);
       } else if (pathname === '/playlist/repeat' && method === 'POST') {
         await this.handlePlaylistRepeat(req, res);
+      } else if (pathname === '/settings' && method === 'GET') {
+        this.handleSettingsGet(res);
+      } else if (pathname === '/settings/visualization' && method === 'PUT') {
+        await this.handleSettingsVisualization(req, res);
       } else {
         res.writeHead(404);
         res.end(JSON.stringify({ error: 'Not found' }));
@@ -1051,6 +1061,7 @@ export class UnifiedMediaServer {
     res.write(`event: playback:time\ndata: ${JSON.stringify({ currentTime: this.playback.currentTime, duration: this.playback.duration })}\n\n`);
     res.write(`event: playback:volume\ndata: ${JSON.stringify({ volume: this.playback.volume, muted: this.playback.muted })}\n\n`);
     res.write(`event: playlist:updated\ndata: ${JSON.stringify(this.playlist.getState())}\n\n`);
+    res.write(`event: settings:updated\ndata: ${JSON.stringify(this.settings.getSettings())}\n\n`);
 
     if (this.playback.currentMedia) {
       res.write(`event: playback:loaded\ndata: ${JSON.stringify(this.playback.currentMedia)}\n\n`);
@@ -1949,6 +1960,44 @@ export class UnifiedMediaServer {
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, repeatEnabled: enabled }));
+  }
+
+  // ============================================================================
+  // Settings Handlers
+  // ============================================================================
+
+  /**
+   * Handles settings retrieval requests.
+   *
+   * Returns the complete application settings.
+   *
+   * @param res - HTTP response to write to
+   */
+  private handleSettingsGet(res: Readonly<ServerResponse>): void {
+    const settings: AppSettings = this.settings.getSettings();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(settings));
+  }
+
+  /**
+   * Handles visualization settings update requests.
+   *
+   * Updates visualization preferences and broadcasts the change to all clients.
+   *
+   * @param req - Incoming HTTP request with VisualizationSettingsUpdate body
+   * @param res - HTTP response to write to
+   */
+  private async handleSettingsVisualization(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const update: VisualizationSettingsUpdate = JSON.parse(body) as VisualizationSettingsUpdate;
+
+    const updatedSettings: AppSettings = this.settings.updateVisualizationSettings(update);
+
+    // Broadcast the updated settings to all clients
+    this.sse.broadcast('settings:updated', updatedSettings);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
   }
 
   // ============================================================================

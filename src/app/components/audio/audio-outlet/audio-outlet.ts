@@ -29,6 +29,7 @@
 import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, HostBinding} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
+import {SettingsService} from '../../../services/settings.service';
 import type {PlaylistItem} from '../../../services/electron.service';
 import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYPES} from './visualizations';
 
@@ -89,6 +90,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
   /** Electron service for file operations and fullscreen */
   private readonly electron: ElectronService = inject(ElectronService);
+
+  /** Settings service for user preferences */
+  private readonly settings: SettingsService = inject(SettingsService);
 
   // ============================================================================
   // Reactive State
@@ -158,6 +162,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
   /** File path of currently loaded audio (for change detection) */
   private currentFilePath: string | null = null;
+
+  /** Whether the default visualization from settings has been applied */
+  private defaultVisualizationApplied: boolean = false;
 
   // ============================================================================
   // Constructor - Reactive Effects
@@ -234,6 +241,17 @@ export class AudioOutlet implements OnInit, OnDestroy {
       const muted: boolean = this.mediaPlayer.muted();
       if (this.gainNode) {
         this.gainNode.gain.value = muted ? 0 : this.mediaPlayer.volume();
+      }
+    });
+
+    // React to settings loading - apply default visualization once
+    effect((): void => {
+      const isLoaded: boolean = this.settings.isLoaded();
+      const defaultType: VisualizationType = this.settings.defaultVisualization() as VisualizationType;
+
+      if (isLoaded && !this.defaultVisualizationApplied) {
+        this.defaultVisualizationApplied = true;
+        this.setVisualization(defaultType);
       }
     });
   }

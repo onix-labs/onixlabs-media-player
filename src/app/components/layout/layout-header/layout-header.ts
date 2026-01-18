@@ -11,7 +11,7 @@
  * @module app/components/layout/layout-header
  */
 
-import {Component, inject, computed} from '@angular/core';
+import {Component, inject, computed, output} from '@angular/core';
 import {ElectronService} from '../../../services/electron.service';
 
 /**
@@ -38,11 +38,26 @@ export class LayoutHeader {
   /** Service for Electron fullscreen control */
   private readonly electron: ElectronService = inject(ElectronService);
 
+  // ============================================================================
+  // Outputs
+  // ============================================================================
+
+  /** Event emitted when the settings button is clicked */
+  public readonly openSettings = output<void>();
+
+  // ============================================================================
+  // Computed State
+  // ============================================================================
+
   /**
    * Whether the application is currently in fullscreen mode.
    * Used to toggle the fullscreen button icon state.
    */
   public readonly isFullscreen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isFullscreen());
+
+  // ============================================================================
+  // Event Handlers
+  // ============================================================================
 
   /**
    * Toggles between fullscreen and windowed mode.
@@ -50,5 +65,13 @@ export class LayoutHeader {
    */
   public async toggleFullscreen(): Promise<void> {
     await this.electron.toggleFullscreen();
+  }
+
+  /**
+   * Opens the settings/configuration view.
+   * Called when the settings button is clicked.
+   */
+  public onOpenSettings(): void {
+    this.openSettings.emit();
   }
 }

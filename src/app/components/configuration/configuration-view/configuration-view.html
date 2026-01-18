@@ -1,0 +1,77 @@
+<div class="configuration-container">
+  <!-- Header -->
+  <div class="configuration-header">
+    <h1>Settings</h1>
+    <button class="close-button" (click)="onClose()" title="Close settings">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+
+  <!-- Content area with sidebar and panel -->
+  <div class="configuration-content">
+    <!-- Sidebar with search and categories -->
+    <div class="configuration-sidebar">
+      <div class="search-box">
+        <i class="fa-solid fa-search"></i>
+        <input
+          type="text"
+          placeholder="Search settings..."
+          [value]="searchQuery()"
+          (input)="onSearchChange($event)"
+        />
+      </div>
+
+      <nav class="category-list">
+        @for (category of filteredCategories(); track category.id) {
+          <button
+            class="category-item"
+            [class.active]="selectedCategory() === category.id"
+            (click)="onSelectCategory(category.id)"
+          >
+            <i [class]="category.icon"></i>
+            <span>{{ category.name }}</span>
+          </button>
+        }
+      </nav>
+    </div>
+
+    <!-- Settings panel -->
+    <div class="settings-panel">
+      @if (currentCategory(); as category) {
+        <div class="panel-header">
+          <h2>{{ category.name }}</h2>
+          <p class="panel-description">{{ category.description }}</p>
+        </div>
+
+        <div class="settings-content">
+          @switch (selectedCategory()) {
+            @case ('visualization') {
+              <!-- Visualization settings -->
+              <div class="setting-group">
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="default-visualization">Default Visualization</label>
+                    <p class="setting-description">
+                      The visualization that plays when audio starts. This setting persists across app restarts.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="default-visualization"
+                      [value]="currentDefaultVisualization()"
+                      (change)="onDefaultVisualizationChange($event)"
+                    >
+                      @for (option of visualizationOptions; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+              </div>
+            }
+          }
+        </div>
+      }
+    </div>
+  </div>
+</div>
