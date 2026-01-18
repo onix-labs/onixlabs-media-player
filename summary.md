@@ -23,7 +23,9 @@
 - Play/pause, next/previous, seek, volume all responsive
 - Skip buttons disabled when playlist has only one item
 - Auto-advance to next track when current ends
-- Drag-and-drop file support
+- Drag-and-drop file support:
+  - Playlist panel: adds files to playlist (auto-plays only if playlist was empty)
+  - Idle state / visualization / video surface: adds files AND immediately starts playing
 
 ### Fullscreen Mode
 - Fullscreen button in header bar (or macOS green traffic light)
