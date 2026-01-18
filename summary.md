@@ -163,6 +163,7 @@ AudioContext.destination (speakers)
   - `tunnel-visualization.ts` - Tunnel (category: waveform) - dual red/blue waveforms with zoom effect
   - `neon-visualization.ts` - Neon (category: waveform) - rotating cyan/magenta waveforms with tunnel zoom
   - `water-visualization.ts` - Pulsar (category: ambience) - tunnel zoom, rotating waveforms, cycling colors
+    - Optimized: reuses trail/temp canvases (vs allocating per frame), pre-allocated point arrays, cached HSL→RGB colors
   - `water2-visualization.ts` - Ambience Water 2 (category: ambience)
 
 ## HTTP API Reference
