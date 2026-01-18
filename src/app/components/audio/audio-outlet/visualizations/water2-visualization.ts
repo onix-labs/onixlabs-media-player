@@ -6,55 +6,102 @@ export class Water2Visualization extends Canvas2DVisualization {
 
   private readonly ROTATION_SPEED: number = 0.009;
   private readonly FADE_RATE: number = 0.008;
-  private readonly BACKGROUND_DARKEN: number = 0.7; // Darken background rings
-  private readonly HUE_CYCLE_SPEED: number = 0.15;  // Degrees per frame
+  private readonly BACKGROUND_DARKEN: number = 0.7;
+  private readonly HUE_CYCLE_SPEED: number = 0.15;
 
-  // Saturation and lightness levels for gradient (darkest to lightest)
-  private readonly GRADIENT_LEVELS: Array<{s: number; l: number}> = [
-    {s: 70, l: 15},  // Darkest
-    {s: 65, l: 25},  // Dark
-    {s: 60, l: 40},  // Mid
-    {s: 55, l: 55},  // Light
-    {s: 50, l: 70}   // Lightest
+  // Balanced sample counts for performance
+  private readonly WAVEFORM_SAMPLES: number = 256;
+  private readonly CENTER_CIRCLE_POINTS: number = 64;
+
+  // Saturation and lightness levels for gradient
+  private readonly GRADIENT_LEVELS: ReadonlyArray<{s: number; l: number}> = [
+    {s: 70, l: 15},
+    {s: 65, l: 25},
+    {s: 60, l: 40},
+    {s: 55, l: 55},
+    {s: 50, l: 70}
   ];
 
   private readonly dataArray: Uint8Array<ArrayBuffer>;
   private readonly frequencyData: Uint8Array<ArrayBuffer>;
+
+  // Canvases - created once, reused each frame
   private circleCanvas: HTMLCanvasElement | null = null;
+  private circleCtx: CanvasRenderingContext2D | null = null;
   private trailCanvas: HTMLCanvasElement | null = null;
   private trailCtx: CanvasRenderingContext2D | null = null;
+  private tempCanvas: HTMLCanvasElement | null = null;
+  private tempCtx: CanvasRenderingContext2D | null = null;
 
-  // Hue cycling
-  private hueOffset: number = 210; // Start at blue (210 degrees)
+  // Hue cycling with caching
+  private hueOffset: number = 210;
+  private cachedHue: number = -1;
+  private cachedGradientColors: Array<{r: number; g: number; b: number}> = [];
 
   // Bass/mid detection settings
-  private readonly BASS_BINS: number = 16;          // Include bass and low-mids
-  private readonly TRANSIENT_THRESHOLD: number = 15; // Minimum jump to detect a transient
-  private readonly MIN_LEVEL: number = 50;           // Minimum level for transient to count
-  private readonly DIRECTION_COOLDOWN: number = 1000; // Milliseconds before direction can change again
-  private smoothedBass: number = 0;                 // Smoothed bass value
-  private prevBass: number = 0;                     // Previous frame's bass for transient detection
-  private rotationDirection: number = 1;            // Current rotation direction (1 or -1)
-  private lastDirectionChange: number = 0;          // Timestamp of last direction change
+  private readonly BASS_BINS: number = 16;
+  private readonly TRANSIENT_THRESHOLD: number = 15;
+  private readonly MIN_LEVEL: number = 50;
+  private readonly DIRECTION_COOLDOWN: number = 1000;
+  private smoothedBass: number = 0;
+  private prevBass: number = 0;
+  private rotationDirection: number = 1;
+  private lastDirectionChange: number = 0;
 
-  // Get current gradient colors based on hue offset
-  private getGradientColors(): Array<{r: number; g: number; b: number}> {
-    return this.GRADIENT_LEVELS.map((level: {s: number; l: number}): {r: number; g: number; b: number} => {
-      return this.hslToRgb(this.hueOffset, level.s, level.l);
-    });
+  // Pre-allocated arrays to avoid GC pressure
+  private readonly allPoints: Array<{x: number; y: number}>;
+  private readonly centerPoints: Array<{x: number; y: number}>;
+
+  // Pre-computed values (updated on resize)
+  private centerX: number = 0;
+  private centerY: number = 0;
+  private halfWidth: number = 0;
+  private minArcRadius: number = 0;
+  private baseCircleRadius: number = 0;
+  private maxRadius: number = 0;
+
+  constructor(config: VisualizationConfig) {
+    super(config);
+    // Reduced FFT size for better performance
+    this.analyser.fftSize = 1024;
+    this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
+    this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
+
+    // Pre-allocate point arrays (left half + right half = WAVEFORM_SAMPLES * 2)
+    this.allPoints = new Array(this.WAVEFORM_SAMPLES * 2);
+    this.centerPoints = new Array(this.CENTER_CIRCLE_POINTS + 1);
+
+    for (let i: number = 0; i < this.WAVEFORM_SAMPLES * 2; i++) {
+      this.allPoints[i] = {x: 0, y: 0};
+    }
+    for (let i: number = 0; i <= this.CENTER_CIRCLE_POINTS; i++) {
+      this.centerPoints[i] = {x: 0, y: 0};
+    }
   }
 
-  // Convert HSL to RGB
+  // Cache gradient colors - only recalculate when hue changes by >= 1 degree
+  private updateGradientColors(): boolean {
+    const hueInt: number = Math.floor(this.hueOffset);
+    if (hueInt === this.cachedHue) return false;
+
+    this.cachedHue = hueInt;
+    this.cachedGradientColors = this.GRADIENT_LEVELS.map(
+      (level: {s: number; l: number}): {r: number; g: number; b: number} =>
+        this.hslToRgb(this.hueOffset, level.s, level.l)
+    );
+    return true;
+  }
+
   private hslToRgb(h: number, s: number, l: number): {r: number; g: number; b: number} {
     h = h % 360;
-    s = s / 100;
-    l = l / 100;
+    const sNorm: number = s * 0.01;
+    const lNorm: number = l * 0.01;
 
-    const c: number = (1 - Math.abs(2 * l - 1)) * s;
+    const c: number = (1 - Math.abs(2 * lNorm - 1)) * sNorm;
     const x: number = c * (1 - Math.abs((h / 60) % 2 - 1));
-    const m: number = l - c / 2;
+    const m: number = lNorm - c * 0.5;
 
-    let r: number = 0, g: number = 0, b: number = 0;
+    let r: number, g: number, b: number;
 
     if (h < 60) { r = c; g = x; b = 0; }
     else if (h < 120) { r = x; g = c; b = 0; }
@@ -64,84 +111,84 @@ export class Water2Visualization extends Canvas2DVisualization {
     else { r = c; g = 0; b = x; }
 
     return {
-      r: Math.round((r + m) * 255),
-      g: Math.round((g + m) * 255),
-      b: Math.round((b + m) * 255)
+      r: ((r + m) * 255 + 0.5) | 0,
+      g: ((g + m) * 255 + 0.5) | 0,
+      b: ((b + m) * 255 + 0.5) | 0
     };
   }
 
-  constructor(config: VisualizationConfig) {
-    super(config);
-    this.analyser.fftSize = 2048;
-    this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
-    this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
-  }
-
   protected override onResize(): void {
-    // Pre-render circles to an offscreen canvas
-    this.circleCanvas = document.createElement('canvas');
+    // Pre-compute geometry values
+    this.centerX = this.width * 0.5;
+    this.centerY = this.height * 0.5;
+    this.halfWidth = this.width * 0.5;
+    this.minArcRadius = this.halfWidth * 0.12;
+    this.baseCircleRadius = this.halfWidth * 0.12;
+    this.maxRadius = this.halfWidth;
+
+    // Create/resize circle canvas (reused, re-rendered only when hue changes)
+    if (!this.circleCanvas) {
+      this.circleCanvas = document.createElement('canvas');
+      this.circleCtx = this.circleCanvas.getContext('2d')!;
+    }
     this.circleCanvas.width = this.width;
     this.circleCanvas.height = this.height;
-    this.renderCirclesToCanvas(this.circleCanvas.getContext('2d')!);
 
-    // Create transparent canvas for waveform trails
-    this.trailCanvas = document.createElement('canvas');
+    // Create/resize trail canvas (reused each frame)
+    if (!this.trailCanvas) {
+      this.trailCanvas = document.createElement('canvas');
+      this.trailCtx = this.trailCanvas.getContext('2d', {alpha: true})!;
+    }
     this.trailCanvas.width = this.width;
     this.trailCanvas.height = this.height;
-    this.trailCtx = this.trailCanvas.getContext('2d')!;
 
-    // Clear main canvas (transparent)
+    // Create/resize temp canvas (reused each frame)
+    if (!this.tempCanvas) {
+      this.tempCanvas = document.createElement('canvas');
+      this.tempCtx = this.tempCanvas.getContext('2d', {alpha: true})!;
+    }
+    this.tempCanvas.width = this.width;
+    this.tempCanvas.height = this.height;
+
+    // Force re-render of background on next frame
+    this.cachedHue = -1;
+
     this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
-  private renderCirclesToCanvas(ctx: CanvasRenderingContext2D): void {
+  private renderCirclesToCanvas(): void {
+    const ctx: CanvasRenderingContext2D = this.circleCtx!;
     const width: number = this.width;
     const height: number = this.height;
-    const centerX: number = width / 2;
-    const centerY: number = height / 2;
-    const gradientColors: Array<{r: number; g: number; b: number}> = this.getGradientColors();
+    const centerX: number = this.centerX;
+    const centerY: number = this.centerY;
+    const maxRadius: number = this.maxRadius;
+    const gradientColors: Array<{r: number; g: number; b: number}> = this.cachedGradientColors;
     const numColors: number = gradientColors.length;
-    const maxRadius: number = width / 2;
 
-    // Clear to transparent
     ctx.clearRect(0, 0, width, height);
 
-    // The waveform has 9 segments (numColors * 2 - 1) with pattern: 0-1-2-3-4-3-2-1-0
-    const totalSegments: number = numColors * 2 - 1; // 9 segments
+    const totalSegments: number = numColors * 2 - 1;
+    const ringPositions: number[] = [1.0, 7/totalSegments, 5/totalSegments, 3/totalSegments, 1/totalSegments, 0];
 
-    // Calculate ring boundaries as positions (0 = center, 1 = edge)
-    // Rings go from outer (darkest) to inner (lightest)
-    const ringPositions: number[] = [
-      1.0,                              // Outer edge (darkest)
-      7 / totalSegments,                // 7/9
-      5 / totalSegments,                // 5/9
-      3 / totalSegments,                // 3/9
-      1 / totalSegments,                // 1/9 (lightest center)
-      0                                 // Center point
-    ];
-
-    // Create radial gradient with soft transitions between rings
     const gradient: CanvasGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius);
     const darken: number = this.BACKGROUND_DARKEN;
-    const blendZone: number = 0.015; // Size of soft transition between rings
+    const blendZone: number = 0.015;
 
-    // Add color stops from center outward (gradient position 0 = center, 1 = edge)
     for (let i: number = numColors - 1; i >= 0; i--) {
       const color: {r: number; g: number; b: number} = gradientColors[i];
-      const r: number = Math.round(color.r * darken);
-      const g: number = Math.round(color.g * darken);
-      const b: number = Math.round(color.b * darken);
-      const colorStr: string = `rgb(${r}, ${g}, ${b})`;
+      const r: number = (color.r * darken + 0.5) | 0;
+      const g: number = (color.g * darken + 0.5) | 0;
+      const b: number = (color.b * darken + 0.5) | 0;
+      const colorStr: string = `rgb(${r},${g},${b})`;
 
-      const innerPos: number = ringPositions[i + 1]; // Inner edge of this ring
-      const outerPos: number = ringPositions[i];     // Outer edge of this ring
+      const innerPos: number = ringPositions[i + 1];
+      const outerPos: number = ringPositions[i];
 
-      // Add stops: solid color with soft transition at outer edge
       gradient.addColorStop(Math.min(1, innerPos + blendZone), colorStr);
       gradient.addColorStop(Math.max(0, outerPos - blendZone), colorStr);
     }
 
-    // Fill with gradient
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.arc(centerX, centerY, maxRadius, 0, Math.PI * 2);
@@ -154,28 +201,30 @@ export class Water2Visualization extends Canvas2DVisualization {
     const ctx: CanvasRenderingContext2D = this.ctx;
     const width: number = this.width;
     const height: number = this.height;
-    const centerX: number = width / 2;
-    const centerY: number = height / 2;
+    const centerX: number = this.centerX;
+    const centerY: number = this.centerY;
 
-    // Cycle hue through the spectrum
+    // Cycle hue and update cached colors
     this.hueOffset = (this.hueOffset + this.HUE_CYCLE_SPEED) % 360;
+    const colorsChanged: boolean = this.updateGradientColors();
 
     // Ensure canvases exist
-    if (!this.circleCanvas || !this.trailCanvas || !this.trailCtx) {
+    if (!this.circleCanvas || !this.trailCanvas || !this.trailCtx || !this.tempCanvas || !this.tempCtx) {
       this.onResize();
     }
 
-    // Re-render background with current hue
-    this.renderCirclesToCanvas(this.circleCanvas!.getContext('2d')!);
+    // Only re-render background when hue actually changes
+    if (colorsChanged) {
+      this.renderCirclesToCanvas();
+    }
 
     const trailCtx: CanvasRenderingContext2D = this.trailCtx!;
     const trailCanvas: HTMLCanvasElement = this.trailCanvas!;
+    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
+    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
 
-    // Copy current trails
-    const tempCanvas: HTMLCanvasElement = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    const tempCtx: CanvasRenderingContext2D = tempCanvas.getContext('2d')!;
+    // Copy current trails to temp canvas (reused, not recreated)
+    tempCtx.clearRect(0, 0, width, height);
     tempCtx.drawImage(trailCanvas, 0, 0);
 
     // Clear trail canvas
@@ -189,19 +238,14 @@ export class Water2Visualization extends Canvas2DVisualization {
     }
     const bassAvg: number = bassSum / this.BASS_BINS;
 
-    // Detect transient: sudden increase in bass/mid
     const bassIncrease: number = bassAvg - this.prevBass;
     this.prevBass = bassAvg;
-
-    // Light smoothing
     this.smoothedBass = this.smoothedBass * 0.5 + bassAvg * 0.5;
 
-    // Check if we can change direction (cooldown elapsed)
     const now: number = performance.now();
     const canChangeDirection: boolean = (now - this.lastDirectionChange) > this.DIRECTION_COOLDOWN;
-
-    // Flip direction on loud transients (only if cooldown has passed)
     const isTransient: boolean = bassIncrease > this.TRANSIENT_THRESHOLD && bassAvg > this.MIN_LEVEL;
+
     if (isTransient && canChangeDirection) {
       this.rotationDirection *= -1;
       this.lastDirectionChange = now;
@@ -233,84 +277,62 @@ export class Water2Visualization extends Canvas2DVisualization {
     const width: number = this.width;
     const height: number = this.height;
     const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
-    const gradientColors: Array<{r: number; g: number; b: number}> = this.getGradientColors();
+    const dataLength: number = dataArray.length;
+    const gradientColors: Array<{r: number; g: number; b: number}> = this.cachedGradientColors;
     const numColors: number = gradientColors.length;
 
-    // Calculate all points first
-    const allPoints: Array<{x: number; y: number}> = [];
-    const halfWidth: number = width / 2;
-    const samplesPerHalf: number = Math.floor(dataArray.length / 2);
+    const halfWidth: number = this.halfWidth;
+    const minArcRadius: number = this.minArcRadius;
+    const samplesPerHalf: number = this.WAVEFORM_SAMPLES;
+    const bendStrength: number = 1.2;
+    const sensitivityFactor: number = this.sensitivity * 2;
+    const amplitudeScale: number = height * 0.3;
 
-    // Arc bending settings
-    // Minimum radius prevents singularity at center and controls max bend tightness
-    const minArcRadius: number = halfWidth * 0.12;
-    const bendStrength: number = 1.2;  // Multiplier for arc effect
+    // Calculate downsampling step
+    const sampleStep: number = (dataLength * 0.5) / samplesPerHalf;
 
-    // Left half points (from left edge to center)
+    // Left half points (from left edge to center) - reuse pre-allocated array
     for (let i: number = 0; i < samplesPerHalf; i++) {
-      const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
-      const amplitude: number = sample * height * 0.3;
+      const dataIndex: number = (i * sampleStep) | 0;
+      const sample: number = ((dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
+      const amplitude: number = sample * amplitudeScale;
       const t: number = i / (samplesPerHalf - 1);
       const baseX: number = t * halfWidth;
 
-      // Distance from center determines arc radius (larger distance = gentler curve)
       const distFromCenter: number = centerX - baseX;
-      const arcRadius: number = Math.max(distFromCenter, minArcRadius);
-
-      // Convert amplitude to arc angle: angle = arcLength / radius
-      // Near center (small radius): same amplitude = larger angle = tighter curve
-      // Near edge (large radius): same amplitude = smaller angle = gentler curve
+      const arcRadius: number = distFromCenter > minArcRadius ? distFromCenter : minArcRadius;
       const arcAngle: number = (amplitude * bendStrength) / arcRadius;
+      const newAngle: number = Math.PI - arcAngle;
 
-      // Base angle from center to this point (PI = pointing left)
-      const baseAngle: number = Math.PI;
-
-      // New angle after applying amplitude as arc (subtract for upward = counter-clockwise)
-      const newAngle: number = baseAngle - arcAngle;
-
-      // Calculate position on the arc
-      const x: number = centerX + arcRadius * Math.cos(newAngle);
-      const y: number = centerY + arcRadius * Math.sin(newAngle);
-
-      allPoints.push({x, y});
+      this.allPoints[i].x = centerX + arcRadius * Math.cos(newAngle);
+      this.allPoints[i].y = centerY + arcRadius * Math.sin(newAngle);
     }
 
     // Right half points (mirrored, from center to right edge)
     for (let i: number = samplesPerHalf - 1; i >= 0; i--) {
-      const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
-      const amplitude: number = sample * height * 0.3;
+      const dataIndex: number = (i * sampleStep) | 0;
+      const sample: number = ((dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
+      const amplitude: number = sample * amplitudeScale;
       const t: number = i / (samplesPerHalf - 1);
       const baseX: number = width - t * halfWidth;
 
-      // Distance from center (positive for right side)
       const distFromCenter: number = baseX - centerX;
-      const arcRadius: number = Math.max(distFromCenter, minArcRadius);
-
-      // Convert amplitude to arc angle
+      const arcRadius: number = distFromCenter > minArcRadius ? distFromCenter : minArcRadius;
       const arcAngle: number = (amplitude * bendStrength) / arcRadius;
 
-      // Base angle from center (0 = pointing right)
-      const baseAngle: number = 0;
-
-      // New angle (add for upward on right side = counter-clockwise)
-      const newAngle: number = baseAngle + arcAngle;
-
-      // Calculate position on the arc
-      const x: number = centerX + arcRadius * Math.cos(newAngle);
-      const y: number = centerY + arcRadius * Math.sin(newAngle);
-
-      allPoints.push({x, y});
+      const pointIndex: number = samplesPerHalf + (samplesPerHalf - 1 - i);
+      this.allPoints[pointIndex].x = centerX + arcRadius * Math.cos(arcAngle);
+      this.allPoints[pointIndex].y = centerY + arcRadius * Math.sin(arcAngle);
     }
 
-    // Total segments: 5 colors on left (darkest to lightest), 5 colors on right (lightest to darkest)
-    // That's 10 segments total, but the center shares the lightest color
-    const totalSegments: number = numColors * 2 - 1; // 9 segments: 0-1-2-3-4-3-2-1-0
-    const pointsPerSegment: number = Math.floor(allPoints.length / totalSegments);
-    const centerSegmentIndex: number = numColors - 1; // Index 4 = center segment
+    // Total segments: 9 (pattern: 0-1-2-3-4-3-2-1-0)
+    const totalSegments: number = numColors * 2 - 1;
+    const totalPoints: number = samplesPerHalf * 2;
+    const pointsPerSegment: number = Math.floor(totalPoints / totalSegments);
+    const centerSegmentIndex: number = numColors - 1;
 
     // Draw each segment with its color, but skip the center segment
     for (let seg: number = 0; seg < totalSegments; seg++) {
-      // Skip the center segment - we'll draw a circle there instead
       if (seg === centerSegmentIndex) continue;
 
       // Determine color index: 0,1,2,3,4,3,2,1,0
@@ -323,12 +345,11 @@ export class Water2Visualization extends Canvas2DVisualization {
 
       const color: {r: number; g: number; b: number} = gradientColors[colorIndex];
       const startIdx: number = seg * pointsPerSegment;
-      const endIdx: number = seg === totalSegments - 1 ? allPoints.length : (seg + 1) * pointsPerSegment + 1;
+      const endIdx: number = seg === totalSegments - 1 ? totalPoints : (seg + 1) * pointsPerSegment + 1;
 
-      const segmentPoints: Array<{x: number; y: number}> = allPoints.slice(startIdx, endIdx);
-      if (segmentPoints.length < 2) continue;
-
-      this.drawWaveformSegment(ctx, segmentPoints, color);
+      if (endIdx - startIdx >= 2) {
+        this.drawWaveformSegment(ctx, startIdx, Math.min(endIdx, totalPoints), color);
+      }
     }
 
     // Draw circular waveform at center using the brightest color
@@ -343,27 +364,26 @@ export class Water2Visualization extends Canvas2DVisualization {
     color: {r: number; g: number; b: number}
   ): void {
     const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
+    const dataLength: number = dataArray.length;
     const height: number = this.height;
-
-    // Sample audio data around the circle
-    const points: Array<{x: number; y: number}> = [];
-    const numPoints: number = 64; // Number of points around the circle
+    const numPoints: number = this.CENTER_CIRCLE_POINTS;
+    const sensitivityFactor: number = this.sensitivity * 2;
+    const amplitudeScale: number = height * 0.08;
+    const sampleStep: number = (dataLength * 0.25) / numPoints;
 
     for (let i: number = 0; i <= numPoints; i++) {
       const angle: number = (i / numPoints) * Math.PI * 2;
-
-      // Sample audio data - use different parts of the array for different angles
-      const sampleIndex: number = Math.floor((i / numPoints) * (dataArray.length / 4));
-      const sample: number = ((dataArray[sampleIndex] - 128) / 128) * (this.sensitivity * 2);
-      const amplitude: number = sample * height * 0.08;
-
-      // Modulate radius with audio
+      const sampleIndex: number = ((i * sampleStep) | 0) % dataLength;
+      const sample: number = ((dataArray[sampleIndex] - 128) / 128) * sensitivityFactor;
+      const amplitude: number = sample * amplitudeScale;
       const radius: number = baseRadius + amplitude;
 
-      const x: number = centerX + radius * Math.cos(angle);
-      const y: number = centerY + radius * Math.sin(angle);
-      points.push({x, y});
+      this.centerPoints[i].x = centerX + radius * Math.cos(angle);
+      this.centerPoints[i].y = centerY + radius * Math.sin(angle);
     }
+
+    const points: Array<{x: number; y: number}> = this.centerPoints;
+    const len: number = numPoints + 1;
 
     // Draw glow layer
     ctx.save();
@@ -376,7 +396,7 @@ export class Water2Visualization extends Canvas2DVisualization {
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < points.length; i++) {
+    for (let i: number = 1; i < len; i++) {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.closePath();
@@ -391,7 +411,7 @@ export class Water2Visualization extends Canvas2DVisualization {
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < points.length; i++) {
+    for (let i: number = 1; i < len; i++) {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.closePath();
@@ -403,7 +423,7 @@ export class Water2Visualization extends Canvas2DVisualization {
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < points.length; i++) {
+    for (let i: number = 1; i < len; i++) {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.closePath();
@@ -412,10 +432,11 @@ export class Water2Visualization extends Canvas2DVisualization {
 
   private drawWaveformSegment(
     ctx: CanvasRenderingContext2D,
-    points: Array<{x: number; y: number}>,
+    startIdx: number,
+    endIdx: number,
     color: {r: number; g: number; b: number}
   ): void {
-    if (points.length < 2) return;
+    const points: Array<{x: number; y: number}> = this.allPoints;
 
     // Draw glow layer
     ctx.save();
@@ -427,8 +448,8 @@ export class Water2Visualization extends Canvas2DVisualization {
     ctx.lineJoin = 'round';
 
     ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < points.length; i++) {
+    ctx.moveTo(points[startIdx].x, points[startIdx].y);
+    for (let i: number = startIdx + 1; i < endIdx; i++) {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.stroke();
@@ -441,8 +462,8 @@ export class Water2Visualization extends Canvas2DVisualization {
     ctx.lineJoin = 'round';
 
     ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < points.length; i++) {
+    ctx.moveTo(points[startIdx].x, points[startIdx].y);
+    for (let i: number = startIdx + 1; i < endIdx; i++) {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.stroke();
@@ -452,10 +473,19 @@ export class Water2Visualization extends Canvas2DVisualization {
     ctx.lineWidth = 1;
 
     ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < points.length; i++) {
+    ctx.moveTo(points[startIdx].x, points[startIdx].y);
+    for (let i: number = startIdx + 1; i < endIdx; i++) {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.stroke();
+  }
+
+  public override destroy(): void {
+    this.circleCanvas = null;
+    this.circleCtx = null;
+    this.trailCanvas = null;
+    this.trailCtx = null;
+    this.tempCanvas = null;
+    this.tempCtx = null;
   }
 }
