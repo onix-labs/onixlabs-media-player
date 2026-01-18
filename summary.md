@@ -12,6 +12,14 @@
 - Instant volume control via GainNode (no latency, doesn't affect visualizations)
 - Seek support via HTTP range requests (native formats) or stream reload (transcoded)
 
+### MIDI Playback
+- Server-side synthesis via FluidSynth with SoundFont support
+- Conversion pipeline: FluidSynth (raw audio) -> FFmpeg (MP3 encoding) -> HTTP streaming
+- Full visualization support (converted audio flows through same Web Audio API pipeline)
+- MIDI duration parsing from binary file (reads tempo changes, calculates from tick positions)
+- Automatic SoundFont detection from common paths
+- Supported formats: `.mid`, `.midi`
+
 ### Video Playback
 - Native `<video>` element with HTTP streaming
 - Native formats (.mp4, .webm, .ogg) use HTTP range requests for seeking
@@ -215,6 +223,13 @@ ffmpeg -ss <time> -i <file> \
   -f mp4 pipe:1
 ```
 
+**MIDI to MP3 (via FluidSynth):**
+```bash
+fluidsynth -ni -g 1.0 -r 44100 <soundfont.sf2> <file.mid> -F - -O raw \
+  | ffmpeg -f s16le -ar 44100 -ac 2 -i - \
+    -c:a libmp3lame -b:a 192k -f mp3 pipe:1
+```
+
 **Metadata Extraction:**
 ```bash
 ffprobe -v quiet -print_format json -show_format -show_streams <file>
@@ -233,6 +248,8 @@ npm run package      # Package with electron-builder
 - Electron 39
 - Angular 21
 - FFmpeg/FFprobe (must be installed: `brew install ffmpeg`)
+- FluidSynth (for MIDI playback: `brew install fluid-synth`)
+- SoundFont file (FluidSynth includes VintageDreamsWaves-v2.sf2)
 - tsx (for running TypeScript directly)
 - ESLint + @typescript-eslint (strict type safety rules)
 - electron/tsconfig.json uses `allowImportingTsExtensions` + `noEmit` for tsx compatibility

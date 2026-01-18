@@ -7,7 +7,8 @@ import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYP
 // Supported media extensions for drag and drop
 const MEDIA_EXTENSIONS: Set<string> = new Set([
   '.mp3', '.mp4', '.flac', '.mkv', '.avi', '.wav',
-  '.ogg', '.webm', '.m4a', '.aac', '.wma', '.mov'
+  '.ogg', '.webm', '.m4a', '.aac', '.wma', '.mov',
+  '.mid', '.midi'
 ]);
 
 @Component({

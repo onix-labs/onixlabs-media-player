@@ -176,8 +176,8 @@ export class ElectronService implements OnDestroy {
 
     return this.api.openFileDialog({
       filters: [
-        {name: 'Media Files', extensions: ['mp3', 'mp4', 'flac', 'mkv', 'avi', 'wav', 'ogg', 'webm', 'm4a', 'aac', 'wma', 'mov']},
-        {name: 'Audio', extensions: ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'wma']},
+        {name: 'Media Files', extensions: ['mp3', 'mp4', 'flac', 'mkv', 'avi', 'wav', 'ogg', 'webm', 'm4a', 'aac', 'wma', 'mov', 'mid', 'midi']},
+        {name: 'Audio', extensions: ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'wma', 'mid', 'midi']},
         {name: 'Video', extensions: ['mp4', 'mkv', 'avi', 'webm', 'mov']}
       ],
       multiSelections: multiSelect
