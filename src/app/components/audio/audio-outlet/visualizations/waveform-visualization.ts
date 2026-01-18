@@ -1,5 +1,28 @@
+/**
+ * @fileoverview Oscilloscope-style waveform visualization.
+ *
+ * Displays the audio waveform in the style of a classic oscilloscope with
+ * an LCD ghosting/persistence effect. The green glow and trail effect
+ * creates a retro electronic display aesthetic.
+ *
+ * Technical details:
+ * - Uses getByteTimeDomainData() for waveform data
+ * - Higher FFT size (2048) for smoother waveform
+ * - Persistence effect via slow fade and transparent background
+ * - Multi-layer rendering: glow, main line, highlight
+ * - Sensitivity scales the waveform amplitude
+ *
+ * @module app/components/audio/audio-outlet/visualizations/waveform-visualization
+ */
+
 import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
+/**
+ * Oscilloscope waveform visualization with persistence effect.
+ *
+ * Renders the audio waveform as a glowing green line with an LCD-style
+ * ghosting effect that creates visual trails.
+ */
 export class WaveformVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Waveform';
   public readonly category: VisualizationCategory = 'waveform';

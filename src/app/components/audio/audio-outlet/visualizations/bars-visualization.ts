@@ -1,5 +1,29 @@
+/**
+ * @fileoverview Frequency bars visualization.
+ *
+ * Classic audio visualizer showing vertical bars that represent frequency
+ * bands. Uses a green-yellow-red gradient from bottom to top, giving
+ * visual feedback on frequency intensity.
+ *
+ * Technical details:
+ * - Uses 96 bars across the canvas width
+ * - Analyzes frequency data using getByteFrequencyData()
+ * - Maps FFT bins to bars, averaging bins for smooth display
+ * - Bar height represents frequency intensity (0-255)
+ * - Gradient colors indicate intensity levels
+ *
+ * @module app/components/audio/audio-outlet/visualizations/bars-visualization
+ */
+
 import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
+/**
+ * Frequency bars visualization with gradient coloring.
+ *
+ * Renders vertical bars that respond to audio frequency content.
+ * Higher frequencies appear on the right, lower on the left.
+ * Bar heights animate smoothly via the analyser's smoothing constant.
+ */
 export class BarsVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Frequency Bars';
   public readonly category: VisualizationCategory = 'frequency';

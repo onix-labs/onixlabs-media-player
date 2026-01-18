@@ -1,18 +1,66 @@
+/**
+ * @fileoverview Video outlet component for video playback.
+ *
+ * This component handles video playback for video media files. It manages
+ * the HTML5 video element and synchronizes with the server's playback state.
+ *
+ * Key features:
+ * - Native format support (MP4, WebM, OGG) with direct playback
+ * - Transcoded format support (MKV, AVI, MOV) via FFmpeg streaming
+ * - HTTP range request support for native formats (efficient seeking)
+ * - Re-stream on seek for transcoded formats (required by FFmpeg)
+ * - Double-click for fullscreen toggle
+ * - Drag-and-drop file support
+ *
+ * Seeking behavior:
+ * - Native formats: Uses HTTP range requests, instant seeking
+ * - Transcoded formats: Re-requests stream with seek offset parameter
+ *
+ * @module app/components/video/video-outlet
+ */
+
 import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import type {PlaylistItem} from '../../../services/electron.service';
 
-// Formats that Chromium can play natively (support HTTP range seeking)
+/**
+ * Video formats that Chromium can play natively.
+ * These formats support HTTP range requests for efficient seeking.
+ */
 const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.webm', '.ogg']);
 
-// Supported media extensions for drag and drop
+/**
+ * Supported media extensions for drag-and-drop filtering.
+ */
 const MEDIA_EXTENSIONS: Set<string> = new Set([
   '.mp3', '.mp4', '.flac', '.mkv', '.avi', '.wav',
   '.ogg', '.webm', '.m4a', '.aac', '.wma', '.mov',
   '.mid', '.midi'
 ]);
 
+/**
+ * Video outlet component for video media playback.
+ *
+ * This component is displayed when the current media is video (not audio).
+ * It manages the HTML5 video element and handles the complexity of
+ * playing both native and transcoded video formats.
+ *
+ * Native formats (MP4, WebM, OGG):
+ * - Played directly by the browser
+ * - Seeking uses HTTP range requests (instant)
+ *
+ * Transcoded formats (MKV, AVI, MOV):
+ * - Transcoded to MP4 by FFmpeg on the server
+ * - Seeking requires re-requesting the stream with a time offset
+ * - Slight delay on seek due to transcoding startup
+ *
+ * @example
+ * <!-- In layout-outlet template -->
+ * @if (isVideo()) {
+ *   <app-video-outlet />
+ * }
+ */
 @Component({
   selector: 'app-video-outlet',
   standalone: true,
@@ -21,71 +69,66 @@ const MEDIA_EXTENSIONS: Set<string> = new Set([
   styleUrl: './video-outlet.scss'
 })
 export class VideoOutlet implements OnInit, OnDestroy {
+  // ============================================================================
+  // View References
+  // ============================================================================
+
+  /** Reference to the video element */
   @ViewChild('videoElement', {static: true}) public videoRef!: ElementRef<HTMLVideoElement>;
 
+  // ============================================================================
+  // Services
+  // ============================================================================
+
+  /** Media player service for playback state */
   public readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
+
+  /** Electron service for file operations and fullscreen */
   private readonly electron: ElectronService = inject(ElectronService);
 
+  // ============================================================================
+  // Reactive State
+  // ============================================================================
+
+  /** Currently playing track */
   public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
+
+  /** Whether files are being dragged over this component */
   public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
-  public onDoubleClick(): void {
-    void this.electron.toggleFullscreen();
-  }
+  // ============================================================================
+  // Internal State
+  // ============================================================================
 
-  public onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(true);
-  }
-
-  public onDragLeave(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-  }
-
-  public async onDrop(event: DragEvent): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-
-    const files: FileList | undefined = event.dataTransfer?.files;
-    if (!files || files.length === 0) return;
-
-    // Filter for supported media files and get their paths
-    const filePaths: string[] = [];
-    for (let i: number = 0; i < files.length; i++) {
-      const file: File = files[i];
-      const ext: string = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-
-      if (MEDIA_EXTENSIONS.has(ext)) {
-        try {
-          const filePath: string = this.electron.getPathForFile(file);
-          if (filePath) {
-            filePaths.push(filePath);
-          }
-        } catch (e) {
-          console.error('Failed to get path for file:', file.name, e);
-        }
-      }
-    }
-
-    if (filePaths.length === 0) return;
-
-    // Add files to playlist and select the first one to play immediately
-    const result: {added: PlaylistItem[]} = await this.electron.addToPlaylist(filePaths);
-    if (result.added.length > 0) {
-      await this.electron.selectTrack(result.added[0].id);
-    }
-  }
-
+  /** Path of the currently loaded video file */
   private currentFilePath: string | null = null;
+
+  /** Whether the current video requires transcoding */
   private isTranscoded: boolean = false;
+
+  /** Flag to prevent duplicate seek operations */
   private seekPending: boolean = false;
+
+  /** The seek offset used when loading a transcoded video (for time calculation) */
   private transcodeSeekOffset: number = 0;
+
+  /** Timestamp of the last seek operation (for debouncing) */
   private lastSeekTime: number = 0;
 
+  // ============================================================================
+  // Constructor - Reactive Effects
+  // ============================================================================
+
+  /**
+   * Sets up reactive effects for video playback synchronization.
+   *
+   * Effects react to:
+   * - Track changes: loads new video source
+   * - Playback state: plays/pauses/stops the video element
+   * - Seek events: handles seeking differently for native vs transcoded
+   * - Volume changes: adjusts video element volume
+   * - Mute changes: toggles video element muted state
+   */
   constructor() {
     // React to track changes - load new video source
     effect((): void => {
@@ -165,10 +208,109 @@ export class VideoOutlet implements OnInit, OnDestroy {
     });
   }
 
+  // ============================================================================
+  // Lifecycle Hooks
+  // ============================================================================
+
+  /**
+   * Initializes the component and sets up video element event listeners.
+   */
   public ngOnInit(): void {
     this.setupVideoEvents();
   }
 
+  /**
+   * Cleanup when component is destroyed.
+   * Stops playback and clears the video source.
+   */
+  public ngOnDestroy(): void {
+    const video: HTMLVideoElement = this.videoRef.nativeElement;
+    video.pause();
+    video.src = '';
+    this.currentFilePath = null;
+  }
+
+  // ============================================================================
+  // Event Handlers
+  // ============================================================================
+
+  /**
+   * Toggles fullscreen mode on double-click.
+   */
+  public onDoubleClick(): void {
+    void this.electron.toggleFullscreen();
+  }
+
+  /**
+   * Handles dragover to enable drop target.
+   */
+  public onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragOver.set(true);
+  }
+
+  /**
+   * Handles dragleave to reset visual feedback.
+   */
+  public onDragLeave(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragOver.set(false);
+  }
+
+  /**
+   * Handles file drop to add media to playlist.
+   */
+  public async onDrop(event: DragEvent): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragOver.set(false);
+
+    const files: FileList | undefined = event.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+
+    // Filter for supported media files and get their paths
+    const filePaths: string[] = [];
+    for (let i: number = 0; i < files.length; i++) {
+      const file: File = files[i];
+      const ext: string = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+
+      if (MEDIA_EXTENSIONS.has(ext)) {
+        try {
+          const filePath: string = this.electron.getPathForFile(file);
+          if (filePath) {
+            filePaths.push(filePath);
+          }
+        } catch (e) {
+          console.error('Failed to get path for file:', file.name, e);
+        }
+      }
+    }
+
+    if (filePaths.length === 0) return;
+
+    // Add files to playlist and select the first one to play immediately
+    const result: {added: PlaylistItem[]} = await this.electron.addToPlaylist(filePaths);
+    if (result.added.length > 0) {
+      await this.electron.selectTrack(result.added[0].id);
+    }
+  }
+
+  // ============================================================================
+  // Video Loading
+  // ============================================================================
+
+  /**
+   * Loads a video source from the media server.
+   *
+   * Determines if the format needs transcoding and constructs the
+   * appropriate streaming URL. For transcoded formats, includes
+   * a seek time parameter if seeking to a non-zero position.
+   *
+   * @param filePath - Absolute path to the video file
+   * @param seekTime - Optional start time in seconds (for transcoded seek)
+   */
   private async loadVideo(filePath: string, seekTime: number = 0): Promise<void> {
     const video: HTMLVideoElement = this.videoRef.nativeElement;
     const serverUrl: string = this.mediaPlayer.serverUrl();
@@ -200,6 +342,14 @@ export class VideoOutlet implements OnInit, OnDestroy {
     console.log(`Loading video: ${filePath}, transcoded: ${this.isTranscoded}, seekTime: ${seekTime}`);
   }
 
+  /**
+   * Sets up event listeners on the video element.
+   *
+   * Monitors:
+   * - error: Logs playback errors
+   * - canplay: Starts playback when ready
+   * - loadedmetadata: Logs video duration
+   */
   private setupVideoEvents(): void {
     const video: HTMLVideoElement = this.videoRef.nativeElement;
 
@@ -218,12 +368,5 @@ export class VideoOutlet implements OnInit, OnDestroy {
     video.addEventListener('loadedmetadata', (): void => {
       console.log('Video metadata loaded, duration:', video.duration);
     });
-  }
-
-  public ngOnDestroy(): void {
-    const video: HTMLVideoElement = this.videoRef.nativeElement;
-    video.pause();
-    video.src = '';
-    this.currentFilePath = null;
   }
 }

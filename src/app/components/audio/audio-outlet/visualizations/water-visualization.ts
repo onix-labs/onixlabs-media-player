@@ -1,5 +1,34 @@
+/**
+ * @fileoverview Pulsar visualization with mirrored curved waveforms.
+ *
+ * Creates an ambient visual effect with mirrored waveforms that curve
+ * around a central pulsating circle. The waveforms bend away from the
+ * center creating a wing-like pattern. Colors cycle through the spectrum.
+ *
+ * Technical details:
+ * - Mirrored waveforms on left and right
+ * - Arc-based bending creates curved appearance
+ * - Central circle pulses with audio
+ * - HSL color cycling for smooth transitions
+ * - Optimized with canvas reuse and pre-allocated arrays
+ * - Waveform rotation independent of trail rotation
+ *
+ * Performance optimizations:
+ * - Reuses trail/temp canvases instead of recreating
+ * - Pre-allocated point arrays avoid GC pressure
+ * - Gradient colors cached and only updated on hue change
+ *
+ * @module app/components/audio/audio-outlet/visualizations/water-visualization
+ */
+
 import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
 
+/**
+ * Pulsar visualization with curved mirrored waveforms.
+ *
+ * Renders mirrored curved waveforms that wrap around a central
+ * pulsating circle, with smooth color cycling.
+ */
 export class WaterVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Pulsar';
   public readonly category: VisualizationCategory = 'ambience';
