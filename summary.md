@@ -165,6 +165,7 @@ AudioContext.destination (speakers)
   - `water-visualization.ts` - Pulsar (category: ambience) - tunnel zoom, rotating waveforms, cycling colors
     - Optimized: reuses trail/temp canvases (vs allocating per frame), pre-allocated point arrays, cached HSL→RGB colors
   - `water2-visualization.ts` - Ambience Water 2 (category: ambience)
+    - Optimized: reuses canvases, caches background gradient (re-renders only on hue change), pre-allocated arrays
 
 ## HTTP API Reference
 
