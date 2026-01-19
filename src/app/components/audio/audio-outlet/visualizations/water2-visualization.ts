@@ -419,10 +419,7 @@ export class Water2Visualization extends Canvas2DVisualization {
     ctx.save();
     ctx.shadowBlur = 12;
     ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
-    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
-    ctx.lineWidth = 5;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
@@ -430,14 +427,11 @@ export class Water2Visualization extends Canvas2DVisualization {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.closePath();
-    ctx.stroke();
+    ctx.fill();
     ctx.restore();
 
-    // Draw main circle
-    ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    // Draw main filled circle
+    ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
@@ -445,11 +439,10 @@ export class Water2Visualization extends Canvas2DVisualization {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.closePath();
-    ctx.stroke();
+    ctx.fill();
 
-    // Draw highlight
-    ctx.strokeStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.5)`;
-    ctx.lineWidth = 1;
+    // Draw highlight overlay
+    ctx.fillStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.3)`;
 
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
@@ -457,7 +450,7 @@ export class Water2Visualization extends Canvas2DVisualization {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.closePath();
-    ctx.stroke();
+    ctx.fill();
   }
 
   private drawWaveformSegment(
