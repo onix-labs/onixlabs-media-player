@@ -17,8 +17,8 @@
  */
 
 import {bootstrapApplication} from '@angular/platform-browser';
-import {appConfig} from './app/app.config';
-import {Root} from './app/components/root/root';
+import {appConfig} from './angular/app.config';
+import {Root} from './angular/components/root/root';
 
 /**
  * Bootstrap the Angular application.

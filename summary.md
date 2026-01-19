@@ -161,26 +161,26 @@ AudioContext.destination (speakers)
 ### Key Files
 
 **Electron Layer:**
-- `electron/main.ts` - App initialization, IPC handlers, fullscreen window events, menu setup
-- `electron/preload.ts` - IPC bridge (file dialog, server port, fullscreen control, menu events)
-- `electron/unified-media-server.ts` - HTTP API, SSE, playlist management
-- `electron/settings-manager.ts` - Persistent settings storage (JSON file in userData)
-- `electron/application-menu.ts` - Native application menu for macOS/Windows/Linux
+- `src/electron/main.ts` - App initialization, IPC handlers, fullscreen window events, menu setup
+- `src/electron/preload.ts` - IPC bridge (file dialog, server port, fullscreen control, menu events)
+- `src/electron/unified-media-server.ts` - HTTP API, SSE, playlist management
+- `src/electron/settings-manager.ts` - Persistent settings storage (JSON file in userData)
+- `src/electron/application-menu.ts` - Native application menu for macOS/Windows/Linux
 
 **Angular Services:**
-- `src/app/services/electron.service.ts` - HTTP client + SSE connection + fullscreen state
-- `src/app/services/media-player.service.ts` - Playback orchestration (delegates to HTTP)
-- `src/app/services/settings.service.ts` - Settings state management with SSE sync
+- `src/angular/services/electron.service.ts` - HTTP client + SSE connection + fullscreen state
+- `src/angular/services/media-player.service.ts` - Playback orchestration (delegates to HTTP)
+- `src/angular/services/settings.service.ts` - Settings state management with SSE sync
 
 **Angular Components:**
-- `src/app/components/audio/audio-outlet/` - Audio + Web Audio API visualization
-- `src/app/components/video/video-outlet/` - Video playback
-- `src/app/components/playlist/` - Playlist UI panel
-- `src/app/components/layout/layout-controls/` - Playback controls
-- `src/app/components/configuration/configuration-view/` - Settings UI with sidebar and panels
+- `src/angular/components/audio/audio-outlet/` - Audio + Web Audio API visualization
+- `src/angular/components/video/video-outlet/` - Video playback
+- `src/angular/components/playlist/` - Playlist UI panel
+- `src/angular/components/layout/layout-controls/` - Playback controls
+- `src/angular/components/configuration/configuration-view/` - Settings UI with sidebar and panels
 
 **Visualizations:**
-- `src/app/components/audio/audio-outlet/visualizations/` - Visualization implementations
+- `src/angular/components/audio/audio-outlet/visualizations/` - Visualization implementations
   - `visualization.ts` - Base class with `name`, `category`, `sensitivity`, and fade-to-black support
   - `bars-visualization.ts` - Frequency Bars (category: frequency) - 96 bars mapped evenly across frequency bins
   - `waveform-visualization.ts` - Waveform (category: waveform) - oscilloscope-style with glow effect
@@ -274,8 +274,8 @@ npm run package      # Package with electron-builder
 - SoundFont file (FluidSynth includes VintageDreamsWaves-v2.sf2)
 - tsx (for running TypeScript directly)
 - ESLint + @typescript-eslint (strict type safety rules)
-- electron/tsconfig.json uses `allowImportingTsExtensions` + `noEmit` for tsx compatibility
-- electron/tsconfig.preload.json compiles preload.ts to ESM (required for Electron preload scripts)
+- src/electron/tsconfig.json uses `allowImportingTsExtensions` + `noEmit` for tsx compatibility
+- src/electron/tsconfig.preload.json compiles preload.ts to ESM (required for Electron preload scripts)
 
 ## Architecture Benefits
 
@@ -292,15 +292,15 @@ npm run package      # Package with electron-builder
 The entire TypeScript codebase is documented with comprehensive TSDoc comments for human review and AI context:
 
 **Electron Layer:**
-- `electron/main.ts` - Main process entry, window creation, IPC handlers, media protocol
-- `electron/preload.ts` - Context bridge API, IPC interface definitions
-- `electron/unified-media-server.ts` - HTTP server, SSE manager, playlist logic, MIDI parsing
+- `src/electron/main.ts` - Main process entry, window creation, IPC handlers, media protocol
+- `src/electron/preload.ts` - Context bridge API, IPC interface definitions
+- `src/electron/unified-media-server.ts` - HTTP server, SSE manager, playlist logic, MIDI parsing
 
 **Angular Application:**
 - `src/main.ts` - Bootstrap entry point
-- `src/app/app.config.ts` - Application-wide providers
-- `src/app/app.routes.ts` - Route definitions
-- `src/app/types/electron.d.ts` - Type definitions with detailed interface docs
+- `src/angular/app.config.ts` - Application-wide providers
+- `src/angular/app.routes.ts` - Route definitions
+- `src/angular/types/electron.d.ts` - Type definitions with detailed interface docs
 
 **Services:**
 - `electron.service.ts` - HTTP/SSE bridge with reactive signals

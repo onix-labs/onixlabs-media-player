@@ -93,9 +93,9 @@ class Program {
     }
     const filename: string = fileURLToPath(import.meta.url);
     const dirname: string = path.dirname(filename);
-    // When running TS via tsx: electron/main.ts -> go up 1 level
-    // When running compiled JS: electron/dist/main.js -> go up 2 levels
-    const levels: number = filename.endsWith('.ts') ? 1 : 2;
+    // When running TS via tsx: src/electron/main.ts -> go up 2 levels
+    // When running compiled JS: src/electron/dist/main.js -> go up 3 levels
+    const levels: number = filename.endsWith('.ts') ? 2 : 3;
     return path.resolve(dirname, ...Array(levels).fill('..'));
   }
 
@@ -187,7 +187,7 @@ class Program {
   private createBrowserWindow(): BrowserWindow {
     const projectRoot: string = Program.getProjectRoot();
     // Preload must always be compiled JS - Electron can't run TS preload scripts
-    const preloadPath: string = path.join(projectRoot, "electron", "dist", "preload.js");
+    const preloadPath: string = path.join(projectRoot, "src", "electron", "dist", "preload.js");
     const iconPath: string = path.join(projectRoot, "public", "icon.png");
 
     // Set dock icon on macOS (for development - packaged apps use Info.plist)
