@@ -45,7 +45,8 @@
 - Gradient overlay for floating controls at bottom of screen
 
 ### Settings/Configuration
-- Gear icon in header opens settings view (replaces media player view)
+- Access via application menu: ONIXPlayer > Settings (Cmd+,) or Playback > Options
+- Media continues playing in background while settings are open
 - Settings persisted to `settings.json` in Electron userData folder:
   - Dev mode: `~/Library/Application Support/Electron/settings.json`
   - Packaged: `~/Library/Application Support/ONIXPlayer/settings.json`

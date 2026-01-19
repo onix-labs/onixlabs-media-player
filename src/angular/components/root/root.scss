@@ -19,6 +19,18 @@
   }
 }
 
+.media-player-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+
+  &.hidden {
+    display: none;
+  }
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

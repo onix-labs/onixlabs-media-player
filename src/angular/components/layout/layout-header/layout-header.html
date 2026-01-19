@@ -1,8 +1,5 @@
 <div class="header-content">
   <div class="spacer"></div>
-  <button class="header-button" (click)="onOpenSettings()" title="Settings">
-    <i class="fa-solid fa-gear"></i>
-  </button>
   <button class="header-button" (click)="toggleFullscreen()" [title]="isFullscreen() ? 'Exit fullscreen' : 'Enter fullscreen'">
     <i [class]="isFullscreen() ? 'fa-solid fa-compress' : 'fa-solid fa-expand'"></i>
   </button>
