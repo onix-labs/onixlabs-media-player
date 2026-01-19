@@ -76,7 +76,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     display: block;
+    direction: rtl;
+    text-align: left;
     padding-right: 1.5rem;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.75);
+    user-select: none;
   }
 
   .button-group {
@@ -90,6 +95,7 @@
     &.left button, &.right button {
       width: 2rem;
       height: 2rem;
+      font-size: 0.8rem;
     }
 
     &.right button:last-of-type {

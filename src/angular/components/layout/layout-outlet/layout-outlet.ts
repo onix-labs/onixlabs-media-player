@@ -63,6 +63,9 @@ export class LayoutOutlet {
   /** Reference to the playlist panel for programmatic toggle */
   @ViewChild(Playlist) public playlistComponent?: Playlist;
 
+  /** Reference to the audio outlet for visualization control */
+  @ViewChild('audioOutlet') public audioOutlet?: AudioOutlet;
+
   /** Media player service for playback state */
   private readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
 
@@ -75,9 +78,6 @@ export class LayoutOutlet {
 
   /** Current media type: 'audio', 'video', or null if nothing loaded */
   public readonly mediaType: ReturnType<typeof computed<'audio' | 'video' | null>> = computed((): 'audio' | 'video' | null => this.mediaPlayer.currentMediaType());
-
-  /** Currently playing track, or null if none */
-  public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
 
   /** Whether the playlist has any items */
   public readonly hasPlaylistItems: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.playlist().items.length > 0);
@@ -93,16 +93,6 @@ export class LayoutOutlet {
 
   /** Whether the application is in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isFullscreen());
-
-  /**
-   * Formatted track title for display.
-   * Returns "Artist - Title" if artist is available, otherwise just title.
-   */
-  public readonly trackTitle: ReturnType<typeof computed<string>> = computed((): string => {
-    const track: PlaylistItem | null = this.currentTrack();
-    if (!track) return '';
-    return track.artist ? `${track.artist} - ${track.title}` : track.title;
-  });
 
   /** Whether files are being dragged over this component */
   public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
@@ -130,6 +120,27 @@ export class LayoutOutlet {
    */
   public togglePlaylist(): void {
     this.playlistComponent?.toggle();
+  }
+
+  /**
+   * Gets the current visualization name from the audio outlet.
+   */
+  public visualizationName(): string {
+    return this.audioOutlet?.visualizationName() ?? '';
+  }
+
+  /**
+   * Cycles to the next visualization.
+   */
+  public nextVisualization(): void {
+    this.audioOutlet?.nextVisualization();
+  }
+
+  /**
+   * Cycles to the previous visualization.
+   */
+  public previousVisualization(): void {
+    this.audioOutlet?.previousVisualization();
   }
 
   // ============================================================================
