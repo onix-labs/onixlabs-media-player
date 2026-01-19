@@ -123,10 +123,14 @@ export class LayoutOutlet {
   }
 
   /**
-   * Gets the current visualization name from the audio outlet.
+   * Gets the current visualization name with category from the audio outlet.
+   * Format: "Category : Name"
    */
   public visualizationName(): string {
-    return this.audioOutlet?.visualizationName() ?? '';
+    const category: string = this.audioOutlet?.visualizationCategory() ?? '';
+    const name: string = this.audioOutlet?.visualizationName() ?? '';
+    if (!category || !name) return '';
+    return `${category} : ${name}`;
   }
 
   /**

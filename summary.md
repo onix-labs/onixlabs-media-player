@@ -5,7 +5,8 @@
 ### Audio Playback
 - Native `<audio>` element with HTTP streaming
 - Frequency visualizations via Web Audio API (`createMediaElementSource()`)
-- 7 visualization modes: Frequency Bars, Waveform Classic, Waveform Modern, Tunnel, Neon, Pulsar, Water
+- 8 visualization modes sorted by category: Analyzer, Spectre (Bars); Pulsar, Water (Science); Flare, Flux, Neon, Waveform (Waves)
+- Visualization names display with category prefix (e.g., "Waves : Flare")
 - Volume-independent visualizations with configurable sensitivity (default 25%)
 - Transparent canvas backgrounds (CSS gradient shows through)
 - Fade-to-black effect (~5 seconds) when playback is paused or stopped
@@ -190,17 +191,18 @@ AudioContext.destination (speakers)
 **Visualizations:**
 - `src/angular/components/audio/audio-outlet/visualizations/` - Visualization implementations
   - `visualization.ts` - Base class with `name`, `category`, `sensitivity`, and fade-to-black support
-  - `bars-visualization.ts` - Frequency Bars (category: frequency) - 96 bars mapped evenly across frequency bins
-  - `waveform-visualization.ts` - Waveform Classic (category: waveform) - oscilloscope-style with glow effect
-  - `tether-visualization.ts` - Waveform Modern (category: waveform) - 192 symmetrical frequency bars with smoke effect
-    - Mirrored both horizontally (left/right) and vertically (above/below center)
-    - Dark center gradient fading to bright green at extremes
-  - `tunnel-visualization.ts` - Tunnel (category: waveform) - dual red/blue waveforms with zoom effect
-  - `neon-visualization.ts` - Neon (category: waveform) - rotating cyan/magenta waveforms with tunnel zoom
-  - `pulsar-visualization.ts` - Pulsar (category: space) - pulsing concentric rings with curved waveforms
-    - Optimized: reuses trail/temp canvases (vs allocating per frame), pre-allocated point arrays, cached HSL→RGB colors
-  - `water-visualization.ts` - Water (category: ambience) - water ripple effect with rotating waveforms, bass-reactive rotation
-    - Optimized: reuses canvases, caches background gradient (re-renders only on hue change), pre-allocated arrays
+  - `analyzer-visualization.ts` - Analyzer (category: Bars) - 96 frequency bars with green-yellow-red gradient
+  - `spectre-visualization.ts` - Spectre (category: Bars) - 192 frequency bars with vertical mirroring (above/below center)
+    - Dark center gradient fading to bright green at extremes, smoke trail effect
+  - `pulsar-visualization.ts` - Pulsar (category: Science) - pulsing concentric rings with curved waveforms
+    - Optimized: reuses trail/temp canvases, pre-allocated point arrays, cached HSL→RGB colors
+  - `water-visualization.ts` - Water (category: Science) - water ripple effect with rotating waveforms, bass-reactive rotation
+    - Optimized: reuses canvases, caches background gradient, pre-allocated arrays
+  - `flare-visualization.ts` - Flare (category: Waves) - dual blue/red horizontal waveforms with tunnel zoom effect
+  - `flux-visualization.ts` - Flux (category: Waves) - dual blue/green circular waveforms side by side
+    - Each circle fades outward in opposite directions, trails meet in the middle
+  - `neon-visualization.ts` - Neon (category: Waves) - rotating cyan/magenta waveforms with tunnel zoom
+  - `waveform-visualization.ts` - Waveform (category: Waves) - oscilloscope-style with glow effect
 
 ## HTTP API Reference
 

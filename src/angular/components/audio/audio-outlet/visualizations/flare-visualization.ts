@@ -23,9 +23,9 @@ import {Canvas2DVisualization, VisualizationConfig} from './visualization';
  * Renders two mirrored waveforms (blue and red) that appear to zoom
  * into infinity, creating a hypnotic tunnel effect.
  */
-export class TunnelVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Tunnel';
-  public readonly category: string = 'waveform';
+export class FlareVisualization extends Canvas2DVisualization {
+  public readonly name: string = 'Flare';
+  public readonly category: string = 'Waves';
 
   private readonly FADE_RATE: number = 0.05;
   private readonly ZOOM_SCALE: number = 1.02; // Scale factor per frame for tunnel effect

@@ -1,19 +1,17 @@
 /**
  * @fileoverview Waveform Modern visualization with symmetrical frequency bars and smoke effect.
  *
- * Displays frequency data as vertical bars mirrored both horizontally (left/right)
- * and vertically (above/below center). Creates a symmetrical butterfly effect with
- * 192 total bars (96 per half). Bars are dark at the center and bright green at
- * the extremes, with a smoke-like trail effect.
+ * Displays frequency data as vertical bars mirrored vertically (above/below center).
+ * Each bar extends both up and down from the horizontal center line. Bars are dark
+ * at the center and bright green at the extremes, with a smoke-like trail effect.
  *
  * Technical details:
  * - Uses getByteFrequencyData() for frequency data
- * - 96 bars on left half, mirrored 96 bars on right half (y-axis symmetry)
- * - Each bar also mirrored above and below center (x-axis symmetry)
+ * - 192 bars across the width, each mirrored above and below center
  * - Gradient coloring: dark center → bright green extremes
  * - Smoke effect via slow canvas fade (destination-out)
  *
- * @module app/components/audio/audio-outlet/visualizations/tether-visualization
+ * @module app/components/audio/audio-outlet/visualizations/waveform-modern-visualization
  */
 
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
@@ -24,12 +22,12 @@ import {Canvas2DVisualization, VisualizationConfig} from './visualization';
  * Renders frequency data as bars extending both up and down from the vertical
  * center, creating a mirror effect. The smoke effect creates visual persistence.
  */
-export class TetherVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Waveform Modern';
-  public readonly category: string = 'waveform';
+export class SpectreVisualization extends Canvas2DVisualization {
+  public readonly name: string = 'Spectre';
+  public readonly category: string = 'Bars';
 
-  /** Number of bars per half (total is double this, mirrored) */
-  private readonly BARS_PER_HALF: number = 96;
+  /** Total number of bars across the width */
+  private readonly TOTAL_BARS: number = 192;
 
   /** Gap between bars in pixels */
   private readonly BAR_GAP: number = 2;
@@ -43,10 +41,10 @@ export class TetherVisualization extends Canvas2DVisualization {
   /** Array for frequency data */
   private readonly dataArray: Uint8Array<ArrayBuffer>;
 
-  /** Cached gradient for upward bars (positive amplitude) */
+  /** Cached gradient for upward bars */
   private gradientUp: CanvasGradient | null = null;
 
-  /** Cached gradient for downward bars (negative amplitude) */
+  /** Cached gradient for downward bars */
   private gradientDown: CanvasGradient | null = null;
 
   /** Cached height for gradient invalidation */
@@ -60,8 +58,8 @@ export class TetherVisualization extends Canvas2DVisualization {
 
   /**
    * Creates gradients for bar coloring.
-   * Upward gradient: dark at bottom → bright green at top
-   * Downward gradient: dark at top → bright green at bottom
+   * Upward gradient: dark at center → bright green at top
+   * Downward gradient: dark at center → bright green at bottom
    */
   private createGradients(): void {
     if (this.height <= 0) {
@@ -120,16 +118,15 @@ export class TetherVisualization extends Canvas2DVisualization {
     this.analyser.getByteFrequencyData(this.dataArray);
 
     const centerY: number = height / 2;
-    const totalBars: number = this.BARS_PER_HALF * 2;
-    const barWidth: number = (width - (totalBars - 1) * this.BAR_GAP) / totalBars;
+    const barWidth: number = (width - (this.TOTAL_BARS - 1) * this.BAR_GAP) / this.TOTAL_BARS;
     const usableBins: number = Math.floor(this.dataArray.length * this.FREQUENCY_RANGE);
     const maxBarHeight: number = height * 0.45; // Max height from center
 
-    // Pre-calculate bar values for 96 bars
+    // Pre-calculate bar values for all bars
     const barValues: number[] = [];
-    for (let i: number = 0; i < this.BARS_PER_HALF; i++) {
-      const startBin: number = Math.floor(i * usableBins / this.BARS_PER_HALF);
-      const endBin: number = Math.floor((i + 1) * usableBins / this.BARS_PER_HALF);
+    for (let i: number = 0; i < this.TOTAL_BARS; i++) {
+      const startBin: number = Math.floor(i * usableBins / this.TOTAL_BARS);
+      const endBin: number = Math.floor((i + 1) * usableBins / this.TOTAL_BARS);
       const count: number = Math.max(1, endBin - startBin);
 
       let sum: number = 0;
@@ -139,29 +136,11 @@ export class TetherVisualization extends Canvas2DVisualization {
       barValues.push(sum / count);
     }
 
-    // Draw left half (bars 0-95, normal order)
-    for (let i: number = 0; i < this.BARS_PER_HALF; i++) {
+    // Draw all bars with vertical mirroring (up and down from center)
+    for (let i: number = 0; i < this.TOTAL_BARS; i++) {
       const value: number = barValues[i];
       const barHeight: number = (value / 255) * maxBarHeight * (this.sensitivity * 2);
       const x: number = i * (barWidth + this.BAR_GAP);
-
-      if (barHeight < 1) continue;
-
-      // Draw bar going UP from center
-      ctx.fillStyle = this.gradientUp || 'rgba(0, 255, 100, 0.8)';
-      this.drawBar(ctx, x, centerY - barHeight, barWidth, barHeight);
-
-      // Draw bar going DOWN from center (mirrored)
-      ctx.fillStyle = this.gradientDown || 'rgba(0, 255, 100, 0.8)';
-      this.drawBar(ctx, x, centerY, barWidth, barHeight);
-    }
-
-    // Draw right half (bars 95-0, mirrored on y-axis)
-    for (let i: number = 0; i < this.BARS_PER_HALF; i++) {
-      const mirroredIndex: number = this.BARS_PER_HALF - 1 - i;
-      const value: number = barValues[mirroredIndex];
-      const barHeight: number = (value / 255) * maxBarHeight * (this.sensitivity * 2);
-      const x: number = (this.BARS_PER_HALF + i) * (barWidth + this.BAR_GAP);
 
       if (barHeight < 1) continue;
 
@@ -180,28 +159,17 @@ export class TetherVisualization extends Canvas2DVisualization {
     ctx.globalAlpha = 0.3;
     ctx.fillStyle = 'rgba(0, 255, 100, 0.5)';
 
-    // Glow for left half
-    for (let i: number = 0; i < this.BARS_PER_HALF; i++) {
+    // Glow for all bars
+    for (let i: number = 0; i < this.TOTAL_BARS; i++) {
       const value: number = barValues[i];
       const barHeight: number = (value / 255) * maxBarHeight * (this.sensitivity * 2);
       const x: number = i * (barWidth + this.BAR_GAP);
 
       if (barHeight < 2) continue;
 
+      // Glow for upward bar
       this.drawBar(ctx, x - 1, centerY - barHeight - 1, barWidth + 2, barHeight + 2);
-      this.drawBar(ctx, x - 1, centerY - 1, barWidth + 2, barHeight + 2);
-    }
-
-    // Glow for right half (mirrored)
-    for (let i: number = 0; i < this.BARS_PER_HALF; i++) {
-      const mirroredIndex: number = this.BARS_PER_HALF - 1 - i;
-      const value: number = barValues[mirroredIndex];
-      const barHeight: number = (value / 255) * maxBarHeight * (this.sensitivity * 2);
-      const x: number = (this.BARS_PER_HALF + i) * (barWidth + this.BAR_GAP);
-
-      if (barHeight < 2) continue;
-
-      this.drawBar(ctx, x - 1, centerY - barHeight - 1, barWidth + 2, barHeight + 2);
+      // Glow for downward bar
       this.drawBar(ctx, x - 1, centerY - 1, barWidth + 2, barHeight + 2);
     }
 

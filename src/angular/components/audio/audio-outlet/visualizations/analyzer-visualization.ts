@@ -24,9 +24,9 @@ import {Canvas2DVisualization, VisualizationConfig} from './visualization';
  * Higher frequencies appear on the right, lower on the left.
  * Bar heights animate smoothly via the analyser's smoothing constant.
  */
-export class BarsVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Frequency Bars';
-  public readonly category: string = 'frequency';
+export class AnalyzerVisualization extends Canvas2DVisualization {
+  public readonly name: string = 'Analyzer';
+  public readonly category: string = 'Bars';
 
   private readonly BAR_COUNT: number = 96;
   private readonly BAR_GAP: number = 2;
