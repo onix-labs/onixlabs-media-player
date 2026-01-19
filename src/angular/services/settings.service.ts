@@ -23,12 +23,13 @@ import {ElectronService} from './electron.service';
  * These correspond to the visualization classes:
  * - bars: Frequency Bars (default)
  * - waveform: Oscilloscope-style waveform
+ * - tether: Symmetrical waveform bars with smoke effect
  * - tunnel: Dual red/blue waveforms with zoom
  * - neon: Rotating cyan/magenta waveforms
  * - pulsar: Pulsing concentric rings with curved waveforms (space category)
  * - water: Water ripple effect with rotating waveforms (ambience category)
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'neon' | 'pulsar' | 'water';
+export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water';
 
 /**
  * Visualization settings structure.
@@ -79,7 +80,8 @@ const DEFAULT_SETTINGS: AppSettings = {
  */
 export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'bars', label: 'Frequency Bars', description: '96 bars mapped to frequency bins'},
-  {value: 'waveform', label: 'Waveform', description: 'Oscilloscope-style with glow effect'},
+  {value: 'waveform', label: 'Waveform Classic', description: 'Oscilloscope-style with glow effect'},
+  {value: 'tether', label: 'Waveform Modern', description: 'Symmetrical waveform bars with smoke effect'},
   {value: 'tunnel', label: 'Tunnel', description: 'Dual red/blue waveforms with zoom'},
   {value: 'neon', label: 'Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'pulsar', label: 'Pulsar', description: 'Pulsing concentric rings with curved waveforms'},

@@ -11,6 +11,7 @@
  * Available visualizations:
  * - bars: Classic frequency spectrum bars (green-yellow-red gradient)
  * - waveform: Oscilloscope-style waveform with LCD ghosting effect
+ * - tether: Symmetrical waveform bars with smoke trail effect
  * - tunnel: Hypnotic tunnel/vortex effect
  * - neon: Glowing neon ring visualization
  * - pulsar: Pulsing concentric rings with curved waveforms (space category)
@@ -23,6 +24,7 @@ export {Visualization, Canvas2DVisualization, WebGLVisualization} from './visual
 export type {VisualizationConfig} from './visualization';
 export {BarsVisualization} from './bars-visualization';
 export {WaveformVisualization} from './waveform-visualization';
+export {TetherVisualization} from './tether-visualization';
 export {TunnelVisualization} from './tunnel-visualization';
 export {NeonVisualization} from './neon-visualization';
 export {PulsarVisualization} from './pulsar-visualization';
@@ -31,6 +33,7 @@ export {WaterVisualization} from './water-visualization';
 import {Visualization, VisualizationConfig} from './visualization';
 import {BarsVisualization} from './bars-visualization';
 import {WaveformVisualization} from './waveform-visualization';
+import {TetherVisualization} from './tether-visualization';
 import {TunnelVisualization} from './tunnel-visualization';
 import {NeonVisualization} from './neon-visualization';
 import {PulsarVisualization} from './pulsar-visualization';
@@ -40,7 +43,7 @@ import {WaterVisualization} from './water-visualization';
  * String literal type for available visualization modes.
  * Used to ensure type safety when switching visualizations.
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'neon' | 'pulsar' | 'water';
+export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water';
 
 /**
  * Map of visualization types to their constructor classes.
@@ -49,6 +52,7 @@ export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'neon' | 'pulsa
 const VISUALIZATION_CONSTRUCTORS: Record<VisualizationType, new (config: VisualizationConfig) => Visualization> = {
   bars: BarsVisualization,
   waveform: WaveformVisualization,
+  tether: TetherVisualization,
   tunnel: TunnelVisualization,
   neon: NeonVisualization,
   pulsar: PulsarVisualization,
@@ -86,4 +90,4 @@ export function createVisualization(type: VisualizationType, config: Visualizati
  * Array of all available visualization types.
  * Used for cycling through visualizations with next/previous.
  */
-export const VISUALIZATION_TYPES: VisualizationType[] = ['bars', 'waveform', 'tunnel', 'neon', 'pulsar', 'water'];
+export const VISUALIZATION_TYPES: VisualizationType[] = ['bars', 'waveform', 'tether', 'tunnel', 'neon', 'pulsar', 'water'];
