@@ -199,8 +199,9 @@ AudioContext.destination (speakers)
   - `water-visualization.ts` - Water (category: Science) - water ripple effect with rotating waveforms, bass-reactive rotation
     - Optimized: reuses canvases, caches background gradient, pre-allocated arrays
   - `flare-visualization.ts` - Flare (category: Waves) - dual blue/red horizontal waveforms with tunnel zoom effect
-  - `flux-visualization.ts` - Flux (category: Waves) - dual blue/green circular waveforms side by side
-    - Each circle fades outward in opposite directions, trails meet in the middle
+  - `flux-visualization.ts` - Flux (category: Waves) - dual circular waveforms orbiting like binary black holes
+    - Circles orbit around center (180° apart), trails expand outward creating spiral patterns
+    - Colors cycle through spectrum (180° apart on color wheel), creating rainbow effect
   - `neon-visualization.ts` - Neon (category: Waves) - rotating cyan/magenta waveforms with tunnel zoom
   - `waveform-visualization.ts` - Waveform (category: Waves) - oscilloscope-style with glow effect
 
