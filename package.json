@@ -69,22 +69,26 @@
     },
     "files": [
       "dist/**/*",
-      "electron/dist/**/*"
+      "electron/dist/**/*",
+      "public/icon.png"
     ],
     "mac": {
       "category": "public.app-category.entertainment",
+      "icon": "public/icon.png",
       "target": [
         "dmg",
         "zip"
       ]
     },
     "win": {
+      "icon": "public/icon.png",
       "target": [
         "nsis",
         "portable"
       ]
     },
     "linux": {
+      "icon": "public/icon.png",
       "target": [
         "AppImage",
         "deb"

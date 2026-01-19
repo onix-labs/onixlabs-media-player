@@ -15,7 +15,7 @@
  * @module app/components/audio/audio-outlet/visualizations/neon-visualization
  */
 
-import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
+import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 /**
  * Rotating neon visualization with spiral trails.
@@ -25,7 +25,7 @@ import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from 
  */
 export class NeonVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Neon';
-  public readonly category: VisualizationCategory = 'waveform';
+  public readonly category: string = 'waveform';
 
   private readonly FADE_RATE: number = 0.05;
   private readonly ZOOM_SCALE: number = 1.02;
@@ -35,7 +35,7 @@ export class NeonVisualization extends Canvas2DVisualization {
   private readonly dataArray: Uint8Array<ArrayBuffer>;
   private rotationAngle: number = 0;
 
-  constructor(config: VisualizationConfig) {
+  public constructor(config: VisualizationConfig) {
     super(config);
     this.analyser.fftSize = 2048;
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;

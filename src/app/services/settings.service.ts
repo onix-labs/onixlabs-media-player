@@ -25,10 +25,10 @@ import {ElectronService} from './electron.service';
  * - waveform: Oscilloscope-style waveform
  * - tunnel: Dual red/blue waveforms with zoom
  * - neon: Rotating cyan/magenta waveforms
- * - water: Pulsar - cycling colors with tunnel zoom
- * - water2: Ambience Water 2
+ * - pulsar: Pulsing concentric rings with curved waveforms (space category)
+ * - water: Water ripple effect with rotating waveforms (ambience category)
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'neon' | 'water' | 'water2';
+export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'neon' | 'pulsar' | 'water';
 
 /**
  * Visualization settings structure.
@@ -82,8 +82,8 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'waveform', label: 'Waveform', description: 'Oscilloscope-style with glow effect'},
   {value: 'tunnel', label: 'Tunnel', description: 'Dual red/blue waveforms with zoom'},
   {value: 'neon', label: 'Neon', description: 'Rotating cyan/magenta waveforms'},
-  {value: 'water', label: 'Pulsar', description: 'Tunnel zoom with cycling colors'},
-  {value: 'water2', label: 'Ambience Water 2', description: 'Water ripple effect'},
+  {value: 'pulsar', label: 'Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
+  {value: 'water', label: 'Water', description: 'Water ripple effect with rotating waveforms'},
 ];
 
 // ============================================================================

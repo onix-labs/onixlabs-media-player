@@ -29,10 +29,10 @@ import * as path from 'path';
  * - waveform: WaveformVisualization (oscilloscope)
  * - tunnel: TunnelVisualization (dual waveforms with zoom)
  * - neon: NeonVisualization (rotating cyan/magenta waveforms)
- * - water: WaterVisualization (Pulsar - cycling colors)
- * - water2: Water2Visualization (Ambience Water 2)
+ * - pulsar: PulsarVisualization (pulsing concentric rings, space category)
+ * - water: WaterVisualization (water ripple effect, ambience category)
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'neon' | 'water' | 'water2';
+export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'neon' | 'pulsar' | 'water';
 
 /**
  * Visualization settings.
@@ -82,8 +82,8 @@ const VALID_VISUALIZATION_TYPES: readonly VisualizationType[] = [
   'waveform',
   'tunnel',
   'neon',
+  'pulsar',
   'water',
-  'water2',
 ];
 
 // ============================================================================

@@ -25,12 +25,6 @@
           <p class="hint">Drag files here or click eject to add media</p>
         </div>
       }
-      @if (isLoading()) {
-        <div class="loading-overlay">
-          <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
-          <p>Loading...</p>
-        </div>
-      }
     </div>
     @if (!isFullscreen()) {
       <app-playlist/>

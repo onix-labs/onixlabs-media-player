@@ -11,8 +11,8 @@
  * │   ├── TunnelVisualization
  * │   └── NeonVisualization
  * └── WebGLVisualization (abstract) - For WebGL rendering
- *     ├── WaterVisualization
- *     └── Water2Visualization
+ *     ├── PulsarVisualization
+ *     └── WaterVisualization
  * ```
  *
  * All visualizations share common functionality:
@@ -34,15 +34,6 @@ export interface VisualizationConfig {
   /** The Web Audio analyser node providing frequency/waveform data */
   analyser: AnalyserNode;
 }
-
-/**
- * Category classification for visualizations.
- *
- * - frequency: Responds to frequency spectrum data (bass, mids, treble)
- * - waveform: Shows the actual audio waveform (time domain)
- * - ambience: Creates ambient visual effects from audio
- */
-export type VisualizationCategory = 'frequency' | 'waveform' | 'ambience';
 
 /**
  * Abstract base class for all audio visualizations.
@@ -74,7 +65,7 @@ export abstract class Visualization {
   public abstract readonly name: string;
 
   /** Category classification for this visualization */
-  public abstract readonly category: VisualizationCategory;
+  public abstract readonly category: string;
 
   /** The canvas element to render to */
   protected canvas: HTMLCanvasElement;
@@ -115,7 +106,7 @@ export abstract class Visualization {
    *
    * @param config - Configuration with canvas and analyser
    */
-  constructor(config: VisualizationConfig) {
+  protected constructor(config: VisualizationConfig) {
     this.canvas = config.canvas;
     this.analyser = config.analyser;
     this.lastFrameTime = performance.now();
@@ -244,7 +235,7 @@ export abstract class Canvas2DVisualization extends Visualization {
    * @param config - Configuration with canvas and analyser
    * @throws Error if 2D context cannot be obtained
    */
-  constructor(config: VisualizationConfig) {
+  protected constructor(config: VisualizationConfig) {
     super(config);
     const ctx: CanvasRenderingContext2D | null = this.canvas.getContext('2d');
     if (!ctx) throw new Error('Failed to get 2D context');
@@ -291,7 +282,7 @@ export abstract class WebGLVisualization extends Visualization {
    * @param config - Configuration with canvas and analyser
    * @throws Error if WebGL context cannot be obtained
    */
-  constructor(config: VisualizationConfig) {
+  protected constructor(config: VisualizationConfig) {
     super(config);
     const gl: WebGLRenderingContext | null = this.canvas.getContext('webgl') || this.canvas.getContext('experimental-webgl') as WebGLRenderingContext | null;
     if (!gl) throw new Error('Failed to get WebGL context');

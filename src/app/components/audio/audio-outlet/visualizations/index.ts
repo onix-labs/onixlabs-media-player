@@ -4,7 +4,7 @@
  * This is the main entry point for the visualization system. It exports:
  * - All visualization classes for direct use
  * - The base classes (Visualization, Canvas2DVisualization, WebGLVisualization)
- * - Type definitions (VisualizationType, VisualizationConfig, VisualizationCategory)
+ * - Type definitions (VisualizationType, VisualizationConfig)
  * - Factory function (createVisualization) for type-safe instantiation
  * - VISUALIZATION_TYPES array for cycling through available visualizations
  *
@@ -13,34 +13,34 @@
  * - waveform: Oscilloscope-style waveform with LCD ghosting effect
  * - tunnel: Hypnotic tunnel/vortex effect
  * - neon: Glowing neon ring visualization
- * - water: Simulated water ripple effect
- * - water2: Alternative water visualization (Pulsar)
+ * - pulsar: Pulsing concentric rings with curved waveforms (space category)
+ * - water: Ambient water ripple effect with rotating waveforms (ambience category)
  *
  * @module app/components/audio/audio-outlet/visualizations
  */
 
 export {Visualization, Canvas2DVisualization, WebGLVisualization} from './visualization';
-export type {VisualizationConfig, VisualizationCategory} from './visualization';
+export type {VisualizationConfig} from './visualization';
 export {BarsVisualization} from './bars-visualization';
 export {WaveformVisualization} from './waveform-visualization';
 export {TunnelVisualization} from './tunnel-visualization';
 export {NeonVisualization} from './neon-visualization';
+export {PulsarVisualization} from './pulsar-visualization';
 export {WaterVisualization} from './water-visualization';
-export {Water2Visualization} from './water2-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {BarsVisualization} from './bars-visualization';
 import {WaveformVisualization} from './waveform-visualization';
 import {TunnelVisualization} from './tunnel-visualization';
 import {NeonVisualization} from './neon-visualization';
+import {PulsarVisualization} from './pulsar-visualization';
 import {WaterVisualization} from './water-visualization';
-import {Water2Visualization} from './water2-visualization';
 
 /**
  * String literal type for available visualization modes.
  * Used to ensure type safety when switching visualizations.
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'neon' | 'water' | 'water2';
+export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'neon' | 'pulsar' | 'water';
 
 /**
  * Map of visualization types to their constructor classes.
@@ -51,8 +51,8 @@ const VISUALIZATION_CONSTRUCTORS: Record<VisualizationType, new (config: Visuali
   waveform: WaveformVisualization,
   tunnel: TunnelVisualization,
   neon: NeonVisualization,
+  pulsar: PulsarVisualization,
   water: WaterVisualization,
-  water2: Water2Visualization,
 };
 
 /**
@@ -86,4 +86,4 @@ export function createVisualization(type: VisualizationType, config: Visualizati
  * Array of all available visualization types.
  * Used for cycling through visualizations with next/previous.
  */
-export const VISUALIZATION_TYPES: VisualizationType[] = ['bars', 'waveform', 'tunnel', 'neon', 'water', 'water2'];
+export const VISUALIZATION_TYPES: VisualizationType[] = ['bars', 'waveform', 'tunnel', 'neon', 'pulsar', 'water'];
