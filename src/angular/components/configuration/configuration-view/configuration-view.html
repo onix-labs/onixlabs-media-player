@@ -66,6 +66,27 @@
                     </select>
                   </div>
                 </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="sensitivity">Sensitivity</label>
+                    <p class="setting-description">
+                      Controls how responsive visualizations are to audio. Higher values create more dynamic visuals.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="sensitivity"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      [value]="currentSensitivity()"
+                      (input)="onSensitivityChange($event)"
+                    />
+                    <span class="slider-value">{{ formatSensitivity() }}</span>
+                  </div>
+                </div>
               </div>
             }
           }

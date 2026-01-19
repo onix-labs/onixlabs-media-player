@@ -268,6 +268,14 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.setVisualization(vizId as VisualizationType);
       }
     });
+
+    // React to sensitivity setting changes
+    effect((): void => {
+      const sensitivity: number = this.settings.sensitivity();
+      if (this.visualization) {
+        this.visualization.setSensitivity(sensitivity);
+      }
+    });
   }
 
   // ============================================================================
@@ -528,6 +536,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.visualizationNameSignal.set(this.visualization.name);
       this.visualizationCategorySignal.set(this.visualization.category);
       this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
+      this.visualization.setSensitivity(this.settings.sensitivity());
 
       const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
@@ -550,6 +559,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualizationNameSignal.set(this.visualization.name);
     this.visualizationCategorySignal.set(this.visualization.category);
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
+    this.visualization.setSensitivity(this.settings.sensitivity());
 
     const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
