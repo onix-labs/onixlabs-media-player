@@ -1,7 +1,7 @@
 {
   "name": "onixlabs-media-player",
   "version": "0.0.0",
-  "main": "electron/dist/main.js",
+  "main": "src/electron/dist/main.js",
   "type": "module",
   "scripts": {
     "ng": "ng",
@@ -9,10 +9,10 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "dev": "npm run build:preload && concurrently -k \"ng serve\" \"wait-on http://localhost:4200 && NODE_ENV=development DEV_SERVER_URL=http://localhost:4200 electron --require tsx/cjs electron/main.ts\"",
-    "prod": "npm run build:preload && ng build --configuration production && electron --require tsx/cjs electron/main.ts",
-    "build:electron": "tsc -p electron/tsconfig.json",
-    "build:preload": "tsc -p electron/tsconfig.preload.json",
+    "dev": "npm run build:preload && concurrently -k \"ng serve\" \"wait-on http://localhost:4200 && NODE_ENV=development DEV_SERVER_URL=http://localhost:4200 electron --require tsx/cjs src/electron/main.ts\"",
+    "prod": "npm run build:preload && ng build --configuration production && electron --require tsx/cjs src/electron/main.ts",
+    "build:electron": "tsc -p src/electron/tsconfig.json",
+    "build:preload": "tsc -p src/electron/tsconfig.preload.json",
     "build:all": "npm run build && npm run build:electron && npm run build:preload",
     "package": "npm run build:all && electron-builder",
     "package:mac": "npm run build:all && electron-builder --mac",
@@ -69,7 +69,7 @@
     },
     "files": [
       "dist/**/*",
-      "electron/dist/**/*",
+      "src/electron/dist/**/*",
       "public/icon.png"
     ],
     "mac": {
