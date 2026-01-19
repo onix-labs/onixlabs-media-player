@@ -25,7 +25,7 @@ import {Canvas2DVisualization, VisualizationConfig} from './visualization';
  */
 export class NeonVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Neon';
-  public readonly category: string = 'waveform';
+  public readonly category: string = 'Waves';
 
   private readonly FADE_RATE: number = 0.05;
   private readonly ZOOM_SCALE: number = 1.02;

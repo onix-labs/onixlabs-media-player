@@ -22,41 +22,44 @@
 
 export {Visualization, Canvas2DVisualization, WebGLVisualization} from './visualization';
 export type {VisualizationConfig} from './visualization';
-export {BarsVisualization} from './bars-visualization';
+export {AnalyzerVisualization} from './analyzer-visualization';
 export {WaveformVisualization} from './waveform-visualization';
-export {TetherVisualization} from './tether-visualization';
-export {TunnelVisualization} from './tunnel-visualization';
+export {SpectreVisualization} from './spectre-visualization';
+export {FlareVisualization} from './flare-visualization';
 export {NeonVisualization} from './neon-visualization';
 export {PulsarVisualization} from './pulsar-visualization';
 export {WaterVisualization} from './water-visualization';
+export {FluxVisualization} from './flux-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
-import {BarsVisualization} from './bars-visualization';
+import {AnalyzerVisualization} from './analyzer-visualization';
 import {WaveformVisualization} from './waveform-visualization';
-import {TetherVisualization} from './tether-visualization';
-import {TunnelVisualization} from './tunnel-visualization';
+import {SpectreVisualization} from './spectre-visualization';
+import {FlareVisualization} from './flare-visualization';
 import {NeonVisualization} from './neon-visualization';
 import {PulsarVisualization} from './pulsar-visualization';
 import {WaterVisualization} from './water-visualization';
+import {FluxVisualization} from './flux-visualization';
 
 /**
  * String literal type for available visualization modes.
  * Used to ensure type safety when switching visualizations.
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water';
+export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux';
 
 /**
  * Map of visualization types to their constructor classes.
  * Used by the factory function to instantiate visualizations.
  */
 const VISUALIZATION_CONSTRUCTORS: Record<VisualizationType, new (config: VisualizationConfig) => Visualization> = {
-  bars: BarsVisualization,
+  bars: AnalyzerVisualization,
   waveform: WaveformVisualization,
-  tether: TetherVisualization,
-  tunnel: TunnelVisualization,
+  tether: SpectreVisualization,
+  tunnel: FlareVisualization,
   neon: NeonVisualization,
   pulsar: PulsarVisualization,
   water: WaterVisualization,
+  flux: FluxVisualization,
 };
 
 /**
@@ -87,7 +90,19 @@ export function createVisualization(type: VisualizationType, config: Visualizati
 }
 
 /**
- * Array of all available visualization types.
+ * Array of all available visualization types, sorted by category.
  * Used for cycling through visualizations with next/previous.
+ *
+ * Categories (in order):
+ * - Bars: bars, tether
+ * - Science: pulsar, water
+ * - Waves: flare, flux, neon, waveform
  */
-export const VISUALIZATION_TYPES: VisualizationType[] = ['bars', 'waveform', 'tether', 'tunnel', 'neon', 'pulsar', 'water'];
+export const VISUALIZATION_TYPES: VisualizationType[] = [
+  // Bars
+  'bars', 'tether',
+  // Science
+  'pulsar', 'water',
+  // Waves
+  'tunnel', 'flux', 'neon', 'waveform',
+];

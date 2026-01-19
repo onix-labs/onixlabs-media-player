@@ -27,7 +27,7 @@ import * as path from 'path';
  * These correspond to the visualization classes in the Angular app:
  * - bars: BarsVisualization (frequency bars)
  * - waveform: WaveformVisualization (oscilloscope)
- * - tether: TetherVisualization (symmetrical bars with smoke effect)
+ * - tether: SpectreVisualization (symmetrical bars with smoke effect)
  * - tunnel: TunnelVisualization (dual waveforms with zoom)
  * - neon: NeonVisualization (rotating cyan/magenta waveforms)
  * - pulsar: PulsarVisualization (pulsing concentric rings, space category)

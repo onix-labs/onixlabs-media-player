@@ -31,7 +31,7 @@ import {Canvas2DVisualization, VisualizationConfig} from './visualization';
  */
 export class PulsarVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Pulsar';
-  public readonly category: string = 'space';
+  public readonly category: string = 'Science';
 
   private readonly ROTATION_SPEED: number = 0.009;
   private readonly WAVEFORM_ROTATION_SPEED: number = 0.005;

@@ -110,6 +110,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Display name of the current visualization mode */
   public readonly visualizationName: ReturnType<typeof computed<string>> = computed((): string => this.visualizationNameSignal());
 
+  /** Category of the current visualization mode */
+  public readonly visualizationCategory: ReturnType<typeof computed<string>> = computed((): string => this.visualizationCategorySignal());
+
   // ============================================================================
   // Host Bindings
   // ============================================================================
@@ -159,6 +162,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
   /** Signal for the visualization display name */
   private readonly visualizationNameSignal: ReturnType<typeof signal<string>> = signal<string>('Frequency Bars');
+
+  /** Signal for the visualization category */
+  private readonly visualizationCategorySignal: ReturnType<typeof signal<string>> = signal<string>('Bars');
 
   /** File path of currently loaded audio (for change detection) */
   private currentFilePath: string | null = null;
@@ -520,6 +526,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
         analyser: this.analyser
       });
       this.visualizationNameSignal.set(this.visualization.name);
+      this.visualizationCategorySignal.set(this.visualization.category);
       this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
 
       const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
@@ -541,6 +548,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       analyser: this.analyser
     });
     this.visualizationNameSignal.set(this.visualization.name);
+    this.visualizationCategorySignal.set(this.visualization.category);
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
 
     const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
