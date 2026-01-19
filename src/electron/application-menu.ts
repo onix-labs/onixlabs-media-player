@@ -16,7 +16,8 @@ import type {MenuItemConstructorOptions} from 'electron';
  */
 const VISUALIZATIONS: ReadonlyArray<{id: string; name: string}> = [
   {id: 'bars', name: 'Frequency Bars'},
-  {id: 'waveform', name: 'Waveform'},
+  {id: 'waveform', name: 'Waveform Classic'},
+  {id: 'tether', name: 'Waveform Modern'},
   {id: 'tunnel', name: 'Tunnel'},
   {id: 'neon', name: 'Neon'},
   {id: 'pulsar', name: 'Pulsar'},

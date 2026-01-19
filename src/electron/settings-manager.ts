@@ -27,12 +27,13 @@ import * as path from 'path';
  * These correspond to the visualization classes in the Angular app:
  * - bars: BarsVisualization (frequency bars)
  * - waveform: WaveformVisualization (oscilloscope)
+ * - tether: TetherVisualization (symmetrical bars with smoke effect)
  * - tunnel: TunnelVisualization (dual waveforms with zoom)
  * - neon: NeonVisualization (rotating cyan/magenta waveforms)
  * - pulsar: PulsarVisualization (pulsing concentric rings, space category)
  * - water: WaterVisualization (water ripple effect, ambience category)
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tunnel' | 'neon' | 'pulsar' | 'water';
+export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water';
 
 /**
  * Visualization settings.
@@ -80,6 +81,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 const VALID_VISUALIZATION_TYPES: readonly VisualizationType[] = [
   'bars',
   'waveform',
+  'tether',
   'tunnel',
   'neon',
   'pulsar',

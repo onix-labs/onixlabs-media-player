@@ -5,7 +5,7 @@
 ### Audio Playback
 - Native `<audio>` element with HTTP streaming
 - Frequency visualizations via Web Audio API (`createMediaElementSource()`)
-- 6 visualization modes: Frequency Bars, Waveform, Tunnel, Neon, Pulsar, Water
+- 7 visualization modes: Frequency Bars, Waveform Classic, Waveform Modern, Tunnel, Neon, Pulsar, Water
 - Volume-independent visualizations with configurable sensitivity (default 25%)
 - Transparent canvas backgrounds (CSS gradient shows through)
 - Fade-to-black effect (~5 seconds) when playback is paused or stopped
@@ -191,7 +191,10 @@ AudioContext.destination (speakers)
 - `src/angular/components/audio/audio-outlet/visualizations/` - Visualization implementations
   - `visualization.ts` - Base class with `name`, `category`, `sensitivity`, and fade-to-black support
   - `bars-visualization.ts` - Frequency Bars (category: frequency) - 96 bars mapped evenly across frequency bins
-  - `waveform-visualization.ts` - Waveform (category: waveform) - oscilloscope-style with glow effect
+  - `waveform-visualization.ts` - Waveform Classic (category: waveform) - oscilloscope-style with glow effect
+  - `tether-visualization.ts` - Waveform Modern (category: waveform) - 192 symmetrical frequency bars with smoke effect
+    - Mirrored both horizontally (left/right) and vertically (above/below center)
+    - Dark center gradient fading to bright green at extremes
   - `tunnel-visualization.ts` - Tunnel (category: waveform) - dual red/blue waveforms with zoom effect
   - `neon-visualization.ts` - Neon (category: waveform) - rotating cyan/magenta waveforms with tunnel zoom
   - `pulsar-visualization.ts` - Pulsar (category: space) - pulsing concentric rings with curved waveforms

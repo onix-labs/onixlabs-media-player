@@ -24,7 +24,7 @@ import {Canvas2DVisualization, VisualizationConfig} from './visualization';
  * ghosting effect that creates visual trails.
  */
 export class WaveformVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Waveform';
+  public readonly name: string = 'Waveform Classic';
   public readonly category: string = 'waveform';
 
   private readonly FADE_RATE: number = 0.03; // Very slow fade for LCD ghosting effect
