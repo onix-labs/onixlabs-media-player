@@ -7,14 +7,3 @@
      (drop)="onDrop($event)">
   <canvas #canvas></canvas>
 </div>
-@if (!isFullscreen()) {
-  <div class="visualizer-controls">
-    <button (click)="previousVisualization()" title="Previous visualization">
-      <i class="fa-solid fa-caret-left"></i>
-    </button>
-    <button (click)="nextVisualization()" title="Next visualization">
-      <i class="fa-solid fa-caret-right"></i>
-    </button>
-    <span class="visualizer-name">{{ visualizationName() }}</span>
-  </div>
-}

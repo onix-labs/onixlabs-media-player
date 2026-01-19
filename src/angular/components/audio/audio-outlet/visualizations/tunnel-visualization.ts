@@ -37,6 +37,7 @@ export class TunnelVisualization extends Canvas2DVisualization {
     super(config);
     this.analyser.fftSize = 2048;
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
+    this.sensitivity = 0.5;
   }
 
   protected override onResize(): void {

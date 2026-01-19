@@ -38,6 +38,7 @@ export class BarsVisualization extends Canvas2DVisualization {
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
+    this.sensitivity = 0.5;
   }
 
   private createGradient(): void {

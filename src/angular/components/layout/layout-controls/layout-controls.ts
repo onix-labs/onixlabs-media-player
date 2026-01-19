@@ -24,6 +24,8 @@
 
 import {Component, inject, computed} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
+import {ElectronService} from '../../../services/electron.service';
+import type {PlaylistItem} from '../../../types/electron';
 
 /**
  * Control bar component with playback controls, seek bar, and volume.
@@ -54,6 +56,9 @@ import {MediaPlayerService} from '../../../services/media-player.service';
 export class LayoutControls {
   /** Media player service for all playback operations */
   private readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
+
+  /** Electron service for fullscreen control */
+  private readonly electron: ElectronService = inject(ElectronService);
 
   // ============================================================================
   // Reactive State Signals
@@ -88,6 +93,19 @@ export class LayoutControls {
 
   /** Whether skip buttons should be enabled (requires 2+ tracks) */
   public readonly canSkip: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.playlistCount() > 1);
+
+  /**
+   * Formatted track title for display.
+   * Returns "Artist - Title" if artist is available, otherwise just title.
+   */
+  public readonly trackTitle: ReturnType<typeof computed<string>> = computed((): string => {
+    const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
+    if (!track) return '';
+    return track.artist ? `${track.artist} - ${track.title}` : track.title;
+  });
+
+  /** Whether the application is currently in fullscreen mode */
+  public readonly isFullscreen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isFullscreen());
 
   // ============================================================================
   // Event Handlers - File Operations
@@ -165,6 +183,17 @@ export class LayoutControls {
    */
   public async onMuteToggle(): Promise<void> {
     await this.mediaPlayer.toggleMute();
+  }
+
+  // ============================================================================
+  // Event Handlers - Window Control
+  // ============================================================================
+
+  /**
+   * Toggles between fullscreen and windowed mode.
+   */
+  public async onToggleFullscreen(): Promise<void> {
+    await this.electron.toggleFullscreen();
   }
 
   // ============================================================================

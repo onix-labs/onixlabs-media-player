@@ -1,17 +1,8 @@
 <div class="container">
-  @if (!isFullscreen()) {
-    <div class="header-bar">
-      <span class="track-title">{{ trackTitle() }}</span>
-      <button class="playlist-toggle" (click)="togglePlaylist()" title="Toggle playlist">
-        <i class="fa-solid fa-list"></i>
-      </button>
-    </div>
-  }
-
   <div class="content-area">
     <div class="media-area">
       @if (isAudio()) {
-        <app-audio-outlet/>
+        <app-audio-outlet #audioOutlet/>
       } @else if (isVideo()) {
         <app-video-outlet/>
       } @else {
@@ -30,4 +21,22 @@
       <app-playlist/>
     }
   </div>
+
+  @if (!isFullscreen()) {
+    <div class="media-bar">
+      @if (isAudio()) {
+        <button (click)="previousVisualization()" title="Previous visualization">
+          <i class="fa-solid fa-caret-left"></i>
+        </button>
+        <button (click)="nextVisualization()" title="Next visualization">
+          <i class="fa-solid fa-caret-right"></i>
+        </button>
+        <span class="visualization-name">{{ visualizationName() }}</span>
+      }
+      <div class="spacer"></div>
+      <button class="playlist-toggle" (click)="togglePlaylist()" title="Toggle playlist">
+        <i class="fa-solid fa-list"></i>
+      </button>
+    </div>
+  }
 </div>

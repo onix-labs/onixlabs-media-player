@@ -36,6 +36,7 @@ export class WaveformVisualization extends Canvas2DVisualization {
     super(config);
     this.analyser.fftSize = 2048; // Higher resolution for smoother waveform
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
+    this.sensitivity = 0.4;
   }
 
   protected override onResize(): void {

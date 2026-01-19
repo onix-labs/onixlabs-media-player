@@ -107,6 +107,8 @@ export class WaterVisualization extends Canvas2DVisualization {
     for (let i: number = 0; i <= this.CENTER_CIRCLE_POINTS; i++) {
       this.centerPoints[i] = {x: 0, y: 0};
     }
+
+    this.sensitivity = 0.3;
   }
 
   // Cache gradient colors - only recalculate when hue changes by >= 1 degree

@@ -36,13 +36,20 @@
   - Idle state / visualization / video surface: adds files AND immediately starts playing
 
 ### Fullscreen Mode
-- Fullscreen button in header bar (or macOS green traffic light)
+- Fullscreen button in playback controls bar (or macOS green traffic light)
 - Double-click visualization or video to toggle fullscreen
 - Escape key exits fullscreen
 - Audio fullscreen: only visualization visible (no controls or toggles)
 - Video fullscreen: clean video view with floating controls
 - Floating playback controls appear on mouse movement, hide after 5s inactivity
 - Gradient overlay for floating controls at bottom of screen
+
+### UI Layout
+- **Header**: Draggable area for window movement (macOS traffic lights region)
+- **Media bar** (bottom of outlet): Visualization switcher (audio only) + playlist toggle
+  - Always visible when not in fullscreen (even with no media loaded)
+- **Playback controls**: Media title, transport controls, volume, fullscreen toggle
+- Track title displayed in playback controls (format: "Artist - Title" or just title)
 
 ### Settings/Configuration
 - Access via application menu: ONIXPlayer > Settings (Cmd+,) or Playback > Options
