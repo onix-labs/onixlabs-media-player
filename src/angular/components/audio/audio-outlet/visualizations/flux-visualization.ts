@@ -2,14 +2,14 @@
  * @fileoverview Flux visualization with dual circular waveforms.
  *
  * Creates a hypnotic effect with two circular waveforms (blue and green)
- * positioned side by side. Each circle fades outward in opposite directions,
- * creating trails that meet in the middle.
+ * that orbit around each other like binary black holes. Each circle fades
+ * outward from the center, creating spiral trails.
  *
  * Technical details:
- * - Two small circular waveforms side by side horizontally
- * - Left circle (blue) fades to the left
- * - Right circle (green) fades to the right
- * - Vivid color scheme
+ * - Two small circular waveforms orbiting the center
+ * - Circles positioned 180 degrees apart on the orbit
+ * - Trails fade outward from center, filling the screen
+ * - Vivid blue and green color scheme
  * - Each waveform has glow, main, and highlight layers
  *
  * @module app/components/audio/audio-outlet/visualizations/flux-visualization
@@ -32,16 +32,12 @@ export class FluxVisualization extends Canvas2DVisualization {
   private readonly LINE_WIDTH: number = 2;
   private readonly GLOW_BLUR: number = 15;
   private readonly CIRCLE_POINTS: number = 96;
+  private readonly ORBIT_SPEED: number = 0.012;
+  private readonly HUE_CYCLE_SPEED: number = 0.5;
 
-  /** Vivid colors: blue and green */
-  private readonly BLUE: {main: string; glow: string} = {
-    main: 'rgb(0, 150, 255)',
-    glow: 'rgba(0, 150, 255, 0.8)',
-  };
-  private readonly GREEN: {main: string; glow: string} = {
-    main: 'rgb(0, 255, 120)',
-    glow: 'rgba(0, 255, 120, 0.8)',
-  };
+  /** Current hue values for each circle (0-360) */
+  private hue1: number = 240;  // Start at blue
+  private hue2: number = 120;  // Start at green (180 degrees apart)
 
   private readonly dataArray: Uint8Array<ArrayBuffer>;
 
@@ -59,11 +55,14 @@ export class FluxVisualization extends Canvas2DVisualization {
   private readonly leftPoints: Array<{x: number; y: number}>;
   private readonly rightPoints: Array<{x: number; y: number}>;
 
-  /** Circle centers and radius */
-  private leftCenterX: number = 0;
-  private rightCenterX: number = 0;
-  private centerY: number = 0;
+  /** Screen center and radii */
+  private screenCenterX: number = 0;
+  private screenCenterY: number = 0;
+  private orbitRadius: number = 0;
   private baseRadius: number = 0;
+
+  /** Current orbit angle */
+  private orbitAngle: number = 0;
 
   public constructor(config: VisualizationConfig) {
     super(config);
@@ -84,11 +83,12 @@ export class FluxVisualization extends Canvas2DVisualization {
     const width: number = this.width;
     const height: number = this.height;
 
-    // Position circles close together near center
-    const spacing: number = width * 0.08;
-    this.leftCenterX = width / 2 - spacing;
-    this.rightCenterX = width / 2 + spacing;
-    this.centerY = height / 2;
+    // Screen center
+    this.screenCenterX = width / 2;
+    this.screenCenterY = height / 2;
+
+    // Orbit radius - distance from center to each circle
+    this.orbitRadius = width * 0.08;
 
     // Small circles
     this.baseRadius = Math.min(width, height) * 0.12;
@@ -135,23 +135,40 @@ export class FluxVisualization extends Canvas2DVisualization {
     // Get time domain data
     this.analyser.getByteTimeDomainData(this.dataArray);
 
+    // Update orbit angle
+    this.orbitAngle += this.ORBIT_SPEED;
+
+    // Cycle hues through the spectrum
+    this.hue1 = (this.hue1 + this.HUE_CYCLE_SPEED) % 360;
+    this.hue2 = (this.hue2 + this.HUE_CYCLE_SPEED) % 360;
+
+    // Get current colors
+    const color1: {main: string; glow: string} = this.getColorFromHue(this.hue1);
+    const color2: {main: string; glow: string} = this.getColorFromHue(this.hue2);
+
+    // Calculate current circle positions (180 degrees apart on orbit)
+    const circle1X: number = this.screenCenterX + this.orbitRadius * Math.cos(this.orbitAngle);
+    const circle1Y: number = this.screenCenterY + this.orbitRadius * Math.sin(this.orbitAngle);
+    const circle2X: number = this.screenCenterX + this.orbitRadius * Math.cos(this.orbitAngle + Math.PI);
+    const circle2Y: number = this.screenCenterY + this.orbitRadius * Math.sin(this.orbitAngle + Math.PI);
+
     const amplitudeScale: number = this.baseRadius * 0.4;
 
-    // Process left circle (fades to the left, filling left half of screen)
+    // Process first circle (trails expand outward from center)
     this.applyDirectionalZoom(
       this.leftTrailCanvas!, this.leftTrailCtx!,
-      width / 2, this.centerY  // Zoom from center - trails expand to left
+      this.screenCenterX, this.screenCenterY
     );
-    this.calculateCirclePoints(this.leftPoints, this.leftCenterX, amplitudeScale, 0);
-    this.drawCircleWaveform(this.leftTrailCtx!, this.leftPoints, this.BLUE.main, this.BLUE.glow);
+    this.calculateCirclePoints(this.leftPoints, circle1X, circle1Y, amplitudeScale, 0);
+    this.drawCircleWaveform(this.leftTrailCtx!, this.leftPoints, color1.main, color1.glow);
 
-    // Process right circle (fades to the right, filling right half of screen)
+    // Process second circle (trails expand outward from center)
     this.applyDirectionalZoom(
       this.rightTrailCanvas!, this.rightTrailCtx!,
-      width / 2, this.centerY  // Zoom from center - trails expand to right
+      this.screenCenterX, this.screenCenterY
     );
-    this.calculateCirclePoints(this.rightPoints, this.rightCenterX, amplitudeScale, this.CIRCLE_POINTS / 2);
-    this.drawCircleWaveform(this.rightTrailCtx!, this.rightPoints, this.GREEN.main, this.GREEN.glow);
+    this.calculateCirclePoints(this.rightPoints, circle2X, circle2Y, amplitudeScale, this.CIRCLE_POINTS / 2);
+    this.drawCircleWaveform(this.rightTrailCtx!, this.rightPoints, color2.main, color2.glow);
 
     // Composite both trail canvases to main canvas
     ctx.clearRect(0, 0, width, height);
@@ -192,6 +209,7 @@ export class FluxVisualization extends Canvas2DVisualization {
   private calculateCirclePoints(
     points: Array<{x: number; y: number}>,
     centerX: number,
+    centerY: number,
     amplitudeScale: number,
     dataOffset: number
   ): void {
@@ -208,7 +226,7 @@ export class FluxVisualization extends Canvas2DVisualization {
       const radius: number = this.baseRadius + sample * amplitudeScale;
 
       points[i].x = centerX + radius * Math.cos(angle);
-      points[i].y = this.centerY + radius * Math.sin(angle);
+      points[i].y = centerY + radius * Math.sin(angle);
     }
   }
 
@@ -258,6 +276,45 @@ export class FluxVisualization extends Canvas2DVisualization {
 
     buildPath();
     ctx.stroke();
+  }
+
+  /**
+   * Converts HSL color to RGB.
+   */
+  private hslToRgb(h: number, s: number, l: number): {r: number; g: number; b: number} {
+    h = h % 360;
+    const sNorm: number = s / 100;
+    const lNorm: number = l / 100;
+
+    const c: number = (1 - Math.abs(2 * lNorm - 1)) * sNorm;
+    const x: number = c * (1 - Math.abs((h / 60) % 2 - 1));
+    const m: number = lNorm - c / 2;
+
+    let r: number, g: number, b: number;
+
+    if (h < 60) { r = c; g = x; b = 0; }
+    else if (h < 120) { r = x; g = c; b = 0; }
+    else if (h < 180) { r = 0; g = c; b = x; }
+    else if (h < 240) { r = 0; g = x; b = c; }
+    else if (h < 300) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+
+    return {
+      r: Math.round((r + m) * 255),
+      g: Math.round((g + m) * 255),
+      b: Math.round((b + m) * 255)
+    };
+  }
+
+  /**
+   * Gets color strings for a given hue.
+   */
+  private getColorFromHue(hue: number): {main: string; glow: string} {
+    const rgb: {r: number; g: number; b: number} = this.hslToRgb(hue, 100, 50);
+    return {
+      main: `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`,
+      glow: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.8)`
+    };
   }
 
   public override destroy(): void {
