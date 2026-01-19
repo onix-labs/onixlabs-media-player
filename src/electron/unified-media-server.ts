@@ -24,7 +24,7 @@ import { createReadStream, statSync, existsSync, readFileSync } from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { SettingsManager } from './settings-manager.ts';
-import type { AppSettings, VisualizationSettingsUpdate } from './settings-manager.ts';
+import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate } from './settings-manager.ts';
 
 // ============================================================================
 // Types
@@ -902,10 +902,10 @@ export class UnifiedMediaServer {
   }
 
   /**
-   * Starts the HTTP server on a random available port.
+   * Starts the HTTP server.
    *
    * Binds to localhost only for security (127.0.0.1).
-   * The port is chosen automatically by the OS.
+   * Uses the port configured in settings, or auto-assigns if set to 0.
    *
    * @returns Promise resolving to the port number
    * @throws Error if server fails to start
@@ -915,7 +915,10 @@ export class UnifiedMediaServer {
       this.server = createServer(this.handleRequest.bind(this));
       this.server.on('error', reject);
 
-      this.server.listen(0, '127.0.0.1', (): void => {
+      // Use configured port, or 0 for auto-assign
+      const configuredPort: number = this.settings.getSettings().application.serverPort;
+
+      this.server.listen(configuredPort, '127.0.0.1', (): void => {
         const address: ReturnType<Server['address']> = this.server!.address();
         if (typeof address === 'object' && address) {
           this.port = address.port;
@@ -1022,6 +1025,8 @@ export class UnifiedMediaServer {
         this.handleSettingsGet(res);
       } else if (pathname === '/settings/visualization' && method === 'PUT') {
         await this.handleSettingsVisualization(req, res);
+      } else if (pathname === '/settings/application' && method === 'PUT') {
+        await this.handleSettingsApplication(req, res);
       } else {
         res.writeHead(404);
         res.end(JSON.stringify({ error: 'Not found' }));
@@ -1992,6 +1997,28 @@ export class UnifiedMediaServer {
     const update: VisualizationSettingsUpdate = JSON.parse(body) as VisualizationSettingsUpdate;
 
     const updatedSettings: AppSettings = this.settings.updateVisualizationSettings(update);
+
+    // Broadcast the updated settings to all clients
+    this.sse.broadcast('settings:updated', updatedSettings);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+  }
+
+  /**
+   * Handles PUT /settings/application requests.
+   *
+   * Updates application settings and broadcasts the change to all clients.
+   * Note: Server port changes require app restart to take effect.
+   *
+   * @param req - Incoming HTTP request with ApplicationSettingsUpdate body
+   * @param res - HTTP response to write to
+   */
+  private async handleSettingsApplication(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const update: ApplicationSettingsUpdate = JSON.parse(body) as ApplicationSettingsUpdate;
+
+    const updatedSettings: AppSettings = this.settings.updateApplicationSettings(update);
 
     // Broadcast the updated settings to all clients
     this.sse.broadcast('settings:updated', updatedSettings);

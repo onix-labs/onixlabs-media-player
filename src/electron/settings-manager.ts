@@ -55,6 +55,14 @@ export interface VisualizationSettings {
 }
 
 /**
+ * Application-level settings.
+ */
+export interface ApplicationSettings {
+  /** Server port (0 = auto-assign, or specific port 1024-65535) */
+  readonly serverPort: number;
+}
+
+/**
  * Complete application settings structure.
  *
  * Version field enables future migrations when the schema changes.
@@ -64,6 +72,8 @@ export interface AppSettings {
   readonly version: number;
   /** Visualization preferences */
   readonly visualization: VisualizationSettings;
+  /** Application-level settings */
+  readonly application: ApplicationSettings;
 }
 
 /**
@@ -73,6 +83,13 @@ export interface VisualizationSettingsUpdate {
   readonly defaultType?: VisualizationType;
   readonly sensitivity?: number;
   readonly perVisualizationSensitivity?: PerVisualizationSensitivity;
+}
+
+/**
+ * Partial application settings for updates.
+ */
+export interface ApplicationSettingsUpdate {
+  readonly serverPort?: number;
 }
 
 // ============================================================================
@@ -89,6 +106,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     defaultType: 'bars',
     sensitivity: 0.5,
     perVisualizationSensitivity: {},
+  },
+  application: {
+    serverPort: 0,  // 0 = auto-assign
   },
 };
 
@@ -205,6 +225,37 @@ export class SettingsManager {
     return this.settings;
   }
 
+  /**
+   * Updates application settings with partial values.
+   *
+   * Only provided fields are updated; others retain their current values.
+   * Changes are immediately persisted to disk.
+   *
+   * @param update - Partial application settings to apply
+   * @returns The updated complete settings object
+   */
+  public updateApplicationSettings(update: ApplicationSettingsUpdate): AppSettings {
+    // Validate serverPort if provided
+    if (update.serverPort !== undefined) {
+      if (!this.isValidPort(update.serverPort)) {
+        console.warn(`[SettingsManager] Invalid server port: ${update.serverPort}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Merge the update
+    this.settings = {
+      ...this.settings,
+      application: {
+        ...this.settings.application,
+        serverPort: update.serverPort ?? this.settings.application.serverPort,
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
   // ==========================================================================
   // Private Methods
   // ==========================================================================
@@ -289,9 +340,15 @@ export class SettingsManager {
       obj['visualization']
     );
 
+    // Extract and validate application settings
+    const appSettings: ApplicationSettings = this.validateApplicationSettings(
+      obj['application']
+    );
+
     return {
       version: typeof obj['version'] === 'number' ? obj['version'] : SETTINGS_VERSION,
       visualization: vizSettings,
+      application: appSettings,
     };
   }
 
@@ -363,5 +420,42 @@ export class SettingsManager {
    */
   private isValidVisualizationType(value: unknown): value is VisualizationType {
     return typeof value === 'string' && VALID_VISUALIZATION_TYPES.includes(value as VisualizationType);
+  }
+
+  /**
+   * Validates application settings object.
+   *
+   * @param app - The application settings to validate (unknown type)
+   * @returns Valid application settings with defaults for invalid values
+   */
+  private validateApplicationSettings(app: unknown): ApplicationSettings {
+    if (!app || typeof app !== 'object') {
+      return DEFAULT_SETTINGS.application;
+    }
+
+    const appObj: Record<string, unknown> = app as Record<string, unknown>;
+    const serverPort: unknown = appObj['serverPort'];
+
+    return {
+      serverPort: this.isValidPort(serverPort)
+        ? serverPort
+        : DEFAULT_SETTINGS.application.serverPort,
+    };
+  }
+
+  /**
+   * Type guard to check if a value is a valid port number.
+   *
+   * Valid ports are 0 (auto-assign) or 1024-65535 (user ports).
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid port number
+   */
+  private isValidPort(value: unknown): value is number {
+    if (typeof value !== 'number' || !Number.isInteger(value)) {
+      return false;
+    }
+    // 0 = auto-assign, or valid user port range
+    return value === 0 || (value >= 1024 && value <= 65535);
   }
 }

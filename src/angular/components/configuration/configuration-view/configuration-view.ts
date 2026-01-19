@@ -41,6 +41,12 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     icon: 'fa-solid fa-waveform-lines',
     description: 'Configure audio visualization preferences.',
   },
+  {
+    id: 'application',
+    name: 'Application',
+    icon: 'fa-solid fa-gear',
+    description: 'Configure application-level settings.',
+  },
   // Future categories:
   // { id: 'playback', name: 'Playback', icon: 'fa-solid fa-play', description: 'Playback settings.' },
   // { id: 'audio', name: 'Audio', icon: 'fa-solid fa-volume-high', description: 'Audio output settings.' },
@@ -124,6 +130,11 @@ export class ConfigurationView {
   /** Current sensitivity value (0.0 - 1.0) */
   public readonly currentSensitivity: ReturnType<typeof computed<number>> = computed(
     (): number => this.settingsService.sensitivity()
+  );
+
+  /** Current server port (0 = auto-assign) */
+  public readonly currentServerPort: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.serverPort()
   );
 
   // ============================================================================
@@ -257,5 +268,53 @@ export class ConfigurationView {
    */
   public async onResetVisualizationSensitivity(type: VisualizationType): Promise<void> {
     await this.settingsService.resetVisualizationSensitivity(type);
+  }
+
+  // ============================================================================
+  // Application Settings
+  // ============================================================================
+
+  /**
+   * Checks if the server port is set to auto-assign.
+   *
+   * @returns True if port is 0 (auto-assign)
+   */
+  public isPortAuto(): boolean {
+    return this.currentServerPort() === 0;
+  }
+
+  /**
+   * Gets the display value for the server port.
+   * Returns empty string for auto-assign to allow placeholder to show.
+   *
+   * @returns Port number as string, or empty for auto
+   */
+  public getPortDisplayValue(): string {
+    const port: number = this.currentServerPort();
+    return port === 0 ? '' : port.toString();
+  }
+
+  /**
+   * Handles server port input changes.
+   * Empty input or 0 sets auto-assign mode.
+   *
+   * @param event - The input event from the number field
+   */
+  public async onServerPortChange(event: Event): Promise<void> {
+    const input: HTMLInputElement = event.target as HTMLInputElement;
+    const value: string = input.value.trim();
+
+    // Empty or 0 means auto-assign
+    const port: number = value === '' ? 0 : parseInt(value, 10);
+    const validPort: number = isNaN(port) ? 0 : port;
+
+    await this.settingsService.setServerPort(validPort);
+  }
+
+  /**
+   * Resets the server port to auto-assign.
+   */
+  public async onResetServerPort(): Promise<void> {
+    await this.settingsService.setServerPort(0);
   }
 }

@@ -7,6 +7,7 @@ This document outlines potential configurable items identified in the codebase t
 - **Default Visualization** - User can set their preferred visualization via settings
 - **Global Sensitivity** - Master sensitivity slider affecting all visualizations
 - **Per-Visualization Sensitivity** - Individual sensitivity overrides for each visualization type
+- **Server Port** - Configure internal media server port (0 = auto, or 1024-65535). Requires restart.
 
 ## Server Settings
 
@@ -150,7 +151,7 @@ This document outlines potential configurable items identified in the codebase t
 ### High Priority
 1. ~~Global sensitivity control~~ ✓ DONE
 2. ~~Per-visualization sensitivity~~ ✓ DONE
-3. Server port configuration
+3. ~~Server port configuration~~ ✓ DONE
 4. Control bar auto-hide
 
 ### Medium Priority
