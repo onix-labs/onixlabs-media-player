@@ -15,7 +15,7 @@
  * @module app/components/audio/audio-outlet/visualizations/waveform-visualization
  */
 
-import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
+import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 /**
  * Oscilloscope waveform visualization with persistence effect.
@@ -25,14 +25,14 @@ import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from 
  */
 export class WaveformVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Waveform';
-  public readonly category: VisualizationCategory = 'waveform';
+  public readonly category: string = 'waveform';
 
   private readonly FADE_RATE: number = 0.03; // Very slow fade for LCD ghosting effect
   private readonly LINE_WIDTH: number = 2;
   private readonly GLOW_BLUR: number = 15;
   private readonly dataArray: Uint8Array<ArrayBuffer>;
 
-  constructor(config: VisualizationConfig) {
+  public constructor(config: VisualizationConfig) {
     super(config);
     this.analyser.fftSize = 2048; // Higher resolution for smoother waveform
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;

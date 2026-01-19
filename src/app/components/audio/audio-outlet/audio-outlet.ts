@@ -30,7 +30,7 @@ import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, s
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {SettingsService} from '../../../services/settings.service';
-import type {PlaylistItem} from '../../../services/electron.service';
+import type {PlaylistItem} from '../../../types/electron';
 import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYPES} from './visualizations';
 
 /**
@@ -180,7 +180,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * - Volume changes: adjusts gain node
    * - Mute changes: sets gain to 0 or restores volume
    */
-  constructor() {
+  public constructor() {
     // React to track changes - load new audio source
     effect((): void => {
       const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
@@ -252,6 +252,14 @@ export class AudioOutlet implements OnInit, OnDestroy {
       if (isLoaded && !this.defaultVisualizationApplied) {
         this.defaultVisualizationApplied = true;
         this.setVisualization(defaultType);
+      }
+    });
+
+    // React to menu visualization selection
+    effect((): void => {
+      const vizId: string = this.electron.menuSelectVisualization();
+      if (vizId && VISUALIZATION_TYPES.includes(vizId as VisualizationType)) {
+        this.setVisualization(vizId as VisualizationType);
       }
     });
   }

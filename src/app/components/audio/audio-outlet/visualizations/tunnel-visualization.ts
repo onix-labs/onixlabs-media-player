@@ -15,7 +15,7 @@
  * @module app/components/audio/audio-outlet/visualizations/tunnel-visualization
  */
 
-import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
+import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 /**
  * Tunnel visualization with zooming dual waveforms.
@@ -25,7 +25,7 @@ import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from 
  */
 export class TunnelVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Tunnel';
-  public readonly category: VisualizationCategory = 'waveform';
+  public readonly category: string = 'waveform';
 
   private readonly FADE_RATE: number = 0.05;
   private readonly ZOOM_SCALE: number = 1.02; // Scale factor per frame for tunnel effect
@@ -33,7 +33,7 @@ export class TunnelVisualization extends Canvas2DVisualization {
   private readonly GLOW_BLUR: number = 12;
   private readonly dataArray: Uint8Array<ArrayBuffer>;
 
-  constructor(config: VisualizationConfig) {
+  public constructor(config: VisualizationConfig) {
     super(config);
     this.analyser.fftSize = 2048;
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;

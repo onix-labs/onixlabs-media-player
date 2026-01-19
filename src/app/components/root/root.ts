@@ -22,7 +22,7 @@
  * @module app/components/root
  */
 
-import {Component, inject, computed, HostBinding, OnDestroy, HostListener, signal} from '@angular/core';
+import {Component, inject, computed, HostBinding, OnDestroy, HostListener, signal, effect} from '@angular/core';
 import {LayoutHeader} from '../layout/layout-header/layout-header';
 import {LayoutOutlet} from '../layout/layout-outlet/layout-outlet';
 import {LayoutControls} from '../layout/layout-controls/layout-controls';
@@ -102,6 +102,50 @@ export class Root implements OnDestroy {
 
   /** Duration before controls auto-hide in fullscreen (5 seconds) */
   private readonly HIDE_DELAY_MS: number = 5000;
+
+  // ============================================================================
+  // Constructor - Menu Event Handling
+  // ============================================================================
+
+  /**
+   * Sets up reactive effects for menu events.
+   *
+   * Effects react to:
+   * - menuShowConfig: Opens the configuration view
+   * - menuOpenFile: Opens file dialog and adds files to playlist
+   */
+  public constructor() {
+    // React to "Show Config" menu event
+    effect((): void => {
+      const trigger: number = this.electron.menuShowConfig();
+      if (trigger > 0) {
+        this.enterConfigurationMode();
+      }
+    });
+
+    // React to "Open File" menu event
+    effect((): void => {
+      const trigger: number = this.electron.menuOpenFile();
+      if (trigger > 0) {
+        void this.openFilesFromMenu();
+      }
+    });
+  }
+
+  /**
+   * Opens file dialog, adds selected files to playlist, and plays the first one.
+   * Called when File > Open is selected from the menu.
+   */
+  private async openFilesFromMenu(): Promise<void> {
+    const files: string[] = await this.electron.openFileDialog();
+    if (files.length > 0) {
+      const result: {added: import('../../types/electron').PlaylistItem[]} = await this.electron.addToPlaylist(files);
+      // Select and play the first added track
+      if (result.added.length > 0) {
+        await this.electron.selectTrack(result.added[0].id);
+      }
+    }
+  }
 
   // ============================================================================
   // Host Bindings

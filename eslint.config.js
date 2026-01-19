@@ -15,6 +15,7 @@ const commonRules = {
       variableDeclarationIgnoreFunction: false,
     },
   ],
+
   '@typescript-eslint/explicit-function-return-type': [
     'error',
     {
@@ -23,24 +24,42 @@ const commonRules = {
       allowHigherOrderFunctions: false,
     },
   ],
+
   '@typescript-eslint/explicit-member-accessibility': [
     'error',
     {
       accessibility: 'explicit',
       overrides: {
-        constructors: 'no-public',
+        constructors: 'explicit',
       },
     },
   ],
+
   '@typescript-eslint/prefer-readonly': 'error',
   '@typescript-eslint/no-inferrable-types': 'off',
+
+  // Prefer getters/setters over parameterless methods
+  '@typescript-eslint/prefer-getter-setter': 'error',
+
+  // Optional: forbid getX() methods entirely
+  '@typescript-eslint/naming-convention': [
+    'error',
+    {
+      selector: 'method',
+      format: ['camelCase'],
+      filter: {
+        regex: '^get[A-Z]',
+        match: false,
+      },
+    },
+  ],
 };
 
 export default [
   {
     ignores: ['node_modules/**', 'dist/**', 'electron/dist/**', '**/*.d.ts'],
   },
-  // Electron files - disable prefer-readonly-parameter-types for Node.js APIs
+
   {
     files: ['electron/**/*.ts'],
     languageOptions: {
@@ -55,11 +74,10 @@ export default [
     },
     rules: {
       ...commonRules,
-      // Disable for electron files - Node.js APIs use mutable types extensively
       '@typescript-eslint/prefer-readonly-parameter-types': 'off',
     },
   },
-  // Angular/src files - also disable prefer-readonly-parameter-types for DOM/Angular APIs
+
   {
     files: ['src/**/*.ts'],
     languageOptions: {
@@ -74,7 +92,6 @@ export default [
     },
     rules: {
       ...commonRules,
-      // Disable for Angular files - DOM APIs and Angular types use mutable types extensively
       '@typescript-eslint/prefer-readonly-parameter-types': 'off',
     },
   },

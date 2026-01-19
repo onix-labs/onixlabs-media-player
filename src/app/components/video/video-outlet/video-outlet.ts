@@ -129,7 +129,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
    * - Volume changes: adjusts video element volume
    * - Mute changes: toggles video element muted state
    */
-  constructor() {
+  public constructor() {
     // React to track changes - load new video source
     effect((): void => {
       const track: PlaylistItem | null = this.mediaPlayer.currentTrack();

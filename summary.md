@@ -5,7 +5,7 @@
 ### Audio Playback
 - Native `<audio>` element with HTTP streaming
 - Frequency visualizations via Web Audio API (`createMediaElementSource()`)
-- 6 visualization modes: Frequency Bars, Waveform, Tunnel, Neon, Pulsar, Ambience Water 2
+- 6 visualization modes: Frequency Bars, Waveform, Tunnel, Neon, Pulsar, Water
 - Volume-independent visualizations with configurable sensitivity (default 25%)
 - Transparent canvas backgrounds (CSS gradient shows through)
 - Fade-to-black effect (~5 seconds) when playback is paused or stopped
@@ -161,10 +161,11 @@ AudioContext.destination (speakers)
 ### Key Files
 
 **Electron Layer:**
-- `electron/main.ts` - App initialization, IPC handlers, fullscreen window events
-- `electron/preload.ts` - IPC bridge (file dialog, server port, fullscreen control)
+- `electron/main.ts` - App initialization, IPC handlers, fullscreen window events, menu setup
+- `electron/preload.ts` - IPC bridge (file dialog, server port, fullscreen control, menu events)
 - `electron/unified-media-server.ts` - HTTP API, SSE, playlist management
 - `electron/settings-manager.ts` - Persistent settings storage (JSON file in userData)
+- `electron/application-menu.ts` - Native application menu for macOS/Windows/Linux
 
 **Angular Services:**
 - `src/app/services/electron.service.ts` - HTTP client + SSE connection + fullscreen state
@@ -185,9 +186,9 @@ AudioContext.destination (speakers)
   - `waveform-visualization.ts` - Waveform (category: waveform) - oscilloscope-style with glow effect
   - `tunnel-visualization.ts` - Tunnel (category: waveform) - dual red/blue waveforms with zoom effect
   - `neon-visualization.ts` - Neon (category: waveform) - rotating cyan/magenta waveforms with tunnel zoom
-  - `water-visualization.ts` - Pulsar (category: ambience) - tunnel zoom, rotating waveforms, cycling colors
+  - `pulsar-visualization.ts` - Pulsar (category: space) - pulsing concentric rings with curved waveforms
     - Optimized: reuses trail/temp canvases (vs allocating per frame), pre-allocated point arrays, cached HSL→RGB colors
-  - `water2-visualization.ts` - Ambience Water 2 (category: ambience)
+  - `water-visualization.ts` - Water (category: ambience) - water ripple effect with rotating waveforms, bass-reactive rotation
     - Optimized: reuses canvases, caches background gradient (re-renders only on hue change), pre-allocated arrays
 
 ## HTTP API Reference
@@ -317,3 +318,19 @@ The entire TypeScript codebase is documented with comprehensive TSDoc comments f
 **Visualizations:**
 - `visualization.ts` - Base classes with sensitivity, fade, and resize support
 - Individual visualizations documented with technical details and rendering approach
+
+### Application Menu
+- Native menu bar for macOS (app menu), Windows/Linux (File menu)
+- File menu: Open (Cmd+O), Close (Cmd+W), with placeholders for URL, playlists, Save As
+- View menu: Full Screen toggle, Visualizations submenu
+- Playback menu: Play/Pause (Space), Shuffle/Repeat toggles, Options
+- Window menu: Minimize, Zoom, macOS window management
+- Help menu: About (opens GitHub page), placeholders for Help Topics
+- Menu callbacks communicated via IPC to renderer for UI updates
+- UI zoom disabled (zoomFactor: 1.0, keyboard shortcuts blocked, pinch-to-zoom disabled)
+
+### Idle State
+- When playlist is empty, layout-outlet displays placeholder with ONIXPlayer logo
+- `hasPlaylistItems` computed signal gates audio/video outlet display
+- File > Open adds files and immediately starts playback
+- File > Close stops current track and removes it from playlist

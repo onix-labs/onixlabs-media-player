@@ -114,8 +114,24 @@ export class ElectronService implements OnDestroy {
   /** Cleanup function for fullscreen change listener */
   private fullscreenCleanup: (() => void) | null = null;
 
+  /** Cleanup functions for menu event listeners */
+  private menuCleanupFunctions: Array<() => void> = [];
+
   /** Callback for settings updates (registered by SettingsService) */
   private settingsUpdateCallback: ((settings: AppSettings) => void) | null = null;
+
+  // ============================================================================
+  // Menu Event Signals - For components to react to menu actions
+  // ============================================================================
+
+  /** Signal emitted when "Show Config" menu item is selected */
+  public readonly menuShowConfig: ReturnType<typeof signal<number>> = signal<number>(0);
+
+  /** Signal emitted when "Open File" menu item is selected */
+  public readonly menuOpenFile: ReturnType<typeof signal<number>> = signal<number>(0);
+
+  /** Signal emitted when a visualization is selected from the menu */
+  public readonly menuSelectVisualization: ReturnType<typeof signal<string>> = signal<string>('');
 
   /**
    * Registers a callback to receive settings updates from SSE.
@@ -133,8 +149,8 @@ export class ElectronService implements OnDestroy {
    * @param ngZone - Angular's NgZone for running callbacks in Angular's zone
    *                 (required because SSE callbacks run outside Angular)
    */
-  constructor(private readonly ngZone: NgZone) {
-    this.initialize();
+  public constructor(private readonly ngZone: NgZone) {
+    void this.initialize();
   }
 
   // ============================================================================
@@ -188,6 +204,9 @@ export class ElectronService implements OnDestroy {
 
     // Setup fullscreen listener
     this.setupFullscreenListener();
+
+    // Setup menu event listeners
+    this.setupMenuListeners();
   }
 
   /**
@@ -212,6 +231,112 @@ export class ElectronService implements OnDestroy {
         this.isFullscreen.set(isFullscreen);
       });
     });
+  }
+
+  /**
+   * Sets up listeners for application menu events.
+   *
+   * Menu events handled:
+   * - showConfig: Opens the configuration/settings view
+   * - openFile: Opens file dialog and adds files to playlist
+   * - togglePlayPause: Toggles playback state
+   * - toggleShuffle: Toggles shuffle mode
+   * - toggleRepeat: Toggles repeat mode
+   * - selectVisualization: Changes the active visualization
+   */
+  private setupMenuListeners(): void {
+    if (!this.isElectron || !this.api) return;
+
+    // Show config menu item
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('showConfig', (): void => {
+        this.ngZone.run((): void => {
+          this.menuShowConfig.update((v: number): number => v + 1);
+        });
+      })
+    );
+
+    // Open file menu item
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('openFile', (): void => {
+        this.ngZone.run((): void => {
+          this.menuOpenFile.update((v: number): number => v + 1);
+        });
+      })
+    );
+
+    // Toggle play/pause
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('togglePlayPause', (): void => {
+        this.ngZone.run((): void => {
+          const state: string = this.playbackState();
+          if (state === 'playing') {
+            void this.pause();
+          } else {
+            void this.play();
+          }
+        });
+      })
+    );
+
+    // Toggle shuffle
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('toggleShuffle', (): void => {
+        this.ngZone.run((): void => {
+          const current: boolean = this.playlist().shuffleEnabled;
+          void this.setShuffle(!current);
+        });
+      })
+    );
+
+    // Toggle repeat
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('toggleRepeat', (): void => {
+        this.ngZone.run((): void => {
+          const current: boolean = this.playlist().repeatEnabled;
+          void this.setRepeat(!current);
+        });
+      })
+    );
+
+    // Select visualization
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('selectVisualization', (id: unknown): void => {
+        this.ngZone.run((): void => {
+          if (typeof id === 'string') {
+            this.menuSelectVisualization.set(id);
+          }
+        });
+      })
+    );
+
+    // Close media (stop, remove current, move to next)
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('closeMedia', (): void => {
+        this.ngZone.run((): void => {
+          void this.closeCurrentMedia();
+        });
+      })
+    );
+  }
+
+  /**
+   * Closes the current media: stops playback, removes from playlist, moves to next.
+   * Called when File > Close is selected from the menu.
+   */
+  private async closeCurrentMedia(): Promise<void> {
+    const currentPlaylist: PlaylistState = this.playlist();
+    if (currentPlaylist.currentIndex < 0 || currentPlaylist.items.length === 0) {
+      return;
+    }
+
+    const currentItem: PlaylistItem = currentPlaylist.items[currentPlaylist.currentIndex];
+
+    // Stop playback
+    await this.stop();
+
+    // Remove from playlist (server will auto-advance to next if available)
+    await this.removeFromPlaylist(currentItem.id);
   }
 
   // ============================================================================
@@ -686,11 +811,12 @@ export class ElectronService implements OnDestroy {
   /**
    * Cleanup when the service is destroyed.
    *
-   * Closes the SSE connection and removes the fullscreen listener
+   * Closes the SSE connection and removes the fullscreen and menu listeners
    * to prevent memory leaks.
    */
   public ngOnDestroy(): void {
     this.eventSource?.close();
     this.fullscreenCleanup?.();
+    this.menuCleanupFunctions.forEach((cleanup: () => void): void => cleanup());
   }
 }

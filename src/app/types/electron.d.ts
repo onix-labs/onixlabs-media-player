@@ -317,6 +317,15 @@ export interface MediaPlayerAPI {
    * @returns Cleanup function to unregister the listener
    */
   onFullscreenChange: (callback: (isFullscreen: boolean) => void) => () => void;
+
+  /**
+   * Registers a callback for application menu events.
+   * Called when user selects menu items from the native application menu.
+   * @param event - The menu event name (e.g., 'showConfig', 'openFile', 'togglePlayPause')
+   * @param callback - Function called when the menu event fires
+   * @returns Cleanup function to unregister the listener
+   */
+  onMenuEvent: (event: string, callback: (...args: unknown[]) => void) => () => void;
 }
 
 /**

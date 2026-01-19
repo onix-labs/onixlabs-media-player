@@ -15,7 +15,7 @@
  * @module app/components/audio/audio-outlet/visualizations/bars-visualization
  */
 
-import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from './visualization';
+import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 /**
  * Frequency bars visualization with gradient coloring.
@@ -26,7 +26,7 @@ import {Canvas2DVisualization, VisualizationConfig, VisualizationCategory} from 
  */
 export class BarsVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Frequency Bars';
-  public readonly category: VisualizationCategory = 'frequency';
+  public readonly category: string = 'frequency';
 
   private readonly BAR_COUNT: number = 96;
   private readonly BAR_GAP: number = 2;
@@ -35,7 +35,7 @@ export class BarsVisualization extends Canvas2DVisualization {
   private barGradient: CanvasGradient | null = null;
   private gradientHeight: number = 0;
 
-  constructor(config: VisualizationConfig) {
+  public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }

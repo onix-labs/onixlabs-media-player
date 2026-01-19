@@ -107,6 +107,16 @@ export interface MediaPlayerAPI {
    * @returns Cleanup function to remove the listener
    */
   readonly onFullscreenChange: (callback: (isFullscreen: boolean) => void) => () => void;
+
+  /**
+   * Registers a callback for menu events.
+   * Called when user selects menu items from the application menu.
+   *
+   * @param event - The menu event name
+   * @param callback - Function called when the menu event fires
+   * @returns Cleanup function to remove the listener
+   */
+  readonly onMenuEvent: (event: string, callback: (...args: unknown[]) => void) => () => void;
 }
 
 /**
@@ -128,6 +138,12 @@ const api: MediaPlayerAPI = {
     const listener: (_event: Electron.IpcRendererEvent, isFullscreen: boolean) => void = (_event: Electron.IpcRendererEvent, isFullscreen: boolean): void => callback(isFullscreen);
     ipcRenderer.on('window:fullscreenChanged', listener);
     return (): void => { ipcRenderer.removeListener('window:fullscreenChanged', listener); };
+  },
+  onMenuEvent: (event: string, callback: (...args: unknown[]) => void): () => void => {
+    const channel: string = `menu:${event}`;
+    const listener: (_event: Electron.IpcRendererEvent, ...args: unknown[]) => void = (_event: Electron.IpcRendererEvent, ...args: unknown[]): void => callback(...args);
+    ipcRenderer.on(channel, listener);
+    return (): void => { ipcRenderer.removeListener(channel, listener); };
   },
 };
 

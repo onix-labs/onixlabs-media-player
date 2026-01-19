@@ -467,7 +467,7 @@ class PlaylistManager {
    *
    * @param sse - SSE manager for broadcasting playlist updates
    */
-  constructor(sse: Readonly<SSEManager>) {
+  public constructor(sse: Readonly<SSEManager>) {
     this.sse = sse as SSEManager;
   }
 
@@ -897,7 +897,7 @@ export class UnifiedMediaServer {
    * Creates a new unified media server.
    * Call start() to begin listening for connections.
    */
-  constructor() {
+  public constructor() {
     this.playlist = new PlaylistManager(this.sse);
   }
 

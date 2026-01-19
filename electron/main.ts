@@ -18,6 +18,10 @@ import {app, BrowserWindow, dialog, ipcMain, net, protocol} from "electron";
 import * as path from "path";
 import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.ts';
+import {createApplicationMenu} from './application-menu.ts';
+
+// Set app name (shows in dock/menu bar during development)
+app.setName('ONIXPlayer');
 
 // Allow audio autoplay without user gesture
 // Required for media player to start playback programmatically
@@ -139,6 +143,7 @@ class Program {
     this.window = this.createBrowserWindow();
     this.setupIpcHandlers();
     this.setupWindowEvents();
+    this.setupApplicationMenu();
 
     if (Program.IS_DEVELOPMENT) void this.window.loadURL(Program.DEVELOPMENT_SERVER_URL);
     else void this.window.loadFile(path.join(Program.getProjectRoot(), "dist", "onixlabs-media-player", "browser", "index.html"));
@@ -183,12 +188,19 @@ class Program {
     const projectRoot: string = Program.getProjectRoot();
     // Preload must always be compiled JS - Electron can't run TS preload scripts
     const preloadPath: string = path.join(projectRoot, "electron", "dist", "preload.js");
+    const iconPath: string = path.join(projectRoot, "public", "icon.png");
 
-    return new BrowserWindow({
+    // Set dock icon on macOS (for development - packaged apps use Info.plist)
+    if (process.platform === 'darwin' && !app.isPackaged) {
+      app.dock?.setIcon(iconPath);
+    }
+
+    const window: BrowserWindow = new BrowserWindow({
       width: 1200,
       height: 800,
       minWidth: 800,
       minHeight: 600,
+      icon: iconPath,
       titleBarStyle: "hiddenInset",
       trafficLightPosition: {x: 12, y: 13},
       vibrancy: "fullscreen-ui",
@@ -197,9 +209,23 @@ class Program {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
-        preload: preloadPath
+        preload: preloadPath,
+        zoomFactor: 1.0
       }
     });
+
+    // Prevent zoom via keyboard shortcuts
+    window.webContents.on('before-input-event', (_event: Electron.Event, input: Electron.Input): void => {
+      // Block Cmd/Ctrl + Plus, Minus, Zero, and Cmd/Ctrl + Scroll zoom
+      if ((input.control || input.meta) && (input.key === '+' || input.key === '-' || input.key === '=' || input.key === '0')) {
+        _event.preventDefault();
+      }
+    });
+
+    // Prevent pinch-to-zoom
+    window.webContents.setVisualZoomLevelLimits(1, 1);
+
+    return window;
   }
 
   /**
@@ -269,6 +295,41 @@ class Program {
 
     this.window.on('leave-full-screen', (): void => {
       this.window?.webContents.send('window:fullscreenChanged', false);
+    });
+  }
+
+  /**
+   * Sets up the application menu with callbacks for menu actions.
+   * Menu actions are communicated to the renderer via webContents.send().
+   */
+  private setupApplicationMenu(): void {
+    createApplicationMenu({
+      onShowConfig: (): void => {
+        this.window?.webContents.send('menu:showConfig');
+      },
+      onOpenFile: (): void => {
+        this.window?.webContents.send('menu:openFile');
+      },
+      onCloseMedia: (): void => {
+        this.window?.webContents.send('menu:closeMedia');
+      },
+      onToggleFullscreen: (): void => {
+        if (this.window) {
+          this.window.setFullScreen(!this.window.isFullScreen());
+        }
+      },
+      onTogglePlayPause: (): void => {
+        this.window?.webContents.send('menu:togglePlayPause');
+      },
+      onToggleShuffle: (): void => {
+        this.window?.webContents.send('menu:toggleShuffle');
+      },
+      onToggleRepeat: (): void => {
+        this.window?.webContents.send('menu:toggleRepeat');
+      },
+      onSelectVisualization: (id: string): void => {
+        this.window?.webContents.send('menu:selectVisualization', id);
+      }
     });
   }
 

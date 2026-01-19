@@ -79,11 +79,14 @@ export class LayoutOutlet {
   /** Currently playing track, or null if none */
   public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
 
-  /** Whether the current media is audio */
-  public readonly isAudio: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaType() === 'audio');
+  /** Whether the playlist has any items */
+  public readonly hasPlaylistItems: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.playlist().items.length > 0);
 
-  /** Whether the current media is video */
-  public readonly isVideo: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaType() === 'video');
+  /** Whether the current media is audio (and playlist is not empty) */
+  public readonly isAudio: ReturnType<typeof computed<boolean>> = computed((): boolean => this.hasPlaylistItems() && this.mediaType() === 'audio');
+
+  /** Whether the current media is video (and playlist is not empty) */
+  public readonly isVideo: ReturnType<typeof computed<boolean>> = computed((): boolean => this.hasPlaylistItems() && this.mediaType() === 'video');
 
   /** Whether media is currently loading */
   public readonly isLoading: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.isLoading());
