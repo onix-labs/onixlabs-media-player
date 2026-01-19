@@ -136,6 +136,45 @@
                 </div>
               </div>
             }
+            @case ('application') {
+              <!-- Application settings -->
+              <div class="setting-group">
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="server-port">Server Port</label>
+                    <p class="setting-description">
+                      The port for the internal media server. Leave empty for auto-assign.
+                      Changes require app restart to take effect.
+                    </p>
+                  </div>
+                  <div class="setting-control port-control">
+                    <input
+                      type="number"
+                      id="server-port"
+                      min="1024"
+                      max="65535"
+                      placeholder="Auto"
+                      [value]="getPortDisplayValue()"
+                      (change)="onServerPortChange($event)"
+                    />
+                    @if (!isPortAuto()) {
+                      <button
+                        class="reset-button"
+                        (click)="onResetServerPort()"
+                        title="Reset to auto-assign"
+                      >
+                        <i class="fa-solid fa-rotate-left"></i>
+                      </button>
+                    }
+                  </div>
+                </div>
+
+                <div class="restart-notice">
+                  <i class="fa-solid fa-info-circle"></i>
+                  <span>Some settings require an application restart to take effect.</span>
+                </div>
+              </div>
+            }
           }
         </div>
       }

@@ -51,6 +51,14 @@ export interface VisualizationSettings {
 }
 
 /**
+ * Application-level settings.
+ */
+export interface ApplicationSettings {
+  /** Server port (0 = auto-assign, or specific port 1024-65535) */
+  readonly serverPort: number;
+}
+
+/**
  * Complete application settings structure.
  */
 export interface AppSettings {
@@ -58,6 +66,8 @@ export interface AppSettings {
   readonly version: number;
   /** Visualization preferences */
   readonly visualization: VisualizationSettings;
+  /** Application-level settings */
+  readonly application: ApplicationSettings;
 }
 
 /**
@@ -85,6 +95,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     defaultType: 'bars',
     sensitivity: 0.5,
     perVisualizationSensitivity: {},
+  },
+  application: {
+    serverPort: 0,
   },
 };
 
@@ -188,6 +201,11 @@ export class SettingsService {
   /** Per-visualization sensitivity overrides */
   public readonly perVisualizationSensitivity: ReturnType<typeof computed<PerVisualizationSensitivity>> = computed(
     (): PerVisualizationSensitivity => this.settings().visualization.perVisualizationSensitivity ?? {}
+  );
+
+  /** Configured server port (0 = auto-assign) */
+  public readonly serverPort: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().application?.serverPort ?? 0
   );
 
   // ============================================================================
@@ -320,6 +338,31 @@ export class SettingsService {
 
     if (!response.ok) {
       console.error(`[SettingsService] Failed to reset visualization sensitivity: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the server port for the media server.
+   *
+   * Note: Port changes require app restart to take effect.
+   *
+   * @param port - Port number (0 = auto-assign, or 1024-65535)
+   */
+  public async setServerPort(port: number): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Validate port: 0 (auto) or valid user port range
+    const validPort: number = port === 0 ? 0 : Math.max(1024, Math.min(65535, Math.round(port)));
+
+    const response: Response = await fetch(`${serverUrl}/settings/application`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({serverPort: validPort}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save server port: ${response.status}`);
     }
   }
 

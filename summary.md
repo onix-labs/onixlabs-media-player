@@ -68,6 +68,10 @@
     - Overrides global sensitivity when set
     - Reset button to restore to global value
     - Custom values highlighted in green
+  - **Server Port**: Configure the internal media server port (Application category)
+    - 0 = auto-assign (default), or specify port 1024-65535
+    - Changes require app restart to take effect
+    - Reset button to restore auto-assign mode
 - Sensitivity changes apply in real-time to the active visualization
 - Extensible category-based UI with search filtering
 
@@ -246,7 +250,8 @@ AudioContext.destination (speakers)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/settings` | Get all settings |
-| PUT | `/settings/visualization` | Body: `{ defaultType?: string, sensitivity?: number }` |
+| PUT | `/settings/visualization` | Body: `{ defaultType?: string, sensitivity?: number, perVisualizationSensitivity?: object }` |
+| PUT | `/settings/application` | Body: `{ serverPort?: number }` |
 
 ### Server-Sent Events
 | Endpoint | Events |
