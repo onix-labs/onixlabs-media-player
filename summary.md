@@ -64,6 +64,10 @@
 - Current settings:
   - **Default Visualization**: Select which visualization plays on audio startup
   - **Sensitivity**: Global sensitivity slider (0-100%) controlling visualization responsiveness
+  - **Per-Visualization Sensitivity**: Expandable section with individual sliders for each visualization
+    - Overrides global sensitivity when set
+    - Reset button to restore to global value
+    - Custom values highlighted in green
 - Sensitivity changes apply in real-time to the active visualization
 - Extensible category-based UI with search filtering
 

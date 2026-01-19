@@ -269,11 +269,16 @@ export class AudioOutlet implements OnInit, OnDestroy {
       }
     });
 
-    // React to sensitivity setting changes
+    // React to sensitivity setting changes (global or per-visualization)
     effect((): void => {
-      const sensitivity: number = this.settings.sensitivity();
+      // Watch both global and per-viz sensitivity signals
+      const _global: number = this.settings.sensitivity();
+      const _perViz = this.settings.perVisualizationSensitivity();
+      const vizType: VisualizationType = this.visualizationType();
+
       if (this.visualization) {
-        this.visualization.setSensitivity(sensitivity);
+        const effectiveSensitivity: number = this.settings.getEffectiveSensitivity(vizType);
+        this.visualization.setSensitivity(effectiveSensitivity);
       }
     });
   }
@@ -536,7 +541,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.visualizationNameSignal.set(this.visualization.name);
       this.visualizationCategorySignal.set(this.visualization.category);
       this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
-      this.visualization.setSensitivity(this.settings.sensitivity());
+      this.visualization.setSensitivity(this.settings.getEffectiveSensitivity(type));
 
       const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
@@ -559,7 +564,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualizationNameSignal.set(this.visualization.name);
     this.visualizationCategorySignal.set(this.visualization.category);
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
-    this.visualization.setSensitivity(this.settings.sensitivity());
+    this.visualization.setSensitivity(this.settings.getEffectiveSensitivity(this.visualizationType()));
 
     const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));

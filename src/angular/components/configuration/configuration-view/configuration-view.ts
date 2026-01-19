@@ -91,6 +91,9 @@ export class ConfigurationView {
   /** Currently selected category ID */
   public readonly selectedCategory: ReturnType<typeof signal<string>> = signal<string>('visualization');
 
+  /** Whether the per-visualization sensitivity section is expanded */
+  public readonly isPerVizExpanded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
   // ============================================================================
   // Computed Values
   // ============================================================================
@@ -190,5 +193,69 @@ export class ConfigurationView {
    */
   public formatSensitivity(): string {
     return `${Math.round(this.currentSensitivity() * 100)}%`;
+  }
+
+  // ============================================================================
+  // Per-Visualization Sensitivity
+  // ============================================================================
+
+  /**
+   * Toggles the per-visualization sensitivity section expansion.
+   */
+  public togglePerVizSection(): void {
+    this.isPerVizExpanded.set(!this.isPerVizExpanded());
+  }
+
+  /**
+   * Checks if a visualization has a custom sensitivity override.
+   *
+   * @param type - The visualization type to check
+   * @returns True if the visualization has a custom sensitivity
+   */
+  public hasPerVizSensitivity(type: VisualizationType): boolean {
+    const perViz = this.settingsService.perVisualizationSensitivity();
+    return perViz[type] !== undefined;
+  }
+
+  /**
+   * Gets the effective sensitivity for a visualization.
+   * Returns the custom value if set, otherwise the global value.
+   *
+   * @param type - The visualization type
+   * @returns The sensitivity value (0.0 - 1.0)
+   */
+  public getVisualizationSensitivity(type: VisualizationType): number {
+    return this.settingsService.getEffectiveSensitivity(type);
+  }
+
+  /**
+   * Formats the sensitivity for a specific visualization as a percentage.
+   *
+   * @param type - The visualization type
+   * @returns The sensitivity as a percentage (e.g., "50%")
+   */
+  public formatVisualizationSensitivity(type: VisualizationType): string {
+    return `${Math.round(this.getVisualizationSensitivity(type) * 100)}%`;
+  }
+
+  /**
+   * Handles per-visualization sensitivity slider change.
+   *
+   * @param type - The visualization type being adjusted
+   * @param event - The input event from the range element
+   */
+  public async onVisualizationSensitivityChange(type: VisualizationType, event: Event): Promise<void> {
+    const input: HTMLInputElement = event.target as HTMLInputElement;
+    const value: number = parseFloat(input.value);
+    await this.settingsService.setVisualizationSensitivity(type, value);
+  }
+
+  /**
+   * Resets a visualization's sensitivity to use the global setting.
+   *
+   * @param type - The visualization type to reset
+   */
+  public async onResetVisualizationSensitivity(type: VisualizationType): Promise<void> {
+    await this.settingsService.resetVisualizationSensitivity(type);
   }
 }

@@ -37,6 +37,12 @@ import * as path from 'path';
 export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux';
 
 /**
+ * Per-visualization sensitivity overrides.
+ * If a visualization type has a value here, it overrides the global sensitivity.
+ */
+export type PerVisualizationSensitivity = Partial<Record<VisualizationType, number>>;
+
+/**
  * Visualization settings.
  */
 export interface VisualizationSettings {
@@ -44,6 +50,8 @@ export interface VisualizationSettings {
   readonly defaultType: VisualizationType;
   /** Global sensitivity for all visualizations (0.0 - 1.0, default 0.5) */
   readonly sensitivity: number;
+  /** Per-visualization sensitivity overrides (0.0 - 1.0, optional per type) */
+  readonly perVisualizationSensitivity: PerVisualizationSensitivity;
 }
 
 /**
@@ -64,6 +72,7 @@ export interface AppSettings {
 export interface VisualizationSettingsUpdate {
   readonly defaultType?: VisualizationType;
   readonly sensitivity?: number;
+  readonly perVisualizationSensitivity?: PerVisualizationSensitivity;
 }
 
 // ============================================================================
@@ -79,6 +88,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   visualization: {
     defaultType: 'bars',
     sensitivity: 0.5,
+    perVisualizationSensitivity: {},
   },
 };
 
@@ -170,12 +180,24 @@ export class SettingsManager {
       }
     }
 
+    // Validate and merge per-visualization sensitivity if provided
+    let mergedPerVizSensitivity: PerVisualizationSensitivity = this.settings.visualization.perVisualizationSensitivity;
+    if (update.perVisualizationSensitivity !== undefined) {
+      const validatedUpdate: PerVisualizationSensitivity = this.validatePerVisualizationSensitivity(update.perVisualizationSensitivity);
+      mergedPerVizSensitivity = {
+        ...this.settings.visualization.perVisualizationSensitivity,
+        ...validatedUpdate,
+      };
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
       visualization: {
         ...this.settings.visualization,
-        ...update,
+        defaultType: update.defaultType ?? this.settings.visualization.defaultType,
+        sensitivity: update.sensitivity ?? this.settings.visualization.sensitivity,
+        perVisualizationSensitivity: mergedPerVizSensitivity,
       },
     };
 
@@ -287,6 +309,7 @@ export class SettingsManager {
     const vizObj: Record<string, unknown> = viz as Record<string, unknown>;
     const defaultType: unknown = vizObj['defaultType'];
     const sensitivity: unknown = vizObj['sensitivity'];
+    const perVizSensitivity: unknown = vizObj['perVisualizationSensitivity'];
 
     return {
       defaultType: this.isValidVisualizationType(defaultType)
@@ -295,7 +318,31 @@ export class SettingsManager {
       sensitivity: this.isValidSensitivity(sensitivity)
         ? sensitivity
         : DEFAULT_SETTINGS.visualization.sensitivity,
+      perVisualizationSensitivity: this.validatePerVisualizationSensitivity(perVizSensitivity),
     };
+  }
+
+  /**
+   * Validates per-visualization sensitivity object.
+   *
+   * @param perViz - The per-visualization sensitivity to validate
+   * @returns Valid per-visualization sensitivity with invalid entries removed
+   */
+  private validatePerVisualizationSensitivity(perViz: unknown): PerVisualizationSensitivity {
+    if (!perViz || typeof perViz !== 'object') {
+      return {};
+    }
+
+    const result: PerVisualizationSensitivity = {};
+    const perVizObj: Record<string, unknown> = perViz as Record<string, unknown>;
+
+    for (const key of Object.keys(perVizObj)) {
+      if (this.isValidVisualizationType(key) && this.isValidSensitivity(perVizObj[key])) {
+        result[key] = perVizObj[key] as number;
+      }
+    }
+
+    return result;
   }
 
   /**

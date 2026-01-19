@@ -33,6 +33,12 @@ import {ElectronService} from './electron.service';
 export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux';
 
 /**
+ * Per-visualization sensitivity overrides.
+ * If a visualization type has a value here, it overrides the global sensitivity.
+ */
+export type PerVisualizationSensitivity = Partial<Record<VisualizationType, number>>;
+
+/**
  * Visualization settings structure.
  */
 export interface VisualizationSettings {
@@ -40,6 +46,8 @@ export interface VisualizationSettings {
   readonly defaultType: VisualizationType;
   /** Global sensitivity for all visualizations (0.0 - 1.0, default 0.5) */
   readonly sensitivity: number;
+  /** Per-visualization sensitivity overrides (0.0 - 1.0, optional per type) */
+  readonly perVisualizationSensitivity: PerVisualizationSensitivity;
 }
 
 /**
@@ -76,6 +84,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   visualization: {
     defaultType: 'bars',
     sensitivity: 0.5,
+    perVisualizationSensitivity: {},
   },
 };
 
@@ -176,6 +185,11 @@ export class SettingsService {
     (): number => this.settings().visualization.sensitivity ?? 0.5
   );
 
+  /** Per-visualization sensitivity overrides */
+  public readonly perVisualizationSensitivity: ReturnType<typeof computed<PerVisualizationSensitivity>> = computed(
+    (): PerVisualizationSensitivity => this.settings().visualization.perVisualizationSensitivity ?? {}
+  );
+
   // ============================================================================
   // Public Methods
   // ============================================================================
@@ -238,6 +252,74 @@ export class SettingsService {
 
     if (!response.ok) {
       console.error(`[SettingsService] Failed to save sensitivity: ${response.status}`);
+    }
+  }
+
+  /**
+   * Gets the effective sensitivity for a specific visualization type.
+   *
+   * Returns the per-visualization sensitivity if set, otherwise the global sensitivity.
+   *
+   * @param type - The visualization type to get sensitivity for
+   * @returns The effective sensitivity value (0.0 - 1.0)
+   */
+  public getEffectiveSensitivity(type: VisualizationType): number {
+    const perViz: PerVisualizationSensitivity = this.perVisualizationSensitivity();
+    return perViz[type] ?? this.sensitivity();
+  }
+
+  /**
+   * Sets the sensitivity for a specific visualization type.
+   *
+   * Makes an HTTP PUT request to update the server-side settings.
+   * The update is broadcast to all clients via SSE.
+   *
+   * @param type - The visualization type to set sensitivity for
+   * @param value - Sensitivity value between 0.0 and 1.0
+   */
+  public async setVisualizationSensitivity(type: VisualizationType, value: number): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Clamp value to valid range
+    const clampedValue: number = Math.max(0, Math.min(1, value));
+
+    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({perVisualizationSensitivity: {[type]: clampedValue}}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save visualization sensitivity: ${response.status}`);
+    }
+  }
+
+  /**
+   * Resets a visualization's sensitivity to use the global setting.
+   *
+   * Removes the per-visualization override, causing the visualization to
+   * use the global sensitivity value.
+   *
+   * @param type - The visualization type to reset
+   */
+  public async resetVisualizationSensitivity(type: VisualizationType): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Get current per-viz settings and remove this type
+    const current: PerVisualizationSensitivity = {...this.perVisualizationSensitivity()};
+    delete current[type];
+
+    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      // Send the full object to replace (not merge)
+      body: JSON.stringify({perVisualizationSensitivity: current}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to reset visualization sensitivity: ${response.status}`);
     }
   }
 
