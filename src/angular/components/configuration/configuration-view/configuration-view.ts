@@ -118,6 +118,11 @@ export class ConfigurationView {
     (): VisualizationType => this.settingsService.defaultVisualization()
   );
 
+  /** Current sensitivity value (0.0 - 1.0) */
+  public readonly currentSensitivity: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.sensitivity()
+  );
+
   // ============================================================================
   // Template Data
   // ============================================================================
@@ -165,5 +170,25 @@ export class ConfigurationView {
     const select: HTMLSelectElement = event.target as HTMLSelectElement;
     const type: VisualizationType = select.value as VisualizationType;
     await this.settingsService.setDefaultVisualization(type);
+  }
+
+  /**
+   * Handles sensitivity slider change.
+   *
+   * @param event - The input event from the range element
+   */
+  public async onSensitivityChange(event: Event): Promise<void> {
+    const input: HTMLInputElement = event.target as HTMLInputElement;
+    const value: number = parseFloat(input.value);
+    await this.settingsService.setSensitivity(value);
+  }
+
+  /**
+   * Formats the current sensitivity value as a percentage string.
+   *
+   * @returns The sensitivity as a percentage (e.g., "50%")
+   */
+  public formatSensitivity(): string {
+    return `${Math.round(this.currentSensitivity() * 100)}%`;
   }
 }

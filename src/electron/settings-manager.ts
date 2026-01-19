@@ -32,8 +32,9 @@ import * as path from 'path';
  * - neon: NeonVisualization (rotating cyan/magenta waveforms)
  * - pulsar: PulsarVisualization (pulsing concentric rings, space category)
  * - water: WaterVisualization (water ripple effect, ambience category)
+ * - flux: FluxVisualization (dual orbiting circles with spectrum cycling)
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water';
+export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux';
 
 /**
  * Visualization settings.
@@ -41,6 +42,8 @@ export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neo
 export interface VisualizationSettings {
   /** The default visualization to display on startup */
   readonly defaultType: VisualizationType;
+  /** Global sensitivity for all visualizations (0.0 - 1.0, default 0.5) */
+  readonly sensitivity: number;
 }
 
 /**
@@ -60,6 +63,7 @@ export interface AppSettings {
  */
 export interface VisualizationSettingsUpdate {
   readonly defaultType?: VisualizationType;
+  readonly sensitivity?: number;
 }
 
 // ============================================================================
@@ -74,6 +78,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   version: SETTINGS_VERSION,
   visualization: {
     defaultType: 'bars',
+    sensitivity: 0.5,
   },
 };
 
@@ -86,6 +91,7 @@ const VALID_VISUALIZATION_TYPES: readonly VisualizationType[] = [
   'neon',
   'pulsar',
   'water',
+  'flux',
 ];
 
 // ============================================================================
@@ -148,10 +154,18 @@ export class SettingsManager {
    * @returns The updated complete settings object
    */
   public updateVisualizationSettings(update: VisualizationSettingsUpdate): AppSettings {
-    // Validate the update
+    // Validate defaultType if provided
     if (update.defaultType !== undefined) {
       if (!this.isValidVisualizationType(update.defaultType)) {
         console.warn(`[SettingsManager] Invalid visualization type: ${update.defaultType}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate sensitivity if provided
+    if (update.sensitivity !== undefined) {
+      if (!this.isValidSensitivity(update.sensitivity)) {
+        console.warn(`[SettingsManager] Invalid sensitivity value: ${update.sensitivity}, ignoring`);
         return this.settings;
       }
     }
@@ -272,12 +286,26 @@ export class SettingsManager {
 
     const vizObj: Record<string, unknown> = viz as Record<string, unknown>;
     const defaultType: unknown = vizObj['defaultType'];
+    const sensitivity: unknown = vizObj['sensitivity'];
 
     return {
       defaultType: this.isValidVisualizationType(defaultType)
         ? defaultType
         : DEFAULT_SETTINGS.visualization.defaultType,
+      sensitivity: this.isValidSensitivity(sensitivity)
+        ? sensitivity
+        : DEFAULT_SETTINGS.visualization.sensitivity,
     };
+  }
+
+  /**
+   * Type guard to check if a value is a valid sensitivity value.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid sensitivity (number between 0 and 1)
+   */
+  private isValidSensitivity(value: unknown): value is number {
+    return typeof value === 'number' && value >= 0 && value <= 1;
   }
 
   /**

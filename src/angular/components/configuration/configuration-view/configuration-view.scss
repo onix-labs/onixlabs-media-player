@@ -103,7 +103,7 @@
   .category-item {
     display: flex;
     align-items: start;
-    padding: 0.75rem;
+    padding: 0.65rem 1.5rem;
     background: none;
     border: none;
     border-radius: 4px;
@@ -168,7 +168,7 @@
   .setting-row {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     gap: 2rem;
     padding: 1rem;
     background: rgba(255, 255, 255, 0.03);
@@ -230,6 +230,63 @@
         option {
           background: #1a1a2e;
           color: white;
+        }
+      }
+
+      // Slider control styles
+      &.slider-control {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        min-width: 180px;
+
+        input[type="range"] {
+          flex: 1;
+          height: 4px;
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 2px;
+          appearance: none;
+          cursor: pointer;
+
+          &::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+
+            &:hover {
+              transform: scale(1.1);
+              box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+            }
+          }
+
+          &::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+          }
+
+          &:focus {
+            outline: none;
+
+            &::-webkit-slider-thumb {
+              box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.3);
+            }
+          }
+        }
+
+        .slider-value {
+          min-width: 3rem;
+          text-align: right;
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 0.875rem;
+          font-variant-numeric: tabular-nums;
         }
       }
     }

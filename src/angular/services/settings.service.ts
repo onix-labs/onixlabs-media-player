@@ -28,8 +28,9 @@ import {ElectronService} from './electron.service';
  * - neon: Rotating cyan/magenta waveforms
  * - pulsar: Pulsing concentric rings with curved waveforms (space category)
  * - water: Water ripple effect with rotating waveforms (ambience category)
+ * - flux: Dual orbiting circles with spectrum cycling
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water';
+export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux';
 
 /**
  * Visualization settings structure.
@@ -37,6 +38,8 @@ export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neo
 export interface VisualizationSettings {
   /** The default visualization to display on startup */
   readonly defaultType: VisualizationType;
+  /** Global sensitivity for all visualizations (0.0 - 1.0, default 0.5) */
+  readonly sensitivity: number;
 }
 
 /**
@@ -72,6 +75,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   version: 1,
   visualization: {
     defaultType: 'bars',
+    sensitivity: 0.5,
   },
 };
 
@@ -86,6 +90,7 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'neon', label: 'Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'pulsar', label: 'Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
   {value: 'water', label: 'Water', description: 'Water ripple effect with rotating waveforms'},
+  {value: 'flux', label: 'Flux', description: 'Dual orbiting circles with spectrum cycling'},
 ];
 
 // ============================================================================
@@ -166,6 +171,11 @@ export class SettingsService {
     (): VisualizationType => this.settings().visualization.defaultType
   );
 
+  /** Global sensitivity for visualizations (0.0 - 1.0) */
+  public readonly sensitivity: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().visualization.sensitivity ?? 0.5
+  );
+
   // ============================================================================
   // Public Methods
   // ============================================================================
@@ -202,6 +212,32 @@ export class SettingsService {
 
     if (!response.ok) {
       console.error(`[SettingsService] Failed to save settings: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the global visualization sensitivity.
+   *
+   * Makes an HTTP PUT request to update the server-side settings.
+   * The update is broadcast to all clients via SSE.
+   *
+   * @param value - Sensitivity value between 0.0 and 1.0
+   */
+  public async setSensitivity(value: number): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Clamp value to valid range
+    const clampedValue: number = Math.max(0, Math.min(1, value));
+
+    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sensitivity: clampedValue}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save sensitivity: ${response.status}`);
     }
   }
 

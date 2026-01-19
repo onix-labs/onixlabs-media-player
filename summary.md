@@ -63,6 +63,8 @@
 - Atomic file writes (write to temp, then rename) prevent corruption
 - Current settings:
   - **Default Visualization**: Select which visualization plays on audio startup
+  - **Sensitivity**: Global sensitivity slider (0-100%) controlling visualization responsiveness
+- Sensitivity changes apply in real-time to the active visualization
 - Extensible category-based UI with search filtering
 
 ### Infrastructure
@@ -240,7 +242,7 @@ AudioContext.destination (speakers)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/settings` | Get all settings |
-| PUT | `/settings/visualization` | Body: `{ defaultType: string }` |
+| PUT | `/settings/visualization` | Body: `{ defaultType?: string, sensitivity?: number }` |
 
 ### Server-Sent Events
 | Endpoint | Events |
@@ -324,7 +326,7 @@ The entire TypeScript codebase is documented with comprehensive TSDoc comments f
 **Components:**
 - `root.ts` - Application shell, fullscreen handling, control visibility, config mode switching
 - `layout-header.ts`, `layout-controls.ts`, `layout-outlet.ts` - Layout components
-- `audio-outlet.ts` - Web Audio API integration, visualization management, default viz from settings
+- `audio-outlet.ts` - Web Audio API integration, visualization management, default viz and sensitivity from settings
 - `video-outlet.ts` - Video playback, transcoding support
 - `playlist.ts` - Playlist panel with drag-and-drop
 - `configuration-view.ts` - Settings panel with category navigation and visualization config
