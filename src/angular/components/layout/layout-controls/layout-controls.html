@@ -3,44 +3,58 @@
   <progress [value]="progress()" max="100" (click)="onProgressClick($event)"></progress>
   <span class="time-display total">{{ totalDuration() }}</span>
 </div>
-<div class="controls-container">
-  <div class="controls left">
-    <button (click)="onEject()" title="Open files">
-      <i class="fa-solid fa-eject"></i>
-    </button>
-    <button (click)="onShuffle()" [class.active]="isShuffleEnabled()" title="Shuffle">
-      <i class="fa-solid fa-shuffle"></i>
-    </button>
-    <button (click)="onRepeat()" [class.active]="isRepeatEnabled()" title="Repeat">
-      <i class="fa-solid fa-repeat"></i>
-    </button>
+<div class="control-groups-container">
+  <div class="control-group left">
+    <span class="media-title"><!--The title/filename of the current media should appear here--></span>
   </div>
-  <div class="controls center">
-    <button (click)="onBackward()" [disabled]="!hasTrack() || !canSkip()" title="Previous">
-      <i class="fa-solid fa-backward-step"></i>
-    </button>
-    <button (click)="onPlayPause()" [disabled]="!hasTrack()" title="Play/Pause">
-      <i [class]="isPlaying() ? 'fa-solid fa-pause' : 'fa-solid fa-play'"></i>
-    </button>
-    <button (click)="onForward()" [disabled]="!hasTrack() || !canSkip()" title="Next">
-      <i class="fa-solid fa-forward-step"></i>
-    </button>
-  </div>
-  <div class="controls right">
-    <button (click)="onMuteToggle()" title="Mute/Unmute">
-      <i [class]="isMuted()
+  <div class="control-group center">
+    <div class="button-group left">
+      <button (click)="onEject()" title="Open files">
+        <i class="fa-solid fa-eject"></i>
+      </button>
+      <button (click)="onShuffle()" [class.active]="isShuffleEnabled()" title="Shuffle">
+        <i class="fa-solid fa-shuffle"></i>
+      </button>
+      <button (click)="onRepeat()" [class.active]="isRepeatEnabled()" title="Repeat">
+        <i class="fa-solid fa-repeat"></i>
+      </button>
+    </div>
+    <div class="button-group center">
+      <button (click)="onBackward()" [disabled]="!hasTrack() || !canSkip()" title="Previous">
+        <i class="fa-solid fa-backward-step"></i>
+      </button>
+      <button (click)="onPlayPause()" [disabled]="!hasTrack()" title="Play/Pause">
+        <i [class]="isPlaying() ? 'fa-solid fa-pause' : 'fa-solid fa-play'"></i>
+      </button>
+      <button (click)="onForward()" [disabled]="!hasTrack() || !canSkip()" title="Next">
+        <i class="fa-solid fa-forward-step"></i>
+      </button>
+    </div>
+    <div class="button-group right">
+      <button (click)="onMuteToggle()" title="Mute/Unmute">
+        <i [class]="isMuted()
       ? 'fa-solid fa-volume-xmark'
       : (volume() < 50 ? 'fa-solid fa-volume-low'
       : 'fa-solid fa-volume-high')"></i>
-    </button>
-    <div class="volume-container">
-      <input
-        type="range"
-        min="0"
-        max="100"
-        [value]="volume()"
-        (input)="onVolumeChange($event)"
-      />
+      </button>
+      <div class="volume-container">
+        <input
+          type="range"
+          min="0"
+          max="100"
+          [value]="volume()"
+          (input)="onVolumeChange($event)"
+        />
+      </div>
+    </div>
+  </div>
+  <div class="control-group right">
+    <!--this button group should not appear in fullscreen mode-->
+    <div class="button-group left">
+      <!--this button enters full screen mode-->
+      <button><i class="fa-solid fa-window-maximize"></i></button>
+      <!--leave this button, we will implement it later-->
+      <button><i class="fa-regular fa-window-restore"></i></button>
     </div>
   </div>
 </div>
