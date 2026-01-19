@@ -5,6 +5,8 @@ This document outlines potential configurable items identified in the codebase t
 ## Already Configurable
 
 - **Default Visualization** - User can set their preferred visualization via settings
+- **Global Sensitivity** - Master sensitivity slider affecting all visualizations
+- **Per-Visualization Sensitivity** - Individual sensitivity overrides for each visualization type
 
 ## Server Settings
 
@@ -146,8 +148,8 @@ This document outlines potential configurable items identified in the codebase t
 ## Implementation Priority
 
 ### High Priority
-1. Global sensitivity control
-2. Per-visualization sensitivity (already partially implemented)
+1. ~~Global sensitivity control~~ ✓ DONE
+2. ~~Per-visualization sensitivity~~ ✓ DONE
 3. Server port configuration
 4. Control bar auto-hide
 

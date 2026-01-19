@@ -87,6 +87,53 @@
                     <span class="slider-value">{{ formatSensitivity() }}</span>
                   </div>
                 </div>
+
+                <!-- Per-visualization sensitivity -->
+                <div class="expandable-section">
+                  <button
+                    class="expandable-header"
+                    (click)="togglePerVizSection()"
+                    [class.expanded]="isPerVizExpanded()"
+                  >
+                    <i class="fa-solid" [class.fa-chevron-right]="!isPerVizExpanded()" [class.fa-chevron-down]="isPerVizExpanded()"></i>
+                    <span>Per-Visualization Sensitivity</span>
+                    <span class="expandable-hint">Override sensitivity for individual visualizations</span>
+                  </button>
+
+                  @if (isPerVizExpanded()) {
+                    <div class="expandable-content">
+                      @for (option of visualizationOptions; track option.value) {
+                        <div class="per-viz-row">
+                          <div class="per-viz-label">
+                            <span class="per-viz-name">{{ option.label }}</span>
+                            @if (hasPerVizSensitivity(option.value)) {
+                              <button
+                                class="reset-button"
+                                (click)="onResetVisualizationSensitivity(option.value)"
+                                title="Reset to global"
+                              >
+                                <i class="fa-solid fa-rotate-left"></i>
+                              </button>
+                            }
+                          </div>
+                          <div class="per-viz-control">
+                            <input
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.05"
+                              [value]="getVisualizationSensitivity(option.value)"
+                              (input)="onVisualizationSensitivityChange(option.value, $event)"
+                            />
+                            <span class="slider-value" [class.custom]="hasPerVizSensitivity(option.value)">
+                              {{ formatVisualizationSensitivity(option.value) }}
+                            </span>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
               </div>
             }
           }
