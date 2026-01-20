@@ -30,13 +30,16 @@ export class WaveformVisualization extends Canvas2DVisualization {
   private readonly FADE_RATE: number = 0.03; // Very slow fade for LCD ghosting effect
   private readonly LINE_WIDTH: number = 2;
   private readonly GLOW_BLUR: number = 15;
-  private readonly dataArray: Uint8Array<ArrayBuffer>;
+  private dataArray: Uint8Array<ArrayBuffer>;
 
   public constructor(config: VisualizationConfig) {
     super(config);
-    this.analyser.fftSize = 2048; // Higher resolution for smoother waveform
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.sensitivity = 0.4;
+  }
+
+  protected override onFftSizeChanged(): void {
+    this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
 
   protected override onResize(): void {

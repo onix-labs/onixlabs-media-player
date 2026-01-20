@@ -39,7 +39,7 @@ export class SpectreVisualization extends Canvas2DVisualization {
   private readonly FREQUENCY_RANGE: number = 0.75;
 
   /** Array for frequency data */
-  private readonly dataArray: Uint8Array<ArrayBuffer>;
+  private dataArray: Uint8Array<ArrayBuffer>;
 
   /** Cached gradient for upward bars */
   private gradientUp: CanvasGradient | null = null;
@@ -57,6 +57,10 @@ export class SpectreVisualization extends Canvas2DVisualization {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.sensitivity = 0.5;
+  }
+
+  protected override onFftSizeChanged(): void {
+    this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
 
   /**

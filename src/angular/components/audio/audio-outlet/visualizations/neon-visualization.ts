@@ -32,14 +32,17 @@ export class NeonVisualization extends Canvas2DVisualization {
   private readonly ROTATION_SPEED: number = 0.008;
   private readonly LINE_WIDTH: number = 2;
   private readonly GLOW_BLUR: number = 12;
-  private readonly dataArray: Uint8Array<ArrayBuffer>;
+  private dataArray: Uint8Array<ArrayBuffer>;
   private rotationAngle: number = 0;
 
   public constructor(config: VisualizationConfig) {
     super(config);
-    this.analyser.fftSize = 2048;
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.sensitivity = 0.5;
+  }
+
+  protected override onFftSizeChanged(): void {
+    this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
 
   protected override onResize(): void {

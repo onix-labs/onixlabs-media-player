@@ -13,6 +13,7 @@ This document outlines potential configurable items identified in the codebase t
 - **Server Port** - Configure internal media server port (0 = auto, or 1024-65535). Requires restart.
 - **Controls Auto-Hide** - Configurable delay for fullscreen control bar auto-hide (0=disabled, 1-30s)
 - **Previous Track Threshold** - Time before "previous" restarts vs goes to previous track (0-10s, default 3s)
+- **FFT Size** - Audio analysis resolution (256, 512, 1024, 2048, 4096). Higher values = more detail but more CPU usage
 
 ## Server Settings
 
@@ -166,7 +167,7 @@ This document outlines potential configurable items identified in the codebase t
 4. ~~Previous track threshold~~ ✓ DONE
 
 ### Low Priority
-1. FFT size options (affects performance)
+1. ~~FFT size options~~ ✓ DONE
 2. Bar/ring counts (affects performance)
 3. Line width/glow adjustments
 4. Full theme support

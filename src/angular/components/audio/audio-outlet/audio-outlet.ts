@@ -302,6 +302,15 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.visualization.setHueShift(hueShift);
       }
     });
+
+    // React to FFT size setting changes
+    effect((): void => {
+      const fftSize: number = this.settings.fftSize();
+
+      if (this.visualization) {
+        this.visualization.setFftSize(fftSize);
+      }
+    });
   }
 
   // ============================================================================
@@ -565,6 +574,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.visualization.setSensitivity(this.settings.getEffectiveSensitivity(type));
       this.visualization.setTrailIntensity(this.settings.trailIntensity());
       this.visualization.setHueShift(this.settings.hueShift());
+      this.visualization.setFftSize(this.settings.fftSize());
 
       const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
@@ -590,6 +600,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualization.setSensitivity(this.settings.getEffectiveSensitivity(this.visualizationType()));
     this.visualization.setTrailIntensity(this.settings.trailIntensity());
     this.visualization.setHueShift(this.settings.hueShift());
+    this.visualization.setFftSize(this.settings.fftSize());
 
     const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));

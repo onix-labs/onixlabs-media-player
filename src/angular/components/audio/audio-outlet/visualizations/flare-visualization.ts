@@ -31,13 +31,16 @@ export class FlareVisualization extends Canvas2DVisualization {
   private readonly ZOOM_SCALE: number = 1.02; // Scale factor per frame for tunnel effect
   private readonly LINE_WIDTH: number = 2;
   private readonly GLOW_BLUR: number = 12;
-  private readonly dataArray: Uint8Array<ArrayBuffer>;
+  private dataArray: Uint8Array<ArrayBuffer>;
 
   public constructor(config: VisualizationConfig) {
     super(config);
-    this.analyser.fftSize = 2048;
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.sensitivity = 0.5;
+  }
+
+  protected override onFftSizeChanged(): void {
+    this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
 
   protected override onResize(): void {

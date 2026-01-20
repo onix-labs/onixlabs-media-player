@@ -39,7 +39,7 @@ export class FluxVisualization extends Canvas2DVisualization {
   private hue1: number = 240;  // Start at blue
   private hue2: number = 120;  // Start at green (180 degrees apart)
 
-  private readonly dataArray: Uint8Array<ArrayBuffer>;
+  private dataArray: Uint8Array<ArrayBuffer>;
 
   /** Trail canvases for each circle */
   private leftTrailCanvas: HTMLCanvasElement | null = null;
@@ -66,7 +66,6 @@ export class FluxVisualization extends Canvas2DVisualization {
 
   public constructor(config: VisualizationConfig) {
     super(config);
-    this.analyser.fftSize = 512;
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.sensitivity = 1;
 
@@ -77,6 +76,10 @@ export class FluxVisualization extends Canvas2DVisualization {
       this.leftPoints.push({x: 0, y: 0});
       this.rightPoints.push({x: 0, y: 0});
     }
+  }
+
+  protected override onFftSizeChanged(): void {
+    this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
 
   protected override onResize(): void {

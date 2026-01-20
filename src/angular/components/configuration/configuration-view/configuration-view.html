@@ -157,6 +157,26 @@
 
                 <div class="setting-row">
                   <div class="setting-label">
+                    <label for="fft-size">FFT Size</label>
+                    <p class="setting-description">
+                      Audio analysis resolution. Higher values provide more detail but use more CPU.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="fft-size"
+                      [value]="currentFftSize()"
+                      (change)="onFftSizeChange($event)"
+                    >
+                      @for (option of fftSizeOptions; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
                     <label for="trail-intensity">Trail Intensity</label>
                     <p class="setting-description">
                       Controls how long visual trails persist. Lower values fade faster, higher values create longer trails.

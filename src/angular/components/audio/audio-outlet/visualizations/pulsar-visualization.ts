@@ -53,7 +53,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
   ];
 
   // Audio data buffer
-  private readonly dataArray: Uint8Array<ArrayBuffer>;
+  private dataArray: Uint8Array<ArrayBuffer>;
 
   // Trail canvas (reused, not recreated each frame) - THIS IS THE KEY OPTIMIZATION
   private trailCanvas: HTMLCanvasElement | null = null;
@@ -86,8 +86,6 @@ export class PulsarVisualization extends Canvas2DVisualization {
 
   public constructor(config: VisualizationConfig) {
     super(config);
-    // Balanced FFT size (was 2048, using 1024 for good detail with better performance)
-    this.analyser.fftSize = 1024;
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
 
     // Pre-allocate point arrays
@@ -104,6 +102,10 @@ export class PulsarVisualization extends Canvas2DVisualization {
     }
 
     this.sensitivity = 0.35;
+  }
+
+  protected override onFftSizeChanged(): void {
+    this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
 
   // Cache gradient colors - only recalculate when hue changes by >= 1 degree
