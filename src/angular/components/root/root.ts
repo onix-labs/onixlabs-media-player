@@ -23,7 +23,7 @@
  * @module app/components/root
  */
 
-import {Component, inject, computed, HostBinding, OnDestroy, HostListener, signal, effect} from '@angular/core';
+import {Component, inject, computed, HostBinding, OnDestroy, HostListener, signal, effect, untracked} from '@angular/core';
 import {LayoutHeader} from '../layout/layout-header/layout-header';
 import {LayoutOutlet} from '../layout/layout-outlet/layout-outlet';
 import {LayoutControls} from '../layout/layout-controls/layout-controls';
@@ -146,7 +146,7 @@ export class Root implements OnDestroy {
     effect((): void => {
       const trigger: number = this.electron.menuShowConfig();
       if (trigger > 0) {
-        this.enterConfigurationMode();
+        void this.enterConfigurationMode();
       }
     });
 
@@ -301,9 +301,21 @@ export class Root implements OnDestroy {
 
   /**
    * Enters configuration mode, displaying the settings view.
-   * Called when the settings button in the header is clicked.
+   * Called when the settings button in the header is clicked or via menu.
+   * Exits fullscreen/miniplayer mode first to ensure proper window display.
+   *
+   * Uses untracked() to prevent signal reads from registering as effect
+   * dependencies when called from an effect (e.g., menu event handler).
    */
-  public enterConfigurationMode(): void {
+  public async enterConfigurationMode(): Promise<void> {
+    // Exit fullscreen if active (untracked to avoid effect dependency)
+    if (untracked((): boolean => this.isFullscreen())) {
+      await this.electron.exitFullscreen();
+    }
+    // Exit miniplayer if active (untracked to avoid effect dependency)
+    if (untracked((): boolean => this.isMiniplayer())) {
+      await this.electron.exitMiniplayer();
+    }
     this.isConfigurationMode.set(true);
   }
 
