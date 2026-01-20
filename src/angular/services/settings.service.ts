@@ -58,6 +58,15 @@ export type VideoQuality = 'low' | 'medium' | 'high';
 export type AudioBitrate = 128 | 192 | 256 | 320;
 
 /**
+ * Video aspect mode options.
+ * - default: Use the video's native aspect ratio
+ * - 4:3: Force 4:3 aspect ratio
+ * - 16:9: Force 16:9 aspect ratio
+ * - fit: Fit to screen (stretch to fill canvas)
+ */
+export type VideoAspectMode = 'default' | '4:3' | '16:9' | 'fit';
+
+/**
  * Visualization settings structure.
  */
 export interface VisualizationSettings {
@@ -105,6 +114,8 @@ export interface PlaybackSettings {
   readonly previousTrackThreshold: number;
   /** Skip duration in seconds (1-60, default 10) */
   readonly skipDuration: number;
+  /** Video aspect mode (default, 4:3, 16:9, fit) */
+  readonly videoAspectMode: VideoAspectMode;
 }
 
 /**
@@ -175,6 +186,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     crossfadeDuration: 100,
     previousTrackThreshold: 3,
     skipDuration: 10,
+    videoAspectMode: 'default',
   },
   transcoding: {
     videoQuality: 'medium',
@@ -199,6 +211,26 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'flux', label: 'Waves : Flux', description: 'Dual orbiting circles with spectrum cycling'},
   {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'waveform', label: 'Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
+];
+
+/**
+ * Display information for a video aspect option.
+ */
+export interface VideoAspectOption {
+  /** The aspect mode value */
+  readonly value: VideoAspectMode;
+  /** Human-readable display label */
+  readonly label: string;
+}
+
+/**
+ * Available video aspect mode options for the settings UI.
+ */
+export const VIDEO_ASPECT_OPTIONS: readonly VideoAspectOption[] = [
+  {value: 'default', label: 'Default'},
+  {value: '4:3', label: '4:3 Forced'},
+  {value: '16:9', label: '16:9 Forced'},
+  {value: 'fit', label: 'Fit to Screen'},
 ];
 
 // ============================================================================
@@ -372,6 +404,11 @@ export class SettingsService implements OnDestroy {
   /** Audio bitrate for transcoding in kbps */
   public readonly audioBitrate: ReturnType<typeof computed<AudioBitrate>> = computed(
     (): AudioBitrate => this.settings().transcoding?.audioBitrate ?? 192
+  );
+
+  /** Video aspect mode for video playback */
+  public readonly videoAspectMode: ReturnType<typeof computed<VideoAspectMode>> = computed(
+    (): VideoAspectMode => this.settings().playback?.videoAspectMode ?? 'default'
   );
 
   // ============================================================================
@@ -639,6 +676,20 @@ export class SettingsService implements OnDestroy {
       return;
     }
     await this.updateSetting('transcoding', 'audioBitrate', bitrate);
+  }
+
+  /**
+   * Sets the video aspect mode for video playback.
+   *
+   * @param mode - Video aspect mode ('default', '4:3', '16:9', or 'fit')
+   */
+  public async setVideoAspectMode(mode: VideoAspectMode): Promise<void> {
+    const validModes: readonly VideoAspectMode[] = ['default', '4:3', '16:9', 'fit'];
+    if (!validModes.includes(mode)) {
+      console.error(`[SettingsService] Invalid video aspect mode: ${mode}`);
+      return;
+    }
+    await this.updateSetting('playback', 'videoAspectMode', mode);
   }
 
   /**

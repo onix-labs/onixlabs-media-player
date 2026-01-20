@@ -68,6 +68,15 @@ export type VideoQuality = 'low' | 'medium' | 'high';
 export type AudioBitrate = 128 | 192 | 256 | 320;
 
 /**
+ * Video aspect mode options.
+ * - default: Use the video's native aspect ratio
+ * - 4:3: Force 4:3 aspect ratio
+ * - 16:9: Force 16:9 aspect ratio
+ * - fit: Fit to screen (stretch to fill canvas)
+ */
+export type VideoAspectMode = 'default' | '4:3' | '16:9' | 'fit';
+
+/**
  * Visualization settings.
  */
 export interface VisualizationSettings {
@@ -115,6 +124,8 @@ export interface PlaybackSettings {
   readonly previousTrackThreshold: number;
   /** Skip duration in seconds (1-60, default 10) - how many seconds to skip forward/backward */
   readonly skipDuration: number;
+  /** Video aspect mode (default, 4:3, 16:9, fit) */
+  readonly videoAspectMode: VideoAspectMode;
 }
 
 /**
@@ -202,6 +213,7 @@ export interface PlaybackSettingsUpdate {
   readonly crossfadeDuration?: number;
   readonly previousTrackThreshold?: number;
   readonly skipDuration?: number;
+  readonly videoAspectMode?: VideoAspectMode;
 }
 
 /**
@@ -231,6 +243,9 @@ const VALID_VIDEO_QUALITIES: readonly VideoQuality[] = ['low', 'medium', 'high']
 /** Valid audio bitrate values */
 const VALID_AUDIO_BITRATES: readonly AudioBitrate[] = [128, 192, 256, 320];
 
+/** Valid video aspect mode values */
+const VALID_VIDEO_ASPECT_MODES: readonly VideoAspectMode[] = ['default', '4:3', '16:9', 'fit'];
+
 /** Default settings used when no file exists or on parse error */
 const DEFAULT_SETTINGS: AppSettings = {
   version: SETTINGS_VERSION,
@@ -255,6 +270,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     crossfadeDuration: 100,  // 100ms crossfade
     previousTrackThreshold: 3,  // 3 seconds default
     skipDuration: 10,  // 10 seconds default skip
+    videoAspectMode: 'default',  // use video's native aspect ratio
   },
   transcoding: {
     videoQuality: 'medium',  // medium = CRF 23
@@ -524,6 +540,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate videoAspectMode if provided
+    if (update.videoAspectMode !== undefined) {
+      if (!this.isValidVideoAspectMode(update.videoAspectMode)) {
+        console.warn(`[SettingsManager] Invalid video aspect mode: ${update.videoAspectMode}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -533,6 +557,7 @@ export class SettingsManager {
         crossfadeDuration: update.crossfadeDuration ?? this.settings.playback.crossfadeDuration,
         previousTrackThreshold: update.previousTrackThreshold ?? this.settings.playback.previousTrackThreshold,
         skipDuration: update.skipDuration ?? this.settings.playback.skipDuration,
+        videoAspectMode: update.videoAspectMode ?? this.settings.playback.videoAspectMode,
       },
     };
 
@@ -870,6 +895,7 @@ export class SettingsManager {
     const crossfadeDuration: unknown = playbackObj['crossfadeDuration'];
     const previousTrackThreshold: unknown = playbackObj['previousTrackThreshold'];
     const skipDuration: unknown = playbackObj['skipDuration'];
+    const videoAspectMode: unknown = playbackObj['videoAspectMode'];
 
     return {
       defaultVolume: this.isValidVolume(defaultVolume)
@@ -884,6 +910,9 @@ export class SettingsManager {
       skipDuration: this.isValidSkipDuration(skipDuration)
         ? skipDuration
         : DEFAULT_SETTINGS.playback.skipDuration,
+      videoAspectMode: this.isValidVideoAspectMode(videoAspectMode)
+        ? videoAspectMode
+        : DEFAULT_SETTINGS.playback.videoAspectMode,
     };
   }
 
@@ -1148,5 +1177,17 @@ export class SettingsManager {
    */
   private isValidAudioBitrate(value: unknown): value is AudioBitrate {
     return typeof value === 'number' && VALID_AUDIO_BITRATES.includes(value as AudioBitrate);
+  }
+
+  /**
+   * Type guard to check if a value is a valid video aspect mode.
+   *
+   * Valid values are 'default', '4:3', '16:9', or 'fit'.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid video aspect mode
+   */
+  private isValidVideoAspectMode(value: unknown): value is VideoAspectMode {
+    return typeof value === 'string' && VALID_VIDEO_ASPECT_MODES.includes(value as VideoAspectMode);
   }
 }

@@ -422,6 +422,25 @@
                     <span class="slider-value">{{ formatSkipDuration() }}</span>
                   </div>
                 </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="video-aspect-mode">Video Aspect Ratio</label>
+                    <p class="setting-description">
+                      Controls how videos are displayed. Default uses the video's native aspect ratio.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="video-aspect-mode"
+                      (change)="onVideoAspectModeChange($event)"
+                    >
+                      @for (option of videoAspectOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentVideoAspectMode()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
               </div>
             }
 

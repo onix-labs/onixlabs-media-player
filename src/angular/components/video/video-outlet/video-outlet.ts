@@ -19,10 +19,11 @@
  * @module app/components/video/video-outlet
  */
 
-import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, ChangeDetectionStrategy} from '@angular/core';
+import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, output, ChangeDetectionStrategy} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
+import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS} from '../../../services/settings.service';
 import type {PlaylistItem} from '../../../services/electron.service';
 
 /**
@@ -82,6 +83,16 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** File drop service for drag-and-drop handling */
   private readonly fileDrop: FileDropService = inject(FileDropService);
 
+  /** Settings service for video aspect mode */
+  private readonly settings: SettingsService = inject(SettingsService);
+
+  // ============================================================================
+  // Outputs
+  // ============================================================================
+
+  /** Emits the current aspect mode display name when it changes */
+  public readonly aspectModeChange = output<string>();
+
   // ============================================================================
   // Reactive State
   // ============================================================================
@@ -91,6 +102,18 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /** Whether files are being dragged over this component */
   public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /** Current video aspect mode */
+  public readonly aspectMode: ReturnType<typeof computed<VideoAspectMode>> = computed(
+    (): VideoAspectMode => this.settings.videoAspectMode()
+  );
+
+  /** Display name for the current aspect mode */
+  public readonly aspectModeName: ReturnType<typeof computed<string>> = computed((): string => {
+    const mode: VideoAspectMode = this.aspectMode();
+    const option = VIDEO_ASPECT_OPTIONS.find(opt => opt.value === mode);
+    return option?.label ?? 'Default';
+  });
 
   // ============================================================================
   // Internal State
@@ -213,6 +236,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
         video.muted = muted;
       }
     });
+
+    // React to aspect mode changes and emit display name
+    effect((): void => {
+      const name: string = this.aspectModeName();
+      this.aspectModeChange.emit(name);
+    });
   }
 
   // ============================================================================
@@ -289,6 +318,37 @@ export class VideoOutlet implements OnInit, OnDestroy {
       this.clickTimer = null;
     }
     void this.electron.toggleFullscreen();
+  }
+
+  /**
+   * Cycles to the next aspect mode.
+   * Order: default -> 4:3 -> 16:9 -> fit -> default
+   */
+  public nextAspectMode(): void {
+    const modes: readonly VideoAspectMode[] = VIDEO_ASPECT_OPTIONS.map(o => o.value);
+    const currentIndex: number = modes.indexOf(this.aspectMode());
+    const nextIndex: number = (currentIndex + 1) % modes.length;
+    void this.settings.setVideoAspectMode(modes[nextIndex]);
+  }
+
+  /**
+   * Cycles to the previous aspect mode.
+   * Order: default -> fit -> 16:9 -> 4:3 -> default
+   */
+  public previousAspectMode(): void {
+    const modes: readonly VideoAspectMode[] = VIDEO_ASPECT_OPTIONS.map(o => o.value);
+    const currentIndex: number = modes.indexOf(this.aspectMode());
+    const previousIndex: number = (currentIndex - 1 + modes.length) % modes.length;
+    void this.settings.setVideoAspectMode(modes[previousIndex]);
+  }
+
+  /**
+   * Sets a specific aspect mode.
+   *
+   * @param mode - The aspect mode to set
+   */
+  public setAspectMode(mode: VideoAspectMode): void {
+    void this.settings.setVideoAspectMode(mode);
   }
 
   /**
