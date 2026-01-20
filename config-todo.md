@@ -7,6 +7,7 @@ This document outlines potential configurable items identified in the codebase t
 - **Default Visualization** - User can set their preferred visualization via settings
 - **Global Sensitivity** - Master sensitivity slider affecting all visualizations
 - **Per-Visualization Sensitivity** - Individual sensitivity overrides for each visualization type
+- **Max Frame Rate** - Limit visualization FPS (uncapped, 60, 30, or 15) to reduce CPU/GPU usage
 - **Server Port** - Configure internal media server port (0 = auto, or 1024-65535). Requires restart.
 - **Controls Auto-Hide** - Configurable delay for fullscreen control bar auto-hide (0=disabled, 1-30s)
 - **Previous Track Threshold** - Time before "previous" restarts vs goes to previous track (0-10s, default 3s)
@@ -37,8 +38,8 @@ This document outlines potential configurable items identified in the codebase t
 
 | Setting | Current Value | Location | Notes |
 |---------|---------------|----------|-------|
-| Animation Frame Rate | Browser default | All visualizations | Could cap FPS for performance |
-| Global Sensitivity Multiplier | N/A | Not implemented | Master sensitivity control |
+| ~~Animation Frame Rate~~ | ✓ Configurable | Settings | User can cap FPS (uncapped, 60, 30, 15) |
+| ~~Global Sensitivity Multiplier~~ | ✓ Configurable | Settings | Master sensitivity control |
 
 ## Per-Visualization Parameters
 
@@ -158,7 +159,7 @@ This document outlines potential configurable items identified in the codebase t
 
 ### Medium Priority
 1. Visualization color customization
-2. Animation frame rate cap
+2. ~~Animation frame rate cap~~ ✓ DONE
 3. Trail/fade rate adjustments
 4. ~~Previous track threshold~~ ✓ DONE
 
