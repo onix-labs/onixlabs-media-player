@@ -30,7 +30,7 @@ import {ElectronService} from './electron.service';
  * - water: Water ripple effect with rotating waveforms (ambience category)
  * - flux: Dual orbiting circles with spectrum cycling
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux';
+export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux' | 'onix';
 
 /**
  * Per-visualization sensitivity overrides.
@@ -193,6 +193,8 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   // Science category
   {value: 'pulsar', label: 'Science : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
   {value: 'water', label: 'Science : Record', description: 'Spinning vinyl record effect'},
+  // Team category
+  {value: 'onix', label: 'Team : Onix', description: 'ONIXLabs logo with pulsating rings'},
   // Waves category
   {value: 'tunnel', label: 'Waves : Flare', description: 'Dual blue/red waveforms with tunnel zoom'},
   {value: 'flux', label: 'Waves : Flux', description: 'Dual orbiting circles with spectrum cycling'},

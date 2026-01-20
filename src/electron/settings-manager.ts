@@ -34,7 +34,7 @@ import * as path from 'path';
  * - water: WaterVisualization (water ripple effect, ambience category)
  * - flux: FluxVisualization (dual orbiting circles with spectrum cycling)
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux';
+export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux' | 'onix';
 
 /**
  * Per-visualization sensitivity overrides.
@@ -276,6 +276,7 @@ const VALID_VISUALIZATION_TYPES: readonly VisualizationType[] = [
   'pulsar',
   'water',
   'flux',
+  'onix',
 ];
 
 // ============================================================================

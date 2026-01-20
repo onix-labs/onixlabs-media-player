@@ -30,6 +30,7 @@ export {NeonVisualization} from './neon-visualization';
 export {PulsarVisualization} from './pulsar-visualization';
 export {WaterVisualization} from './water-visualization';
 export {FluxVisualization} from './flux-visualization';
+export {OnixVisualization} from './onix-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
@@ -40,12 +41,13 @@ import {NeonVisualization} from './neon-visualization';
 import {PulsarVisualization} from './pulsar-visualization';
 import {WaterVisualization} from './water-visualization';
 import {FluxVisualization} from './flux-visualization';
+import {OnixVisualization} from './onix-visualization';
 
 /**
  * String literal type for available visualization modes.
  * Used to ensure type safety when switching visualizations.
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux';
+export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux' | 'onix';
 
 /**
  * Map of visualization types to their constructor classes.
@@ -60,6 +62,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<VisualizationType, new (config: Visuali
   pulsar: PulsarVisualization,
   water: WaterVisualization,
   flux: FluxVisualization,
+  onix: OnixVisualization,
 };
 
 /**
@@ -96,6 +99,7 @@ export function createVisualization(type: VisualizationType, config: Visualizati
  * Categories (in order):
  * - Bars: bars, tether
  * - Science: pulsar, water
+ * - Team: onix
  * - Waves: flare, flux, neon, waveform
  */
 export const VISUALIZATION_TYPES: VisualizationType[] = [
@@ -103,6 +107,8 @@ export const VISUALIZATION_TYPES: VisualizationType[] = [
   'bars', 'tether',
   // Science
   'pulsar', 'water',
+  // Team
+  'onix',
   // Waves
   'tunnel', 'flux', 'neon', 'waveform',
 ];
