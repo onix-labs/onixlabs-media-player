@@ -247,28 +247,34 @@ export class FluxVisualization extends Canvas2DVisualization {
     color: string,
     glowColor: string
   ): void {
+    // Use the base class helper with the pre-calculated points
+    // Note: We need to use the passed ctx, not this.ctx, since this draws to trail canvases
     const numPoints: number = this.CIRCLE_POINTS;
 
-    // Build path helper
     const buildPath: () => void = (): void => {
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
       for (let i: number = 1; i <= numPoints; i++) {
         ctx.lineTo(points[i].x, points[i].y);
       }
-      ctx.closePath();
     };
+
+    // Reduce glow color opacity for the stroke
+    const glowStrokeColor: string = glowColor.replace(/[\d.]+\)$/, (match: string): string => {
+      const opacity: number = parseFloat(match) * 0.375;
+      return opacity.toFixed(2) + ')';
+    });
 
     // Glow layer
     ctx.save();
     ctx.shadowBlur = this.getScaledGlowBlur(this.BASE_GLOW_BLUR);
     ctx.shadowColor = glowColor;
-    ctx.strokeStyle = glowColor.replace('0.8', '0.3');
+    ctx.strokeStyle = glowStrokeColor;
     ctx.lineWidth = this.lineWidth + 4;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
     buildPath();
+    ctx.closePath();
     ctx.stroke();
     ctx.restore();
 
@@ -277,15 +283,15 @@ export class FluxVisualization extends Canvas2DVisualization {
     ctx.lineWidth = this.lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
     buildPath();
+    ctx.closePath();
     ctx.stroke();
 
     // Highlight
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.lineWidth = 1;
-
     buildPath();
+    ctx.closePath();
     ctx.stroke();
   }
 

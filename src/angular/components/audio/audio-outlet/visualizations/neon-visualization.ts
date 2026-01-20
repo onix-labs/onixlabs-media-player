@@ -133,76 +133,26 @@ export class NeonVisualization extends Canvas2DVisualization {
     const width: number = this.width;
     const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
     const sliceWidth: number = width / dataArray.length;
+    const sensitivityFactor: number = this.sensitivity * 2;
+    const startX: number = -width / 2;
 
-    // Glow layer
-    ctx.save();
-    ctx.shadowBlur = this.getScaledGlowBlur(this.BASE_GLOW_BLUR);
-    ctx.shadowColor = glowColor;
-    ctx.strokeStyle = glowColor.replace('0.8', '0.3');
-    ctx.lineWidth = this.lineWidth + 4;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    let x: number = -width / 2;
-
-    for (let i: number = 0; i < dataArray.length; i++) {
-      const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
-      const y: number = centerY + sample * amplitude;
-
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
+    const buildPath: () => void = (): void => {
+      ctx.beginPath();
+      let x: number = startX;
+      for (let i: number = 0; i < dataArray.length; i++) {
+        const sample: number = ((dataArray[i] - 128) / 128) * sensitivityFactor;
+        const y: number = centerY + sample * amplitude;
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+        x += sliceWidth;
       }
-      x += sliceWidth;
-    }
+    };
 
-    ctx.stroke();
-    ctx.restore();
-
-    // Main line
-    ctx.strokeStyle = color;
-    ctx.lineWidth = this.lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    x = -width / 2;
-
-    for (let i: number = 0; i < dataArray.length; i++) {
-      const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
-      const y: number = centerY + sample * amplitude;
-
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-      x += sliceWidth;
-    }
-
-    ctx.stroke();
-
-    // Highlight
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.lineWidth = 1;
-
-    ctx.beginPath();
-    x = -width / 2;
-
-    for (let i: number = 0; i < dataArray.length; i++) {
-      const sample: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
-      const y: number = centerY + sample * amplitude;
-
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-      x += sliceWidth;
-    }
-
-    ctx.stroke();
+    this.drawPathWithLayers(buildPath, color, glowColor, 'rgba(255, 255, 255, 0.4)', {
+      baseGlowBlur: this.BASE_GLOW_BLUR
+    });
   }
 }

@@ -296,6 +296,7 @@ AudioContext.destination (speakers)
     - FFT size via `setFftSize()`, `getFftSize()`, `onFftSizeChanged()`
     - Bar density via `setBarDensity()`, `getBarDensity()`, `onBarDensityChanged()`
     - Color conversion utilities: `hslToRgb()`, `rgbToHsl()`
+    - Three-layer drawing helpers: `drawPathWithLayers()`, `drawPointsWithLayers()` (glow, main, highlight)
   - `analyzer-visualization.ts` - Analyzer (category: Bars) - configurable frequency bars (48/96/144) with green-yellow-red gradient
   - `spectre-visualization.ts` - Spectre (category: Bars) - configurable frequency bars (96/192/288) with vertical mirroring (above/below center)
     - Dark center gradient fading to bright green at extremes, smoke trail effect
@@ -355,7 +356,13 @@ AudioContext.destination (speakers)
 ### Server-Sent Events
 | Endpoint | Events |
 |----------|--------|
-| GET `/events` | `playback:state`, `playback:time`, `playback:loaded`, `playback:ended`, `playback:volume`, `playlist:updated`, `playlist:selection`, `playlist:mode`, `settings:updated`, `heartbeat` |
+| GET `/events` | `playback:state`, `playback:time`, `playback:loaded`, `playback:ended`, `playback:volume`, `playlist:updated`, `playlist:items:added`, `playlist:items:removed`, `playlist:cleared`, `playlist:selection`, `playlist:mode`, `settings:updated`, `heartbeat` |
+
+**Delta Events (efficient playlist updates):**
+- `playlist:items:added` - Only sends added items with `{ items, startIndex, currentIndex }`
+- `playlist:items:removed` - Only sends removed item ID with `{ id, removedIndex, currentIndex }`
+- `playlist:cleared` - Simple notification with empty payload
+- `playlist:updated` - Full state sent only on initial SSE connection for sync
 
 ## FFmpeg Commands
 
@@ -418,6 +425,9 @@ npm run package      # Package with electron-builder
 10. **Validated SSE parsing** - Safe JSON parsing with fallback values for robustness
 11. **Shared services** - FileDropService centralizes drag-and-drop logic across components
 12. **Optimized visualizations** - Color caching and pre-calculated values reduce per-frame overhead
+13. **DRY visualization rendering** - Base class `drawPathWithLayers()` and `drawPointsWithLayers()` methods eliminate 450+ lines of duplicated three-layer drawing code
+14. **Clean settings HTTP pattern** - Generic `updateSetting<T>()` helper reduces 400+ lines of repetitive fetch code to single-line calls
+15. **Efficient playlist sync** - Delta SSE events (`playlist:items:added`, `playlist:items:removed`, `playlist:cleared`) reduce bandwidth for large playlists
 
 ## Code Documentation
 
@@ -437,7 +447,7 @@ The entire TypeScript codebase is documented with comprehensive TSDoc comments f
 **Services:**
 - `electron.service.ts` - HTTP/SSE bridge with reactive signals
 - `media-player.service.ts` - High-level playback facade
-- `settings.service.ts` - Settings state with SSE sync and HTTP fetch fallback
+- `settings.service.ts` - Settings state with SSE sync, HTTP fetch fallback, and generic `updateSetting<T>()` helper
 
 **Components:**
 - `root.ts` - Application shell, fullscreen/miniplayer handling, control visibility, window dragging, config mode switching

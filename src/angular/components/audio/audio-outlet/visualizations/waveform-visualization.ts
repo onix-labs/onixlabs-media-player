@@ -68,89 +68,36 @@ export class WaveformVisualization extends Canvas2DVisualization {
 
     const centerY: number = height / 2;
     const sliceWidth: number = width / dataArray.length;
+    const amplitudeScale: number = height * 0.4;
+    const sensitivityFactor: number = this.sensitivity * 2;
 
     // Apply hue shift to base green color (0, 255, 100)
     const baseColor: {r: number; g: number; b: number} = this.shiftRgbColor(0, 255, 100);
     const colorMain: string = `rgb(${baseColor.r}, ${baseColor.g}, ${baseColor.b})`;
     const colorGlow: string = `rgba(${baseColor.r}, ${baseColor.g}, ${baseColor.b}, 0.8)`;
-    const colorStroke: string = `rgba(${baseColor.r}, ${baseColor.g}, ${baseColor.b}, 0.3)`;
 
-    // Draw glow layer (larger, blurred line underneath)
-    ctx.save();
-    ctx.shadowBlur = this.getScaledGlowBlur(this.BASE_GLOW_BLUR);
-    ctx.shadowColor = colorGlow;
-    ctx.strokeStyle = colorStroke;
-    ctx.lineWidth = this.lineWidth + 4;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    let x: number = 0;
-
-    for (let i: number = 0; i < dataArray.length; i++) {
-      // Convert byte (0-255) to amplitude (-1 to 1), scaled by sensitivity
-      const amplitude: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
-      const y: number = centerY + amplitude * (height * 0.4);
-
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-
-      x += sliceWidth;
-    }
-
-    ctx.stroke();
-    ctx.restore();
-
-    // Draw main waveform line
-    ctx.strokeStyle = colorMain;
-    ctx.lineWidth = this.lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    x = 0;
-
-    for (let i: number = 0; i < dataArray.length; i++) {
-      const amplitude: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
-      const y: number = centerY + amplitude * (height * 0.4);
-
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-
-      x += sliceWidth;
-    }
-
-    ctx.stroke();
-
-    // Draw highlight line (brighter, thinner)
-    // Use a lighter version of the shifted color
+    // Use a lighter version of the shifted color for highlight
     const highlightColor: {r: number; g: number; b: number} = this.shiftRgbColor(150, 255, 180);
-    ctx.strokeStyle = `rgba(${highlightColor.r}, ${highlightColor.g}, ${highlightColor.b}, 0.6)`;
-    ctx.lineWidth = 1;
+    const colorHighlight: string = `rgba(${highlightColor.r}, ${highlightColor.g}, ${highlightColor.b}, 0.6)`;
 
-    ctx.beginPath();
-    x = 0;
-
-    for (let i: number = 0; i < dataArray.length; i++) {
-      const amplitude: number = ((dataArray[i] - 128) / 128) * (this.sensitivity * 2);
-      const y: number = centerY + amplitude * (height * 0.4);
-
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
+    const buildPath: () => void = (): void => {
+      ctx.beginPath();
+      let x: number = 0;
+      for (let i: number = 0; i < dataArray.length; i++) {
+        const amplitude: number = ((dataArray[i] - 128) / 128) * sensitivityFactor;
+        const y: number = centerY + amplitude * amplitudeScale;
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+        x += sliceWidth;
       }
+    };
 
-      x += sliceWidth;
-    }
-
-    ctx.stroke();
+    this.drawPathWithLayers(buildPath, colorMain, colorGlow, colorHighlight, {
+      baseGlowBlur: this.BASE_GLOW_BLUR
+    });
 
     this.applyFadeOverlay();
   }

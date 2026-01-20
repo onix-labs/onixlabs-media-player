@@ -133,7 +133,10 @@ type SSEEventType =
   | 'playback:loaded'     // New media loaded
   | 'playback:ended'      // Playback reached end of playlist
   | 'playback:volume'     // Volume or mute state changed
-  | 'playlist:updated'    // Playlist items changed
+  | 'playlist:updated'    // Full playlist state (initial sync)
+  | 'playlist:items:added'   // Delta: items added to playlist
+  | 'playlist:items:removed' // Delta: items removed from playlist
+  | 'playlist:cleared'       // Delta: playlist was cleared
   | 'playlist:selection'  // Current track selection changed
   | 'playlist:mode'       // Shuffle or repeat mode changed
   | 'settings:updated'    // Application settings changed
@@ -525,20 +528,33 @@ class PlaylistManager {
       id: this.generateId(),
     }));
 
+    const startIndex: number = this.items.length;
     this.items.push(...itemsWithIds);
 
     if (this.shuffleEnabled) {
       this.regenerateShuffleOrder();
     }
 
+    let selectionChanged: boolean = false;
     if (this.currentIndex === -1 && this.items.length > 0) {
       this.currentIndex = 0;
+      selectionChanged = true;
       if (this.shuffleEnabled) {
         this.shufflePosition = this.shuffleOrder.indexOf(0);
       }
     }
 
-    this.broadcastPlaylistUpdate();
+    // Broadcast delta update instead of full playlist
+    this.sse.broadcast('playlist:items:added', {
+      items: itemsWithIds,
+      startIndex,
+      currentIndex: this.currentIndex,
+    });
+
+    if (selectionChanged) {
+      this.broadcastSelectionChange();
+    }
+
     return itemsWithIds;
   }
 
@@ -558,9 +574,12 @@ class PlaylistManager {
     const currentIdx: number = this.currentIndex;
     this.items = this.items.filter((item: Readonly<PlaylistItem>): boolean => item.id !== id);
 
+    let selectionChanged: boolean = false;
     if (idx < currentIdx) {
       this.currentIndex--;
+      selectionChanged = true;
     } else if (idx === currentIdx) {
+      selectionChanged = true;
       if (this.items.length === 0) {
         this.currentIndex = -1;
       } else if (currentIdx >= this.items.length) {
@@ -572,7 +591,17 @@ class PlaylistManager {
       this.regenerateShuffleOrder();
     }
 
-    this.broadcastPlaylistUpdate();
+    // Broadcast delta update instead of full playlist
+    this.sse.broadcast('playlist:items:removed', {
+      id,
+      removedIndex: idx,
+      currentIndex: this.currentIndex,
+    });
+
+    if (selectionChanged) {
+      this.broadcastSelectionChange();
+    }
+
     return true;
   }
 
@@ -586,7 +615,8 @@ class PlaylistManager {
     this.shuffleOrder = [];
     this.shufflePosition = 0;
     this.playHistory = [];
-    this.broadcastPlaylistUpdate();
+    // Broadcast cleared event instead of full playlist
+    this.sse.broadcast('playlist:cleared', {});
   }
 
   /**

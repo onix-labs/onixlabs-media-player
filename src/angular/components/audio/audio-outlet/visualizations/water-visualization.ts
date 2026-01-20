@@ -406,41 +406,37 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     const points: Array<{x: number; y: number}> = this.centerPoints;
     const len: number = numPoints + 1;
+    const mainColor: string = `rgb(${color.r}, ${color.g}, ${color.b})`;
+    const glowColor: string = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
+    const highlightColor: string = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.3)`;
 
-    // Draw glow layer
+    const buildPath: () => void = (): void => {
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i: number = 1; i < len; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+    };
+
+    // Glow layer (filled)
     ctx.save();
     ctx.shadowBlur = 12;
-    ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
+    ctx.shadowColor = glowColor;
     ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
-
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < len; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
+    buildPath();
     ctx.closePath();
     ctx.fill();
     ctx.restore();
 
-    // Draw main filled circle
-    ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
-
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < len; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
+    // Main filled circle
+    ctx.fillStyle = mainColor;
+    buildPath();
     ctx.closePath();
     ctx.fill();
 
-    // Draw highlight overlay
-    ctx.fillStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.3)`;
-
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < len; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
+    // Highlight overlay
+    ctx.fillStyle = highlightColor;
+    buildPath();
     ctx.closePath();
     ctx.fill();
   }
@@ -452,46 +448,42 @@ export class WaterVisualization extends Canvas2DVisualization {
     color: {r: number; g: number; b: number}
   ): void {
     const points: Array<{x: number; y: number}> = this.allPoints;
+    const mainColor: string = `rgb(${color.r}, ${color.g}, ${color.b})`;
+    const glowColor: string = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
+    const highlightColor: string = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.5)`;
 
-    // Draw glow layer
+    const buildPath: () => void = (): void => {
+      ctx.beginPath();
+      ctx.moveTo(points[startIdx].x, points[startIdx].y);
+      for (let i: number = startIdx + 1; i < endIdx; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+    };
+
+    // Glow layer
     ctx.save();
     ctx.shadowBlur = 12;
-    ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
+    ctx.shadowColor = glowColor;
     ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
     ctx.lineWidth = 5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    ctx.moveTo(points[startIdx].x, points[startIdx].y);
-    for (let i: number = startIdx + 1; i < endIdx; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
+    buildPath();
     ctx.stroke();
     ctx.restore();
 
-    // Draw main waveform
-    ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+    // Main waveform
+    ctx.strokeStyle = mainColor;
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    ctx.moveTo(points[startIdx].x, points[startIdx].y);
-    for (let i: number = startIdx + 1; i < endIdx; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
+    buildPath();
     ctx.stroke();
 
-    // Draw highlight
-    ctx.strokeStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.5)`;
+    // Highlight
+    ctx.strokeStyle = highlightColor;
     ctx.lineWidth = 1;
-
-    ctx.beginPath();
-    ctx.moveTo(points[startIdx].x, points[startIdx].y);
-    for (let i: number = startIdx + 1; i < endIdx; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
+    buildPath();
     ctx.stroke();
   }
 
