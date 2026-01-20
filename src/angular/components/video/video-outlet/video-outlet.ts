@@ -19,7 +19,7 @@
  * @module app/components/video/video-outlet
  */
 
-import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect} from '@angular/core';
+import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, ChangeDetectionStrategy} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import type {PlaylistItem} from '../../../services/electron.service';
@@ -58,7 +58,8 @@ const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.webm', '.ogg']);
   standalone: true,
   imports: [],
   templateUrl: './video-outlet.html',
-  styleUrl: './video-outlet.scss'
+  styleUrl: './video-outlet.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class VideoOutlet implements OnInit, OnDestroy {
   // ============================================================================

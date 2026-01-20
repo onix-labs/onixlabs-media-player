@@ -18,7 +18,7 @@ import {app, BrowserWindow, dialog, ipcMain, net, protocol, screen} from "electr
 import * as path from "path";
 import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.ts';
-import {createApplicationMenu} from './application-menu.ts';
+import {createApplicationMenu, updateMenuState} from './application-menu.ts';
 import type {WindowBounds} from './settings-manager.ts';
 
 // Set app name (shows in dock/menu bar during development)
@@ -152,6 +152,11 @@ class Program {
     // Start the unified media server (HTTP API + SSE)
     this.mediaServer = new UnifiedMediaServer();
     await this.mediaServer.start();
+
+    // Register callback to update menu when shuffle/repeat mode changes
+    this.mediaServer.onModeChange((shuffle: boolean, repeat: boolean): void => {
+      updateMenuState({shuffleEnabled: shuffle, repeatEnabled: repeat});
+    });
 
     this.window = this.createBrowserWindow();
     this.setupIpcHandlers();

@@ -13,7 +13,7 @@
  * @module app/components/playlist
  */
 
-import {Component, inject, signal, computed} from '@angular/core';
+import {Component, inject, signal, computed, ChangeDetectionStrategy} from '@angular/core';
 import {MediaPlayerService} from '../../services/media-player.service';
 import {ElectronService, PlaylistItem} from '../../services/electron.service';
 import {MEDIA_EXTENSIONS} from '../../constants/media.constants';
@@ -52,7 +52,8 @@ import {MEDIA_EXTENSIONS} from '../../constants/media.constants';
   standalone: true,
   imports: [],
   templateUrl: './playlist.html',
-  styleUrl: './playlist.scss'
+  styleUrl: './playlist.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Playlist {
   // ============================================================================

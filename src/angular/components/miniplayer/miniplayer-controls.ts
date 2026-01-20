@@ -10,7 +10,7 @@
  * @module app/components/miniplayer/miniplayer-controls
  */
 
-import {Component, computed, inject} from '@angular/core';
+import {Component, computed, inject, ChangeDetectionStrategy} from '@angular/core';
 import {MediaPlayerService} from '../../services/media-player.service';
 import {ElectronService} from '../../services/electron.service';
 
@@ -31,7 +31,8 @@ import {ElectronService} from '../../services/electron.service';
   standalone: true,
   imports: [],
   templateUrl: './miniplayer-controls.html',
-  styleUrl: './miniplayer-controls.scss'
+  styleUrl: './miniplayer-controls.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MiniplayerControls {
   /** Media player service for playback control */

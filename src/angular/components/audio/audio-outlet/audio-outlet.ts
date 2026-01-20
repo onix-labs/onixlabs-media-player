@@ -26,7 +26,7 @@
  * @module app/components/audio/audio-outlet
  */
 
-import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, HostBinding} from '@angular/core';
+import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, HostBinding, ChangeDetectionStrategy} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {SettingsService} from '../../../services/settings.service';
@@ -59,7 +59,8 @@ import {MEDIA_EXTENSIONS} from '../../../constants/media.constants';
   standalone: true,
   imports: [],
   templateUrl: './audio-outlet.html',
-  styleUrl: './audio-outlet.scss'
+  styleUrl: './audio-outlet.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AudioOutlet implements OnInit, OnDestroy {
   // ============================================================================

@@ -22,7 +22,7 @@
  * @module app/components/layout/layout-controls
  */
 
-import {Component, inject, computed} from '@angular/core';
+import {Component, inject, computed, ChangeDetectionStrategy} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import type {PlaylistItem} from '../../../types/electron';
@@ -52,6 +52,7 @@ import type {PlaylistItem} from '../../../types/electron';
   imports: [],
   templateUrl: './layout-controls.html',
   styleUrl: './layout-controls.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LayoutControls {
   /** Media player service for all playback operations */
