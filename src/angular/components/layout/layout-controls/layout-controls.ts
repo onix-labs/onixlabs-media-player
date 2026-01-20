@@ -22,7 +22,7 @@
  * @module app/components/layout/layout-controls
  */
 
-import {Component, inject, computed, ChangeDetectionStrategy} from '@angular/core';
+import {Component, inject, computed, signal, HostListener, ChangeDetectionStrategy} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import type {PlaylistItem} from '../../../types/electron';
@@ -128,6 +128,49 @@ export class LayoutControls {
   /** Whether the application is currently in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isFullscreen());
 
+  /** Whether the Shift key is currently pressed */
+  private readonly isShiftPressed: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /** Icon class for the backward button (changes with Shift key when enabled) */
+  public readonly backwardIcon: ReturnType<typeof computed<string>> = computed((): string => {
+    if (this.hasTrack() && this.isShiftPressed()) {
+      return 'fa-solid fa-backward';
+    }
+    return 'fa-solid fa-backward-step';
+  });
+
+  /** Icon class for the forward button (changes with Shift key when enabled) */
+  public readonly forwardIcon: ReturnType<typeof computed<string>> = computed((): string => {
+    if (this.hasTrack() && this.isShiftPressed()) {
+      return 'fa-solid fa-forward';
+    }
+    return 'fa-solid fa-forward-step';
+  });
+
+  // ============================================================================
+  // Keyboard Event Listeners
+  // ============================================================================
+
+  /**
+   * Tracks Shift key press state for button icon changes.
+   */
+  @HostListener('document:keydown', ['$event'])
+  public onKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Shift') {
+      this.isShiftPressed.set(true);
+    }
+  }
+
+  /**
+   * Tracks Shift key release state for button icon changes.
+   */
+  @HostListener('document:keyup', ['$event'])
+  public onKeyUp(event: KeyboardEvent): void {
+    if (event.key === 'Shift') {
+      this.isShiftPressed.set(false);
+    }
+  }
+
   // ============================================================================
   // Event Handlers - File Operations
   // ============================================================================
@@ -165,10 +208,18 @@ export class LayoutControls {
   // ============================================================================
 
   /**
-   * Goes to previous track, or restarts current track if >3 seconds in.
+   * Goes to previous track, or skips backward if Shift is pressed.
+   * Without Shift: previous track (or restart if past threshold)
+   * With Shift: skip backward by configured duration
+   *
+   * @param event - Mouse event to check for Shift modifier
    */
-  public async onBackward(): Promise<void> {
-    await this.mediaPlayer.previous();
+  public async onBackward(event: MouseEvent): Promise<void> {
+    if (event.shiftKey) {
+      await this.mediaPlayer.skipBackward();
+    } else {
+      await this.mediaPlayer.previous();
+    }
   }
 
   /**
@@ -179,10 +230,18 @@ export class LayoutControls {
   }
 
   /**
-   * Advances to the next track in the playlist.
+   * Advances to next track, or skips forward if Shift is pressed.
+   * Without Shift: next track
+   * With Shift: skip forward by configured duration
+   *
+   * @param event - Mouse event to check for Shift modifier
    */
-  public async onForward(): Promise<void> {
-    await this.mediaPlayer.next();
+  public async onForward(event: MouseEvent): Promise<void> {
+    if (event.shiftKey) {
+      await this.mediaPlayer.skipForward();
+    } else {
+      await this.mediaPlayer.next();
+    }
   }
 
   // ============================================================================

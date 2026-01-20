@@ -12,22 +12,22 @@
       <button (click)="onEject()" title="Open files">
         <i class="fa-solid fa-eject"></i>
       </button>
-      <button (click)="onShuffle()" [class.active]="isShuffleEnabled()" title="Shuffle">
+      <button (click)="onShuffle()" [disabled]="!hasTrack()" [class.active]="isShuffleEnabled()" title="Shuffle">
         <i class="fa-solid fa-shuffle"></i>
       </button>
-      <button (click)="onRepeat()" [class.active]="isRepeatEnabled()" title="Repeat">
+      <button (click)="onRepeat()" [disabled]="!hasTrack()" [class.active]="isRepeatEnabled()" title="Repeat">
         <i class="fa-solid fa-repeat"></i>
       </button>
     </div>
     <div class="button-group center">
-      <button (click)="onBackward()" [disabled]="!hasTrack() || !canSkipBackward()" title="Previous">
-        <i class="fa-solid fa-backward-step"></i>
+      <button (click)="onBackward($event)" [disabled]="!hasTrack()" title="Previous (Shift: skip back)">
+        <i [class]="backwardIcon()"></i>
       </button>
       <button (click)="onPlayPause()" [disabled]="!hasTrack()" title="Play/Pause">
         <i [class]="isPlaying() ? 'fa-solid fa-pause' : 'fa-solid fa-play'"></i>
       </button>
-      <button (click)="onForward()" [disabled]="!hasTrack() || !canSkipForward()" title="Next">
-        <i class="fa-solid fa-forward-step"></i>
+      <button (click)="onForward($event)" [disabled]="!hasTrack()" title="Next (Shift: skip forward)">
+        <i [class]="forwardIcon()"></i>
       </button>
     </div>
     <div class="button-group right">
@@ -50,10 +50,10 @@
   </div>
   <div class="control-group right">
     <div class="button-group left">
-      <button (click)="onToggleFullscreen()" [title]="isFullscreen() ? 'Exit fullscreen' : 'Enter fullscreen'">
+      <button (click)="onToggleFullscreen()" [disabled]="!hasTrack()" [title]="isFullscreen() ? 'Exit fullscreen' : 'Enter fullscreen'">
         <i [class]="isFullscreen() ? 'fa-solid fa-compress' : 'fa-solid fa-expand'"></i>
       </button>
-      <button (click)="onEnterMiniplayer()" title="Enter miniplayer">
+      <button (click)="onEnterMiniplayer()" [disabled]="!hasTrack()" title="Enter miniplayer">
         <i class="fa-solid fa-down-left-and-up-right-to-center"></i>
       </button>
     </div>

@@ -401,6 +401,27 @@
                     <span class="slider-value">{{ formatPreviousTrackThreshold() }}</span>
                   </div>
                 </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="skip-duration">Skip Duration</label>
+                    <p class="setting-description">
+                      How many seconds to skip forward or backward when using the skip buttons.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="skip-duration"
+                      min="1"
+                      max="60"
+                      step="1"
+                      [value]="currentSkipDuration()"
+                      (input)="onSkipDurationChange($event)"
+                    />
+                    <span class="slider-value">{{ formatSkipDuration() }}</span>
+                  </div>
+                </div>
               </div>
             }
 

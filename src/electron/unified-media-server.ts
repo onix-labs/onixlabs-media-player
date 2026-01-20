@@ -1970,6 +1970,7 @@ export class UnifiedMediaServer {
         this.playback.duration = 0;
         this.stopTimeTracking();
         this.broadcastState();
+        this.broadcastTime();
       } else if (hadOnlyOneItem) {
         // This shouldn't happen (length would be 0), but handle defensively
         this.playback.state = 'idle';
@@ -1978,6 +1979,7 @@ export class UnifiedMediaServer {
         this.playback.duration = 0;
         this.stopTimeTracking();
         this.broadcastState();
+        this.broadcastTime();
       } else {
         // There are more items - play the next one
         // If we removed the last item, currentIndex now points to the new last item
@@ -2021,6 +2023,7 @@ export class UnifiedMediaServer {
           this.playback.duration = 0;
           this.stopTimeTracking();
           this.broadcastState();
+          this.broadcastTime();
         }
       }
     }

@@ -240,6 +240,11 @@ export class ConfigurationView {
     (): number => this.settingsService.previousTrackThreshold()
   );
 
+  /** Current skip duration in seconds */
+  public readonly currentSkipDuration: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.skipDuration()
+  );
+
   // ============================================================================
   // Template Data
   // ============================================================================
@@ -658,5 +663,24 @@ export class ConfigurationView {
   public formatPreviousTrackThreshold(): string {
     const threshold: number = this.currentPreviousTrackThreshold();
     return threshold === 0 ? 'Off' : `${threshold}s`;
+  }
+
+  /**
+   * Handles skip duration slider change.
+   *
+   * @param event - The input event from the range element
+   */
+  public async onSkipDurationChange(event: Event): Promise<void> {
+    const value: number = parseInt(getInputValue(event), 10);
+    if (!isNaN(value)) await this.settingsService.setSkipDuration(value);
+  }
+
+  /**
+   * Formats the skip duration value for display.
+   *
+   * @returns The duration as a human-readable string (e.g., "10s")
+   */
+  public formatSkipDuration(): string {
+    return `${this.currentSkipDuration()}s`;
   }
 }

@@ -127,6 +127,7 @@
     border: none;
     border-left: 0.0625rem solid rgba(255, 255, 255, 0.15);
     border-right: 0.0625rem solid rgba(0, 0, 0, 0.3);
+    outline: none;
     font-size: 1rem;
 
     &:first-of-type {
@@ -156,7 +157,7 @@
         rgba(109, 179, 242, 0.75) 0%,
         rgba(84, 163, 238, 0.75) 50%,
         rgba(54, 144, 240, 0.75) 51%,
-        rgba(30, 105, 222, 0.75) 100%);
+        rgba(30, 105, 222, 0.75) 100%) !important;
     }
 
     &.muted {
@@ -165,7 +166,7 @@
         rgba(248, 80, 50, 0.75) 0%,
         rgba(241, 111, 92, 0.75) 50%,
         rgba(246, 41, 12, 0.75) 51%,
-        rgba(185, 30, 14, 0.75) 100%);
+        rgba(185, 30, 14, 0.75) 100%) !important;
     }
 
     &:disabled {

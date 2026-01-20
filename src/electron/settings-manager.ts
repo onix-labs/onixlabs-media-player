@@ -114,6 +114,8 @@ export interface PlaybackSettings {
   readonly crossfadeDuration: number;
   /** Previous track threshold in seconds (0-10, default 3) - if playback is past this, restart instead of previous */
   readonly previousTrackThreshold: number;
+  /** Skip duration in seconds (1-60, default 10) - how many seconds to skip forward/backward */
+  readonly skipDuration: number;
 }
 
 /**
@@ -200,6 +202,7 @@ export interface PlaybackSettingsUpdate {
   readonly defaultVolume?: number;
   readonly crossfadeDuration?: number;
   readonly previousTrackThreshold?: number;
+  readonly skipDuration?: number;
 }
 
 /**
@@ -252,6 +255,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     defaultVolume: 0.5,  // 50% default volume
     crossfadeDuration: 100,  // 100ms crossfade
     previousTrackThreshold: 3,  // 3 seconds default
+    skipDuration: 10,  // 10 seconds default skip
   },
   transcoding: {
     videoQuality: 'medium',  // medium = CRF 23
@@ -512,6 +516,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate skipDuration if provided
+    if (update.skipDuration !== undefined) {
+      if (!this.isValidSkipDuration(update.skipDuration)) {
+        console.warn(`[SettingsManager] Invalid skip duration: ${update.skipDuration}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -520,6 +532,7 @@ export class SettingsManager {
         defaultVolume: update.defaultVolume ?? this.settings.playback.defaultVolume,
         crossfadeDuration: update.crossfadeDuration ?? this.settings.playback.crossfadeDuration,
         previousTrackThreshold: update.previousTrackThreshold ?? this.settings.playback.previousTrackThreshold,
+        skipDuration: update.skipDuration ?? this.settings.playback.skipDuration,
       },
     };
 
@@ -856,6 +869,7 @@ export class SettingsManager {
     const defaultVolume: unknown = playbackObj['defaultVolume'];
     const crossfadeDuration: unknown = playbackObj['crossfadeDuration'];
     const previousTrackThreshold: unknown = playbackObj['previousTrackThreshold'];
+    const skipDuration: unknown = playbackObj['skipDuration'];
 
     return {
       defaultVolume: this.isValidVolume(defaultVolume)
@@ -867,6 +881,9 @@ export class SettingsManager {
       previousTrackThreshold: this.isValidPreviousTrackThreshold(previousTrackThreshold)
         ? previousTrackThreshold
         : DEFAULT_SETTINGS.playback.previousTrackThreshold,
+      skipDuration: this.isValidSkipDuration(skipDuration)
+        ? skipDuration
+        : DEFAULT_SETTINGS.playback.skipDuration,
     };
   }
 
@@ -980,6 +997,21 @@ export class SettingsManager {
       return false;
     }
     return value >= 0 && value <= 10;
+  }
+
+  /**
+   * Type guard to check if a value is a valid skip duration.
+   *
+   * Valid values are 1-60 seconds.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid skip duration
+   */
+  private isValidSkipDuration(value: unknown): value is number {
+    if (typeof value !== 'number' || !Number.isInteger(value)) {
+      return false;
+    }
+    return value >= 1 && value <= 60;
   }
 
   /**
