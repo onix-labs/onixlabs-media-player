@@ -7,7 +7,7 @@
  * @module electron/application-menu
  */
 
-import {app, Menu, BrowserWindow, shell} from 'electron';
+import {app, Menu} from 'electron';
 import type {MenuItemConstructorOptions} from 'electron';
 
 /**
@@ -30,6 +30,7 @@ const VISUALIZATIONS: ReadonlyArray<{id: string; name: string}> = [
  */
 export interface MenuCallbacks {
   onShowConfig: () => void;
+  onShowAbout: () => void;
   onOpenFile: () => void;
   onCloseMedia: () => void;
   onToggleFullscreen: () => void;
@@ -40,18 +41,20 @@ export interface MenuCallbacks {
 }
 
 /**
- * Menu state for checkboxes.
+ * Menu state for checkboxes and enabled states.
  */
 export interface MenuState {
   shuffleEnabled: boolean;
   repeatEnabled: boolean;
+  hasMedia: boolean;
+  isPlaying: boolean;
 }
 
 /** Stored callbacks for menu recreation */
 let storedCallbacks: MenuCallbacks | null = null;
 
 /** Current menu state */
-let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false};
+let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false, hasMedia: false, isPlaying: false};
 
 /**
  * Updates the menu state and rebuilds the menu.
@@ -174,46 +177,6 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
           label: viz.name,
           click: (): void => callbacks.onSelectVisualization(viz.id)
         }))
-      }
-    ]
-  });
-
-  // Playback Menu
-  template.push({
-    label: 'Playback',
-    submenu: [
-      {
-        label: 'Play / Pause',
-        accelerator: 'Space',
-        click: callbacks.onTogglePlayPause
-      },
-      {
-        label: 'Stop',
-        enabled: false // Placeholder
-      },
-      {type: 'separator'},
-      {
-        label: 'Play Speed',
-        enabled: false, // Placeholder
-        submenu: [
-          {label: '0.5x', enabled: false},
-          {label: '1.0x', enabled: false},
-          {label: '1.5x', enabled: false},
-          {label: '2.0x', enabled: false}
-        ]
-      },
-      {type: 'separator'},
-      {
-        label: 'Shuffle',
-        type: 'checkbox',
-        checked: state.shuffleEnabled,
-        click: callbacks.onToggleShuffle
-      },
-      {
-        label: 'Repeat',
-        type: 'checkbox',
-        checked: state.repeatEnabled,
-        click: callbacks.onToggleRepeat
       },
       {type: 'separator'},
       {
@@ -224,20 +187,31 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
     ]
   });
 
-  // Window Menu
+  // Playback Menu
   template.push({
-    label: 'Window',
+    label: 'Playback',
     submenu: [
-      {role: 'minimize'},
-      {role: 'zoom'},
-      ...(isMac ? [
-        {type: 'separator'} as MenuItemConstructorOptions,
-        {role: 'front'} as MenuItemConstructorOptions,
-        {type: 'separator'} as MenuItemConstructorOptions,
-        {role: 'window'} as MenuItemConstructorOptions
-      ] : [
-        {role: 'close'} as MenuItemConstructorOptions
-      ])
+      {
+        label: state.isPlaying ? 'Pause' : 'Play',
+        accelerator: 'Space',
+        enabled: state.hasMedia,
+        click: callbacks.onTogglePlayPause
+      },
+      {type: 'separator'},
+      {
+        label: 'Shuffle',
+        type: 'checkbox',
+        checked: state.shuffleEnabled,
+        enabled: state.hasMedia,
+        click: callbacks.onToggleShuffle
+      },
+      {
+        label: 'Repeat',
+        type: 'checkbox',
+        checked: state.repeatEnabled,
+        enabled: state.hasMedia,
+        click: callbacks.onToggleRepeat
+      }
     ]
   });
 
@@ -256,13 +230,7 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
       {type: 'separator'},
       {
         label: 'About ONIXPlayer',
-        click: (): void => {
-          const window: BrowserWindow | null = BrowserWindow.getFocusedWindow();
-          if (window) {
-            // TODO: Show proper about dialog
-            shell.openExternal('https://github.com/onix-labs/onixlabs-media-player');
-          }
-        }
+        click: callbacks.onShowAbout
       }
     ]
   });

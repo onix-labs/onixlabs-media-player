@@ -987,6 +987,12 @@ export class UnifiedMediaServer {
   /** Callback for playlist mode changes (shuffle/repeat) */
   private onModeChangeCallback: ((shuffle: boolean, repeat: boolean) => void) | null = null;
 
+  /** Callback for playlist count changes (for menu enabled state) */
+  private onPlaylistCountChangeCallback: ((count: number) => void) | null = null;
+
+  /** Callback for playback state changes (for menu state) */
+  private onPlaybackStateChangeCallback: ((isPlaying: boolean) => void) | null = null;
+
   /**
    * Creates a new unified media server.
    * Call start() to begin listening for connections.
@@ -1003,6 +1009,24 @@ export class UnifiedMediaServer {
    */
   public onModeChange(callback: (shuffle: boolean, repeat: boolean) => void): void {
     this.onModeChangeCallback = callback;
+  }
+
+  /**
+   * Registers a callback for playlist count changes.
+   *
+   * @param callback - Function called when playlist item count changes
+   */
+  public onPlaylistCountChange(callback: (count: number) => void): void {
+    this.onPlaylistCountChangeCallback = callback;
+  }
+
+  /**
+   * Registers a callback for playback state changes.
+   *
+   * @param callback - Function called when playback state changes
+   */
+  public onPlaybackStateChange(callback: (isPlaying: boolean) => void): void {
+    this.onPlaybackStateChangeCallback = callback;
   }
 
   /**
@@ -2057,6 +2081,9 @@ export class UnifiedMediaServer {
 
     const added: PlaylistItem[] = this.playlist.addItems(items);
 
+    // Notify of playlist count change for menu state
+    this.onPlaylistCountChangeCallback?.(this.playlist.getState().items.length);
+
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, added }));
   }
@@ -2161,6 +2188,9 @@ export class UnifiedMediaServer {
       }
     }
 
+    // Notify of playlist count change for menu state
+    this.onPlaylistCountChangeCallback?.(this.playlist.getState().items.length);
+
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true }));
   }
@@ -2178,6 +2208,9 @@ export class UnifiedMediaServer {
     this.playback.duration = 0;
     this.stopTimeTracking();
     this.broadcastState();
+
+    // Notify of playlist count change for menu state
+    this.onPlaylistCountChangeCallback?.(0);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true }));
@@ -2586,6 +2619,9 @@ export class UnifiedMediaServer {
       state: this.playback.state,
       errorMessage: this.playback.errorMessage,
     });
+
+    // Notify of playback state change for menu state
+    this.onPlaybackStateChangeCallback?.(this.playback.state === 'playing');
   }
 
   /**
