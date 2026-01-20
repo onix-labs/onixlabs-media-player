@@ -31,7 +31,7 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
   private readonly BAR_COUNT: number = 96;
   private readonly BAR_GAP: number = 2;
   private readonly FREQUENCY_RANGE: number = 0.75;
-  private readonly dataArray: Uint8Array<ArrayBuffer>;
+  private dataArray: Uint8Array<ArrayBuffer>;
   private barGradient: CanvasGradient | null = null;
   private gradientHeight: number = 0;
   private cachedHueShift: number = 0;
@@ -40,6 +40,10 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.sensitivity = 0.5;
+  }
+
+  protected override onFftSizeChanged(): void {
+    this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
 
   private createGradient(): void {

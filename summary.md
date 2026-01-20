@@ -7,7 +7,12 @@
 - Frequency visualizations via Web Audio API (`createMediaElementSource()`)
 - 8 visualization modes sorted by category: Analyzer, Spectre (Bars); Pulsar, Water (Science); Flare, Flux, Neon, Waveform (Waves)
 - Visualization names display with category prefix (e.g., "Waves : Flare")
-- Volume-independent visualizations with configurable sensitivity (default 25%)
+- Volume-independent visualizations with configurable settings:
+  - Sensitivity (default 25%) - controls audio reactivity
+  - Max frame rate cap (uncapped, 60/30/15 FPS) - reduces CPU/GPU usage
+  - Trail intensity (default 50%) - controls visual trail persistence
+  - Color shift (0-360°) - rotates all colors around the hue wheel
+  - FFT size (256-4096, default 2048) - audio analysis resolution
 - Transparent canvas backgrounds (CSS gradient shows through)
 - Fade-to-black effect (~5 seconds) when playback is paused or stopped
 - Instant volume control via GainNode (no latency, doesn't affect visualizations)
@@ -68,6 +73,23 @@
     - Overrides global sensitivity when set
     - Reset button to restore to global value
     - Custom values highlighted in green
+  - **Max Frame Rate**: Limit visualization FPS to reduce CPU/GPU usage
+    - Options: Uncapped, 60 FPS, 30 FPS, 15 FPS
+    - Default: Uncapped
+  - **Trail Intensity**: Controls how long visual trails persist in visualizations
+    - Slider from 0-100%
+    - Default: 50%
+    - Affects: Flare, Flux, Neon, Pulsar, Water, Waveform
+    - Uses exponential scaling for smooth control (0=fast fade, 100=slow fade)
+  - **Color Shift (Hue)**: Rotate all visualization colors around the color wheel
+    - Slider from 0-360°
+    - Default: 0° (original colors)
+    - Affects all visualizations uniformly
+    - Updates gradients and static colors in real-time
+  - **FFT Size**: Audio analysis resolution for visualizations
+    - Options: 256 (Fast), 512, 1024, 2048 (Default), 4096 (High Quality)
+    - Higher values provide more frequency detail but use more CPU
+    - Changes apply in real-time to the active visualization
   - **Server Port**: Configure the internal media server port (Application category)
     - 0 = auto-assign (default), or specify port 1024-65535
     - Changes require app restart to take effect
@@ -80,7 +102,7 @@
     - Slider from 0-10 seconds (0 = always go to previous track)
     - Default: 3 seconds (if past this point, restart current track instead)
     - Changes apply immediately
-- Sensitivity changes apply in real-time to the active visualization
+- All visualization settings apply in real-time to the active visualization
 - Extensible category-based UI with search filtering
 
 ### Infrastructure
@@ -176,7 +198,8 @@ MediaElementAudioSourceNode
     ▼
 AnalyserNode (fftSize=256, smoothing=0.85)
     │
-    ├──► getByteFrequencyData() ──► Visualization Canvas (sensitivity-scaled)
+    ├──► getByteFrequencyData() ──► Visualization Canvas
+    │     (sensitivity, trail intensity, hue shift applied)
     │
     ▼
 GainNode (volume control - keeps analyser at full signal)
@@ -208,7 +231,13 @@ AudioContext.destination (speakers)
 
 **Visualizations:**
 - `src/angular/components/audio/audio-outlet/visualizations/` - Visualization implementations
-  - `visualization.ts` - Base class with `name`, `category`, `sensitivity`, and fade-to-black support
+  - `visualization.ts` - Base class with:
+    - `name`, `category`, `sensitivity` properties
+    - Fade-to-black support (paused/stopped state)
+    - Trail intensity via `setTrailIntensity()` and `getFadeMultiplier()`
+    - Hue shift via `setHueShift()`, `shiftHue()`, `shiftRgbColor()`
+    - FFT size via `setFftSize()`, `getFftSize()`, `onFftSizeChanged()`
+    - Color conversion utilities: `hslToRgb()`, `rgbToHsl()`
   - `analyzer-visualization.ts` - Analyzer (category: Bars) - 96 frequency bars with green-yellow-red gradient
   - `spectre-visualization.ts` - Spectre (category: Bars) - 192 frequency bars with vertical mirroring (above/below center)
     - Dark center gradient fading to bright green at extremes, smoke trail effect
@@ -258,8 +287,8 @@ AudioContext.destination (speakers)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/settings` | Get all settings |
-| PUT | `/settings/visualization` | Body: `{ defaultType?: string, sensitivity?: number, perVisualizationSensitivity?: object }` |
-| PUT | `/settings/application` | Body: `{ serverPort?: number }` |
+| PUT | `/settings/visualization` | Body: `{ defaultType?: string, sensitivity?: number, perVisualizationSensitivity?: object, maxFrameRate?: number, trailIntensity?: number, hueShift?: number, fftSize?: number }` |
+| PUT | `/settings/application` | Body: `{ serverPort?: number, controlsAutoHideDelay?: number, previousTrackThreshold?: number }` |
 
 ### Server-Sent Events
 | Endpoint | Events |

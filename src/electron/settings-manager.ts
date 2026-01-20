@@ -43,6 +43,11 @@ export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neo
 export type PerVisualizationSensitivity = Partial<Record<VisualizationType, number>>;
 
 /**
+ * Valid FFT size values (must be powers of 2).
+ */
+export type FftSize = 256 | 512 | 1024 | 2048 | 4096;
+
+/**
  * Visualization settings.
  */
 export interface VisualizationSettings {
@@ -58,6 +63,8 @@ export interface VisualizationSettings {
   readonly trailIntensity: number;
   /** Hue shift for visualization colors (0-360 degrees, default 0) */
   readonly hueShift: number;
+  /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096, default 2048) */
+  readonly fftSize: FftSize;
 }
 
 /**
@@ -96,6 +103,7 @@ export interface VisualizationSettingsUpdate {
   readonly maxFrameRate?: number;
   readonly trailIntensity?: number;
   readonly hueShift?: number;
+  readonly fftSize?: FftSize;
 }
 
 /**
@@ -114,6 +122,9 @@ export interface ApplicationSettingsUpdate {
 /** Current settings schema version */
 const SETTINGS_VERSION: number = 1;
 
+/** Valid FFT size values */
+const VALID_FFT_SIZES: readonly FftSize[] = [256, 512, 1024, 2048, 4096];
+
 /** Default settings used when no file exists or on parse error */
 const DEFAULT_SETTINGS: AppSettings = {
   version: SETTINGS_VERSION,
@@ -124,6 +135,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     maxFrameRate: 0,  // 0 = uncapped
     trailIntensity: 0.5,  // 0.5 = default trail persistence
     hueShift: 0,  // 0 = no color shift
+    fftSize: 2048,  // 2048 = balanced resolution/performance
   },
   application: {
     serverPort: 0,  // 0 = auto-assign
@@ -254,6 +266,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate fftSize if provided
+    if (update.fftSize !== undefined) {
+      if (!this.isValidFftSize(update.fftSize)) {
+        console.warn(`[SettingsManager] Invalid FFT size: ${update.fftSize}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -265,6 +285,7 @@ export class SettingsManager {
         maxFrameRate: update.maxFrameRate ?? this.settings.visualization.maxFrameRate,
         trailIntensity: update.trailIntensity ?? this.settings.visualization.trailIntensity,
         hueShift: update.hueShift ?? this.settings.visualization.hueShift,
+        fftSize: update.fftSize ?? this.settings.visualization.fftSize,
       },
     };
 
@@ -435,6 +456,7 @@ export class SettingsManager {
     const maxFrameRate: unknown = vizObj['maxFrameRate'];
     const trailIntensity: unknown = vizObj['trailIntensity'];
     const hueShift: unknown = vizObj['hueShift'];
+    const fftSize: unknown = vizObj['fftSize'];
 
     return {
       defaultType: this.isValidVisualizationType(defaultType)
@@ -453,6 +475,9 @@ export class SettingsManager {
       hueShift: this.isValidHueShift(hueShift)
         ? hueShift
         : DEFAULT_SETTINGS.visualization.hueShift,
+      fftSize: this.isValidFftSize(fftSize)
+        ? fftSize
+        : DEFAULT_SETTINGS.visualization.fftSize,
     };
   }
 
@@ -613,5 +638,17 @@ export class SettingsManager {
    */
   private isValidHueShift(value: unknown): value is number {
     return typeof value === 'number' && value >= 0 && value <= 360;
+  }
+
+  /**
+   * Type guard to check if a value is a valid FFT size.
+   *
+   * Valid values are powers of 2: 256, 512, 1024, 2048, 4096.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid FFT size
+   */
+  private isValidFftSize(value: unknown): value is FftSize {
+    return typeof value === 'number' && VALID_FFT_SIZES.includes(value as FftSize);
   }
 }

@@ -14,7 +14,7 @@
 
 import {Component, output, signal, computed, inject} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VisualizationType} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VisualizationType, FftSize} from '../../../services/settings.service';
 
 /**
  * Settings category definition.
@@ -147,6 +147,11 @@ export class ConfigurationView {
     (): number => this.settingsService.hueShift()
   );
 
+  /** Current FFT size for audio analysis */
+  public readonly currentFftSize: ReturnType<typeof computed<FftSize>> = computed(
+    (): FftSize => this.settingsService.fftSize()
+  );
+
   /** Current server port (0 = auto-assign) */
   public readonly currentServerPort: ReturnType<typeof computed<number>> = computed(
     (): number => this.settingsService.serverPort()
@@ -175,6 +180,15 @@ export class ConfigurationView {
     {value: 60, label: '60 FPS'},
     {value: 30, label: '30 FPS'},
     {value: 15, label: '15 FPS'},
+  ];
+
+  /** Available FFT size options for the dropdown */
+  public readonly fftSizeOptions: readonly {value: FftSize; label: string}[] = [
+    {value: 256, label: '256 (Fast)'},
+    {value: 512, label: '512'},
+    {value: 1024, label: '1024'},
+    {value: 2048, label: '2048 (Default)'},
+    {value: 4096, label: '4096 (High Quality)'},
   ];
 
   // ============================================================================
@@ -261,6 +275,17 @@ export class ConfigurationView {
     const input: HTMLInputElement = event.target as HTMLInputElement;
     const value: number = parseFloat(input.value);
     await this.settingsService.setHueShift(value);
+  }
+
+  /**
+   * Handles FFT size selection change.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onFftSizeChange(event: Event): Promise<void> {
+    const select: HTMLSelectElement = event.target as HTMLSelectElement;
+    const size: FftSize = parseInt(select.value, 10) as FftSize;
+    await this.settingsService.setFftSize(size);
   }
 
   /**

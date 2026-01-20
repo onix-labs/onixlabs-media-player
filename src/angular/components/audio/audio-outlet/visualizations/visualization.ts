@@ -100,6 +100,13 @@ export abstract class Visualization {
   protected hueShift: number = 0;
 
   /**
+   * Current FFT size for audio analysis.
+   * Larger values give more frequency resolution but require more processing.
+   * Valid values: 256, 512, 1024, 2048, 4096
+   */
+  protected fftSize: number = 2048;
+
+  /**
    * Current fade alpha level (0 = fully visible, 1 = fully black).
    * Used for smooth fade transitions when pausing/stopping.
    */
@@ -292,6 +299,42 @@ export abstract class Visualization {
     const hsl: {h: number; s: number; l: number} = this.rgbToHsl(r, g, b);
     const shiftedHue: number = this.shiftHue(hsl.h);
     return this.hslToRgb(shiftedHue, hsl.s, hsl.l);
+  }
+
+  /**
+   * Sets the FFT size for audio analysis.
+   *
+   * Updates the analyser's FFT size and calls onFftSizeChanged()
+   * to allow subclasses to recreate their data arrays.
+   *
+   * @param size - FFT size (256, 512, 1024, 2048, or 4096)
+   */
+  public setFftSize(size: number): void {
+    const validSizes: readonly number[] = [256, 512, 1024, 2048, 4096];
+    if (!validSizes.includes(size)) return;
+
+    this.fftSize = size;
+    this.analyser.fftSize = size;
+    this.onFftSizeChanged();
+  }
+
+  /**
+   * Gets the current FFT size.
+   *
+   * @returns Current FFT size
+   */
+  public getFftSize(): number {
+    return this.fftSize;
+  }
+
+  /**
+   * Called when FFT size changes. Override in subclass to recreate data arrays.
+   *
+   * Subclasses that use data arrays sized based on FFT size should override
+   * this method to recreate those arrays with the new size.
+   */
+  protected onFftSizeChanged(): void {
+    // Override in subclass to recreate data arrays
   }
 
   /**

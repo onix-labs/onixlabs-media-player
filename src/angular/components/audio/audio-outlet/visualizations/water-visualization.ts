@@ -52,8 +52,8 @@ export class WaterVisualization extends Canvas2DVisualization {
     {s: 50, l: 70}
   ];
 
-  private readonly dataArray: Uint8Array<ArrayBuffer>;
-  private readonly frequencyData: Uint8Array<ArrayBuffer>;
+  private dataArray: Uint8Array<ArrayBuffer>;
+  private frequencyData: Uint8Array<ArrayBuffer>;
 
   // Canvases - created once, reused each frame
   private circleCanvas: HTMLCanvasElement | null = null;
@@ -92,8 +92,6 @@ export class WaterVisualization extends Canvas2DVisualization {
 
   public constructor(config: VisualizationConfig) {
     super(config);
-    // Reduced FFT size for better performance
-    this.analyser.fftSize = 1024;
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
 
@@ -109,6 +107,11 @@ export class WaterVisualization extends Canvas2DVisualization {
     }
 
     this.sensitivity = 0.3;
+  }
+
+  protected override onFftSizeChanged(): void {
+    this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
+    this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
 
   // Cache gradient colors - only recalculate when hue changes by >= 1 degree

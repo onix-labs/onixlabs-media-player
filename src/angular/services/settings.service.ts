@@ -39,6 +39,11 @@ export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neo
 export type PerVisualizationSensitivity = Partial<Record<VisualizationType, number>>;
 
 /**
+ * Valid FFT size values (must be powers of 2).
+ */
+export type FftSize = 256 | 512 | 1024 | 2048 | 4096;
+
+/**
  * Visualization settings structure.
  */
 export interface VisualizationSettings {
@@ -54,6 +59,8 @@ export interface VisualizationSettings {
   readonly trailIntensity: number;
   /** Hue shift for visualization colors (0-360 degrees, default 0) */
   readonly hueShift: number;
+  /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096, default 2048) */
+  readonly fftSize: FftSize;
 }
 
 /**
@@ -108,6 +115,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     maxFrameRate: 0,
     trailIntensity: 0.5,
     hueShift: 0,
+    fftSize: 2048,
   },
   application: {
     serverPort: 0,
@@ -231,6 +239,11 @@ export class SettingsService {
   /** Hue shift for visualization colors (0-360 degrees) */
   public readonly hueShift: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().visualization?.hueShift ?? 0
+  );
+
+  /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096) */
+  public readonly fftSize: ReturnType<typeof computed<FftSize>> = computed(
+    (): FftSize => this.settings().visualization?.fftSize ?? 2048
   );
 
   /** Configured server port (0 = auto-assign) */
@@ -387,6 +400,35 @@ export class SettingsService {
 
     if (!response.ok) {
       console.error(`[SettingsService] Failed to save hue shift: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the FFT size for audio analysis.
+   *
+   * Higher values provide more frequency resolution but require more processing.
+   *
+   * @param size - FFT size (256, 512, 1024, 2048, or 4096)
+   */
+  public async setFftSize(size: FftSize): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Validate: must be a valid FFT size
+    const validSizes: readonly FftSize[] = [256, 512, 1024, 2048, 4096];
+    if (!validSizes.includes(size)) {
+      console.error(`[SettingsService] Invalid FFT size: ${size}`);
+      return;
+    }
+
+    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({fftSize: size}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save FFT size: ${response.status}`);
     }
   }
 
