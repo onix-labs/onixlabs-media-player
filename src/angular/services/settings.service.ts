@@ -92,8 +92,6 @@ export interface ApplicationSettings {
   readonly serverPort: number;
   /** Controls auto-hide delay in seconds (0 = disabled, 1-30 seconds, default 5) */
   readonly controlsAutoHideDelay: number;
-  /** Previous track threshold in seconds (0-10, default 3) */
-  readonly previousTrackThreshold: number;
 }
 
 /**
@@ -104,6 +102,8 @@ export interface PlaybackSettings {
   readonly defaultVolume: number;
   /** Crossfade duration between tracks in milliseconds (0-500, default 100) */
   readonly crossfadeDuration: number;
+  /** Previous track threshold in seconds (0-10, default 3) */
+  readonly previousTrackThreshold: number;
 }
 
 /**
@@ -168,11 +168,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   application: {
     serverPort: 0,
     controlsAutoHideDelay: 5,
-    previousTrackThreshold: 3,
   },
   playback: {
     defaultVolume: 0.5,
     crossfadeDuration: 100,
+    previousTrackThreshold: 3,
   },
   transcoding: {
     videoQuality: 'medium',
@@ -322,7 +322,7 @@ export class SettingsService {
 
   /** Previous track threshold in seconds */
   public readonly previousTrackThreshold: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().application?.previousTrackThreshold ?? 3
+    (): number => this.settings().playback?.previousTrackThreshold ?? 3
   );
 
   /** Line width for waveform visualizations (1.0 - 5.0) */
@@ -689,7 +689,7 @@ export class SettingsService {
     // Validate threshold: 0-10 seconds
     const validThreshold: number = Math.max(0, Math.min(10, Math.round(threshold)));
 
-    const response: Response = await fetch(`${serverUrl}/settings/application`, {
+    const response: Response = await fetch(`${serverUrl}/settings/playback`, {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({previousTrackThreshold: validThreshold}),
