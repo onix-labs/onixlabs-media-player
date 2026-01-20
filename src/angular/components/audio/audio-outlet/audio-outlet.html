@@ -1,6 +1,7 @@
 <audio #audioElement crossorigin="anonymous" style="display: none;"></audio>
 <div class="visualizer-container"
      [class.drag-over]="isDragOver()"
+     (click)="onClick()"
      (dblclick)="onDoubleClick()"
      (dragover)="onDragOver($event)"
      (dragleave)="onDragLeave($event)"

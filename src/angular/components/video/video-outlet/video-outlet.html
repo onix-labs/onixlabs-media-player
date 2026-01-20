@@ -1,5 +1,6 @@
 <div class="video-container"
      [class.drag-over]="isDragOver()"
+     (click)="onClick()"
      (dblclick)="onDoubleClick()"
      (dragover)="onDragOver($event)"
      (dragleave)="onDragLeave($event)"

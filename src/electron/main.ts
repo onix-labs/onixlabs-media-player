@@ -351,9 +351,12 @@ class Program {
       });
 
       // Restore desktop constraints
+      // On macOS, must set minimum before maximum, and use large values instead of 0,0
+      // to properly restore resize capability
       this.window.setMinimumSize(800, 600);
-      this.window.setMaximumSize(0, 0); // 0 means no max
+      this.window.setMaximumSize(10000, 10000); // Large value to effectively remove max constraint
       this.window.setAlwaysOnTop(false);
+      this.window.setResizable(true); // Explicitly re-enable resize
 
       // Restore previous bounds
       if (this.desktopBounds) {

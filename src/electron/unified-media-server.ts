@@ -1081,7 +1081,7 @@ export class UnifiedMediaServer {
       } else if (pathname === '/playlist/add' && method === 'POST') {
         await this.handlePlaylistAdd(req, res);
       } else if (pathname.startsWith('/playlist/remove/') && method === 'DELETE') {
-        this.handlePlaylistRemove(res, pathname);
+        await this.handlePlaylistRemove(res, pathname);
       } else if (pathname === '/playlist/clear' && method === 'DELETE') {
         this.handlePlaylistClear(res);
       } else if (pathname.startsWith('/playlist/select/') && method === 'POST') {
@@ -1931,15 +1931,102 @@ export class UnifiedMediaServer {
   /**
    * Handles remove from playlist requests.
    *
+   * If removing the currently playing item:
+   * - If playlist becomes empty: stop and go to idle
+   * - If removing last item with repeat on: play first item
+   * - Otherwise: play the next item (now at same index)
+   *
    * @param res - HTTP response to write to
    * @param pathname - URL path containing item ID
    */
-  private handlePlaylistRemove(res: Readonly<ServerResponse>, pathname: string): void {
+  private async handlePlaylistRemove(res: Readonly<ServerResponse>, pathname: string): Promise<void> {
     const id: string = pathname.replace('/playlist/remove/', '');
+
+    // Check if we're removing the currently playing item
+    const currentItem: PlaylistItem | null = this.playlist.getCurrentItem();
+    const isRemovingCurrent: boolean = currentItem?.id === id;
+    const wasPlaying: boolean = this.playback.state === 'playing' || this.playback.state === 'paused';
+    const playlistState: PlaylistState = this.playlist.getState();
+    const wasLastItem: boolean = playlistState.currentIndex === playlistState.items.length - 1;
+    const hadOnlyOneItem: boolean = playlistState.items.length === 1;
+
     const success: boolean = this.playlist.removeItem(id);
 
-    res.writeHead(success ? 200 : 404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success }));
+    if (!success) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false }));
+      return;
+    }
+
+    // If we removed the currently playing item, handle playback transition
+    if (isRemovingCurrent && wasPlaying) {
+      const newState: PlaylistState = this.playlist.getState();
+
+      if (newState.items.length === 0) {
+        // Playlist is now empty - stop and go to idle
+        this.playback.state = 'idle';
+        this.playback.currentMedia = null;
+        this.playback.currentTime = 0;
+        this.playback.duration = 0;
+        this.stopTimeTracking();
+        this.broadcastState();
+      } else if (hadOnlyOneItem) {
+        // This shouldn't happen (length would be 0), but handle defensively
+        this.playback.state = 'idle';
+        this.playback.currentMedia = null;
+        this.playback.currentTime = 0;
+        this.playback.duration = 0;
+        this.stopTimeTracking();
+        this.broadcastState();
+      } else {
+        // There are more items - play the next one
+        // If we removed the last item, currentIndex now points to the new last item
+        // If repeat was on and we were at the end, we should loop to first
+        let nextItem: PlaylistItem | null = null;
+
+        if (wasLastItem && playlistState.repeatEnabled) {
+          // Was last item with repeat on - select first item
+          nextItem = this.playlist.selectIndex(0);
+        } else {
+          // The item now at currentIndex is the one that was next
+          nextItem = this.playlist.getCurrentItem();
+        }
+
+        if (nextItem) {
+          try {
+            this.playback.state = 'loading';
+            this.broadcastState();
+
+            const mediaInfo: MediaInfo = await this.probeMedia(nextItem.filePath);
+            this.playback.currentMedia = mediaInfo;
+            this.playback.duration = mediaInfo.duration;
+            this.playback.currentTime = 0;
+            this.playback.state = 'playing';
+            this.startTime = Date.now();
+
+            this.sse.broadcast('playback:loaded', mediaInfo);
+            this.broadcastState();
+            this.broadcastTime();
+            this.startTimeTracking();
+          } catch (err) {
+            this.playback.state = 'error';
+            this.playback.errorMessage = (err as Error).message;
+            this.broadcastState();
+          }
+        } else {
+          // No next item available - go to idle
+          this.playback.state = 'idle';
+          this.playback.currentMedia = null;
+          this.playback.currentTime = 0;
+          this.playback.duration = 0;
+          this.stopTimeTracking();
+          this.broadcastState();
+        }
+      }
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true }));
   }
 
   /**
