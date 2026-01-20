@@ -17,7 +17,7 @@
  * @module app/services/media-player.service
  */
 
-import {Injectable, computed, inject, effect} from '@angular/core';
+import {Injectable, computed, inject, effect, OnDestroy, EffectRef} from '@angular/core';
 import {ElectronService, MediaInfo, PlaylistItem} from './electron.service';
 import {SettingsService} from './settings.service';
 
@@ -60,7 +60,7 @@ export type PlaybackState = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped
  * }
  */
 @Injectable({providedIn: 'root'})
-export class MediaPlayerService {
+export class MediaPlayerService implements OnDestroy {
   /** Reference to the underlying Electron service */
   private readonly electron: ElectronService = inject(ElectronService);
 
@@ -70,12 +70,15 @@ export class MediaPlayerService {
   /** Whether the default volume has been applied on startup */
   private defaultVolumeApplied: boolean = false;
 
+  /** Effect reference for cleanup */
+  private readonly defaultVolumeEffect: EffectRef;
+
   /**
    * Constructor - sets up reactive effects for settings initialization.
    */
   public constructor() {
     // Apply default volume when settings load for the first time
-    effect((): void => {
+    this.defaultVolumeEffect = effect((): void => {
       const isLoaded: boolean = this.settings.isLoaded();
       const defaultVolume: number = this.settings.defaultVolume();
 
@@ -85,6 +88,13 @@ export class MediaPlayerService {
         void this.electron.setVolume(defaultVolume);
       }
     });
+  }
+
+  /**
+   * Cleans up resources when the service is destroyed.
+   */
+  public ngOnDestroy(): void {
+    this.defaultVolumeEffect.destroy();
   }
 
   // ============================================================================

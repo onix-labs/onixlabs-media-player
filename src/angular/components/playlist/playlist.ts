@@ -16,15 +16,7 @@
 import {Component, inject, signal, computed} from '@angular/core';
 import {MediaPlayerService} from '../../services/media-player.service';
 import {ElectronService, PlaylistItem} from '../../services/electron.service';
-
-/**
- * Supported media file extensions for drag-and-drop filtering.
- */
-const MEDIA_EXTENSIONS: Set<string> = new Set([
-  '.mp3', '.mp4', '.flac', '.mkv', '.avi', '.wav',
-  '.ogg', '.webm', '.m4a', '.aac', '.wma', '.mov',
-  '.mid', '.midi'
-]);
+import {MEDIA_EXTENSIONS} from '../../constants/media.constants';
 
 /**
  * Playlist panel component displaying the track list.

@@ -32,10 +32,16 @@ export class FlareVisualization extends Canvas2DVisualization {
   private readonly BASE_GLOW_BLUR: number = 12;
   private dataArray: Uint8Array<ArrayBuffer>;
 
+  /** Cached offscreen canvas for zoom effect (avoids per-frame allocation) */
+  private tempCanvas: HTMLCanvasElement;
+  private tempCtx: CanvasRenderingContext2D;
+
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.sensitivity = 0.5;
+    this.tempCanvas = document.createElement('canvas');
+    this.tempCtx = this.tempCanvas.getContext('2d')!;
   }
 
   protected override onFftSizeChanged(): void {
@@ -44,6 +50,8 @@ export class FlareVisualization extends Canvas2DVisualization {
 
   protected override onResize(): void {
     this.ctx.clearRect(0, 0, this.width, this.height);
+    this.tempCanvas.width = this.width;
+    this.tempCanvas.height = this.height;
   }
 
   public draw(): void {
@@ -92,14 +100,9 @@ export class FlareVisualization extends Canvas2DVisualization {
     const width: number = this.width;
     const height: number = this.height;
 
-    // Create offscreen canvas to hold current content
-    const tempCanvas: HTMLCanvasElement = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    const tempCtx: CanvasRenderingContext2D = tempCanvas.getContext('2d')!;
-
-    // Copy current canvas to temp
-    tempCtx.drawImage(ctx.canvas, 0, 0);
+    // Copy current canvas to cached offscreen canvas
+    this.tempCtx.clearRect(0, 0, width, height);
+    this.tempCtx.drawImage(ctx.canvas, 0, 0);
 
     // Clear main canvas (transparent)
     ctx.clearRect(0, 0, width, height);
@@ -112,7 +115,7 @@ export class FlareVisualization extends Canvas2DVisualization {
     ctx.translate(width / 2, height / 2);
     ctx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
     ctx.translate(-width / 2, -height / 2);
-    ctx.drawImage(tempCanvas, 0, 0);
+    ctx.drawImage(this.tempCanvas, 0, 0);
     ctx.restore();
   }
 

@@ -23,16 +23,7 @@ import {Playlist} from '../../playlist/playlist';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import type {PlaylistItem} from '../../../types/electron';
-
-/**
- * Supported media file extensions for drag-and-drop filtering.
- * Files with other extensions are ignored when dropped.
- */
-const MEDIA_EXTENSIONS: Set<string> = new Set([
-  '.mp3', '.mp4', '.flac', '.mkv', '.avi', '.wav',
-  '.ogg', '.webm', '.m4a', '.aac', '.wma', '.mov',
-  '.mid', '.midi'
-]);
+import {MEDIA_EXTENSIONS} from '../../../constants/media.constants';
 
 /**
  * Main content outlet component that displays the appropriate media player.

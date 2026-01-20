@@ -123,6 +123,12 @@ export class ElectronService implements OnDestroy {
   /** Previous view mode for restoring after fullscreen (miniplayer or desktop) */
   private previousViewMode: 'desktop' | 'miniplayer' = 'desktop';
 
+  /** Timeout ID for SSE reconnection (for cleanup) */
+  private reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  /** Timeout ID for mediaEnded signal reset (for cleanup) */
+  private mediaEndedTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
   /** Cleanup functions for menu event listeners */
   private menuCleanupFunctions: Array<() => void> = [];
 
@@ -418,7 +424,7 @@ export class ElectronService implements OnDestroy {
       // Exponential backoff reconnection
       const delay: number = Math.min(1000 * Math.pow(2, this.reconnectAttempts), this.MAX_RECONNECT_DELAY);
       this.reconnectAttempts++;
-      setTimeout((): void => { this.connectSSE(); }, delay);
+      this.reconnectTimeoutId = setTimeout((): void => { this.connectSSE(); }, delay);
     };
 
     // Playback state events
@@ -458,7 +464,10 @@ export class ElectronService implements OnDestroy {
       this.ngZone.run((): void => {
         // Trigger media ended signal briefly
         this.mediaEnded.set(true);
-        setTimeout((): void => { this.mediaEnded.set(false); }, 100);
+        if (this.mediaEndedTimeoutId) {
+          clearTimeout(this.mediaEndedTimeoutId);
+        }
+        this.mediaEndedTimeoutId = setTimeout((): void => { this.mediaEnded.set(false); }, 100);
       });
     });
 
@@ -938,5 +947,11 @@ export class ElectronService implements OnDestroy {
     this.fullscreenCleanup?.();
     this.viewModeCleanup?.();
     this.menuCleanupFunctions.forEach((cleanup: () => void): void => cleanup());
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+    }
+    if (this.mediaEndedTimeoutId) {
+      clearTimeout(this.mediaEndedTimeoutId);
+    }
   }
 }
