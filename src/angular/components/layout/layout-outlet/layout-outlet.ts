@@ -67,6 +67,9 @@ export class LayoutOutlet {
   /** File drop service for drag-and-drop handling */
   private readonly fileDrop: FileDropService = inject(FileDropService);
 
+  /** Signal for visualization display name (updated reactively from audioOutlet) */
+  public readonly visualizationDisplayName: ReturnType<typeof signal<string>> = signal<string>('');
+
   // ============================================================================
   // Reactive State Signals
   // ============================================================================
@@ -127,17 +130,6 @@ export class LayoutOutlet {
    */
   public togglePlaylist(): void {
     this.playlistComponent?.toggle();
-  }
-
-  /**
-   * Gets the current visualization name with category from the audio outlet.
-   * Format: "Category : Name"
-   */
-  public visualizationName(): string {
-    const category: string = this.audioOutlet?.visualizationCategory() ?? '';
-    const name: string = this.audioOutlet?.visualizationName() ?? '';
-    if (!category || !name) return '';
-    return `${category} : ${name}`;
   }
 
   /**

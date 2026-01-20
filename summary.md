@@ -6,7 +6,7 @@
 - Native `<audio>` element with HTTP streaming
 - Frequency visualizations via Web Audio API (`createMediaElementSource()`)
 - 9 visualization modes sorted by category: Analyzer, Spectre (Bars); Pulsar, Water (Science); Onix (Team); Flare, Flux, Neon, Waveform (Waves)
-- Visualization names display with category prefix (e.g., "Waves : Flare")
+- Visualization names display with category prefix (e.g., "Waves : Flare") via @Output event for reactive updates
 - Volume-independent visualizations with configurable settings:
   - Sensitivity (default 25%) - controls audio reactivity
   - Max frame rate cap (uncapped, 60/30/15 FPS) - reduces CPU/GPU usage
