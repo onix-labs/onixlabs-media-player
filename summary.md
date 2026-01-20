@@ -78,6 +78,7 @@
 
 ### Settings/Configuration
 - Access via application menu: ONIXPlayer > Settings (Cmd+,) or Playback > Options
+- Automatically exits fullscreen/miniplayer mode when entering settings
 - Media continues playing in background while settings are open
 - Settings persisted to `settings.json` in Electron userData folder:
   - Dev mode: `~/Library/Application Support/Electron/settings.json`
