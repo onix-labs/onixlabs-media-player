@@ -99,10 +99,11 @@
   color: rgba(255, 255, 255, 0.3);
   text-align: center;
   gap: 1rem;
-  transition: box-shadow 0.2s ease;
+  transition: background 250ms ease;
+  user-select: none;
 
   &.drag-over {
-    box-shadow: inset 0 0 0 2px rgba(0, 200, 255, 0.6);
+    background: rgba(255, 255, 255, 0.025);
   }
 
   img {
