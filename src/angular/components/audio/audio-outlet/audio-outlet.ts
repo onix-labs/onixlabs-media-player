@@ -403,8 +403,14 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /**
    * Handles single-click to toggle play/pause.
    * Uses a timer to distinguish from double-click (which toggles fullscreen).
+   * In miniplayer mode, click handling is done by the root component to avoid
+   * conflicts with window dragging.
    */
   public onClick(): void {
+    // In miniplayer mode, root component handles click-to-play/pause
+    // (to distinguish from drag-to-move)
+    if (this.electron.viewMode() === 'miniplayer') return;
+
     // If there's already a pending click, this is part of a double-click - ignore
     if (this.clickTimer) return;
 
