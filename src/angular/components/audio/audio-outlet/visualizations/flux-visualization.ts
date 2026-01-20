@@ -29,8 +29,7 @@ export class FluxVisualization extends Canvas2DVisualization {
 
   private readonly FADE_RATE: number = 0.025;
   private readonly ZOOM_SCALE: number = 1.03;
-  private readonly LINE_WIDTH: number = 2;
-  private readonly GLOW_BLUR: number = 15;
+  private readonly BASE_GLOW_BLUR: number = 15;
   private readonly CIRCLE_POINTS: number = 96;
   private readonly ORBIT_SPEED: number = 0.012;
   private readonly HUE_CYCLE_SPEED: number = 0.5;
@@ -255,10 +254,10 @@ export class FluxVisualization extends Canvas2DVisualization {
 
     // Glow layer
     ctx.save();
-    ctx.shadowBlur = this.GLOW_BLUR;
+    ctx.shadowBlur = this.getScaledGlowBlur(this.BASE_GLOW_BLUR);
     ctx.shadowColor = glowColor;
     ctx.strokeStyle = glowColor.replace('0.8', '0.3');
-    ctx.lineWidth = this.LINE_WIDTH + 4;
+    ctx.lineWidth = this.lineWidth + 4;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -268,7 +267,7 @@ export class FluxVisualization extends Canvas2DVisualization {
 
     // Main line
     ctx.strokeStyle = color;
-    ctx.lineWidth = this.LINE_WIDTH;
+    ctx.lineWidth = this.lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 

@@ -17,7 +17,7 @@
  * @module app/services/media-player.service
  */
 
-import {Injectable, computed, inject} from '@angular/core';
+import {Injectable, computed, inject, effect} from '@angular/core';
 import {ElectronService, MediaInfo, PlaylistItem} from './electron.service';
 import {SettingsService} from './settings.service';
 
@@ -66,6 +66,26 @@ export class MediaPlayerService {
 
   /** Reference to settings service for configurable behaviors */
   private readonly settings: SettingsService = inject(SettingsService);
+
+  /** Whether the default volume has been applied on startup */
+  private defaultVolumeApplied: boolean = false;
+
+  /**
+   * Constructor - sets up reactive effects for settings initialization.
+   */
+  public constructor() {
+    // Apply default volume when settings load for the first time
+    effect((): void => {
+      const isLoaded: boolean = this.settings.isLoaded();
+      const defaultVolume: number = this.settings.defaultVolume();
+
+      if (isLoaded && !this.defaultVolumeApplied) {
+        this.defaultVolumeApplied = true;
+        // Apply default volume on startup
+        void this.electron.setVolume(defaultVolume);
+      }
+    });
+  }
 
   // ============================================================================
   // Signals - Direct Passthrough from ElectronService

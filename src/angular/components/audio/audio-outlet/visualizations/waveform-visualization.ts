@@ -28,8 +28,7 @@ export class WaveformVisualization extends Canvas2DVisualization {
   public readonly category: string = 'Waves';
 
   private readonly FADE_RATE: number = 0.03; // Very slow fade for LCD ghosting effect
-  private readonly LINE_WIDTH: number = 2;
-  private readonly GLOW_BLUR: number = 15;
+  private readonly BASE_GLOW_BLUR: number = 15;
   private dataArray: Uint8Array<ArrayBuffer>;
 
   public constructor(config: VisualizationConfig) {
@@ -78,10 +77,10 @@ export class WaveformVisualization extends Canvas2DVisualization {
 
     // Draw glow layer (larger, blurred line underneath)
     ctx.save();
-    ctx.shadowBlur = this.GLOW_BLUR;
+    ctx.shadowBlur = this.getScaledGlowBlur(this.BASE_GLOW_BLUR);
     ctx.shadowColor = colorGlow;
     ctx.strokeStyle = colorStroke;
-    ctx.lineWidth = this.LINE_WIDTH + 4;
+    ctx.lineWidth = this.lineWidth + 4;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -107,7 +106,7 @@ export class WaveformVisualization extends Canvas2DVisualization {
 
     // Draw main waveform line
     ctx.strokeStyle = colorMain;
-    ctx.lineWidth = this.LINE_WIDTH;
+    ctx.lineWidth = this.lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 

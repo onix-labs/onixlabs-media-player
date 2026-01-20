@@ -15,6 +15,12 @@ This document outlines potential configurable items identified in the codebase t
 - **Previous Track Threshold** - Time before "previous" restarts vs goes to previous track (0-10s, default 3s)
 - **FFT Size** - Audio analysis resolution (256, 512, 1024, 2048, 4096). Higher values = more detail but more CPU usage
 - **Bar Density** - Controls bar count in Analyzer (48/96/144) and Spectre (96/192/288) visualizations (Low/Medium/High)
+- **Line Width** - Controls thickness of waveform lines (1-5px, default 2px)
+- **Glow Intensity** - Controls glow effect strength on visualizations (0-100%)
+- **Default Volume** - Initial volume level when app starts (0-100%, default 50%)
+- **Crossfade Duration** - Fade time for play/pause transitions (0-500ms, default 100ms)
+- **Video Quality** - Transcoding quality preset (Low/Medium/High)
+- **Audio Bitrate** - Transcoding audio bitrate (128/192/256/320 kbps)
 
 ## Server Settings
 
@@ -27,16 +33,16 @@ This document outlines potential configurable items identified in the codebase t
 
 | Setting | Current Value | Location | Notes |
 |---------|---------------|----------|-------|
-| Previous Track Threshold | 3 seconds | `src/angular/components/media-controls/` | Time before "previous" restarts vs goes to previous track |
-| Default Volume | 1.0 (100%) | Various | Initial volume on startup |
-| Crossfade Duration | N/A | Not implemented | Could add crossfade between tracks |
+| ~~Previous Track Threshold~~ | ✓ Configurable | Settings | Time before "previous" restarts vs goes to previous track |
+| ~~Default Volume~~ | ✓ Configurable | Settings | Initial volume on startup (default 50%) |
+| ~~Crossfade Duration~~ | ✓ Configurable | Settings | Fade time for play/pause transitions (default 100ms) |
 
 ## Audio/Video Transcoding
 
 | Setting | Current Value | Location | Notes |
 |---------|---------------|----------|-------|
-| Video Quality Presets | Fixed | Transcoding service | Could allow quality selection |
-| Audio Bitrate | Fixed | Transcoding service | Could allow bitrate selection |
+| ~~Video Quality~~ | ✓ Configurable | Settings | Quality preset (Low/Medium/High maps to CRF 28/23/18) |
+| ~~Audio Bitrate~~ | ✓ Configurable | Settings | Bitrate selection (128/192/256/320 kbps) |
 
 ## Visualization Global Settings
 
@@ -170,5 +176,5 @@ This document outlines potential configurable items identified in the codebase t
 ### Low Priority
 1. ~~FFT size options~~ ✓ DONE
 2. ~~Bar/ring counts~~ ✓ DONE (Bar Density setting)
-3. Line width/glow adjustments
+3. ~~Line width/glow adjustments~~ ✓ DONE
 4. Full theme support
