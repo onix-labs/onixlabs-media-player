@@ -35,7 +35,8 @@
 ### Playlist & Controls
 - Server-managed playlist with shuffle (Fisher-Yates) and repeat modes
 - Play/pause, next/previous, seek, volume all responsive
-- Skip buttons disabled when playlist has only one item
+- Skip backward disabled when playlist has only one item
+- Skip forward disabled when on last track (unless repeat is enabled)
 - Auto-advance to next track when current ends
 - Drag-and-drop file support:
   - Playlist panel: adds files to playlist (auto-plays only if playlist was empty)

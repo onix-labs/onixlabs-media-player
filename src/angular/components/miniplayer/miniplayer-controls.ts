@@ -43,8 +43,20 @@ export class MiniplayerControls {
   /** Whether playback is currently active */
   public readonly isPlaying: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.isPlaying());
 
-  /** Whether skip buttons should be enabled (more than one track) */
-  public readonly canSkip: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.playlistCount() > 1);
+  /** Whether skip backward button should be enabled (requires 2+ tracks) */
+  public readonly canSkipBackward: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.playlistCount() > 1);
+
+  /**
+   * Whether skip forward button should be enabled.
+   * Requires 2+ tracks AND either repeat is enabled OR not on the last track.
+   */
+  public readonly canSkipForward: ReturnType<typeof computed<boolean>> = computed((): boolean => {
+    const count: number = this.mediaPlayer.playlistCount();
+    if (count <= 1) return false;
+    if (this.mediaPlayer.isRepeatEnabled()) return true;
+    const currentIndex: number = this.electron.playlist().currentIndex;
+    return currentIndex < count - 1;
+  });
 
   /** Whether any track is loaded */
   public readonly hasTrack: ReturnType<typeof computed<boolean>> = computed((): boolean => !!this.mediaPlayer.currentTrack());

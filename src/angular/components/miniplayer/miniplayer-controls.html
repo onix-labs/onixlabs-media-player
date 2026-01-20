@@ -1,11 +1,11 @@
 <div class="button-group">
-  <button (click)="onBackward()" [disabled]="!hasTrack() || !canSkip()" title="Previous">
+  <button (click)="onBackward()" [disabled]="!hasTrack() || !canSkipBackward()" title="Previous">
     <i class="fa-solid fa-backward-step"></i>
   </button>
   <button (click)="onPlayPause()" [disabled]="!hasTrack()" title="Play/Pause">
     <i [class]="isPlaying() ? 'fa-solid fa-pause' : 'fa-solid fa-play'"></i>
   </button>
-  <button (click)="onForward()" [disabled]="!hasTrack() || !canSkip()" title="Next">
+  <button (click)="onForward()" [disabled]="!hasTrack() || !canSkipForward()" title="Next">
     <i class="fa-solid fa-forward-step"></i>
   </button>
   <button (click)="onExitMiniplayer()" title="Exit miniplayer">
