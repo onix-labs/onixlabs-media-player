@@ -32,7 +32,7 @@ import {ElectronService} from '../../../services/electron.service';
 import {SettingsService} from '../../../services/settings.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import type {PlaylistItem} from '../../../types/electron';
-import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYPES} from './visualizations';
+import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYPES, VISUALIZATION_METADATA} from './visualizations';
 
 /**
  * Audio outlet component that plays audio and renders visualizations.
@@ -271,11 +271,11 @@ export class AudioOutlet implements OnInit, OnDestroy {
     // React to settings loading - apply default visualization once
     effect((): void => {
       const isLoaded: boolean = this.settings.isLoaded();
-      const defaultType: VisualizationType = this.settings.defaultVisualization() as VisualizationType;
+      const defaultType: VisualizationType = this.settings.defaultVisualization();
 
       if (isLoaded && !this.defaultVisualizationApplied) {
         this.defaultVisualizationApplied = true;
-        this.setVisualization(defaultType);
+        this.setVisualization(defaultType, false); // Don't persist on initial load
       }
     });
 
@@ -656,8 +656,24 @@ export class AudioOutlet implements OnInit, OnDestroy {
    *
    * @param type - The visualization type to activate
    */
-  public setVisualization(type: VisualizationType): void {
+  /**
+   * Sets the visualization type and optionally persists to config.
+   *
+   * @param type - The visualization type to activate
+   * @param persist - Whether to persist the change to config (default: true)
+   */
+  public setVisualization(type: VisualizationType, persist: boolean = true): void {
     this.visualizationType.set(type);
+
+    // Persist to config so it survives component recreation (e.g., miniplayer toggle)
+    if (persist) {
+      void this.settings.setDefaultVisualization(type);
+    }
+
+    // Always update name signals from metadata (even before analyser is ready)
+    const metadata = VISUALIZATION_METADATA[type];
+    this.visualizationNameSignal.set(metadata.name);
+    this.visualizationCategorySignal.set(metadata.category);
 
     if (this.visualization) {
       this.visualization.destroy();
@@ -668,8 +684,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
         canvas: this.canvasRef.nativeElement,
         analyser: this.analyser
       });
-      this.visualizationNameSignal.set(this.visualization.name);
-      this.visualizationCategorySignal.set(this.visualization.category);
       this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
       this.visualization.setSensitivity(this.settings.getEffectiveSensitivity(type));
       this.visualization.setTrailIntensity(this.settings.trailIntensity());

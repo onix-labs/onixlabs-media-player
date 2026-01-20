@@ -66,6 +66,22 @@ const VISUALIZATION_CONSTRUCTORS: Record<VisualizationType, new (config: Visuali
 };
 
 /**
+ * Metadata for each visualization type (name and category).
+ * Used to display visualization info without creating an instance.
+ */
+export const VISUALIZATION_METADATA: Record<VisualizationType, {name: string; category: string}> = {
+  bars: {name: 'Analyzer', category: 'Bars'},
+  waveform: {name: 'Classic', category: 'Waves'},
+  tether: {name: 'Spectre', category: 'Bars'},
+  tunnel: {name: 'Flare', category: 'Waves'},
+  neon: {name: 'Neon', category: 'Waves'},
+  pulsar: {name: 'Pulsar', category: 'Science'},
+  water: {name: 'Record', category: 'Science'},
+  flux: {name: 'Flux', category: 'Waves'},
+  onix: {name: 'Onix', category: 'Team'},
+};
+
+/**
  * Factory function to create a visualization instance.
  *
  * This provides a type-safe way to instantiate visualizations by type

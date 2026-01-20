@@ -285,7 +285,7 @@ export class SettingsService implements OnDestroy {
   // Computed Signals
   // ============================================================================
 
-  /** The default visualization type */
+  /** The default visualization type (persisted setting) */
   public readonly defaultVisualization: ReturnType<typeof computed<VisualizationType>> = computed(
     (): VisualizationType => this.settings().visualization.defaultType
   );
