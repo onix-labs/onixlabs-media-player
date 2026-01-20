@@ -125,6 +125,12 @@ export class Root implements OnDestroy {
   /** Whether the window is currently being dragged */
   private isDragging: boolean = false;
 
+  /** Whether mouse has moved significantly during drag (distinguishes click from drag) */
+  private hasMoved: boolean = false;
+
+  /** Minimum pixels mouse must move to be considered a drag (not a click) */
+  private readonly DRAG_THRESHOLD: number = 5;
+
   /** Initial window position when drag started */
   private dragStartWindowPos: {x: number; y: number} = {x: 0, y: 0};
 
@@ -239,6 +245,7 @@ export class Root implements OnDestroy {
     if (target.closest('button')) return;
 
     this.isDragging = true;
+    this.hasMoved = false;
     this.dragStartMousePos = {x: event.screenX, y: event.screenY};
     void this.electron.getWindowPosition().then((pos: {x: number; y: number}): void => {
       this.dragStartWindowPos = pos;
@@ -250,6 +257,7 @@ export class Root implements OnDestroy {
    *
    * Updates window position based on mouse delta from drag start.
    * The setWindowPosition API handles magnetic edge snapping.
+   * Tracks if mouse moved significantly to distinguish drag from click.
    */
   @HostListener('document:mousemove', ['$event'])
   public onMouseMoveForDrag(event: MouseEvent): void {
@@ -263,6 +271,12 @@ export class Root implements OnDestroy {
 
     const deltaX: number = event.screenX - this.dragStartMousePos.x;
     const deltaY: number = event.screenY - this.dragStartMousePos.y;
+
+    // Track if mouse moved significantly (distinguishes drag from click)
+    if (!this.hasMoved && (Math.abs(deltaX) > this.DRAG_THRESHOLD || Math.abs(deltaY) > this.DRAG_THRESHOLD)) {
+      this.hasMoved = true;
+    }
+
     const newX: number = this.dragStartWindowPos.x + deltaX;
     const newY: number = this.dragStartWindowPos.y + deltaY;
 
@@ -272,14 +286,21 @@ export class Root implements OnDestroy {
   /**
    * Handles mouse up to end window dragging in miniplayer mode.
    * Saves the miniplayer bounds after drag completes.
+   * If no movement occurred, it was a click - toggle play/pause.
    */
   @HostListener('document:mouseup')
   public onMouseUp(): void {
     if (this.isDragging && this.isMiniplayer()) {
-      // Save bounds after drag ends
-      void this.electron.saveMiniplayerBounds();
+      if (this.hasMoved) {
+        // Was a drag - save bounds
+        void this.electron.saveMiniplayerBounds();
+      } else {
+        // Was a click (no movement) - toggle play/pause
+        void this.mediaPlayer.togglePlayPause();
+      }
     }
     this.isDragging = false;
+    this.hasMoved = false;
   }
 
   // ============================================================================
