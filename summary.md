@@ -38,12 +38,14 @@
 - Skip backward disabled when playlist has only one item
 - Skip forward disabled when on last track (unless repeat is enabled)
 - Auto-advance to next track when current ends
+- Removing currently playing item auto-advances to next track (or stops if playlist empty)
 - Drag-and-drop file support:
   - Playlist panel: adds files to playlist (auto-plays only if playlist was empty)
   - Idle state / visualization / video surface: adds files AND immediately starts playing
 
 ### Fullscreen Mode
 - Fullscreen button in playback controls bar (or macOS green traffic light)
+- Single-click visualization or video to toggle play/pause
 - Double-click visualization or video to toggle fullscreen
 - Escape key exits fullscreen
 - Audio fullscreen: only visualization visible (no controls or toggles)
@@ -60,6 +62,7 @@
 - Controls reappear on mouse movement, hide when mouse stops or leaves window
 - macOS traffic lights hide/show with controls for cleaner appearance
 - Entire window is draggable (except control buttons)
+- Single-click toggles play/pause (distinguished from drag by 5px movement threshold)
 - Magnetic edge snapping: window snaps to screen edges/corners with 10px gap
 - Position/size memory: remembers last position and size, restores on re-entry
   - Bounds saved immediately when drag ends or window is resized
