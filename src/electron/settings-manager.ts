@@ -60,6 +60,8 @@ export interface VisualizationSettings {
 export interface ApplicationSettings {
   /** Server port (0 = auto-assign, or specific port 1024-65535) */
   readonly serverPort: number;
+  /** Controls auto-hide delay in seconds (0 = disabled, 1-30 seconds, default 5) */
+  readonly controlsAutoHideDelay: number;
 }
 
 /**
@@ -90,6 +92,7 @@ export interface VisualizationSettingsUpdate {
  */
 export interface ApplicationSettingsUpdate {
   readonly serverPort?: number;
+  readonly controlsAutoHideDelay?: number;
 }
 
 // ============================================================================
@@ -109,6 +112,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   application: {
     serverPort: 0,  // 0 = auto-assign
+    controlsAutoHideDelay: 5,  // 5 seconds default
   },
 };
 
@@ -243,12 +247,21 @@ export class SettingsManager {
       }
     }
 
+    // Validate controlsAutoHideDelay if provided
+    if (update.controlsAutoHideDelay !== undefined) {
+      if (!this.isValidAutoHideDelay(update.controlsAutoHideDelay)) {
+        console.warn(`[SettingsManager] Invalid auto-hide delay: ${update.controlsAutoHideDelay}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
       application: {
         ...this.settings.application,
         serverPort: update.serverPort ?? this.settings.application.serverPort,
+        controlsAutoHideDelay: update.controlsAutoHideDelay ?? this.settings.application.controlsAutoHideDelay,
       },
     };
 
@@ -435,11 +448,15 @@ export class SettingsManager {
 
     const appObj: Record<string, unknown> = app as Record<string, unknown>;
     const serverPort: unknown = appObj['serverPort'];
+    const controlsAutoHideDelay: unknown = appObj['controlsAutoHideDelay'];
 
     return {
       serverPort: this.isValidPort(serverPort)
         ? serverPort
         : DEFAULT_SETTINGS.application.serverPort,
+      controlsAutoHideDelay: this.isValidAutoHideDelay(controlsAutoHideDelay)
+        ? controlsAutoHideDelay
+        : DEFAULT_SETTINGS.application.controlsAutoHideDelay,
     };
   }
 
@@ -457,5 +474,21 @@ export class SettingsManager {
     }
     // 0 = auto-assign, or valid user port range
     return value === 0 || (value >= 1024 && value <= 65535);
+  }
+
+  /**
+   * Type guard to check if a value is a valid auto-hide delay.
+   *
+   * Valid values are 0 (disabled) or 1-30 seconds.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid auto-hide delay
+   */
+  private isValidAutoHideDelay(value: unknown): value is number {
+    if (typeof value !== 'number' || !Number.isInteger(value)) {
+      return false;
+    }
+    // 0 = disabled, or 1-30 seconds
+    return value >= 0 && value <= 30;
   }
 }

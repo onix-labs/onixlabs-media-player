@@ -15,7 +15,8 @@
  *
  * Fullscreen behavior:
  * - In windowed mode: controls are always visible
- * - In fullscreen mode: controls auto-hide after 5 seconds of inactivity
+ * - In fullscreen mode: controls auto-hide after configurable delay (default 5s)
+ * - Auto-hide can be disabled in settings (delay=0)
  * - Mouse movement shows controls temporarily
  * - Escape key exits fullscreen
  *
@@ -29,6 +30,7 @@ import {LayoutControls} from '../layout/layout-controls/layout-controls';
 import {ConfigurationView} from '../configuration/configuration-view/configuration-view';
 import {ElectronService} from '../../services/electron.service';
 import {MediaPlayerService} from '../../services/media-player.service';
+import {SettingsService} from '../../services/settings.service';
 
 /**
  * Root application component - the main shell of the media player.
@@ -68,6 +70,9 @@ export class Root implements OnDestroy {
   /** Service for media playback state */
   private readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
 
+  /** Service for settings (auto-hide delay) */
+  private readonly settings: SettingsService = inject(SettingsService);
+
   // ============================================================================
   // Reactive State
   // ============================================================================
@@ -89,9 +94,14 @@ export class Root implements OnDestroy {
    *
    * Logic:
    * - Not fullscreen: always show
-   * - Fullscreen: show only if controlsVisible is true (mouse recently moved)
+   * - Fullscreen with auto-hide disabled (delay=0): always show
+   * - Fullscreen with auto-hide enabled: show only if controlsVisible is true
    */
-  public readonly showControls: ReturnType<typeof computed<boolean>> = computed((): boolean => !this.isFullscreen() || this.controlsVisible());
+  public readonly showControls: ReturnType<typeof computed<boolean>> = computed((): boolean => {
+    if (!this.isFullscreen()) return true;
+    if (this.settings.controlsAutoHideDelay() === 0) return true;
+    return this.controlsVisible();
+  });
 
   // ============================================================================
   // Auto-hide Timer
@@ -99,9 +109,6 @@ export class Root implements OnDestroy {
 
   /** Timer handle for auto-hiding controls in fullscreen */
   private mouseTimeout: ReturnType<typeof setTimeout> | null = null;
-
-  /** Duration before controls auto-hide in fullscreen (5 seconds) */
-  private readonly HIDE_DELAY_MS: number = 5000;
 
   // ============================================================================
   // Constructor - Menu Event Handling
@@ -233,7 +240,7 @@ export class Root implements OnDestroy {
    *
    * Called on mouse movement in fullscreen mode. Uses a debounce pattern -
    * each call resets the timer, so controls stay visible while the mouse
-   * is actively moving.
+   * is actively moving. If auto-hide is disabled (delay=0), controls remain visible.
    */
   private showControlsTemporarily(): void {
     this.controlsVisible.set(true);
@@ -242,8 +249,11 @@ export class Root implements OnDestroy {
       clearTimeout(this.mouseTimeout);
     }
 
-    this.mouseTimeout = setTimeout((): void => {
-      this.controlsVisible.set(false);
-    }, this.HIDE_DELAY_MS);
+    const delaySeconds: number = this.settings.controlsAutoHideDelay();
+    if (delaySeconds > 0) {
+      this.mouseTimeout = setTimeout((): void => {
+        this.controlsVisible.set(false);
+      }, delaySeconds * 1000);
+    }
   }
 }
