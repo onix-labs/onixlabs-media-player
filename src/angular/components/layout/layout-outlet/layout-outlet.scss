@@ -18,7 +18,8 @@
     overflow: hidden;
   }
 
-  &.fullscreen {
+  &.fullscreen,
+  &.miniplayer {
     padding: 0;
 
     div.container {

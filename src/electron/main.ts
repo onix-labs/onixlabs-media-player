@@ -14,7 +14,7 @@
  * @module electron/main
  */
 
-import {app, BrowserWindow, dialog, ipcMain, net, protocol} from "electron";
+import {app, BrowserWindow, dialog, ipcMain, net, protocol, screen} from "electron";
 import * as path from "path";
 import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.ts';
@@ -104,6 +104,18 @@ class Program {
 
   /** The unified HTTP media server instance */
   private mediaServer: UnifiedMediaServer | null = null;
+
+  /** Stored desktop window bounds for restoring when exiting miniplayer */
+  private desktopBounds: Electron.Rectangle | null = null;
+
+  /** Whether the window is currently in miniplayer mode */
+  private isInMiniplayerMode: boolean = false;
+
+  /** Snap threshold in pixels for magnetic edge snapping */
+  private readonly SNAP_THRESHOLD: number = 40;
+
+  /** Gap in pixels between window and screen edge when snapped */
+  private readonly SNAP_GAP: number = 10;
 
   /**
    * Private constructor - use Program.run() to start the application.
@@ -276,6 +288,88 @@ class Program {
     ipcMain.handle("window:isFullscreen", (): boolean => {
       return this.window?.isFullScreen() || false;
     });
+
+    // Miniplayer control
+    ipcMain.handle("window:enterMiniplayer", (): void => {
+      if (!this.window) return;
+
+      // Store current bounds for restoration
+      this.desktopBounds = this.window.getBounds();
+
+      // Set miniplayer constraints
+      this.window.setMinimumSize(320, 200);
+      this.window.setMaximumSize(640, 400);
+      this.window.setSize(320, 200);
+      this.window.setAlwaysOnTop(true, 'floating');
+
+      // Position in bottom-right corner initially (with gap)
+      const display: Electron.Display = screen.getPrimaryDisplay();
+      const {width, height}: {width: number; height: number} = display.workAreaSize;
+      this.window.setPosition(width - 320 - this.SNAP_GAP, height - 200 - this.SNAP_GAP);
+
+      this.isInMiniplayerMode = true;
+      this.window.webContents.send('window:viewModeChanged', 'miniplayer');
+    });
+
+    ipcMain.handle("window:exitMiniplayer", (): void => {
+      if (!this.window) return;
+
+      // Restore desktop constraints
+      this.window.setMinimumSize(800, 600);
+      this.window.setMaximumSize(0, 0); // 0 means no max
+      this.window.setAlwaysOnTop(false);
+
+      // Restore previous bounds
+      if (this.desktopBounds) {
+        this.window.setBounds(this.desktopBounds);
+      }
+
+      this.isInMiniplayerMode = false;
+      this.window.webContents.send('window:viewModeChanged', 'desktop');
+    });
+
+    ipcMain.handle("window:getViewMode", (): string => {
+      if (this.window?.isFullScreen()) return 'fullscreen';
+      if (this.isInMiniplayerMode) return 'miniplayer';
+      return 'desktop';
+    });
+
+    ipcMain.handle("window:getWindowPosition", (): {x: number; y: number} => {
+      if (!this.window) return {x: 0, y: 0};
+      const [x, y]: number[] = this.window.getPosition();
+      return {x, y};
+    });
+
+    ipcMain.handle("window:setWindowPosition", (_: Readonly<Electron.IpcMainInvokeEvent>, position: Readonly<{x: number; y: number}>): {x: number; y: number} => {
+      if (!this.window) return position;
+
+      const display: Electron.Display = screen.getDisplayNearestPoint(position);
+      const workArea: Electron.Rectangle = display.workArea;
+      const [width, height]: number[] = this.window.getSize();
+
+      let x: number = position.x;
+      let y: number = position.y;
+
+      // Left edge magnetic snap (with gap)
+      if (Math.abs(x - (workArea.x + this.SNAP_GAP)) < this.SNAP_THRESHOLD) {
+        x = workArea.x + this.SNAP_GAP;
+      }
+      // Right edge magnetic snap (with gap)
+      if (Math.abs((x + width) - (workArea.x + workArea.width - this.SNAP_GAP)) < this.SNAP_THRESHOLD) {
+        x = workArea.x + workArea.width - width - this.SNAP_GAP;
+      }
+      // Top edge magnetic snap (with gap)
+      if (Math.abs(y - (workArea.y + this.SNAP_GAP)) < this.SNAP_THRESHOLD) {
+        y = workArea.y + this.SNAP_GAP;
+      }
+      // Bottom edge magnetic snap (with gap)
+      if (Math.abs((y + height) - (workArea.y + workArea.height - this.SNAP_GAP)) < this.SNAP_THRESHOLD) {
+        y = workArea.y + workArea.height - height - this.SNAP_GAP;
+      }
+
+      this.window.setPosition(x, y);
+      return {x, y};
+    });
   }
 
   /**
@@ -291,10 +385,14 @@ class Program {
     // Notify renderer when fullscreen state changes (including via green button)
     this.window.on('enter-full-screen', (): void => {
       this.window?.webContents.send('window:fullscreenChanged', true);
+      this.window?.webContents.send('window:viewModeChanged', 'fullscreen');
     });
 
     this.window.on('leave-full-screen', (): void => {
       this.window?.webContents.send('window:fullscreenChanged', false);
+      // Send the mode we're returning to (miniplayer or desktop)
+      const mode: string = this.isInMiniplayerMode ? 'miniplayer' : 'desktop';
+      this.window?.webContents.send('window:viewModeChanged', mode);
     });
   }
 

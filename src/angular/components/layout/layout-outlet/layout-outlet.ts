@@ -94,6 +94,9 @@ export class LayoutOutlet {
   /** Whether the application is in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isFullscreen());
 
+  /** Whether the application is in miniplayer mode */
+  public readonly isMiniplayer: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.viewMode() === 'miniplayer');
+
   /** Whether files are being dragged over this component */
   public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
@@ -108,6 +111,15 @@ export class LayoutOutlet {
   @HostBinding('class.fullscreen')
   public get fullscreenClass(): boolean {
     return this.isFullscreen();
+  }
+
+  /**
+   * Adds 'miniplayer' CSS class when in miniplayer mode.
+   * Removes padding and borders for compact display.
+   */
+  @HostBinding('class.miniplayer')
+  public get miniplayerClass(): boolean {
+    return this.isMiniplayer();
   }
 
   // ============================================================================

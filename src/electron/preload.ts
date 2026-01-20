@@ -117,6 +117,54 @@ export interface MediaPlayerAPI {
    * @returns Cleanup function to remove the listener
    */
   readonly onMenuEvent: (event: string, callback: (...args: unknown[]) => void) => () => void;
+
+  /**
+   * Enters miniplayer mode.
+   * Resizes window to compact size, sets always-on-top, and positions in corner.
+   *
+   * @returns Promise that resolves when miniplayer mode is entered
+   */
+  readonly enterMiniplayer: () => Promise<void>;
+
+  /**
+   * Exits miniplayer mode and returns to desktop mode.
+   * Restores window size, removes always-on-top, and restores previous bounds.
+   *
+   * @returns Promise that resolves when miniplayer mode is exited
+   */
+  readonly exitMiniplayer: () => Promise<void>;
+
+  /**
+   * Gets the current view mode of the window.
+   *
+   * @returns Promise resolving to 'desktop', 'miniplayer', or 'fullscreen'
+   */
+  readonly getViewMode: () => Promise<'desktop' | 'miniplayer' | 'fullscreen'>;
+
+  /**
+   * Sets the window position with magnetic edge snapping.
+   * When position is near screen edges, snaps to the edge.
+   *
+   * @param position - The desired position {x, y}
+   * @returns Promise resolving to the actual position after snapping
+   */
+  readonly setWindowPosition: (position: Readonly<{x: number; y: number}>) => Promise<{x: number; y: number}>;
+
+  /**
+   * Gets the current window position.
+   *
+   * @returns Promise resolving to the current position {x, y}
+   */
+  readonly getWindowPosition: () => Promise<{x: number; y: number}>;
+
+  /**
+   * Registers a callback for view mode changes.
+   * Called when the window mode changes between desktop, miniplayer, and fullscreen.
+   *
+   * @param callback - Function called with new view mode
+   * @returns Cleanup function to remove the listener
+   */
+  readonly onViewModeChange: (callback: (mode: 'desktop' | 'miniplayer' | 'fullscreen') => void) => () => void;
 }
 
 /**
@@ -144,6 +192,16 @@ const api: MediaPlayerAPI = {
     const listener: (_event: Electron.IpcRendererEvent, ...args: unknown[]) => void = (_event: Electron.IpcRendererEvent, ...args: unknown[]): void => callback(...args);
     ipcRenderer.on(channel, listener);
     return (): void => { ipcRenderer.removeListener(channel, listener); };
+  },
+  enterMiniplayer: (): Promise<void> => ipcRenderer.invoke('window:enterMiniplayer'),
+  exitMiniplayer: (): Promise<void> => ipcRenderer.invoke('window:exitMiniplayer'),
+  getViewMode: (): Promise<'desktop' | 'miniplayer' | 'fullscreen'> => ipcRenderer.invoke('window:getViewMode'),
+  setWindowPosition: (position: Readonly<{x: number; y: number}>): Promise<{x: number; y: number}> => ipcRenderer.invoke('window:setWindowPosition', position),
+  getWindowPosition: (): Promise<{x: number; y: number}> => ipcRenderer.invoke('window:getWindowPosition'),
+  onViewModeChange: (callback: (mode: 'desktop' | 'miniplayer' | 'fullscreen') => void): () => void => {
+    const listener: (_event: Electron.IpcRendererEvent, mode: 'desktop' | 'miniplayer' | 'fullscreen') => void = (_event: Electron.IpcRendererEvent, mode: 'desktop' | 'miniplayer' | 'fullscreen'): void => callback(mode);
+    ipcRenderer.on('window:viewModeChanged', listener);
+    return (): void => { ipcRenderer.removeListener('window:viewModeChanged', listener); };
   },
 };
 

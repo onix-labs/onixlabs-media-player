@@ -43,6 +43,16 @@ const api = {
         ipcRenderer.on(channel, listener);
         return () => { ipcRenderer.removeListener(channel, listener); };
     },
+    enterMiniplayer: () => ipcRenderer.invoke('window:enterMiniplayer'),
+    exitMiniplayer: () => ipcRenderer.invoke('window:exitMiniplayer'),
+    getViewMode: () => ipcRenderer.invoke('window:getViewMode'),
+    setWindowPosition: (position) => ipcRenderer.invoke('window:setWindowPosition', position),
+    getWindowPosition: () => ipcRenderer.invoke('window:getWindowPosition'),
+    onViewModeChange: (callback) => {
+        const listener = (_event, mode) => callback(mode);
+        ipcRenderer.on('window:viewModeChanged', listener);
+        return () => { ipcRenderer.removeListener('window:viewModeChanged', listener); };
+    },
 };
 /**
  * Expose the API to the renderer process under window.mediaPlayer.

@@ -17,12 +17,12 @@
         </div>
       }
     </div>
-    @if (!isFullscreen()) {
+    @if (!isFullscreen() && !isMiniplayer()) {
       <app-playlist/>
     }
   </div>
 
-  @if (!isFullscreen()) {
+  @if (!isFullscreen() && !isMiniplayer()) {
     <div class="media-bar">
       @if (isAudio()) {
         <button (click)="previousVisualization()" title="Previous visualization">

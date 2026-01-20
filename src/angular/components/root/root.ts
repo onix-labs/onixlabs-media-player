@@ -28,6 +28,7 @@ import {LayoutHeader} from '../layout/layout-header/layout-header';
 import {LayoutOutlet} from '../layout/layout-outlet/layout-outlet';
 import {LayoutControls} from '../layout/layout-controls/layout-controls';
 import {ConfigurationView} from '../configuration/configuration-view/configuration-view';
+import {MiniplayerControls} from '../miniplayer/miniplayer-controls';
 import {ElectronService} from '../../services/electron.service';
 import {MediaPlayerService} from '../../services/media-player.service';
 import {SettingsService} from '../../services/settings.service';
@@ -55,7 +56,7 @@ import {SettingsService} from '../../services/settings.service';
  */
 @Component({
   selector: 'app-root',
-  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView],
+  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView, MiniplayerControls],
   templateUrl: './root.html',
   styleUrl: './root.scss',
 })
@@ -79,6 +80,12 @@ export class Root implements OnDestroy {
 
   /** Whether the application is in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isFullscreen());
+
+  /** Current view mode (desktop, miniplayer, or fullscreen) */
+  public readonly viewMode: ReturnType<typeof computed<'desktop' | 'miniplayer' | 'fullscreen'>> = computed((): 'desktop' | 'miniplayer' | 'fullscreen' => this.electron.viewMode());
+
+  /** Whether the application is in miniplayer mode */
+  public readonly isMiniplayer: ReturnType<typeof computed<boolean>> = computed((): boolean => this.viewMode() === 'miniplayer');
 
   /** Whether the current media is video (used for styling) */
   public readonly isVideo: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.currentMediaType() === 'video');
@@ -109,6 +116,19 @@ export class Root implements OnDestroy {
 
   /** Timer handle for auto-hiding controls in fullscreen */
   private mouseTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  // ============================================================================
+  // Miniplayer Drag State
+  // ============================================================================
+
+  /** Whether the window is currently being dragged */
+  private isDragging: boolean = false;
+
+  /** Initial window position when drag started */
+  private dragStartWindowPos: {x: number; y: number} = {x: 0, y: 0};
+
+  /** Initial mouse position when drag started */
+  private dragStartMousePos: {x: number; y: number} = {x: 0, y: 0};
 
   // ============================================================================
   // Constructor - Menu Event Handling
@@ -167,22 +187,18 @@ export class Root implements OnDestroy {
     return this.isFullscreen();
   }
 
+  /**
+   * Adds 'miniplayer' CSS class to the host element when in miniplayer mode.
+   * This enables CSS rules that adjust layout for compact miniplayer display.
+   */
+  @HostBinding('class.miniplayer')
+  public get miniplayerClass(): boolean {
+    return this.isMiniplayer();
+  }
+
   // ============================================================================
   // Event Listeners
   // ============================================================================
-
-  /**
-   * Handles mouse movement anywhere in the document.
-   *
-   * In fullscreen mode, any mouse movement triggers the controls to appear
-   * temporarily. This provides a discovery mechanism for hidden controls.
-   */
-  @HostListener('document:mousemove')
-  public onMouseMove(): void {
-    if (this.isFullscreen()) {
-      this.showControlsTemporarily();
-    }
-  }
 
   /**
    * Handles the Escape key press.
@@ -195,6 +211,59 @@ export class Root implements OnDestroy {
     if (this.isFullscreen()) {
       void this.electron.exitFullscreen();
     }
+  }
+
+  /**
+   * Handles mouse down for window dragging in miniplayer mode.
+   *
+   * Starts drag tracking when clicking anywhere on the miniplayer window,
+   * except on interactive elements like buttons.
+   */
+  @HostListener('mousedown', ['$event'])
+  public onMouseDown(event: MouseEvent): void {
+    if (!this.isMiniplayer()) return;
+
+    // Don't start drag if clicking on a button or interactive element
+    const target: HTMLElement = event.target as HTMLElement;
+    if (target.closest('button')) return;
+
+    this.isDragging = true;
+    this.dragStartMousePos = {x: event.screenX, y: event.screenY};
+    void this.electron.getWindowPosition().then((pos: {x: number; y: number}): void => {
+      this.dragStartWindowPos = pos;
+    });
+  }
+
+  /**
+   * Handles mouse move for window dragging in miniplayer mode.
+   *
+   * Updates window position based on mouse delta from drag start.
+   * The setWindowPosition API handles magnetic edge snapping.
+   */
+  @HostListener('document:mousemove', ['$event'])
+  public onMouseMoveForDrag(event: MouseEvent): void {
+    if (!this.isDragging) {
+      // Existing fullscreen mouse move handling
+      if (this.isFullscreen()) {
+        this.showControlsTemporarily();
+      }
+      return;
+    }
+
+    const deltaX: number = event.screenX - this.dragStartMousePos.x;
+    const deltaY: number = event.screenY - this.dragStartMousePos.y;
+    const newX: number = this.dragStartWindowPos.x + deltaX;
+    const newY: number = this.dragStartWindowPos.y + deltaY;
+
+    void this.electron.setWindowPosition({x: newX, y: newY});
+  }
+
+  /**
+   * Handles mouse up to end window dragging in miniplayer mode.
+   */
+  @HostListener('document:mouseup')
+  public onMouseUp(): void {
+    this.isDragging = false;
   }
 
   // ============================================================================
@@ -229,6 +298,29 @@ export class Root implements OnDestroy {
    */
   public exitConfigurationMode(): void {
     this.isConfigurationMode.set(false);
+  }
+
+  // ============================================================================
+  // Public Methods - Miniplayer Controls Visibility
+  // ============================================================================
+
+  /**
+   * Shows miniplayer controls when mouse enters the miniplayer container.
+   * Uses the same temporary show logic as fullscreen mode.
+   */
+  public onMiniplayerMouseEnter(): void {
+    this.showControlsTemporarily();
+  }
+
+  /**
+   * Hides miniplayer controls immediately when mouse leaves the container.
+   */
+  public onMiniplayerMouseLeave(): void {
+    if (this.mouseTimeout) {
+      clearTimeout(this.mouseTimeout);
+      this.mouseTimeout = null;
+    }
+    this.controlsVisible.set(false);
   }
 
   // ============================================================================
