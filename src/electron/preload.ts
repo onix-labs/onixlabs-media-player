@@ -166,6 +166,12 @@ export interface MediaPlayerAPI {
   readonly setTrafficLightVisibility: (visible: boolean) => Promise<void>;
 
   /**
+   * Saves the current miniplayer bounds to settings.
+   * Called after drag ends or resize completes in miniplayer mode.
+   */
+  readonly saveMiniplayerBounds: () => Promise<void>;
+
+  /**
    * Registers a callback for view mode changes.
    * Called when the window mode changes between desktop, miniplayer, and fullscreen.
    *
@@ -207,6 +213,7 @@ const api: MediaPlayerAPI = {
   setWindowPosition: (position: Readonly<{x: number; y: number}>): Promise<{x: number; y: number}> => ipcRenderer.invoke('window:setWindowPosition', position),
   getWindowPosition: (): Promise<{x: number; y: number}> => ipcRenderer.invoke('window:getWindowPosition'),
   setTrafficLightVisibility: (visible: boolean): Promise<void> => ipcRenderer.invoke('window:setTrafficLightVisibility', visible),
+  saveMiniplayerBounds: (): Promise<void> => ipcRenderer.invoke('window:saveMiniplayerBounds'),
   onViewModeChange: (callback: (mode: 'desktop' | 'miniplayer' | 'fullscreen') => void): () => void => {
     const listener: (_event: Electron.IpcRendererEvent, mode: 'desktop' | 'miniplayer' | 'fullscreen') => void = (_event: Electron.IpcRendererEvent, mode: 'desktop' | 'miniplayer' | 'fullscreen'): void => callback(mode);
     ipcRenderer.on('window:viewModeChanged', listener);

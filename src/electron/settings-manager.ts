@@ -127,6 +127,29 @@ export interface TranscodingSettings {
 }
 
 /**
+ * Window bounds (position and size).
+ */
+export interface WindowBounds {
+  /** X position of the window */
+  readonly x: number;
+  /** Y position of the window */
+  readonly y: number;
+  /** Width of the window */
+  readonly width: number;
+  /** Height of the window */
+  readonly height: number;
+}
+
+/**
+ * Window state settings (not exposed in UI).
+ * Used to remember window positions and sizes between sessions.
+ */
+export interface WindowStateSettings {
+  /** Last miniplayer bounds, or null if never set */
+  readonly miniplayerBounds: WindowBounds | null;
+}
+
+/**
  * Complete application settings structure.
  *
  * Version field enables future migrations when the schema changes.
@@ -142,6 +165,8 @@ export interface AppSettings {
   readonly playback: PlaybackSettings;
   /** Transcoding settings */
   readonly transcoding: TranscodingSettings;
+  /** Window state settings (not exposed in UI) */
+  readonly windowState: WindowStateSettings;
 }
 
 /**
@@ -231,6 +256,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   transcoding: {
     videoQuality: 'medium',  // medium = CRF 23
     audioBitrate: 192,  // 192 kbps
+  },
+  windowState: {
+    miniplayerBounds: null,  // no saved position initially
   },
 };
 
@@ -539,6 +567,43 @@ export class SettingsManager {
     return this.settings;
   }
 
+  /**
+   * Sets the miniplayer bounds (position and size).
+   *
+   * This is a non-UI setting used to remember miniplayer position between sessions.
+   * Changes are immediately persisted to disk.
+   *
+   * @param bounds - The window bounds to save, or null to clear
+   * @returns The updated complete settings object
+   */
+  public setMiniplayerBounds(bounds: WindowBounds | null): AppSettings {
+    // Validate bounds if provided
+    if (bounds !== null && !this.isValidWindowBounds(bounds)) {
+      console.warn('[SettingsManager] Invalid miniplayer bounds, ignoring');
+      return this.settings;
+    }
+
+    this.settings = {
+      ...this.settings,
+      windowState: {
+        ...this.settings.windowState,
+        miniplayerBounds: bounds,
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
+  /**
+   * Gets the saved miniplayer bounds.
+   *
+   * @returns The saved miniplayer bounds, or null if none saved
+   */
+  public getMiniplayerBounds(): WindowBounds | null {
+    return this.settings.windowState.miniplayerBounds;
+  }
+
   // ==========================================================================
   // Private Methods
   // ==========================================================================
@@ -638,12 +703,18 @@ export class SettingsManager {
       obj['transcoding']
     );
 
+    // Extract and validate window state settings
+    const windowStateSettings: WindowStateSettings = this.validateWindowStateSettings(
+      obj['windowState']
+    );
+
     return {
       version: typeof obj['version'] === 'number' ? obj['version'] : SETTINGS_VERSION,
       visualization: vizSettings,
       application: appSettings,
       playback: playbackSettings,
       transcoding: transcodingSettings,
+      windowState: windowStateSettings,
     };
   }
 
@@ -822,6 +893,46 @@ export class SettingsManager {
         ? audioBitrate
         : DEFAULT_SETTINGS.transcoding.audioBitrate,
     };
+  }
+
+  /**
+   * Validates window state settings object.
+   *
+   * @param windowState - The window state settings to validate (unknown type)
+   * @returns Valid window state settings with defaults for invalid values
+   */
+  private validateWindowStateSettings(windowState: unknown): WindowStateSettings {
+    if (!windowState || typeof windowState !== 'object') {
+      return DEFAULT_SETTINGS.windowState;
+    }
+
+    const windowStateObj: Record<string, unknown> = windowState as Record<string, unknown>;
+    const miniplayerBounds: unknown = windowStateObj['miniplayerBounds'];
+
+    return {
+      miniplayerBounds: this.isValidWindowBounds(miniplayerBounds) ? miniplayerBounds : null,
+    };
+  }
+
+  /**
+   * Type guard to check if a value is valid window bounds.
+   *
+   * @param value - The value to check
+   * @returns True if the value is valid window bounds
+   */
+  private isValidWindowBounds(value: unknown): value is WindowBounds {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+    const obj: Record<string, unknown> = value as Record<string, unknown>;
+    return (
+      typeof obj['x'] === 'number' &&
+      typeof obj['y'] === 'number' &&
+      typeof obj['width'] === 'number' &&
+      typeof obj['height'] === 'number' &&
+      obj['width'] > 0 &&
+      obj['height'] > 0
+    );
   }
 
   /**

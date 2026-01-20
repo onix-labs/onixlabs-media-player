@@ -49,6 +49,7 @@ const api = {
     setWindowPosition: (position) => ipcRenderer.invoke('window:setWindowPosition', position),
     getWindowPosition: () => ipcRenderer.invoke('window:getWindowPosition'),
     setTrafficLightVisibility: (visible) => ipcRenderer.invoke('window:setTrafficLightVisibility', visible),
+    saveMiniplayerBounds: () => ipcRenderer.invoke('window:saveMiniplayerBounds'),
     onViewModeChange: (callback) => {
         const listener = (_event, mode) => callback(mode);
         ipcRenderer.on('window:viewModeChanged', listener);

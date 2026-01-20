@@ -661,6 +661,18 @@ export class ElectronService implements OnDestroy {
     await this.api.setTrafficLightVisibility(visible);
   }
 
+  /**
+   * Saves the current miniplayer bounds to settings.
+   *
+   * Called after drag ends or resize completes in miniplayer mode.
+   * The bounds are persisted to the settings file so the miniplayer
+   * position and size are restored on next entry.
+   */
+  public async saveMiniplayerBounds(): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.saveMiniplayerBounds();
+  }
+
   // ============================================================================
   // HTTP API Methods - Playback Control
   // ============================================================================

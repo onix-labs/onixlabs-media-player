@@ -19,6 +19,7 @@ import * as path from "path";
 import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.ts';
 import {createApplicationMenu} from './application-menu.ts';
+import type {WindowBounds} from './settings-manager.ts';
 
 // Set app name (shows in dock/menu bar during development)
 app.setName('ONIXPlayer');
@@ -307,13 +308,26 @@ class Program {
       // Set miniplayer constraints
       this.window.setMinimumSize(320, 200);
       this.window.setMaximumSize(640, 400);
-      this.window.setSize(320, 200);
       this.window.setAlwaysOnTop(true, 'floating');
 
-      // Position in bottom-right corner initially (with gap)
-      const display: Electron.Display = screen.getPrimaryDisplay();
-      const {width, height}: {width: number; height: number} = display.workAreaSize;
-      this.window.setPosition(width - 320 - this.SNAP_GAP, height - 200 - this.SNAP_GAP);
+      // Try to restore saved miniplayer bounds, otherwise use default position
+      const savedBounds: WindowBounds | null = this.mediaServer?.getSettingsManager().getMiniplayerBounds() ?? null;
+      if (savedBounds) {
+        // Restore saved position and size (clamped to min/max constraints)
+        const width: number = Math.min(Math.max(savedBounds.width, 320), 640);
+        const height: number = Math.min(Math.max(savedBounds.height, 200), 400);
+        this.window.setSize(width, height);
+        this.window.setPosition(savedBounds.x, savedBounds.y);
+      } else {
+        // Default: position in bottom-right corner of primary display
+        this.window.setSize(320, 200);
+        const display: Electron.Display = screen.getPrimaryDisplay();
+        const workArea: Electron.Rectangle = display.workArea;
+        this.window.setPosition(
+          workArea.x + workArea.width - 320 - this.SNAP_GAP,
+          workArea.y + workArea.height - 200 - this.SNAP_GAP
+        );
+      }
 
       this.isInMiniplayerMode = true;
       this.window.webContents.send('window:viewModeChanged', 'miniplayer');
@@ -321,6 +335,15 @@ class Program {
 
     ipcMain.handle("window:exitMiniplayer", (): void => {
       if (!this.window) return;
+
+      // Save current miniplayer bounds before exiting
+      const currentBounds: Electron.Rectangle = this.window.getBounds();
+      this.mediaServer?.getSettingsManager().setMiniplayerBounds({
+        x: currentBounds.x,
+        y: currentBounds.y,
+        width: currentBounds.width,
+        height: currentBounds.height,
+      });
 
       // Restore desktop constraints
       this.window.setMinimumSize(800, 600);
@@ -383,6 +406,18 @@ class Program {
       if (!this.window || process.platform !== 'darwin') return;
       this.window.setWindowButtonVisibility(visible);
     });
+
+    // Save miniplayer bounds (called after drag ends or resize)
+    ipcMain.handle("window:saveMiniplayerBounds", (): void => {
+      if (!this.window || !this.isInMiniplayerMode) return;
+      const bounds: Electron.Rectangle = this.window.getBounds();
+      this.mediaServer?.getSettingsManager().setMiniplayerBounds({
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+      });
+    });
   }
 
   /**
@@ -406,6 +441,18 @@ class Program {
       // Send the mode we're returning to (miniplayer or desktop)
       const mode: string = this.isInMiniplayerMode ? 'miniplayer' : 'desktop';
       this.window?.webContents.send('window:viewModeChanged', mode);
+    });
+
+    // Save miniplayer bounds when window is resized (in miniplayer mode)
+    this.window.on('resized', (): void => {
+      if (!this.isInMiniplayerMode) return;
+      const bounds: Electron.Rectangle = this.window!.getBounds();
+      this.mediaServer?.getSettingsManager().setMiniplayerBounds({
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+      });
     });
   }
 
