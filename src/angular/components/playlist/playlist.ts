@@ -16,7 +16,7 @@
 import {Component, inject, signal, computed, ChangeDetectionStrategy} from '@angular/core';
 import {MediaPlayerService} from '../../services/media-player.service';
 import {ElectronService, PlaylistItem} from '../../services/electron.service';
-import {MEDIA_EXTENSIONS} from '../../constants/media.constants';
+import {FileDropService} from '../../services/file-drop.service';
 
 /**
  * Playlist panel component displaying the track list.
@@ -65,6 +65,9 @@ export class Playlist {
 
   /** Electron service for file path resolution */
   private readonly electron: ElectronService = inject(ElectronService);
+
+  /** File drop service for drag-and-drop handling */
+  private readonly fileDrop: FileDropService = inject(FileDropService);
 
   // ============================================================================
   // Reactive State
@@ -210,27 +213,7 @@ export class Playlist {
     event.stopPropagation();
     this.isDragOver.set(false);
 
-    const files: FileList | undefined = event.dataTransfer?.files;
-    if (!files || files.length === 0) return;
-
-    // Filter for supported media files and get their paths
-    const filePaths: string[] = [];
-    for (let i: number = 0; i < files.length; i++) {
-      const file: File = files[i];
-      const ext: string = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-
-      if (MEDIA_EXTENSIONS.has(ext)) {
-        try {
-          const filePath: string = this.electron.getPathForFile(file);
-          if (filePath) {
-            filePaths.push(filePath);
-          }
-        } catch (e) {
-          console.error('Failed to get path for file:', file.name, e);
-        }
-      }
-    }
-
+    const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
     if (filePaths.length === 0) return;
 
     // Add files to playlist

@@ -22,8 +22,8 @@
 import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, ChangeDetectionStrategy} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
+import {FileDropService} from '../../../services/file-drop.service';
 import type {PlaylistItem} from '../../../services/electron.service';
-import {MEDIA_EXTENSIONS} from '../../../constants/media.constants';
 
 /**
  * Video formats that Chromium can play natively.
@@ -78,6 +78,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /** Electron service for file operations and fullscreen */
   private readonly electron: ElectronService = inject(ElectronService);
+
+  /** File drop service for drag-and-drop handling */
+  private readonly fileDrop: FileDropService = inject(FileDropService);
 
   // ============================================================================
   // Reactive State
@@ -171,11 +174,14 @@ export class VideoOutlet implements OnInit, OnDestroy {
         if (timeDiff > 2 && timeSinceLastSeek > 1000 && !this.seekPending && this.currentFilePath) {
           this.seekPending = true;
           this.lastSeekTime = now;
+          const seekFilePath: string = this.currentFilePath;
           console.log(`Seeking transcoded video to ${time}s (diff: ${timeDiff}s)`);
-          void this.loadVideo(this.currentFilePath, time).then((): void => {
+          void this.loadVideo(seekFilePath, time).then((): void => {
             this.seekPending = false;
-            if (this.mediaPlayer.isPlaying()) {
-              video.play().catch(console.error);
+            // Verify we're still on the same file after async operation
+            if (this.currentFilePath === seekFilePath && this.mediaPlayer.isPlaying()) {
+              const currentVideo: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
+              currentVideo?.play().catch(console.error);
             }
           });
         }
@@ -276,27 +282,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     event.stopPropagation();
     this.isDragOver.set(false);
 
-    const files: FileList | undefined = event.dataTransfer?.files;
-    if (!files || files.length === 0) return;
-
-    // Filter for supported media files and get their paths
-    const filePaths: string[] = [];
-    for (let i: number = 0; i < files.length; i++) {
-      const file: File = files[i];
-      const ext: string = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-
-      if (MEDIA_EXTENSIONS.has(ext)) {
-        try {
-          const filePath: string = this.electron.getPathForFile(file);
-          if (filePath) {
-            filePaths.push(filePath);
-          }
-        } catch (e) {
-          console.error('Failed to get path for file:', file.name, e);
-        }
-      }
-    }
-
+    const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
     if (filePaths.length === 0) return;
 
     // Add files to playlist and select the first one to play immediately

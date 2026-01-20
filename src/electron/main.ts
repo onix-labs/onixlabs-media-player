@@ -499,10 +499,23 @@ class Program {
   /**
    * Handles macOS dock activation (clicking app icon when running).
    * Creates a new window if none exist, standard macOS behavior.
+   * Re-initializes window events and menu for the new window.
    */
   private onActivate(): void {
-    if (BrowserWindow.getAllWindows().length === 0)
+    if (BrowserWindow.getAllWindows().length === 0) {
       this.window = this.createBrowserWindow();
+      this.setupWindowEvents();
+      this.setupApplicationMenu();
+
+      // Load the application
+      if (Program.IS_DEVELOPMENT) {
+        void this.window.loadURL(Program.DEVELOPMENT_SERVER_URL);
+      } else {
+        void this.window.loadFile(path.join(Program.getProjectRoot(), "dist", "onixlabs-media-player", "browser", "index.html"));
+      }
+
+      this.window.on("closed", this.onClosed.bind(this));
+    }
   }
 
   /**
