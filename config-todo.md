@@ -9,6 +9,7 @@ This document outlines potential configurable items identified in the codebase t
 - **Per-Visualization Sensitivity** - Individual sensitivity overrides for each visualization type
 - **Server Port** - Configure internal media server port (0 = auto, or 1024-65535). Requires restart.
 - **Controls Auto-Hide** - Configurable delay for fullscreen control bar auto-hide (0=disabled, 1-30s)
+- **Previous Track Threshold** - Time before "previous" restarts vs goes to previous track (0-10s, default 3s)
 
 ## Server Settings
 
@@ -159,7 +160,7 @@ This document outlines potential configurable items identified in the codebase t
 1. Visualization color customization
 2. Animation frame rate cap
 3. Trail/fade rate adjustments
-4. Previous track threshold
+4. ~~Previous track threshold~~ ✓ DONE
 
 ### Low Priority
 1. FFT size options (affects performance)

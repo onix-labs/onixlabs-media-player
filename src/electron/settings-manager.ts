@@ -62,6 +62,8 @@ export interface ApplicationSettings {
   readonly serverPort: number;
   /** Controls auto-hide delay in seconds (0 = disabled, 1-30 seconds, default 5) */
   readonly controlsAutoHideDelay: number;
+  /** Previous track threshold in seconds (0-10, default 3) - if playback is past this, restart instead of previous */
+  readonly previousTrackThreshold: number;
 }
 
 /**
@@ -93,6 +95,7 @@ export interface VisualizationSettingsUpdate {
 export interface ApplicationSettingsUpdate {
   readonly serverPort?: number;
   readonly controlsAutoHideDelay?: number;
+  readonly previousTrackThreshold?: number;
 }
 
 // ============================================================================
@@ -113,6 +116,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   application: {
     serverPort: 0,  // 0 = auto-assign
     controlsAutoHideDelay: 5,  // 5 seconds default
+    previousTrackThreshold: 3,  // 3 seconds default
   },
 };
 
@@ -255,6 +259,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate previousTrackThreshold if provided
+    if (update.previousTrackThreshold !== undefined) {
+      if (!this.isValidPreviousTrackThreshold(update.previousTrackThreshold)) {
+        console.warn(`[SettingsManager] Invalid previous track threshold: ${update.previousTrackThreshold}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -262,6 +274,7 @@ export class SettingsManager {
         ...this.settings.application,
         serverPort: update.serverPort ?? this.settings.application.serverPort,
         controlsAutoHideDelay: update.controlsAutoHideDelay ?? this.settings.application.controlsAutoHideDelay,
+        previousTrackThreshold: update.previousTrackThreshold ?? this.settings.application.previousTrackThreshold,
       },
     };
 
@@ -449,6 +462,7 @@ export class SettingsManager {
     const appObj: Record<string, unknown> = app as Record<string, unknown>;
     const serverPort: unknown = appObj['serverPort'];
     const controlsAutoHideDelay: unknown = appObj['controlsAutoHideDelay'];
+    const previousTrackThreshold: unknown = appObj['previousTrackThreshold'];
 
     return {
       serverPort: this.isValidPort(serverPort)
@@ -457,6 +471,9 @@ export class SettingsManager {
       controlsAutoHideDelay: this.isValidAutoHideDelay(controlsAutoHideDelay)
         ? controlsAutoHideDelay
         : DEFAULT_SETTINGS.application.controlsAutoHideDelay,
+      previousTrackThreshold: this.isValidPreviousTrackThreshold(previousTrackThreshold)
+        ? previousTrackThreshold
+        : DEFAULT_SETTINGS.application.previousTrackThreshold,
     };
   }
 
@@ -490,5 +507,20 @@ export class SettingsManager {
     }
     // 0 = disabled, or 1-30 seconds
     return value >= 0 && value <= 30;
+  }
+
+  /**
+   * Type guard to check if a value is a valid previous track threshold.
+   *
+   * Valid values are 0-10 seconds.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid threshold
+   */
+  private isValidPreviousTrackThreshold(value: unknown): value is number {
+    if (typeof value !== 'number' || !Number.isInteger(value)) {
+      return false;
+    }
+    return value >= 0 && value <= 10;
   }
 }
