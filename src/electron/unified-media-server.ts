@@ -253,12 +253,15 @@ function parseMidiDuration(filePath: string): number {
 
       // Parse track events
       while (offset < trackEnd && offset < buffer.length) {
-        // Read variable-length delta time
+        // Read variable-length delta time (max 4 bytes per MIDI spec)
         let deltaTime: number = 0;
         let byte: number;
+        let varLenBytes: number = 0;
         do {
+          if (varLenBytes >= 4) break; // MIDI variable-length values are max 4 bytes
           byte = buffer[offset++];
           deltaTime = (deltaTime << 7) | (byte & 0x7f);
+          varLenBytes++;
         } while (byte & 0x80 && offset < trackEnd);
 
         currentTick += deltaTime;
@@ -272,12 +275,14 @@ function parseMidiDuration(filePath: string): number {
           if (offset >= buffer.length) break;
           const metaType: number = buffer[offset++];
 
-          // Read variable-length length
+          // Read variable-length length (max 4 bytes per MIDI spec)
           let length: number = 0;
+          let lengthBytes: number = 0;
           do {
-            if (offset >= buffer.length) break;
+            if (offset >= buffer.length || lengthBytes >= 4) break;
             byte = buffer[offset++];
             length = (length << 7) | (byte & 0x7f);
+            lengthBytes++;
           } while (byte & 0x80);
 
           // Tempo change (meta type 0x51) - 3 bytes: microseconds per quarter note
@@ -291,10 +296,12 @@ function parseMidiDuration(filePath: string): number {
         // SysEx event (0xF0 or 0xF7)
         else if (eventType === 0xf0 || eventType === 0xf7) {
           let length: number = 0;
+          let sysexLenBytes: number = 0;
           do {
-            if (offset >= buffer.length) break;
+            if (offset >= buffer.length || sysexLenBytes >= 4) break;
             byte = buffer[offset++];
             length = (length << 7) | (byte & 0x7f);
+            sysexLenBytes++;
           } while (byte & 0x80);
           offset += length;
         }

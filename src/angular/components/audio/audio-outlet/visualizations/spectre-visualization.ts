@@ -148,8 +148,11 @@ export class SpectreVisualization extends Canvas2DVisualization {
     const usableBins: number = Math.floor(this.dataArray.length * this.FREQUENCY_RANGE);
     const maxBarHeight: number = height * 0.45; // Max height from center
 
-    // Pre-calculate bar values for all bars
-    const barValues: number[] = [];
+    // Pre-calculate bar values and heights for all bars
+    const sensitivityFactor: number = this.sensitivity * 2;
+    const barHeights: number[] = [];
+    const barXPositions: number[] = [];
+
     for (let i: number = 0; i < this.totalBars; i++) {
       const startBin: number = Math.floor(i * usableBins / this.totalBars);
       const endBin: number = Math.floor((i + 1) * usableBins / this.totalBars);
@@ -159,16 +162,17 @@ export class SpectreVisualization extends Canvas2DVisualization {
       for (let j: number = startBin; j < startBin + count; j++) {
         sum += this.dataArray[j];
       }
-      barValues.push(sum / count);
+      const value: number = sum / count;
+      barHeights.push((value / 255) * maxBarHeight * sensitivityFactor);
+      barXPositions.push(i * (barWidth + this.BAR_GAP));
     }
 
     // Draw all bars with vertical mirroring (up and down from center)
     for (let i: number = 0; i < this.totalBars; i++) {
-      const value: number = barValues[i];
-      const barHeight: number = (value / 255) * maxBarHeight * (this.sensitivity * 2);
-      const x: number = i * (barWidth + this.BAR_GAP);
-
+      const barHeight: number = barHeights[i];
       if (barHeight < 1) continue;
+
+      const x: number = barXPositions[i];
 
       // Draw bar going UP from center
       ctx.fillStyle = this.gradientUp || 'rgba(0, 255, 100, 0.8)';
@@ -185,13 +189,12 @@ export class SpectreVisualization extends Canvas2DVisualization {
     ctx.globalAlpha = 0.3;
     ctx.fillStyle = 'rgba(0, 255, 100, 0.5)';
 
-    // Glow for all bars
+    // Glow for all bars (reuse pre-calculated values)
     for (let i: number = 0; i < this.totalBars; i++) {
-      const value: number = barValues[i];
-      const barHeight: number = (value / 255) * maxBarHeight * (this.sensitivity * 2);
-      const x: number = i * (barWidth + this.BAR_GAP);
-
+      const barHeight: number = barHeights[i];
       if (barHeight < 2) continue;
+
+      const x: number = barXPositions[i];
 
       // Glow for upward bar
       this.drawBar(ctx, x - 1, centerY - barHeight - 1, barWidth + 2, barHeight + 2);

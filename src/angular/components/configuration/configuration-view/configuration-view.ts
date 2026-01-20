@@ -17,6 +17,34 @@ import {FormsModule} from '@angular/forms';
 import {SettingsService, VISUALIZATION_OPTIONS, VisualizationType, FftSize, BarDensity, VideoQuality, AudioBitrate} from '../../../services/settings.service';
 
 /**
+ * Safely extracts value from an input element event target.
+ *
+ * @param event - The DOM event
+ * @returns The input value or empty string if target is not an HTMLInputElement
+ */
+function getInputValue(event: Event): string {
+  const target: EventTarget | null = event.target;
+  if (target instanceof HTMLInputElement) {
+    return target.value;
+  }
+  return '';
+}
+
+/**
+ * Safely extracts value from a select element event target.
+ *
+ * @param event - The DOM event
+ * @returns The select value or empty string if target is not an HTMLSelectElement
+ */
+function getSelectValue(event: Event): string {
+  const target: EventTarget | null = event.target;
+  if (target instanceof HTMLSelectElement) {
+    return target.value;
+  }
+  return '';
+}
+
+/**
  * Settings category definition.
  */
 interface SettingsCategory {
@@ -285,8 +313,7 @@ export class ConfigurationView {
    * @param event - The input event
    */
   public onSearchChange(event: Event): void {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    this.searchQuery.set(input.value);
+    this.searchQuery.set(getInputValue(event));
   }
 
   /**
@@ -295,8 +322,7 @@ export class ConfigurationView {
    * @param event - The change event from the select element
    */
   public async onDefaultVisualizationChange(event: Event): Promise<void> {
-    const select: HTMLSelectElement = event.target as HTMLSelectElement;
-    const type: VisualizationType = select.value as VisualizationType;
+    const type: VisualizationType = getSelectValue(event) as VisualizationType;
     await this.settingsService.setDefaultVisualization(type);
   }
 
@@ -306,9 +332,8 @@ export class ConfigurationView {
    * @param event - The input event from the range element
    */
   public async onSensitivityChange(event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    const value: number = parseFloat(input.value);
-    await this.settingsService.setSensitivity(value);
+    const value: number = parseFloat(getInputValue(event));
+    if (!isNaN(value)) await this.settingsService.setSensitivity(value);
   }
 
   /**
@@ -317,9 +342,8 @@ export class ConfigurationView {
    * @param event - The change event from the select element
    */
   public async onMaxFrameRateChange(event: Event): Promise<void> {
-    const select: HTMLSelectElement = event.target as HTMLSelectElement;
-    const fps: number = parseInt(select.value, 10);
-    await this.settingsService.setMaxFrameRate(fps);
+    const fps: number = parseInt(getSelectValue(event), 10);
+    if (!isNaN(fps)) await this.settingsService.setMaxFrameRate(fps);
   }
 
   /**
@@ -328,9 +352,8 @@ export class ConfigurationView {
    * @param event - The input event from the range element
    */
   public async onTrailIntensityChange(event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    const value: number = parseFloat(input.value);
-    await this.settingsService.setTrailIntensity(value);
+    const value: number = parseFloat(getInputValue(event));
+    if (!isNaN(value)) await this.settingsService.setTrailIntensity(value);
   }
 
   /**
@@ -339,9 +362,8 @@ export class ConfigurationView {
    * @param event - The input event from the range element
    */
   public async onHueShiftChange(event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    const value: number = parseFloat(input.value);
-    await this.settingsService.setHueShift(value);
+    const value: number = parseFloat(getInputValue(event));
+    if (!isNaN(value)) await this.settingsService.setHueShift(value);
   }
 
   /**
@@ -350,9 +372,8 @@ export class ConfigurationView {
    * @param event - The change event from the select element
    */
   public async onFftSizeChange(event: Event): Promise<void> {
-    const select: HTMLSelectElement = event.target as HTMLSelectElement;
-    const size: FftSize = parseInt(select.value, 10) as FftSize;
-    await this.settingsService.setFftSize(size);
+    const size: number = parseInt(getSelectValue(event), 10);
+    if (!isNaN(size)) await this.settingsService.setFftSize(size as FftSize);
   }
 
   /**
@@ -361,8 +382,7 @@ export class ConfigurationView {
    * @param event - The change event from the select element
    */
   public async onBarDensityChange(event: Event): Promise<void> {
-    const select: HTMLSelectElement = event.target as HTMLSelectElement;
-    const density: BarDensity = select.value as BarDensity;
+    const density: BarDensity = getSelectValue(event) as BarDensity;
     await this.settingsService.setBarDensity(density);
   }
 
@@ -372,9 +392,8 @@ export class ConfigurationView {
    * @param event - The input event from the slider
    */
   public async onLineWidthChange(event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    const width: number = parseFloat(input.value);
-    await this.settingsService.setLineWidth(width);
+    const width: number = parseFloat(getInputValue(event));
+    if (!isNaN(width)) await this.settingsService.setLineWidth(width);
   }
 
   /**
@@ -383,9 +402,8 @@ export class ConfigurationView {
    * @param event - The input event from the slider
    */
   public async onGlowIntensityChange(event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    const intensity: number = parseFloat(input.value);
-    await this.settingsService.setGlowIntensity(intensity);
+    const intensity: number = parseFloat(getInputValue(event));
+    if (!isNaN(intensity)) await this.settingsService.setGlowIntensity(intensity);
   }
 
   /**
@@ -394,9 +412,8 @@ export class ConfigurationView {
    * @param event - The input event from the slider
    */
   public async onDefaultVolumeChange(event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    const volume: number = parseFloat(input.value);
-    await this.settingsService.setDefaultVolume(volume);
+    const volume: number = parseFloat(getInputValue(event));
+    if (!isNaN(volume)) await this.settingsService.setDefaultVolume(volume);
   }
 
   /**
@@ -405,9 +422,8 @@ export class ConfigurationView {
    * @param event - The input event from the slider
    */
   public async onCrossfadeDurationChange(event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    const duration: number = parseInt(input.value, 10);
-    await this.settingsService.setCrossfadeDuration(duration);
+    const duration: number = parseInt(getInputValue(event), 10);
+    if (!isNaN(duration)) await this.settingsService.setCrossfadeDuration(duration);
   }
 
   /**
@@ -416,8 +432,7 @@ export class ConfigurationView {
    * @param event - The change event from the select element
    */
   public async onVideoQualityChange(event: Event): Promise<void> {
-    const select: HTMLSelectElement = event.target as HTMLSelectElement;
-    const quality: VideoQuality = select.value as VideoQuality;
+    const quality: VideoQuality = getSelectValue(event) as VideoQuality;
     await this.settingsService.setVideoQuality(quality);
   }
 
@@ -427,9 +442,8 @@ export class ConfigurationView {
    * @param event - The change event from the select element
    */
   public async onAudioBitrateChange(event: Event): Promise<void> {
-    const select: HTMLSelectElement = event.target as HTMLSelectElement;
-    const bitrate: AudioBitrate = parseInt(select.value, 10) as AudioBitrate;
-    await this.settingsService.setAudioBitrate(bitrate);
+    const bitrate: number = parseInt(getSelectValue(event), 10);
+    if (!isNaN(bitrate)) await this.settingsService.setAudioBitrate(bitrate as AudioBitrate);
   }
 
   /**
@@ -546,9 +560,8 @@ export class ConfigurationView {
    * @param event - The input event from the range element
    */
   public async onVisualizationSensitivityChange(type: VisualizationType, event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    const value: number = parseFloat(input.value);
-    await this.settingsService.setVisualizationSensitivity(type, value);
+    const value: number = parseFloat(getInputValue(event));
+    if (!isNaN(value)) await this.settingsService.setVisualizationSensitivity(type, value);
   }
 
   /**
@@ -591,8 +604,7 @@ export class ConfigurationView {
    * @param event - The input event from the number field
    */
   public async onServerPortChange(event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    const value: string = input.value.trim();
+    const value: string = getInputValue(event).trim();
 
     // Empty or 0 means auto-assign
     const port: number = value === '' ? 0 : parseInt(value, 10);
@@ -614,9 +626,8 @@ export class ConfigurationView {
    * @param event - The input event from the range element
    */
   public async onAutoHideDelayChange(event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    const value: number = parseInt(input.value, 10);
-    await this.settingsService.setControlsAutoHideDelay(value);
+    const value: number = parseInt(getInputValue(event), 10);
+    if (!isNaN(value)) await this.settingsService.setControlsAutoHideDelay(value);
   }
 
   /**
@@ -635,9 +646,8 @@ export class ConfigurationView {
    * @param event - The input event from the range element
    */
   public async onPreviousTrackThresholdChange(event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    const value: number = parseInt(input.value, 10);
-    await this.settingsService.setPreviousTrackThreshold(value);
+    const value: number = parseInt(getInputValue(event), 10);
+    if (!isNaN(value)) await this.settingsService.setPreviousTrackThreshold(value);
   }
 
   /**

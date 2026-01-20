@@ -28,6 +28,14 @@ import {ElectronService} from '../../../services/electron.service';
 import type {PlaylistItem} from '../../../types/electron';
 
 /**
+ * Safely extracts value from an input element event target.
+ */
+function getInputValue(event: Event): string {
+  const target: EventTarget | null = event.target;
+  return target instanceof HTMLInputElement ? target.value : '';
+}
+
+/**
  * Control bar component with playback controls, seek bar, and volume.
  *
  * Features:
@@ -187,8 +195,8 @@ export class LayoutControls {
    * @param event - Input event from the volume range slider
    */
   public async onVolumeChange(event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    await this.mediaPlayer.setVolume(parseFloat(input.value) / 100);
+    const value: number = parseFloat(getInputValue(event));
+    if (!isNaN(value)) await this.mediaPlayer.setVolume(value / 100);
   }
 
   /**
@@ -227,8 +235,8 @@ export class LayoutControls {
    * @param event - Input event from the progress range slider
    */
   public async onSeek(event: Event): Promise<void> {
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    await this.mediaPlayer.seekToProgress(parseFloat(input.value));
+    const value: number = parseFloat(getInputValue(event));
+    if (!isNaN(value)) await this.mediaPlayer.seekToProgress(value);
   }
 
   /**
@@ -240,7 +248,8 @@ export class LayoutControls {
    * @param event - Mouse click event on the progress bar
    */
   public async onProgressClick(event: MouseEvent): Promise<void> {
-    const target: HTMLElement = event.currentTarget as HTMLElement;
+    const target: EventTarget | null = event.currentTarget;
+    if (!(target instanceof HTMLElement)) return;
     const rect: DOMRect = target.getBoundingClientRect();
     const percent: number = ((event.clientX - rect.left) / rect.width) * 100;
     await this.mediaPlayer.seekToProgress(percent);

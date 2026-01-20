@@ -273,9 +273,10 @@ AudioContext.destination (speakers)
 - `src/electron/application-menu.ts` - Native application menu for macOS/Windows/Linux
 
 **Angular Services:**
-- `src/angular/services/electron.service.ts` - HTTP client + SSE connection + fullscreen state
+- `src/angular/services/electron.service.ts` - HTTP client + SSE connection + fullscreen state + validated JSON parsing
 - `src/angular/services/media-player.service.ts` - Playback orchestration (delegates to HTTP)
 - `src/angular/services/settings.service.ts` - Settings state management with SSE sync
+- `src/angular/services/file-drop.service.ts` - Centralized drag-and-drop file extraction with media type filtering
 
 **Angular Components:**
 - `src/angular/components/audio/audio-outlet/` - Audio + Web Audio API visualization
@@ -298,6 +299,7 @@ AudioContext.destination (speakers)
   - `analyzer-visualization.ts` - Analyzer (category: Bars) - configurable frequency bars (48/96/144) with green-yellow-red gradient
   - `spectre-visualization.ts` - Spectre (category: Bars) - configurable frequency bars (96/192/288) with vertical mirroring (above/below center)
     - Dark center gradient fading to bright green at extremes, smoke trail effect
+    - Optimized: pre-calculated bar heights and positions for main and glow passes
   - `pulsar-visualization.ts` - Pulsar (category: Science) - pulsing concentric rings with curved waveforms
     - Optimized: reuses trail/temp canvases, pre-allocated point arrays, cached HSL→RGB colors
   - `water-visualization.ts` - Water (category: Science) - water ripple effect with rotating waveforms, bass-reactive rotation
@@ -306,6 +308,7 @@ AudioContext.destination (speakers)
   - `flux-visualization.ts` - Flux (category: Waves) - dual circular waveforms orbiting like binary black holes
     - Circles orbit around center (180° apart), trails expand outward creating spiral patterns
     - Colors cycle through spectrum (180° apart on color wheel), creating rainbow effect
+    - Optimized: cached color values with hue threshold to avoid per-frame string generation
   - `neon-visualization.ts` - Neon (category: Waves) - rotating cyan/magenta waveforms with tunnel zoom
   - `waveform-visualization.ts` - Waveform (category: Waves) - oscilloscope-style with glow effect
 
@@ -411,6 +414,10 @@ npm run package      # Package with electron-builder
 6. **Visualization support** - `createMediaElementSource()` enables Web Audio API analysis
 7. **Immersive fullscreen** - Clean viewing experience with auto-hiding controls
 8. **OnPush change detection** - All Angular components use OnPush strategy for optimal performance
+9. **Type-safe event handling** - Helper functions with instanceof checks for event targets
+10. **Validated SSE parsing** - Safe JSON parsing with fallback values for robustness
+11. **Shared services** - FileDropService centralizes drag-and-drop logic across components
+12. **Optimized visualizations** - Color caching and pre-calculated values reduce per-frame overhead
 
 ## Code Documentation
 

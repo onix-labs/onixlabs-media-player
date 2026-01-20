@@ -30,9 +30,9 @@ import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, s
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {SettingsService} from '../../../services/settings.service';
+import {FileDropService} from '../../../services/file-drop.service';
 import type {PlaylistItem} from '../../../types/electron';
 import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYPES} from './visualizations';
-import {MEDIA_EXTENSIONS} from '../../../constants/media.constants';
 
 /**
  * Audio outlet component that plays audio and renders visualizations.
@@ -85,6 +85,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
   /** Settings service for user preferences */
   private readonly settings: SettingsService = inject(SettingsService);
+
+  /** File drop service for drag-and-drop handling */
+  private readonly fileDrop: FileDropService = inject(FileDropService);
 
   // ============================================================================
   // Reactive State
@@ -427,27 +430,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     event.stopPropagation();
     this.isDragOver.set(false);
 
-    const files: FileList | undefined = event.dataTransfer?.files;
-    if (!files || files.length === 0) return;
-
-    // Filter for supported media files and get their paths
-    const filePaths: string[] = [];
-    for (let i: number = 0; i < files.length; i++) {
-      const file: File = files[i];
-      const ext: string = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
-
-      if (MEDIA_EXTENSIONS.has(ext)) {
-        try {
-          const filePath: string = this.electron.getPathForFile(file);
-          if (filePath) {
-            filePaths.push(filePath);
-          }
-        } catch (e) {
-          console.error('Failed to get path for file:', file.name, e);
-        }
-      }
-    }
-
+    const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
     if (filePaths.length === 0) return;
 
     // Add files to playlist and select the first one to play immediately
