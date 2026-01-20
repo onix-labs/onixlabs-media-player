@@ -137,6 +137,11 @@ export class ConfigurationView {
     (): number => this.settingsService.maxFrameRate()
   );
 
+  /** Current trail intensity (0.0 - 1.0) */
+  public readonly currentTrailIntensity: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.trailIntensity()
+  );
+
   /** Current server port (0 = auto-assign) */
   public readonly currentServerPort: ReturnType<typeof computed<number>> = computed(
     (): number => this.settingsService.serverPort()
@@ -232,12 +237,32 @@ export class ConfigurationView {
   }
 
   /**
+   * Handles trail intensity slider change.
+   *
+   * @param event - The input event from the range element
+   */
+  public async onTrailIntensityChange(event: Event): Promise<void> {
+    const input: HTMLInputElement = event.target as HTMLInputElement;
+    const value: number = parseFloat(input.value);
+    await this.settingsService.setTrailIntensity(value);
+  }
+
+  /**
    * Formats the current sensitivity value as a percentage string.
    *
    * @returns The sensitivity as a percentage (e.g., "50%")
    */
   public formatSensitivity(): string {
     return `${Math.round(this.currentSensitivity() * 100)}%`;
+  }
+
+  /**
+   * Formats the current trail intensity value as a percentage string.
+   *
+   * @returns The trail intensity as a percentage (e.g., "50%")
+   */
+  public formatTrailIntensity(): string {
+    return `${Math.round(this.currentTrailIntensity() * 100)}%`;
   }
 
   // ============================================================================

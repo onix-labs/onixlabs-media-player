@@ -284,6 +284,15 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.visualization.setSensitivity(effectiveSensitivity);
       }
     });
+
+    // React to trail intensity setting changes
+    effect((): void => {
+      const trailIntensity: number = this.settings.trailIntensity();
+
+      if (this.visualization) {
+        this.visualization.setTrailIntensity(trailIntensity);
+      }
+    });
   }
 
   // ============================================================================
@@ -545,6 +554,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.visualizationCategorySignal.set(this.visualization.category);
       this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
       this.visualization.setSensitivity(this.settings.getEffectiveSensitivity(type));
+      this.visualization.setTrailIntensity(this.settings.trailIntensity());
 
       const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
@@ -568,6 +578,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualizationCategorySignal.set(this.visualization.category);
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
     this.visualization.setSensitivity(this.settings.getEffectiveSensitivity(this.visualizationType()));
+    this.visualization.setTrailIntensity(this.settings.trailIntensity());
 
     const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));

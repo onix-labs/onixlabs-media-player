@@ -54,6 +54,8 @@ export interface VisualizationSettings {
   readonly perVisualizationSensitivity: PerVisualizationSensitivity;
   /** Maximum frame rate for visualizations (0 = uncapped, or 15/30/60, default 0) */
   readonly maxFrameRate: number;
+  /** Trail intensity for visualizations with trail effects (0.0 - 1.0, default 0.5) */
+  readonly trailIntensity: number;
 }
 
 /**
@@ -90,6 +92,7 @@ export interface VisualizationSettingsUpdate {
   readonly sensitivity?: number;
   readonly perVisualizationSensitivity?: PerVisualizationSensitivity;
   readonly maxFrameRate?: number;
+  readonly trailIntensity?: number;
 }
 
 /**
@@ -116,6 +119,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     sensitivity: 0.5,
     perVisualizationSensitivity: {},
     maxFrameRate: 0,  // 0 = uncapped
+    trailIntensity: 0.5,  // 0.5 = default trail persistence
   },
   application: {
     serverPort: 0,  // 0 = auto-assign
@@ -230,6 +234,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate trailIntensity if provided
+    if (update.trailIntensity !== undefined) {
+      if (!this.isValidTrailIntensity(update.trailIntensity)) {
+        console.warn(`[SettingsManager] Invalid trail intensity: ${update.trailIntensity}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -239,6 +251,7 @@ export class SettingsManager {
         sensitivity: update.sensitivity ?? this.settings.visualization.sensitivity,
         perVisualizationSensitivity: mergedPerVizSensitivity,
         maxFrameRate: update.maxFrameRate ?? this.settings.visualization.maxFrameRate,
+        trailIntensity: update.trailIntensity ?? this.settings.visualization.trailIntensity,
       },
     };
 
@@ -407,6 +420,7 @@ export class SettingsManager {
     const sensitivity: unknown = vizObj['sensitivity'];
     const perVizSensitivity: unknown = vizObj['perVisualizationSensitivity'];
     const maxFrameRate: unknown = vizObj['maxFrameRate'];
+    const trailIntensity: unknown = vizObj['trailIntensity'];
 
     return {
       defaultType: this.isValidVisualizationType(defaultType)
@@ -419,6 +433,9 @@ export class SettingsManager {
       maxFrameRate: this.isValidMaxFrameRate(maxFrameRate)
         ? maxFrameRate
         : DEFAULT_SETTINGS.visualization.maxFrameRate,
+      trailIntensity: this.isValidTrailIntensity(trailIntensity)
+        ? trailIntensity
+        : DEFAULT_SETTINGS.visualization.trailIntensity,
     };
   }
 
@@ -555,5 +572,17 @@ export class SettingsManager {
     }
     // 0 = uncapped, or specific FPS values
     return value === 0 || value === 15 || value === 30 || value === 60;
+  }
+
+  /**
+   * Type guard to check if a value is a valid trail intensity.
+   *
+   * Valid values are between 0.0 and 1.0.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid trail intensity
+   */
+  private isValidTrailIntensity(value: unknown): value is number {
+    return typeof value === 'number' && value >= 0 && value <= 1;
   }
 }

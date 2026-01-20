@@ -91,8 +91,10 @@ export class FlareVisualization extends Canvas2DVisualization {
     ctx.clearRect(0, 0, width, height);
 
     // Draw back scaled from center with reduced opacity for fade effect
+    // Apply trail intensity multiplier to fade rate
+    const effectiveFadeRate: number = this.FADE_RATE * this.getFadeMultiplier();
     ctx.save();
-    ctx.globalAlpha = 1 - this.FADE_RATE;
+    ctx.globalAlpha = 1 - effectiveFadeRate;
     ctx.translate(width / 2, height / 2);
     ctx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
     ctx.translate(-width / 2, -height / 2);

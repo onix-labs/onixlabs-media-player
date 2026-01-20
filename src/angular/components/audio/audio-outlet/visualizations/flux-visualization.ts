@@ -197,8 +197,10 @@ export class FluxVisualization extends Canvas2DVisualization {
     trailCtx.clearRect(0, 0, width, height);
 
     // Draw back scaled from the specified zoom center with fade
+    // Apply trail intensity multiplier to fade rate
+    const effectiveFadeRate: number = this.FADE_RATE * this.getFadeMultiplier();
     trailCtx.save();
-    trailCtx.globalAlpha = 1 - this.FADE_RATE;
+    trailCtx.globalAlpha = 1 - effectiveFadeRate;
     trailCtx.translate(zoomCenterX, zoomCenterY);
     trailCtx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
     trailCtx.translate(-zoomCenterX, -zoomCenterY);

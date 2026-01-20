@@ -202,8 +202,10 @@ export class PulsarVisualization extends Canvas2DVisualization {
     trailCtx.clearRect(0, 0, width, height);
 
     // Draw back previous trails with rotation, zoom, and fade
+    // Apply trail intensity multiplier to fade rate
+    const effectiveFadeRate: number = this.FADE_RATE * this.getFadeMultiplier();
     trailCtx.save();
-    trailCtx.globalAlpha = 1 - this.FADE_RATE;
+    trailCtx.globalAlpha = 1 - effectiveFadeRate;
     trailCtx.translate(centerX, centerY);
     trailCtx.rotate(this.ROTATION_SPEED);
     trailCtx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
