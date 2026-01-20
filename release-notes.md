@@ -88,7 +88,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 ### Video Playback
 
 - Native `<video>` element with HTTP streaming
-- Native formats (.mp4, .webm, .ogg) use HTTP range requests for seeking
+- Native formats (.mp4, .m4v, .webm, .ogg) use HTTP range requests for seeking
 - Non-native formats (.mkv, .avi, .mov) transcoded to fragmented MP4 on-the-fly
 - Synchronized with server-side time tracking
 - Configurable transcoding quality (CRF 18/23/28) and audio bitrate (128-320 kbps)
@@ -173,7 +173,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
   - Application version (CalVer: 2026.0.0)
   - Electron, Node, Chrome, V8 versions (from process.versions)
 - MIT License notice
-- Supported formats section: Audio (MP3, FLAC, WAV, OGG, M4A, AAC, WMA, MIDI) and Video (MP4, MKV, AVI, WebM, MOV)
+- Supported formats section: Audio (MP3, FLAC, WAV, OGG, M4A, AAC, WMA, MIDI) and Video (MP4, M4V, MKV, AVI, WebM, MOV)
 - Dependencies section with links: FFmpeg, FluidSynth (opens in default browser)
 - Links section: GitHub repository, onixlabs.io (opens in default browser)
 - Copyright footer with dynamic year

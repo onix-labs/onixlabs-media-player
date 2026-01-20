@@ -30,7 +30,7 @@ import type {PlaylistItem} from '../../../services/electron.service';
  * Video formats that Chromium can play natively.
  * These formats support HTTP range requests for efficient seeking.
  */
-const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.webm', '.ogg']);
+const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.m4v', '.webm', '.ogg']);
 
 /**
  * Video outlet component for video media playback.

@@ -195,7 +195,7 @@ type SSEEventType =
  * Video formats that Chromium can play natively.
  * These support HTTP range requests for seeking.
  */
-const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.webm', '.ogg']);
+const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.m4v', '.webm', '.ogg']);
 
 /**
  * Audio formats that Chromium can play natively.
@@ -225,6 +225,7 @@ const SOUNDFONT_SEARCH_PATHS: string[] = [
  */
 const MIME_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
   '.webm': 'video/webm',
   '.ogg': 'video/ogg',
   '.mp3': 'audio/mpeg',

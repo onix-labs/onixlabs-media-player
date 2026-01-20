@@ -39,7 +39,7 @@ const AUDIO_EXTENSIONS: readonly string[] = [
  * Supported video file extensions.
  */
 const VIDEO_EXTENSIONS: readonly string[] = [
-  'MP4', 'MKV', 'AVI', 'WebM', 'MOV'
+  'MP4', 'M4V', 'MKV', 'AVI', 'WebM', 'MOV'
 ];
 
 /**
