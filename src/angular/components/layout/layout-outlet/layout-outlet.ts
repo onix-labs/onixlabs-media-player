@@ -16,7 +16,7 @@
  * @module app/components/layout/layout-outlet
  */
 
-import {Component, computed, inject, signal, ViewChild, HostBinding} from '@angular/core';
+import {Component, computed, inject, signal, ViewChild, HostBinding, ChangeDetectionStrategy} from '@angular/core';
 import {AudioOutlet} from '../../audio/audio-outlet/audio-outlet';
 import {VideoOutlet} from '../../video/video-outlet/video-outlet';
 import {Playlist} from '../../playlist/playlist';
@@ -49,6 +49,7 @@ import {MEDIA_EXTENSIONS} from '../../../constants/media.constants';
   imports: [AudioOutlet, VideoOutlet, Playlist],
   templateUrl: './layout-outlet.html',
   styleUrl: './layout-outlet.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LayoutOutlet {
   /** Reference to the playlist panel for programmatic toggle */

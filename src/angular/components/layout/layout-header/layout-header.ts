@@ -7,7 +7,7 @@
  * @module app/components/layout/layout-header
  */
 
-import {Component} from '@angular/core';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
 
 /**
  * Header component displaying the application title bar area.
@@ -21,8 +21,10 @@ import {Component} from '@angular/core';
  */
 @Component({
   selector: 'app-layout-header',
+  standalone: true,
   imports: [],
   templateUrl: './layout-header.html',
   styleUrl: './layout-header.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LayoutHeader {}

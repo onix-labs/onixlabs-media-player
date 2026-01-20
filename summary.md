@@ -410,6 +410,7 @@ npm run package      # Package with electron-builder
 5. **Native browser decoding** - Leverages Chromium's optimized media stack
 6. **Visualization support** - `createMediaElementSource()` enables Web Audio API analysis
 7. **Immersive fullscreen** - Clean viewing experience with auto-hiding controls
+8. **OnPush change detection** - All Angular components use OnPush strategy for optimal performance
 
 ## Code Documentation
 
@@ -452,6 +453,7 @@ The entire TypeScript codebase is documented with comprehensive TSDoc comments f
 - Help menu: About (opens GitHub page), placeholders for Help Topics
 - Menu callbacks communicated via IPC to renderer for UI updates
 - UI zoom disabled (zoomFactor: 1.0, keyboard shortcuts blocked, pinch-to-zoom disabled)
+- Shuffle/Repeat menu checkboxes sync with actual state via callback mechanism
 
 ### Idle State
 - When playlist is empty, layout-outlet displays placeholder with ONIXPlayer logo

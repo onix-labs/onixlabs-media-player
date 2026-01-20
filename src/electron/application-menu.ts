@@ -26,11 +26,9 @@ const VISUALIZATIONS: ReadonlyArray<{id: string; name: string}> = [
 ];
 
 /**
- * Creates and sets the application menu.
- *
- * @param callbacks - Callback functions for menu actions
+ * Callback functions for menu actions.
  */
-export function createApplicationMenu(callbacks: {
+export interface MenuCallbacks {
   onShowConfig: () => void;
   onOpenFile: () => void;
   onCloseMedia: () => void;
@@ -39,7 +37,41 @@ export function createApplicationMenu(callbacks: {
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
   onSelectVisualization: (id: string) => void;
-}): void {
+}
+
+/**
+ * Menu state for checkboxes.
+ */
+export interface MenuState {
+  shuffleEnabled: boolean;
+  repeatEnabled: boolean;
+}
+
+/** Stored callbacks for menu recreation */
+let storedCallbacks: MenuCallbacks | null = null;
+
+/** Current menu state */
+let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false};
+
+/**
+ * Updates the menu state and rebuilds the menu.
+ *
+ * @param state - New state for menu checkboxes
+ */
+export function updateMenuState(state: Partial<MenuState>): void {
+  currentState = {...currentState, ...state};
+  if (storedCallbacks) {
+    buildMenu(storedCallbacks, currentState);
+  }
+}
+
+/**
+ * Builds and sets the application menu.
+ *
+ * @param callbacks - Callback functions for menu actions
+ * @param state - Current state for checkboxes
+ */
+function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
   const isMac: boolean = process.platform === 'darwin';
 
   const template: MenuItemConstructorOptions[] = [];
@@ -174,13 +206,13 @@ export function createApplicationMenu(callbacks: {
       {
         label: 'Shuffle',
         type: 'checkbox',
-        checked: false,
+        checked: state.shuffleEnabled,
         click: callbacks.onToggleShuffle
       },
       {
         label: 'Repeat',
         type: 'checkbox',
-        checked: false,
+        checked: state.repeatEnabled,
         click: callbacks.onToggleRepeat
       },
       {type: 'separator'},
@@ -237,4 +269,22 @@ export function createApplicationMenu(callbacks: {
 
   const menu: Menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+}
+
+/**
+ * Creates and sets the application menu.
+ * Stores callbacks so the menu can be rebuilt when state changes.
+ *
+ * @param callbacks - Callback functions for menu actions
+ * @param initialState - Initial state for checkboxes (optional)
+ */
+export function createApplicationMenu(
+  callbacks: MenuCallbacks,
+  initialState?: Partial<MenuState>
+): void {
+  storedCallbacks = callbacks;
+  if (initialState) {
+    currentState = {...currentState, ...initialState};
+  }
+  buildMenu(callbacks, currentState);
 }

@@ -23,7 +23,7 @@
  * @module app/components/root
  */
 
-import {Component, inject, computed, HostBinding, OnDestroy, HostListener, signal, effect, untracked} from '@angular/core';
+import {Component, inject, computed, HostBinding, OnDestroy, HostListener, signal, effect, untracked, ChangeDetectionStrategy} from '@angular/core';
 import {LayoutHeader} from '../layout/layout-header/layout-header';
 import {LayoutOutlet} from '../layout/layout-outlet/layout-outlet';
 import {LayoutControls} from '../layout/layout-controls/layout-controls';
@@ -59,6 +59,7 @@ import {SettingsService} from '../../services/settings.service';
   imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView, MiniplayerControls],
   templateUrl: './root.html',
   styleUrl: './root.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Root implements OnDestroy {
   // ============================================================================

@@ -462,13 +462,18 @@ class PlaylistManager {
   /** Reference to SSE manager for broadcasting updates */
   private readonly sse: SSEManager;
 
+  /** Callback for mode changes */
+  private readonly onModeChange: ((shuffle: boolean, repeat: boolean) => void) | null;
+
   /**
    * Creates a new playlist manager.
    *
    * @param sse - SSE manager for broadcasting playlist updates
+   * @param onModeChange - Optional callback for mode changes
    */
-  public constructor(sse: Readonly<SSEManager>) {
+  public constructor(sse: Readonly<SSEManager>, onModeChange?: (shuffle: boolean, repeat: boolean) => void) {
     this.sse = sse as SSEManager;
+    this.onModeChange = onModeChange ?? null;
   }
 
   /**
@@ -828,6 +833,7 @@ class PlaylistManager {
       shuffleEnabled: this.shuffleEnabled,
       repeatEnabled: this.repeatEnabled,
     });
+    this.onModeChange?.(this.shuffleEnabled, this.repeatEnabled);
   }
 }
 
@@ -893,12 +899,31 @@ export class UnifiedMediaServer {
   /** Time position when playback was paused (for resume) */
   private pausedTime: number = 0;
 
+  /** Callback for playlist mode changes (shuffle/repeat) */
+  private onModeChangeCallback: ((shuffle: boolean, repeat: boolean) => void) | null = null;
+
   /**
    * Creates a new unified media server.
    * Call start() to begin listening for connections.
    */
   public constructor() {
-    this.playlist = new PlaylistManager(this.sse);
+    this.playlist = new PlaylistManager(this.sse, this.handleModeChange.bind(this));
+  }
+
+  /**
+   * Registers a callback for playlist mode changes.
+   *
+   * @param callback - Function called when shuffle/repeat mode changes
+   */
+  public onModeChange(callback: (shuffle: boolean, repeat: boolean) => void): void {
+    this.onModeChangeCallback = callback;
+  }
+
+  /**
+   * Internal handler for mode changes from PlaylistManager.
+   */
+  private handleModeChange(shuffle: boolean, repeat: boolean): void {
+    this.onModeChangeCallback?.(shuffle, repeat);
   }
 
   /**

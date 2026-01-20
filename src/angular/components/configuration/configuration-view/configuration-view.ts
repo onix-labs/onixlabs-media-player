@@ -12,7 +12,7 @@
  * @module app/components/configuration/configuration-view
  */
 
-import {Component, output, signal, computed, inject} from '@angular/core';
+import {Component, output, signal, computed, inject, ChangeDetectionStrategy} from '@angular/core';
 import {FormsModule} from '@angular/forms';
 import {SettingsService, VISUALIZATION_OPTIONS, VisualizationType, FftSize, BarDensity, VideoQuality, AudioBitrate} from '../../../services/settings.service';
 
@@ -80,6 +80,7 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   imports: [FormsModule],
   templateUrl: './configuration-view.html',
   styleUrl: './configuration-view.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ConfigurationView {
   // ============================================================================
