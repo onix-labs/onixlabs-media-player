@@ -1,59 +1,118 @@
-# OnixlabsMediaPlayer
+![ONIX Labs](https://raw.githubusercontent.com/onix-labs/onixlabs-website/refs/heads/main/OnixLabs.Web/wwwroot/onixlabs/images/logo/logo-full-light.svg)
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.0.4.
+# ONIXPlayer
 
-## Development server
+A beautiful, feature-rich media player for macOS, Windows, and Linux.
 
-To start a local development server, run:
+![Electron](https://img.shields.io/badge/Electron-39-47848F?logo=electron&logoColor=white)
+![Angular](https://img.shields.io/badge/Angular-21-DD0031?logo=angular&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+---
+
+## Features
+
+### Audio Playback
+
+Play your music with stunning real-time visualizations. ONIXPlayer supports MP3, FLAC, WAV, OGG, M4A, AAC, and WMA formats out of the box.
+
+**9 Unique Visualizations:**
+- **Analyzer** — Classic frequency spectrum bars
+- **Spectre** — Mirrored bars with smoke trail effects
+- **Pulsar** — Radial waveform with white emissions
+- **Record** — Water ripple effect with rotating waveforms
+- **Onix** — The ONIXLabs logo brought to life
+- **Classic** — Oscilloscope-style waveform
+- **Flare** — Dual waveforms with flare
+- **Flux** — Orbiting circles with rainbow spectrum
+- **Neon** — Rotating waveforms with a neon glow
+
+All visualizations respond to your music in real-time and can be customized with sensitivity, color shifting, trail effects, and more.
+
+### MIDI Playback
+
+ONIXPlayer can play MIDI files with full visualization support, synthesized using FluidSynth with high-quality SoundFonts.
+
+### Video Playback
+
+Watch videos in MP4, MKV, AVI, WebM, and MOV formats. Non-native formats are automatically transcoded on-the-fly for smooth playback.
+
+### Playlist Management
+
+- Drag and drop files to add them to your playlist
+- Shuffle and repeat modes
+- Auto-advances to the next track
+- Skip forward/backward with Shift+click
+
+### Fullscreen Mode
+
+Immerse yourself in your media with a clean fullscreen experience. Controls appear when you move the mouse and hide automatically. Double-click to toggle fullscreen, or press Escape to exit.
+
+### Miniplayer Mode
+
+Keep your music visible while you work. The compact miniplayer floats above other windows, snaps to screen edges, and remembers its position.
+
+### Customizable Settings
+
+Fine-tune your experience with extensive settings:
+- Visualization preferences (sensitivity, colors, effects)
+- Playback options (volume, crossfade, skip duration)
+- Video transcoding quality
+- And more
+
+---
+
+## Requirements
+
+ONIXPlayer requires the following to be installed on your system:
+
+- **FFmpeg** — For media transcoding and metadata extraction
+- **FluidSynth** — For MIDI playback (optional)
+
+### macOS Installation
 
 ```bash
-ng serve
+brew install ffmpeg
+brew install fluid-synth  # Optional, for MIDI support
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+---
 
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+## Running in Development
 
 ```bash
-ng generate component component-name
+npm install
+npm run dev
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+## Building for Distribution
 
 ```bash
-ng generate --help
+# macOS
+npm run package:mac
+
+# Windows
+npm run package:win
+
+# Linux
+npm run package:linux
 ```
 
-## Building
+Build outputs are placed in the `release/` directory.
 
-To build the project run:
+---
 
-```bash
-ng build
-```
+## License
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+MIT License — see [LICENSE](LICENSE) for details.
 
-## Running unit tests
+---
 
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
+## Links
 
-```bash
-ng test
-```
+- [ONIXLabs Website](https://onixlabs.io)
+- [GitHub Repository](https://github.com/onix-labs/onixlabs-media-player)
 
-## Running end-to-end tests
+---
 
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+Built by **ONIXLabs**
