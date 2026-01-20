@@ -2,7 +2,7 @@
   <div class="content-area">
     <div class="media-area">
       @if (isAudio()) {
-        <app-audio-outlet #audioOutlet/>
+        <app-audio-outlet #audioOutlet (visualizationChange)="visualizationDisplayName.set($event)"/>
       } @else if (isVideo()) {
         <app-video-outlet/>
       } @else {
@@ -31,7 +31,7 @@
         <button (click)="nextVisualization()" title="Next visualization">
           <i class="fa-solid fa-caret-right"></i>
         </button>
-        <span class="visualization-name">{{ visualizationName() }}</span>
+        <span class="visualization-name">{{ visualizationDisplayName() }}</span>
       }
       <div class="spacer"></div>
       <button class="playlist-toggle" (click)="togglePlaylist()" title="Toggle playlist">

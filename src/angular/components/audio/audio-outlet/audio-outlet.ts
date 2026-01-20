@@ -26,7 +26,7 @@
  * @module app/components/audio/audio-outlet
  */
 
-import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, HostBinding, ChangeDetectionStrategy} from '@angular/core';
+import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, HostBinding, ChangeDetectionStrategy, Output, EventEmitter} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {SettingsService} from '../../../services/settings.service';
@@ -72,6 +72,13 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
   /** Reference to the hidden audio element for playback */
   @ViewChild('audioElement', {static: true}) public audioRef!: ElementRef<HTMLAudioElement>;
+
+  // ============================================================================
+  // Output Events
+  // ============================================================================
+
+  /** Emits the visualization display name when it changes (format: "Category : Name") */
+  @Output() public readonly visualizationChange: EventEmitter<string> = new EventEmitter<string>();
 
   // ============================================================================
   // Services
@@ -674,6 +681,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const metadata = VISUALIZATION_METADATA[type];
     this.visualizationNameSignal.set(metadata.name);
     this.visualizationCategorySignal.set(metadata.category);
+    this.visualizationChange.emit(`${metadata.category} : ${metadata.name}`);
 
     if (this.visualization) {
       this.visualization.destroy();
@@ -713,6 +721,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     });
     this.visualizationNameSignal.set(this.visualization.name);
     this.visualizationCategorySignal.set(this.visualization.category);
+    this.visualizationChange.emit(`${this.visualization.category} : ${this.visualization.name}`);
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
     this.visualization.setSensitivity(this.settings.getEffectiveSensitivity(this.visualizationType()));
     this.visualization.setTrailIntensity(this.settings.trailIntensity());
