@@ -381,6 +381,19 @@ export interface MediaPlayerAPI {
    * @returns Cleanup function to unregister the listener
    */
   onViewModeChange: (callback: (mode: 'desktop' | 'miniplayer' | 'fullscreen') => void) => () => void;
+
+  /**
+   * Opens a URL in the default system browser.
+   * @param url - The URL to open
+   * @returns Promise that resolves when the URL is opened
+   */
+  openExternal: (url: string) => Promise<void>;
+
+  /**
+   * Gets version information for Electron and its components.
+   * @returns Object containing electron, node, chrome, and v8 versions
+   */
+  getVersionInfo: () => {electron: string; node: string; chrome: string; v8: string};
 }
 
 /**

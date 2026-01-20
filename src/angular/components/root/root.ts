@@ -28,6 +28,7 @@ import {LayoutHeader} from '../layout/layout-header/layout-header';
 import {LayoutOutlet} from '../layout/layout-outlet/layout-outlet';
 import {LayoutControls} from '../layout/layout-controls/layout-controls';
 import {ConfigurationView} from '../configuration/configuration-view/configuration-view';
+import {AboutView} from '../about/about-view/about-view';
 import {MiniplayerControls} from '../miniplayer/miniplayer-controls';
 import {ElectronService} from '../../services/electron.service';
 import {MediaPlayerService} from '../../services/media-player.service';
@@ -56,7 +57,7 @@ import {SettingsService} from '../../services/settings.service';
  */
 @Component({
   selector: 'app-root',
-  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView, MiniplayerControls],
+  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView, AboutView, MiniplayerControls],
   templateUrl: './root.html',
   styleUrl: './root.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -93,6 +94,9 @@ export class Root implements OnDestroy {
 
   /** Whether the configuration view is displayed (settings mode) */
   public readonly isConfigurationMode: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /** Whether the about view is displayed (about mode) */
+  public readonly isAboutMode: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** Internal signal tracking if controls should be visible in fullscreen */
   private readonly controlsVisible: ReturnType<typeof signal<boolean>> = signal<boolean>(true);
@@ -162,6 +166,14 @@ export class Root implements OnDestroy {
       const trigger: number = this.electron.menuOpenFile();
       if (trigger > 0) {
         void this.openFilesFromMenu();
+      }
+    });
+
+    // React to "Show About" menu event
+    effect((): void => {
+      const trigger: number = this.electron.menuShowAbout();
+      if (trigger > 0) {
+        void this.enterAboutMode();
       }
     });
 
@@ -347,6 +359,40 @@ export class Root implements OnDestroy {
    */
   public exitConfigurationMode(): void {
     this.isConfigurationMode.set(false);
+  }
+
+  // ============================================================================
+  // Public Methods - About Mode
+  // ============================================================================
+
+  /**
+   * Enters about mode, displaying the about view.
+   * Called when the About menu item is clicked.
+   * Exits fullscreen/miniplayer mode first to ensure proper window display.
+   *
+   * Uses untracked() to prevent signal reads from registering as effect
+   * dependencies when called from an effect (e.g., menu event handler).
+   */
+  public async enterAboutMode(): Promise<void> {
+    // Exit fullscreen if active (untracked to avoid effect dependency)
+    if (untracked((): boolean => this.isFullscreen())) {
+      await this.electron.exitFullscreen();
+    }
+    // Exit miniplayer if active (untracked to avoid effect dependency)
+    if (untracked((): boolean => this.isMiniplayer())) {
+      await this.electron.exitMiniplayer();
+    }
+    // Exit configuration mode if active
+    this.isConfigurationMode.set(false);
+    this.isAboutMode.set(true);
+  }
+
+  /**
+   * Exits about mode, returning to the media player view.
+   * Called when the close button in the about view is clicked.
+   */
+  public exitAboutMode(): void {
+    this.isAboutMode.set(false);
   }
 
   // ============================================================================

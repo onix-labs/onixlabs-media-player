@@ -1,6 +1,6 @@
 {
   "name": "onixlabs-media-player",
-  "version": "0.0.0",
+  "version": "2026.0.0",
   "main": "src/electron/dist/main.js",
   "type": "module",
   "scripts": {

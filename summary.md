@@ -279,7 +279,7 @@ AudioContext.destination (speakers)
 
 **Electron Layer:**
 - `src/electron/main.ts` - App initialization, IPC handlers, fullscreen window events, menu setup
-- `src/electron/preload.ts` - IPC bridge (file dialog, server port, fullscreen control, menu events)
+- `src/electron/preload.ts` - IPC bridge (file dialog, server port, fullscreen control, menu events, openExternal, version info)
 - `src/electron/unified-media-server.ts` - HTTP API, SSE, playlist management
 - `src/electron/settings-manager.ts` - Persistent settings storage (JSON file in userData)
 - `src/electron/application-menu.ts` - Native application menu for macOS/Windows/Linux
@@ -297,6 +297,7 @@ AudioContext.destination (speakers)
 - `src/angular/components/layout/layout-controls/` - Playback controls
 - `src/angular/components/miniplayer/` - Miniplayer overlay controls
 - `src/angular/components/configuration/configuration-view/` - Settings UI with sidebar and panels
+- `src/angular/components/about/about-view/` - About dialog with version info and links
 
 **Visualizations:**
 - `src/angular/components/audio/audio-outlet/visualizations/` - Visualization implementations
@@ -516,16 +517,30 @@ The entire TypeScript codebase is documented with comprehensive TSDoc comments f
 ### Application Menu
 - Native menu bar for macOS (app menu), Windows/Linux (File menu)
 - File menu: Open (Cmd+O), Close (Cmd+W), with placeholders for URL, playlists, Save As
-- View menu: Full Screen toggle, Visualizations submenu
-- Playback menu: Play/Pause (Space), Shuffle/Repeat toggles, Options
-- Window menu: Minimize, Zoom, macOS window management
-- Help menu: About (opens GitHub page), placeholders for Help Topics
+- View menu: Full Screen toggle, Visualizations submenu, Options (settings)
+- Playback menu: Play/Pause (Space) with dynamic label, Shuffle/Repeat toggles
+- Help menu: About ONIXPlayer (opens About view), placeholders for Help Topics
 - Menu callbacks communicated via IPC to renderer for UI updates
 - UI zoom disabled (zoomFactor: 1.0, keyboard shortcuts blocked, pinch-to-zoom disabled)
 - Shuffle/Repeat menu checkboxes sync with actual state via callback mechanism
+- Play/Pause label dynamically updates: shows "Pause" when playing, "Play" otherwise
+- Play/Pause, Shuffle, Repeat disabled when no media loaded (matches UI button states)
 
 ### Idle State
 - When playlist is empty, layout-outlet displays placeholder with ONIXPlayer logo
 - `hasPlaylistItems` computed signal gates audio/video outlet display
 - File > Open adds files and immediately starts playback
 - File > Close stops current track and removes it from playlist
+
+### About View
+- Access via Help > About ONIXPlayer menu item
+- Displays ONIXPlayer logo and version table:
+  - Application version (CalVer: 2026.0.0)
+  - Electron, Node, Chrome, V8 versions (from process.versions)
+- MIT License notice
+- Supported formats section: Audio (MP3, FLAC, WAV, OGG, M4A, AAC, WMA, MIDI) and Video (MP4, MKV, AVI, WebM, MOV)
+- Dependencies section with links: FFmpeg, FluidSynth (opens in default browser)
+- Links section: GitHub repository, onixlabs.io (opens in default browser)
+- Copyright footer with dynamic year
+- Close button returns to media player view
+- External links use Electron shell.openExternal() for proper OS browser launch

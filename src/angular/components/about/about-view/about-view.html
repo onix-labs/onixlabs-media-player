@@ -1,0 +1,100 @@
+<div class="about-container">
+  <!-- Header -->
+  <div class="about-header">
+    <button class="close-button" (click)="onClose()" title="Close">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+
+  <!-- Content -->
+  <div class="about-content">
+    <!-- Logo and Title -->
+    <div class="about-hero">
+      <img src="logo.png" alt="ONIXPlayer" class="about-logo" draggable="false"/>
+      <table class="version-table">
+        <tr>
+          <td>ONIXPlayer</td>
+          <td>{{ version }}</td>
+        </tr>
+        @if (versionInfo) {
+          <tr>
+            <td>Electron</td>
+            <td>{{ versionInfo.electron }}</td>
+          </tr>
+          <tr>
+            <td>Node</td>
+            <td>{{ versionInfo.node }}</td>
+          </tr>
+          <tr>
+            <td>Chrome</td>
+            <td>{{ versionInfo.chrome }}</td>
+          </tr>
+          <tr>
+            <td>V8</td>
+            <td>{{ versionInfo.v8 }}</td>
+          </tr>
+        }
+      </table>
+      <p class="license">Released under the MIT License</p>
+    </div>
+
+    <!-- Supported Formats -->
+    <div class="about-section">
+      <h2>Supported Formats</h2>
+      <div class="formats-grid">
+        <div class="format-group">
+          <h3><i class="fa-solid fa-music"></i> Audio</h3>
+          <div class="format-tags">
+            @for (ext of audioExtensions; track ext) {
+              <span class="format-tag">{{ ext }}</span>
+            }
+          </div>
+        </div>
+        <div class="format-group">
+          <h3><i class="fa-solid fa-film"></i> Video</h3>
+          <div class="format-tags">
+            @for (ext of videoExtensions; track ext) {
+              <span class="format-tag">{{ ext }}</span>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dependencies -->
+    <div class="about-section">
+      <h2>Powered By</h2>
+      <div class="dependencies-list">
+        @for (dep of dependencies; track dep.name) {
+          <button class="dependency-item" (click)="openExternal(dep.url)">
+            <span class="dep-name">{{ dep.name }}</span>
+            <span class="dep-description">{{ dep.description }}</span>
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Links -->
+    <div class="about-section">
+      <h2>Links</h2>
+      <div class="links-list">
+        <button class="link-item" (click)="openExternal(githubUrl)">
+          <i class="fa-brands fa-github"></i>
+          <span>GitHub Repository</span>
+          <i class="fa-solid fa-arrow-up-right-from-square"></i>
+        </button>
+        <button class="link-item" (click)="openExternal(onixlabsUrl)">
+          <i class="fa-solid fa-globe"></i>
+          <span>onixlabs.io</span>
+          <i class="fa-solid fa-arrow-up-right-from-square"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Copyright -->
+    <div class="about-footer">
+      <p>&copy; {{ currentYear }} ONIXLabs — ALL RIGHTS RESERVED</p>
+    </div>
+  </div>
+</div>

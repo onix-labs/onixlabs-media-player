@@ -165,6 +165,16 @@ class Program {
       updateMenuState({shuffleEnabled: shuffle, repeatEnabled: repeat});
     });
 
+    // Register callback to update menu when playlist count changes (enables/disables shuffle/repeat)
+    this.mediaServer.onPlaylistCountChange((count: number): void => {
+      updateMenuState({hasMedia: count > 0});
+    });
+
+    // Register callback to update menu when playback state changes (Play/Pause label)
+    this.mediaServer.onPlaybackStateChange((isPlaying: boolean): void => {
+      updateMenuState({isPlaying});
+    });
+
     this.window = this.createBrowserWindow();
     this.setupIpcHandlers();
     this.setupWindowEvents();
@@ -484,6 +494,9 @@ class Program {
     createApplicationMenu({
       onShowConfig: (): void => {
         this.window?.webContents.send('menu:showConfig');
+      },
+      onShowAbout: (): void => {
+        this.window?.webContents.send('menu:showAbout');
       },
       onOpenFile: (): void => {
         this.window?.webContents.send('menu:openFile');

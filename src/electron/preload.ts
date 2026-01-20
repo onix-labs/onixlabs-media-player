@@ -17,7 +17,7 @@
  * @module electron/preload
  */
 
-import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import { contextBridge, ipcRenderer, webUtils, shell } from 'electron';
 
 /**
  * Options for the native file open dialog.
@@ -179,6 +179,21 @@ export interface MediaPlayerAPI {
    * @returns Cleanup function to remove the listener
    */
   readonly onViewModeChange: (callback: (mode: 'desktop' | 'miniplayer' | 'fullscreen') => void) => () => void;
+
+  /**
+   * Opens a URL in the default system browser.
+   *
+   * @param url - The URL to open
+   * @returns Promise that resolves when the URL is opened
+   */
+  readonly openExternal: (url: string) => Promise<void>;
+
+  /**
+   * Gets version information for Electron and its components.
+   *
+   * @returns Object containing electron, node, chrome, and v8 versions
+   */
+  readonly getVersionInfo: () => {electron: string; node: string; chrome: string; v8: string};
 }
 
 /**
@@ -219,6 +234,13 @@ const api: MediaPlayerAPI = {
     ipcRenderer.on('window:viewModeChanged', listener);
     return (): void => { ipcRenderer.removeListener('window:viewModeChanged', listener); };
   },
+  openExternal: (url: string): Promise<void> => shell.openExternal(url),
+  getVersionInfo: (): {electron: string; node: string; chrome: string; v8: string} => ({
+    electron: process.versions.electron,
+    node: process.versions.node,
+    chrome: process.versions.chrome,
+    v8: process.versions.v8,
+  }),
 };
 
 /**

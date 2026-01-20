@@ -1,16 +1,19 @@
 @if (isConfigurationMode()) {
   <app-configuration-view (close)="exitConfigurationMode()"/>
 }
+@if (isAboutMode()) {
+  <app-about-view (close)="exitAboutMode()"/>
+}
 @if (isMiniplayer()) {
   <div class="miniplayer-container"
-       [class.hidden]="isConfigurationMode()"
+       [class.hidden]="isConfigurationMode() || isAboutMode()"
        (mouseenter)="onMiniplayerMouseEnter()"
        (mouseleave)="onMiniplayerMouseLeave()">
     <app-layout-outlet class="miniplayer-content"/>
     <app-miniplayer-controls class="miniplayer-overlay" [class.controls-visible]="showControls()"/>
   </div>
 } @else {
-  <div class="media-player-view" [class.hidden]="isConfigurationMode()">
+  <div class="media-player-view" [class.hidden]="isConfigurationMode() || isAboutMode()">
     @if (!isFullscreen()) {
       <app-layout-header/>
     }

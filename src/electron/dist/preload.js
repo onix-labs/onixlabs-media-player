@@ -16,7 +16,7 @@
  *
  * @module electron/preload
  */
-import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import { contextBridge, ipcRenderer, webUtils, shell } from 'electron';
 /**
  * The API implementation that will be exposed to the renderer.
  *
@@ -55,6 +55,13 @@ const api = {
         ipcRenderer.on('window:viewModeChanged', listener);
         return () => { ipcRenderer.removeListener('window:viewModeChanged', listener); };
     },
+    openExternal: (url) => shell.openExternal(url),
+    getVersionInfo: () => ({
+        electron: process.versions.electron,
+        node: process.versions.node,
+        chrome: process.versions.chrome,
+        v8: process.versions.v8,
+    }),
 };
 /**
  * Expose the API to the renderer process under window.mediaPlayer.
