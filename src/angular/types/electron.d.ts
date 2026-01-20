@@ -362,6 +362,13 @@ export interface MediaPlayerAPI {
   getWindowPosition: () => Promise<{x: number; y: number}>;
 
   /**
+   * Sets the visibility of macOS traffic light buttons.
+   * Only affects macOS; no-op on other platforms.
+   * @param visible - Whether the traffic lights should be visible
+   */
+  setTrafficLightVisibility: (visible: boolean) => Promise<void>;
+
+  /**
    * Registers a callback for view mode changes.
    * Called when the window mode changes between desktop, miniplayer, and fullscreen.
    * @param callback - Function called with new view mode
