@@ -19,6 +19,7 @@
 
 import {Injectable, computed, inject} from '@angular/core';
 import {ElectronService, MediaInfo, PlaylistItem} from './electron.service';
+import {SettingsService} from './settings.service';
 
 /**
  * Possible playback states.
@@ -62,6 +63,9 @@ export type PlaybackState = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped
 export class MediaPlayerService {
   /** Reference to the underlying Electron service */
   private readonly electron: ElectronService = inject(ElectronService);
+
+  /** Reference to settings service for configurable behaviors */
+  private readonly settings: SettingsService = inject(SettingsService);
 
   // ============================================================================
   // Signals - Direct Passthrough from ElectronService
@@ -344,13 +348,15 @@ export class MediaPlayerService {
   /**
    * Goes to the previous track, with restart-current behavior.
    *
-   * If more than 3 seconds into the current track, restarts the current
-   * track instead of going to previous. This matches the behavior of
-   * most media players.
+   * If playback is past the configured threshold (default 3 seconds),
+   * restarts the current track instead of going to previous.
+   * This matches the behavior of most media players.
+   * Set threshold to 0 to always go to previous track.
    */
   public async previous(): Promise<void> {
-    // If more than 3 seconds into track, restart current track
-    if (this.currentTime() > 3) {
+    const threshold: number = this.settings.previousTrackThreshold();
+    // If past threshold, restart current track (unless threshold is 0)
+    if (threshold > 0 && this.currentTime() > threshold) {
       await this.seek(0);
       return;
     }

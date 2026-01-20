@@ -58,6 +58,8 @@ export interface ApplicationSettings {
   readonly serverPort: number;
   /** Controls auto-hide delay in seconds (0 = disabled, 1-30 seconds, default 5) */
   readonly controlsAutoHideDelay: number;
+  /** Previous track threshold in seconds (0-10, default 3) */
+  readonly previousTrackThreshold: number;
 }
 
 /**
@@ -101,6 +103,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   application: {
     serverPort: 0,
     controlsAutoHideDelay: 5,
+    previousTrackThreshold: 3,
   },
 };
 
@@ -214,6 +217,11 @@ export class SettingsService {
   /** Controls auto-hide delay in seconds (0 = disabled) */
   public readonly controlsAutoHideDelay: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().application?.controlsAutoHideDelay ?? 5
+  );
+
+  /** Previous track threshold in seconds */
+  public readonly previousTrackThreshold: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().application?.previousTrackThreshold ?? 3
   );
 
   // ============================================================================
@@ -394,6 +402,32 @@ export class SettingsService {
 
     if (!response.ok) {
       console.error(`[SettingsService] Failed to save auto-hide delay: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the previous track threshold.
+   *
+   * When playback is past this threshold, pressing "previous" restarts the current
+   * track instead of going to the previous track.
+   *
+   * @param threshold - Threshold in seconds (0-10 valid range)
+   */
+  public async setPreviousTrackThreshold(threshold: number): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Validate threshold: 0-10 seconds
+    const validThreshold: number = Math.max(0, Math.min(10, Math.round(threshold)));
+
+    const response: Response = await fetch(`${serverUrl}/settings/application`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({previousTrackThreshold: validThreshold}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save previous track threshold: ${response.status}`);
     }
   }
 

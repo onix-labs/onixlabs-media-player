@@ -142,6 +142,11 @@ export class ConfigurationView {
     (): number => this.settingsService.controlsAutoHideDelay()
   );
 
+  /** Current previous track threshold in seconds */
+  public readonly currentPreviousTrackThreshold: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.previousTrackThreshold()
+  );
+
   // ============================================================================
   // Template Data
   // ============================================================================
@@ -342,5 +347,26 @@ export class ConfigurationView {
   public formatAutoHideDelay(): string {
     const delay: number = this.currentAutoHideDelay();
     return delay === 0 ? 'Off' : `${delay}s`;
+  }
+
+  /**
+   * Handles previous track threshold slider change.
+   *
+   * @param event - The input event from the range element
+   */
+  public async onPreviousTrackThresholdChange(event: Event): Promise<void> {
+    const input: HTMLInputElement = event.target as HTMLInputElement;
+    const value: number = parseInt(input.value, 10);
+    await this.settingsService.setPreviousTrackThreshold(value);
+  }
+
+  /**
+   * Formats the previous track threshold value for display.
+   *
+   * @returns The threshold as a human-readable string (e.g., "3s" or "Off")
+   */
+  public formatPreviousTrackThreshold(): string {
+    const threshold: number = this.currentPreviousTrackThreshold();
+    return threshold === 0 ? 'Off' : `${threshold}s`;
   }
 }

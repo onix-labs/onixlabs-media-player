@@ -76,6 +76,10 @@
     - Slider from 0-30 seconds (0 = disabled, controls always visible)
     - Default: 5 seconds
     - Changes apply immediately
+  - **Previous Track Threshold**: Configure "previous" button behavior (Application category)
+    - Slider from 0-10 seconds (0 = always go to previous track)
+    - Default: 3 seconds (if past this point, restart current track instead)
+    - Changes apply immediately
 - Sensitivity changes apply in real-time to the active visualization
 - Extensible category-based UI with search filtering
 
