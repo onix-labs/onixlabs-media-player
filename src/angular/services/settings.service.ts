@@ -366,6 +366,44 @@ export class SettingsService implements OnDestroy {
   );
 
   // ============================================================================
+  // Private Helper Methods
+  // ============================================================================
+
+  /**
+   * Generic helper for updating a setting via HTTP PUT.
+   *
+   * Reduces duplication across all setter methods by handling:
+   * - Server URL check
+   * - HTTP request construction
+   * - Error logging
+   *
+   * @param category - Settings category ('visualization', 'application', 'playback', 'transcoding')
+   * @param field - The field name to update
+   * @param value - The value to set
+   */
+  private async updateSetting<T>(category: string, field: string, value: T): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    const response: Response = await fetch(`${serverUrl}/settings/${category}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({[field]: value}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save ${field}: ${response.status}`);
+    }
+  }
+
+  /**
+   * Clamps a number to a range.
+   */
+  private clamp(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  // ============================================================================
   // Public Methods
   // ============================================================================
 
@@ -384,188 +422,76 @@ export class SettingsService implements OnDestroy {
   /**
    * Sets the default visualization type.
    *
-   * Makes an HTTP PUT request to update the server-side settings.
-   * The update is broadcast to all clients via SSE.
-   *
    * @param type - The visualization type to set as default
    */
   public async setDefaultVisualization(type: VisualizationType): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({defaultType: type}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save settings: ${response.status}`);
-    }
+    await this.updateSetting('visualization', 'defaultType', type);
   }
 
   /**
    * Sets the global visualization sensitivity.
    *
-   * Makes an HTTP PUT request to update the server-side settings.
-   * The update is broadcast to all clients via SSE.
-   *
    * @param value - Sensitivity value between 0.0 and 1.0
    */
   public async setSensitivity(value: number): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Clamp value to valid range
-    const clampedValue: number = Math.max(0, Math.min(1, value));
-
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({sensitivity: clampedValue}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save sensitivity: ${response.status}`);
-    }
+    await this.updateSetting('visualization', 'sensitivity', this.clamp(value, 0, 1));
   }
 
   /**
    * Sets the maximum frame rate for visualizations.
    *
-   * Makes an HTTP PUT request to update the server-side settings.
-   * The update is broadcast to all clients via SSE.
-   *
    * @param fps - Frame rate (0 = uncapped, or 15/30/60)
    */
   public async setMaxFrameRate(fps: number): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Validate: must be 0, 15, 30, or 60
     const validFps: number = [0, 15, 30, 60].includes(fps) ? fps : 0;
-
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({maxFrameRate: validFps}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save max frame rate: ${response.status}`);
-    }
+    await this.updateSetting('visualization', 'maxFrameRate', validFps);
   }
 
   /**
    * Sets the trail intensity for visualizations.
    *
-   * Controls how long visual trails persist in visualizations like
-   * Tunnel, Pulsar, Water, and Flux.
-   *
    * @param value - Trail intensity value between 0.0 and 1.0
    */
   public async setTrailIntensity(value: number): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Clamp value to valid range
-    const clampedValue: number = Math.max(0, Math.min(1, value));
-
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({trailIntensity: clampedValue}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save trail intensity: ${response.status}`);
-    }
+    await this.updateSetting('visualization', 'trailIntensity', this.clamp(value, 0, 1));
   }
 
   /**
    * Sets the hue shift for visualization colors.
    *
-   * Rotates all visualization colors by the specified amount.
-   *
    * @param value - Hue shift value in degrees (0-360)
    */
   public async setHueShift(value: number): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Normalize to 0-360 range
     const normalizedValue: number = ((value % 360) + 360) % 360;
-
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({hueShift: normalizedValue}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save hue shift: ${response.status}`);
-    }
+    await this.updateSetting('visualization', 'hueShift', normalizedValue);
   }
 
   /**
    * Sets the FFT size for audio analysis.
    *
-   * Higher values provide more frequency resolution but require more processing.
-   *
    * @param size - FFT size (256, 512, 1024, 2048, or 4096)
    */
   public async setFftSize(size: FftSize): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Validate: must be a valid FFT size
     const validSizes: readonly FftSize[] = [256, 512, 1024, 2048, 4096];
     if (!validSizes.includes(size)) {
       console.error(`[SettingsService] Invalid FFT size: ${size}`);
       return;
     }
-
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({fftSize: size}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save FFT size: ${response.status}`);
-    }
+    await this.updateSetting('visualization', 'fftSize', size);
   }
 
   /**
    * Sets the bar density for bar-based visualizations.
    *
-   * Affects Analyzer and Spectre visualizations:
-   * - low: Fewer bars, better performance
-   * - medium: Default bar count
-   * - high: More bars, more detail
-   *
    * @param density - Bar density level ('low', 'medium', or 'high')
    */
   public async setBarDensity(density: BarDensity): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Validate: must be a valid bar density
     const validDensities: readonly BarDensity[] = ['low', 'medium', 'high'];
     if (!validDensities.includes(density)) {
       console.error(`[SettingsService] Invalid bar density: ${density}`);
       return;
     }
-
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({barDensity: density}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save bar density: ${response.status}`);
-    }
+    await this.updateSetting('visualization', 'barDensity', density);
   }
 
   /**
@@ -584,56 +510,23 @@ export class SettingsService implements OnDestroy {
   /**
    * Sets the sensitivity for a specific visualization type.
    *
-   * Makes an HTTP PUT request to update the server-side settings.
-   * The update is broadcast to all clients via SSE.
-   *
    * @param type - The visualization type to set sensitivity for
    * @param value - Sensitivity value between 0.0 and 1.0
    */
   public async setVisualizationSensitivity(type: VisualizationType, value: number): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Clamp value to valid range
-    const clampedValue: number = Math.max(0, Math.min(1, value));
-
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({perVisualizationSensitivity: {[type]: clampedValue}}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save visualization sensitivity: ${response.status}`);
-    }
+    const clampedValue: number = this.clamp(value, 0, 1);
+    await this.updateSetting('visualization', 'perVisualizationSensitivity', {[type]: clampedValue});
   }
 
   /**
    * Resets a visualization's sensitivity to use the global setting.
    *
-   * Removes the per-visualization override, causing the visualization to
-   * use the global sensitivity value.
-   *
    * @param type - The visualization type to reset
    */
   public async resetVisualizationSensitivity(type: VisualizationType): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Get current per-viz settings and remove this type
     const current: PerVisualizationSensitivity = {...this.perVisualizationSensitivity()};
     delete current[type];
-
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      // Send the full object to replace (not merge)
-      body: JSON.stringify({perVisualizationSensitivity: current}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to reset visualization sensitivity: ${response.status}`);
-    }
+    await this.updateSetting('visualization', 'perVisualizationSensitivity', current);
   }
 
   /**
@@ -644,21 +537,8 @@ export class SettingsService implements OnDestroy {
    * @param port - Port number (0 = auto-assign, or 1024-65535)
    */
   public async setServerPort(port: number): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Validate port: 0 (auto) or valid user port range
-    const validPort: number = port === 0 ? 0 : Math.max(1024, Math.min(65535, Math.round(port)));
-
-    const response: Response = await fetch(`${serverUrl}/settings/application`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({serverPort: validPort}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save server port: ${response.status}`);
-    }
+    const validPort: number = port === 0 ? 0 : this.clamp(Math.round(port), 1024, 65535);
+    await this.updateSetting('application', 'serverPort', validPort);
   }
 
   /**
@@ -667,47 +547,16 @@ export class SettingsService implements OnDestroy {
    * @param delay - Delay in seconds (0 = disabled, 1-30 valid range)
    */
   public async setControlsAutoHideDelay(delay: number): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Validate delay: 0 (disabled) or 1-30 seconds
-    const validDelay: number = Math.max(0, Math.min(30, Math.round(delay)));
-
-    const response: Response = await fetch(`${serverUrl}/settings/application`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({controlsAutoHideDelay: validDelay}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save auto-hide delay: ${response.status}`);
-    }
+    await this.updateSetting('application', 'controlsAutoHideDelay', this.clamp(Math.round(delay), 0, 30));
   }
 
   /**
    * Sets the previous track threshold.
    *
-   * When playback is past this threshold, pressing "previous" restarts the current
-   * track instead of going to the previous track.
-   *
    * @param threshold - Threshold in seconds (0-10 valid range)
    */
   public async setPreviousTrackThreshold(threshold: number): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Validate threshold: 0-10 seconds
-    const validThreshold: number = Math.max(0, Math.min(10, Math.round(threshold)));
-
-    const response: Response = await fetch(`${serverUrl}/settings/playback`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({previousTrackThreshold: validThreshold}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save previous track threshold: ${response.status}`);
-    }
+    await this.updateSetting('playback', 'previousTrackThreshold', this.clamp(Math.round(threshold), 0, 10));
   }
 
   /**
@@ -716,21 +565,7 @@ export class SettingsService implements OnDestroy {
    * @param width - Line width value between 1.0 and 5.0
    */
   public async setLineWidth(width: number): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Clamp value to valid range
-    const clampedValue: number = Math.max(1, Math.min(5, width));
-
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({lineWidth: clampedValue}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save line width: ${response.status}`);
-    }
+    await this.updateSetting('visualization', 'lineWidth', this.clamp(width, 1, 5));
   }
 
   /**
@@ -739,21 +574,7 @@ export class SettingsService implements OnDestroy {
    * @param intensity - Glow intensity value between 0.0 and 1.0
    */
   public async setGlowIntensity(intensity: number): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Clamp value to valid range
-    const clampedValue: number = Math.max(0, Math.min(1, intensity));
-
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({glowIntensity: clampedValue}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save glow intensity: ${response.status}`);
-    }
+    await this.updateSetting('visualization', 'glowIntensity', this.clamp(intensity, 0, 1));
   }
 
   /**
@@ -762,21 +583,7 @@ export class SettingsService implements OnDestroy {
    * @param volume - Volume value between 0.0 and 1.0
    */
   public async setDefaultVolume(volume: number): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Clamp value to valid range
-    const clampedValue: number = Math.max(0, Math.min(1, volume));
-
-    const response: Response = await fetch(`${serverUrl}/settings/playback`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({defaultVolume: clampedValue}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save default volume: ${response.status}`);
-    }
+    await this.updateSetting('playback', 'defaultVolume', this.clamp(volume, 0, 1));
   }
 
   /**
@@ -785,21 +592,7 @@ export class SettingsService implements OnDestroy {
    * @param duration - Crossfade duration in milliseconds (0-500)
    */
   public async setCrossfadeDuration(duration: number): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Clamp value to valid range
-    const clampedValue: number = Math.max(0, Math.min(500, Math.round(duration)));
-
-    const response: Response = await fetch(`${serverUrl}/settings/playback`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({crossfadeDuration: clampedValue}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save crossfade duration: ${response.status}`);
-    }
+    await this.updateSetting('playback', 'crossfadeDuration', this.clamp(Math.round(duration), 0, 500));
   }
 
   /**
@@ -808,25 +601,12 @@ export class SettingsService implements OnDestroy {
    * @param quality - Video quality preset ('low', 'medium', or 'high')
    */
   public async setVideoQuality(quality: VideoQuality): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Validate: must be a valid video quality
     const validQualities: readonly VideoQuality[] = ['low', 'medium', 'high'];
     if (!validQualities.includes(quality)) {
       console.error(`[SettingsService] Invalid video quality: ${quality}`);
       return;
     }
-
-    const response: Response = await fetch(`${serverUrl}/settings/transcoding`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({videoQuality: quality}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save video quality: ${response.status}`);
-    }
+    await this.updateSetting('transcoding', 'videoQuality', quality);
   }
 
   /**
@@ -835,25 +615,12 @@ export class SettingsService implements OnDestroy {
    * @param bitrate - Audio bitrate in kbps (128, 192, 256, or 320)
    */
   public async setAudioBitrate(bitrate: AudioBitrate): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Validate: must be a valid audio bitrate
     const validBitrates: readonly AudioBitrate[] = [128, 192, 256, 320];
     if (!validBitrates.includes(bitrate)) {
       console.error(`[SettingsService] Invalid audio bitrate: ${bitrate}`);
       return;
     }
-
-    const response: Response = await fetch(`${serverUrl}/settings/transcoding`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({audioBitrate: bitrate}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to save audio bitrate: ${response.status}`);
-    }
+    await this.updateSetting('transcoding', 'audioBitrate', bitrate);
   }
 
   /**

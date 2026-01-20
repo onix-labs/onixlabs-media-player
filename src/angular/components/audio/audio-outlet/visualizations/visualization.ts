@@ -557,6 +557,139 @@ export abstract class Canvas2DVisualization extends Visualization {
     this.ctx.fillStyle = `rgba(0, 0, 0, ${this.fadeAlpha})`;
     this.ctx.fillRect(0, 0, this.width, this.height);
   }
+
+  /**
+   * Draws a path with three layers: glow, main, and highlight.
+   *
+   * This helper method reduces duplication across visualizations that draw
+   * waveforms with the common three-layer pattern:
+   * 1. Glow layer: shadow blur, semi-transparent, thicker line
+   * 2. Main layer: solid color, standard line width
+   * 3. Highlight layer: lighter color, thin line
+   *
+   * @param buildPath - Function that builds the path (called 3 times)
+   * @param mainColor - Color for the main layer (e.g., "rgb(0, 255, 100)")
+   * @param glowColor - Color for the glow layer (e.g., "rgba(0, 255, 100, 0.8)")
+   * @param highlightColor - Color for the highlight layer (optional)
+   * @param options - Additional drawing options
+   */
+  protected drawPathWithLayers(
+    buildPath: () => void,
+    mainColor: string,
+    glowColor: string,
+    highlightColor?: string,
+    options: {
+      baseGlowBlur?: number;
+      closePath?: boolean;
+      fill?: boolean;
+      glowLineWidthOffset?: number;
+      highlightLineWidth?: number;
+    } = {}
+  ): void {
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const {
+      baseGlowBlur = 12,
+      closePath = false,
+      fill = false,
+      glowLineWidthOffset = 4,
+      highlightLineWidth = 1
+    } = options;
+
+    // Reduce glow color opacity for the stroke
+    const glowStrokeColor: string = glowColor.replace(/[\d.]+\)$/, (match: string): string => {
+      const opacity: number = parseFloat(match) * 0.375;
+      return opacity.toFixed(2) + ')';
+    });
+
+    // Glow layer
+    ctx.save();
+    ctx.shadowBlur = this.getScaledGlowBlur(baseGlowBlur);
+    ctx.shadowColor = glowColor;
+
+    if (fill) {
+      ctx.fillStyle = glowStrokeColor;
+    } else {
+      ctx.strokeStyle = glowStrokeColor;
+      ctx.lineWidth = this.lineWidth + glowLineWidthOffset;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    }
+
+    buildPath();
+    if (closePath) ctx.closePath();
+    if (fill) ctx.fill(); else ctx.stroke();
+    ctx.restore();
+
+    // Main layer
+    if (fill) {
+      ctx.fillStyle = mainColor;
+    } else {
+      ctx.strokeStyle = mainColor;
+      ctx.lineWidth = this.lineWidth;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    }
+
+    buildPath();
+    if (closePath) ctx.closePath();
+    if (fill) ctx.fill(); else ctx.stroke();
+
+    // Highlight layer (optional)
+    if (highlightColor) {
+      if (fill) {
+        ctx.fillStyle = highlightColor;
+      } else {
+        ctx.strokeStyle = highlightColor;
+        ctx.lineWidth = highlightLineWidth;
+      }
+
+      buildPath();
+      if (closePath) ctx.closePath();
+      if (fill) ctx.fill(); else ctx.stroke();
+    }
+  }
+
+  /**
+   * Draws a path from an array of points with three layers.
+   *
+   * Convenience wrapper around drawPathWithLayers for pre-calculated point arrays.
+   *
+   * @param points - Array of {x, y} points defining the path
+   * @param mainColor - Color for the main layer
+   * @param glowColor - Color for the glow layer
+   * @param highlightColor - Color for the highlight layer (optional)
+   * @param options - Additional drawing options
+   */
+  protected drawPointsWithLayers(
+    points: ReadonlyArray<{x: number; y: number}>,
+    mainColor: string,
+    glowColor: string,
+    highlightColor?: string,
+    options: {
+      baseGlowBlur?: number;
+      closePath?: boolean;
+      fill?: boolean;
+      glowLineWidthOffset?: number;
+      highlightLineWidth?: number;
+      startIndex?: number;
+      endIndex?: number;
+    } = {}
+  ): void {
+    const start: number = options.startIndex ?? 0;
+    const end: number = options.endIndex ?? points.length;
+
+    if (end - start < 2) return;
+
+    const buildPath: () => void = (): void => {
+      this.ctx.beginPath();
+      this.ctx.moveTo(points[start].x, points[start].y);
+      for (let i: number = start + 1; i < end; i++) {
+        this.ctx.lineTo(points[i].x, points[i].y);
+      }
+    };
+
+    this.drawPathWithLayers(buildPath, mainColor, glowColor, highlightColor, options);
+  }
 }
 
 /**

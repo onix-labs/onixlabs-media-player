@@ -531,6 +531,45 @@ export class ElectronService implements OnDestroy {
       });
     });
 
+    // Delta playlist events (more efficient than full playlist updates)
+    this.eventSource.addEventListener('playlist:items:added', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
+        const data = this.safeParseJSON<{ items: PlaylistItem[]; startIndex: number; currentIndex: number }>(
+          e.data,
+          { items: [], startIndex: 0, currentIndex: -1 }
+        );
+        this.playlist.update((p: PlaylistState): PlaylistState => ({
+          ...p,
+          items: [...p.items, ...data.items],
+          currentIndex: data.currentIndex,
+        }));
+      });
+    });
+
+    this.eventSource.addEventListener('playlist:items:removed', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
+        const data = this.safeParseJSON<{ id: string; removedIndex: number; currentIndex: number }>(
+          e.data,
+          { id: '', removedIndex: -1, currentIndex: -1 }
+        );
+        this.playlist.update((p: PlaylistState): PlaylistState => ({
+          ...p,
+          items: p.items.filter((item: PlaylistItem): boolean => item.id !== data.id),
+          currentIndex: data.currentIndex,
+        }));
+      });
+    });
+
+    this.eventSource.addEventListener('playlist:cleared', (): void => {
+      this.ngZone.run((): void => {
+        this.playlist.update((p: PlaylistState): PlaylistState => ({
+          ...p,
+          items: [],
+          currentIndex: -1,
+        }));
+      });
+    });
+
     // Settings events
     this.eventSource.addEventListener('settings:updated', (e: MessageEvent): void => {
       this.ngZone.run((): void => {
