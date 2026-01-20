@@ -64,11 +64,23 @@ export class FlareVisualization extends Canvas2DVisualization {
     const bottomCenterY: number = thirdHeight * 2;    // Bottom waveform at 2/3 from top
     const waveformAmplitude: number = thirdHeight * 0.4;
 
-    // Draw top waveform (pure blue)
-    this.drawWaveform(topCenterY, waveformAmplitude, 'rgb(0, 0, 255)', 'rgba(0, 0, 255, 0.8)');
+    // Apply hue shift to base colors
+    const blueColor: {r: number; g: number; b: number} = this.shiftRgbColor(0, 0, 255);
+    const redColor: {r: number; g: number; b: number} = this.shiftRgbColor(255, 0, 0);
 
-    // Draw bottom waveform (pure red)
-    this.drawWaveform(bottomCenterY, waveformAmplitude, 'rgb(255, 0, 0)', 'rgba(255, 0, 0, 0.8)');
+    // Draw top waveform
+    this.drawWaveform(
+      topCenterY, waveformAmplitude,
+      `rgb(${blueColor.r}, ${blueColor.g}, ${blueColor.b})`,
+      `rgba(${blueColor.r}, ${blueColor.g}, ${blueColor.b}, 0.8)`
+    );
+
+    // Draw bottom waveform
+    this.drawWaveform(
+      bottomCenterY, waveformAmplitude,
+      `rgb(${redColor.r}, ${redColor.g}, ${redColor.b})`,
+      `rgba(${redColor.r}, ${redColor.g}, ${redColor.b}, 0.8)`
+    );
 
     this.applyFadeOverlay();
   }

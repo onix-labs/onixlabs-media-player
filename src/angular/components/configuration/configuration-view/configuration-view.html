@@ -175,6 +175,27 @@
                     <span class="slider-value">{{ formatTrailIntensity() }}</span>
                   </div>
                 </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="hue-shift">Color Shift</label>
+                    <p class="setting-description">
+                      Rotates all visualization colors around the color wheel. Use this to customize the overall color scheme.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="hue-shift"
+                      min="0"
+                      max="360"
+                      step="1"
+                      [value]="currentHueShift()"
+                      (input)="onHueShiftChange($event)"
+                    />
+                    <span class="slider-value">{{ formatHueShift() }}</span>
+                  </div>
+                </div>
               </div>
             }
             @case ('application') {

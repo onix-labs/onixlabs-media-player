@@ -142,9 +142,9 @@ export class FluxVisualization extends Canvas2DVisualization {
     this.hue1 = (this.hue1 + this.HUE_CYCLE_SPEED) % 360;
     this.hue2 = (this.hue2 + this.HUE_CYCLE_SPEED) % 360;
 
-    // Get current colors
-    const color1: {main: string; glow: string} = this.getColorFromHue(this.hue1);
-    const color2: {main: string; glow: string} = this.getColorFromHue(this.hue2);
+    // Get current colors (apply hue shift)
+    const color1: {main: string; glow: string} = this.getColorFromHue(this.shiftHue(this.hue1));
+    const color2: {main: string; glow: string} = this.getColorFromHue(this.shiftHue(this.hue2));
 
     // Calculate current circle positions (180 degrees apart on orbit)
     const circle1X: number = this.screenCenterX + this.orbitRadius * Math.cos(this.orbitAngle);
@@ -278,34 +278,6 @@ export class FluxVisualization extends Canvas2DVisualization {
 
     buildPath();
     ctx.stroke();
-  }
-
-  /**
-   * Converts HSL color to RGB.
-   */
-  private hslToRgb(h: number, s: number, l: number): {r: number; g: number; b: number} {
-    h = h % 360;
-    const sNorm: number = s / 100;
-    const lNorm: number = l / 100;
-
-    const c: number = (1 - Math.abs(2 * lNorm - 1)) * sNorm;
-    const x: number = c * (1 - Math.abs((h / 60) % 2 - 1));
-    const m: number = lNorm - c / 2;
-
-    let r: number, g: number, b: number;
-
-    if (h < 60) { r = c; g = x; b = 0; }
-    else if (h < 120) { r = x; g = c; b = 0; }
-    else if (h < 180) { r = 0; g = c; b = x; }
-    else if (h < 240) { r = 0; g = x; b = c; }
-    else if (h < 300) { r = x; g = 0; b = c; }
-    else { r = c; g = 0; b = x; }
-
-    return {
-      r: Math.round((r + m) * 255),
-      g: Math.round((g + m) * 255),
-      b: Math.round((b + m) * 255)
-    };
   }
 
   /**

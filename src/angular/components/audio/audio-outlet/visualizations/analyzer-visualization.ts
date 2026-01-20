@@ -34,6 +34,7 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
   private readonly dataArray: Uint8Array<ArrayBuffer>;
   private barGradient: CanvasGradient | null = null;
   private gradientHeight: number = 0;
+  private cachedHueShift: number = 0;
 
   public constructor(config: VisualizationConfig) {
     super(config);
@@ -48,12 +49,18 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
       return;
     }
 
+    // Apply hue shift to base colors
+    const green: {r: number; g: number; b: number} = this.shiftRgbColor(0, 204, 0);
+    const yellow: {r: number; g: number; b: number} = this.shiftRgbColor(204, 204, 0);
+    const red: {r: number; g: number; b: number} = this.shiftRgbColor(204, 0, 0);
+
     // Create gradient spanning full canvas height: green (bottom) -> yellow (middle) -> red (top)
     this.barGradient = this.ctx.createLinearGradient(0, this.height, 0, 0);
-    this.barGradient.addColorStop(0, '#00cc00');    // Green at bottom
-    this.barGradient.addColorStop(0.5, '#cccc00');  // Yellow in middle
-    this.barGradient.addColorStop(1, '#cc0000');    // Red at top
+    this.barGradient.addColorStop(0, `rgb(${green.r}, ${green.g}, ${green.b})`);
+    this.barGradient.addColorStop(0.5, `rgb(${yellow.r}, ${yellow.g}, ${yellow.b})`);
+    this.barGradient.addColorStop(1, `rgb(${red.r}, ${red.g}, ${red.b})`);
     this.gradientHeight = this.height;
+    this.cachedHueShift = this.hueShift;
   }
 
   protected override onResize(): void {
@@ -70,8 +77,8 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
     // Skip if canvas has no valid size
     if (width <= 0 || height <= 0) return;
 
-    // Ensure gradient exists and matches current height
-    if (!this.barGradient || this.gradientHeight !== height) {
+    // Ensure gradient exists and matches current height and hue shift
+    if (!this.barGradient || this.gradientHeight !== height || this.cachedHueShift !== this.hueShift) {
       this.createGradient();
     }
 

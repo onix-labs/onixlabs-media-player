@@ -293,6 +293,15 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.visualization.setTrailIntensity(trailIntensity);
       }
     });
+
+    // React to hue shift setting changes
+    effect((): void => {
+      const hueShift: number = this.settings.hueShift();
+
+      if (this.visualization) {
+        this.visualization.setHueShift(hueShift);
+      }
+    });
   }
 
   // ============================================================================
@@ -555,6 +564,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
       this.visualization.setSensitivity(this.settings.getEffectiveSensitivity(type));
       this.visualization.setTrailIntensity(this.settings.trailIntensity());
+      this.visualization.setHueShift(this.settings.hueShift());
 
       const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
@@ -579,6 +589,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
     this.visualization.setSensitivity(this.settings.getEffectiveSensitivity(this.visualizationType()));
     this.visualization.setTrailIntensity(this.settings.trailIntensity());
+    this.visualization.setHueShift(this.settings.hueShift());
 
     const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
