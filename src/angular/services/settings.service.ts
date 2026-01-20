@@ -44,6 +44,11 @@ export type PerVisualizationSensitivity = Partial<Record<VisualizationType, numb
 export type FftSize = 256 | 512 | 1024 | 2048 | 4096;
 
 /**
+ * Bar density levels for bar-based visualizations.
+ */
+export type BarDensity = 'low' | 'medium' | 'high';
+
+/**
  * Visualization settings structure.
  */
 export interface VisualizationSettings {
@@ -61,6 +66,8 @@ export interface VisualizationSettings {
   readonly hueShift: number;
   /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096, default 2048) */
   readonly fftSize: FftSize;
+  /** Bar density for bar-based visualizations (low, medium, high, default medium) */
+  readonly barDensity: BarDensity;
 }
 
 /**
@@ -116,6 +123,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     trailIntensity: 0.5,
     hueShift: 0,
     fftSize: 2048,
+    barDensity: 'medium',
   },
   application: {
     serverPort: 0,
@@ -244,6 +252,11 @@ export class SettingsService {
   /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096) */
   public readonly fftSize: ReturnType<typeof computed<FftSize>> = computed(
     (): FftSize => this.settings().visualization?.fftSize ?? 2048
+  );
+
+  /** Bar density for bar-based visualizations */
+  public readonly barDensity: ReturnType<typeof computed<BarDensity>> = computed(
+    (): BarDensity => this.settings().visualization?.barDensity ?? 'medium'
   );
 
   /** Configured server port (0 = auto-assign) */
@@ -429,6 +442,38 @@ export class SettingsService {
 
     if (!response.ok) {
       console.error(`[SettingsService] Failed to save FFT size: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the bar density for bar-based visualizations.
+   *
+   * Affects Analyzer and Spectre visualizations:
+   * - low: Fewer bars, better performance
+   * - medium: Default bar count
+   * - high: More bars, more detail
+   *
+   * @param density - Bar density level ('low', 'medium', or 'high')
+   */
+  public async setBarDensity(density: BarDensity): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Validate: must be a valid bar density
+    const validDensities: readonly BarDensity[] = ['low', 'medium', 'high'];
+    if (!validDensities.includes(density)) {
+      console.error(`[SettingsService] Invalid bar density: ${density}`);
+      return;
+    }
+
+    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({barDensity: density}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save bar density: ${response.status}`);
     }
   }
 

@@ -90,6 +90,11 @@
     - Options: 256 (Fast), 512, 1024, 2048 (Default), 4096 (High Quality)
     - Higher values provide more frequency detail but use more CPU
     - Changes apply in real-time to the active visualization
+  - **Bar Density**: Controls bar count in bar-based visualizations
+    - Options: Low, Medium (Default), High
+    - Analyzer: 48 / 96 / 144 bars
+    - Spectre: 96 / 192 / 288 bars
+    - Changes apply in real-time
   - **Server Port**: Configure the internal media server port (Application category)
     - 0 = auto-assign (default), or specify port 1024-65535
     - Changes require app restart to take effect
@@ -237,9 +242,10 @@ AudioContext.destination (speakers)
     - Trail intensity via `setTrailIntensity()` and `getFadeMultiplier()`
     - Hue shift via `setHueShift()`, `shiftHue()`, `shiftRgbColor()`
     - FFT size via `setFftSize()`, `getFftSize()`, `onFftSizeChanged()`
+    - Bar density via `setBarDensity()`, `getBarDensity()`, `onBarDensityChanged()`
     - Color conversion utilities: `hslToRgb()`, `rgbToHsl()`
-  - `analyzer-visualization.ts` - Analyzer (category: Bars) - 96 frequency bars with green-yellow-red gradient
-  - `spectre-visualization.ts` - Spectre (category: Bars) - 192 frequency bars with vertical mirroring (above/below center)
+  - `analyzer-visualization.ts` - Analyzer (category: Bars) - configurable frequency bars (48/96/144) with green-yellow-red gradient
+  - `spectre-visualization.ts` - Spectre (category: Bars) - configurable frequency bars (96/192/288) with vertical mirroring (above/below center)
     - Dark center gradient fading to bright green at extremes, smoke trail effect
   - `pulsar-visualization.ts` - Pulsar (category: Science) - pulsing concentric rings with curved waveforms
     - Optimized: reuses trail/temp canvases, pre-allocated point arrays, cached HSL→RGB colors
@@ -287,7 +293,7 @@ AudioContext.destination (speakers)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/settings` | Get all settings |
-| PUT | `/settings/visualization` | Body: `{ defaultType?: string, sensitivity?: number, perVisualizationSensitivity?: object, maxFrameRate?: number, trailIntensity?: number, hueShift?: number, fftSize?: number }` |
+| PUT | `/settings/visualization` | Body: `{ defaultType?: string, sensitivity?: number, perVisualizationSensitivity?: object, maxFrameRate?: number, trailIntensity?: number, hueShift?: number, fftSize?: number, barDensity?: string }` |
 | PUT | `/settings/application` | Body: `{ serverPort?: number, controlsAutoHideDelay?: number, previousTrackThreshold?: number }` |
 
 ### Server-Sent Events

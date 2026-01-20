@@ -26,8 +26,15 @@ export class SpectreVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Spectre';
   public readonly category: string = 'Bars';
 
+  /** Bar count mapping for each density level */
+  private static readonly BAR_COUNTS: Record<'low' | 'medium' | 'high', number> = {
+    low: 96,
+    medium: 192,
+    high: 288
+  };
+
   /** Total number of bars across the width */
-  private readonly TOTAL_BARS: number = 192;
+  private totalBars: number = SpectreVisualization.BAR_COUNTS.medium;
 
   /** Gap between bars in pixels */
   private readonly BAR_GAP: number = 2;
@@ -57,6 +64,11 @@ export class SpectreVisualization extends Canvas2DVisualization {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.sensitivity = 0.5;
+    this.totalBars = SpectreVisualization.BAR_COUNTS[this.barDensity];
+  }
+
+  protected override onBarDensityChanged(): void {
+    this.totalBars = SpectreVisualization.BAR_COUNTS[this.barDensity];
   }
 
   protected override onFftSizeChanged(): void {
@@ -132,15 +144,15 @@ export class SpectreVisualization extends Canvas2DVisualization {
     this.analyser.getByteFrequencyData(this.dataArray);
 
     const centerY: number = height / 2;
-    const barWidth: number = (width - (this.TOTAL_BARS - 1) * this.BAR_GAP) / this.TOTAL_BARS;
+    const barWidth: number = (width - (this.totalBars - 1) * this.BAR_GAP) / this.totalBars;
     const usableBins: number = Math.floor(this.dataArray.length * this.FREQUENCY_RANGE);
     const maxBarHeight: number = height * 0.45; // Max height from center
 
     // Pre-calculate bar values for all bars
     const barValues: number[] = [];
-    for (let i: number = 0; i < this.TOTAL_BARS; i++) {
-      const startBin: number = Math.floor(i * usableBins / this.TOTAL_BARS);
-      const endBin: number = Math.floor((i + 1) * usableBins / this.TOTAL_BARS);
+    for (let i: number = 0; i < this.totalBars; i++) {
+      const startBin: number = Math.floor(i * usableBins / this.totalBars);
+      const endBin: number = Math.floor((i + 1) * usableBins / this.totalBars);
       const count: number = Math.max(1, endBin - startBin);
 
       let sum: number = 0;
@@ -151,7 +163,7 @@ export class SpectreVisualization extends Canvas2DVisualization {
     }
 
     // Draw all bars with vertical mirroring (up and down from center)
-    for (let i: number = 0; i < this.TOTAL_BARS; i++) {
+    for (let i: number = 0; i < this.totalBars; i++) {
       const value: number = barValues[i];
       const barHeight: number = (value / 255) * maxBarHeight * (this.sensitivity * 2);
       const x: number = i * (barWidth + this.BAR_GAP);
@@ -174,7 +186,7 @@ export class SpectreVisualization extends Canvas2DVisualization {
     ctx.fillStyle = 'rgba(0, 255, 100, 0.5)';
 
     // Glow for all bars
-    for (let i: number = 0; i < this.TOTAL_BARS; i++) {
+    for (let i: number = 0; i < this.totalBars; i++) {
       const value: number = barValues[i];
       const barHeight: number = (value / 255) * maxBarHeight * (this.sensitivity * 2);
       const x: number = i * (barWidth + this.BAR_GAP);

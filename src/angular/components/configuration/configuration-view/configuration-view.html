@@ -177,6 +177,26 @@
 
                 <div class="setting-row">
                   <div class="setting-label">
+                    <label for="bar-density">Bar Density</label>
+                    <p class="setting-description">
+                      Controls the number of bars in Analyzer and Spectre visualizations. Higher density shows more detail.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="bar-density"
+                      [value]="currentBarDensity()"
+                      (change)="onBarDensityChange($event)"
+                    >
+                      @for (option of barDensityOptions; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
                     <label for="trail-intensity">Trail Intensity</label>
                     <p class="setting-description">
                       Controls how long visual trails persist. Lower values fade faster, higher values create longer trails.
