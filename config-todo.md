@@ -8,6 +8,7 @@ This document outlines potential configurable items identified in the codebase t
 - **Global Sensitivity** - Master sensitivity slider affecting all visualizations
 - **Per-Visualization Sensitivity** - Individual sensitivity overrides for each visualization type
 - **Server Port** - Configure internal media server port (0 = auto, or 1024-65535). Requires restart.
+- **Controls Auto-Hide** - Configurable delay for fullscreen control bar auto-hide (0=disabled, 1-30s)
 
 ## Server Settings
 
@@ -152,7 +153,7 @@ This document outlines potential configurable items identified in the codebase t
 1. ~~Global sensitivity control~~ ✓ DONE
 2. ~~Per-visualization sensitivity~~ ✓ DONE
 3. ~~Server port configuration~~ ✓ DONE
-4. Control bar auto-hide
+4. ~~Control bar auto-hide~~ ✓ DONE
 
 ### Medium Priority
 1. Visualization color customization

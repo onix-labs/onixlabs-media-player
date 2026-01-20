@@ -72,6 +72,10 @@
     - 0 = auto-assign (default), or specify port 1024-65535
     - Changes require app restart to take effect
     - Reset button to restore auto-assign mode
+  - **Controls Auto-Hide**: Configure fullscreen control bar auto-hide (Application category)
+    - Slider from 0-30 seconds (0 = disabled, controls always visible)
+    - Default: 5 seconds
+    - Changes apply immediately
 - Sensitivity changes apply in real-time to the active visualization
 - Extensible category-based UI with search filtering
 

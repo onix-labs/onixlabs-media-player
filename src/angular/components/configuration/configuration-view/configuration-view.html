@@ -169,6 +169,27 @@
                   </div>
                 </div>
 
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="auto-hide-delay">Controls Auto-Hide</label>
+                    <p class="setting-description">
+                      Time before playback controls hide in fullscreen mode. Set to 0 to disable.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="auto-hide-delay"
+                      min="0"
+                      max="30"
+                      step="1"
+                      [value]="currentAutoHideDelay()"
+                      (input)="onAutoHideDelayChange($event)"
+                    />
+                    <span class="slider-value">{{ formatAutoHideDelay() }}</span>
+                  </div>
+                </div>
+
                 <div class="restart-notice">
                   <i class="fa-solid fa-info-circle"></i>
                   <span>Some settings require an application restart to take effect.</span>

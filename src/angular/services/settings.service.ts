@@ -56,6 +56,8 @@ export interface VisualizationSettings {
 export interface ApplicationSettings {
   /** Server port (0 = auto-assign, or specific port 1024-65535) */
   readonly serverPort: number;
+  /** Controls auto-hide delay in seconds (0 = disabled, 1-30 seconds, default 5) */
+  readonly controlsAutoHideDelay: number;
 }
 
 /**
@@ -98,6 +100,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   application: {
     serverPort: 0,
+    controlsAutoHideDelay: 5,
   },
 };
 
@@ -206,6 +209,11 @@ export class SettingsService {
   /** Configured server port (0 = auto-assign) */
   public readonly serverPort: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().application?.serverPort ?? 0
+  );
+
+  /** Controls auto-hide delay in seconds (0 = disabled) */
+  public readonly controlsAutoHideDelay: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().application?.controlsAutoHideDelay ?? 5
   );
 
   // ============================================================================
@@ -363,6 +371,29 @@ export class SettingsService {
 
     if (!response.ok) {
       console.error(`[SettingsService] Failed to save server port: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the controls auto-hide delay.
+   *
+   * @param delay - Delay in seconds (0 = disabled, 1-30 valid range)
+   */
+  public async setControlsAutoHideDelay(delay: number): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Validate delay: 0 (disabled) or 1-30 seconds
+    const validDelay: number = Math.max(0, Math.min(30, Math.round(delay)));
+
+    const response: Response = await fetch(`${serverUrl}/settings/application`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({controlsAutoHideDelay: validDelay}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save auto-hide delay: ${response.status}`);
     }
   }
 

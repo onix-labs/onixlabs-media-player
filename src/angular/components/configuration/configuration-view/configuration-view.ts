@@ -137,6 +137,11 @@ export class ConfigurationView {
     (): number => this.settingsService.serverPort()
   );
 
+  /** Current auto-hide delay in seconds (0 = disabled) */
+  public readonly currentAutoHideDelay: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.controlsAutoHideDelay()
+  );
+
   // ============================================================================
   // Template Data
   // ============================================================================
@@ -316,5 +321,26 @@ export class ConfigurationView {
    */
   public async onResetServerPort(): Promise<void> {
     await this.settingsService.setServerPort(0);
+  }
+
+  /**
+   * Handles auto-hide delay slider change.
+   *
+   * @param event - The input event from the range element
+   */
+  public async onAutoHideDelayChange(event: Event): Promise<void> {
+    const input: HTMLInputElement = event.target as HTMLInputElement;
+    const value: number = parseInt(input.value, 10);
+    await this.settingsService.setControlsAutoHideDelay(value);
+  }
+
+  /**
+   * Formats the auto-hide delay value for display.
+   *
+   * @returns The delay as a human-readable string (e.g., "5s" or "Off")
+   */
+  public formatAutoHideDelay(): string {
+    const delay: number = this.currentAutoHideDelay();
+    return delay === 0 ? 'Off' : `${delay}s`;
   }
 }
