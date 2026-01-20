@@ -49,6 +49,16 @@ export type FftSize = 256 | 512 | 1024 | 2048 | 4096;
 export type BarDensity = 'low' | 'medium' | 'high';
 
 /**
+ * Video quality preset levels for transcoding.
+ */
+export type VideoQuality = 'low' | 'medium' | 'high';
+
+/**
+ * Audio bitrate options for transcoding (kbps).
+ */
+export type AudioBitrate = 128 | 192 | 256 | 320;
+
+/**
  * Visualization settings structure.
  */
 export interface VisualizationSettings {
@@ -68,6 +78,10 @@ export interface VisualizationSettings {
   readonly fftSize: FftSize;
   /** Bar density for bar-based visualizations (low, medium, high, default medium) */
   readonly barDensity: BarDensity;
+  /** Line width for waveform visualizations (1.0 - 5.0, default 2.0) */
+  readonly lineWidth: number;
+  /** Glow intensity for visualizations with glow effects (0.0 - 1.0, default 0.5) */
+  readonly glowIntensity: number;
 }
 
 /**
@@ -83,6 +97,26 @@ export interface ApplicationSettings {
 }
 
 /**
+ * Playback settings.
+ */
+export interface PlaybackSettings {
+  /** Default volume on startup (0.0 - 1.0, default 0.5) */
+  readonly defaultVolume: number;
+  /** Crossfade duration between tracks in milliseconds (0-500, default 100) */
+  readonly crossfadeDuration: number;
+}
+
+/**
+ * Transcoding settings.
+ */
+export interface TranscodingSettings {
+  /** Video quality preset for transcoding (low, medium, high, default medium) */
+  readonly videoQuality: VideoQuality;
+  /** Audio bitrate in kbps (128, 192, 256, 320, default 192) */
+  readonly audioBitrate: AudioBitrate;
+}
+
+/**
  * Complete application settings structure.
  */
 export interface AppSettings {
@@ -92,6 +126,10 @@ export interface AppSettings {
   readonly visualization: VisualizationSettings;
   /** Application-level settings */
   readonly application: ApplicationSettings;
+  /** Playback settings */
+  readonly playback: PlaybackSettings;
+  /** Transcoding settings */
+  readonly transcoding: TranscodingSettings;
 }
 
 /**
@@ -124,11 +162,21 @@ const DEFAULT_SETTINGS: AppSettings = {
     hueShift: 0,
     fftSize: 2048,
     barDensity: 'medium',
+    lineWidth: 2.0,
+    glowIntensity: 0.5,
   },
   application: {
     serverPort: 0,
     controlsAutoHideDelay: 5,
     previousTrackThreshold: 3,
+  },
+  playback: {
+    defaultVolume: 0.5,
+    crossfadeDuration: 100,
+  },
+  transcoding: {
+    videoQuality: 'medium',
+    audioBitrate: 192,
   },
 };
 
@@ -272,6 +320,36 @@ export class SettingsService {
   /** Previous track threshold in seconds */
   public readonly previousTrackThreshold: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().application?.previousTrackThreshold ?? 3
+  );
+
+  /** Line width for waveform visualizations (1.0 - 5.0) */
+  public readonly lineWidth: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().visualization?.lineWidth ?? 2.0
+  );
+
+  /** Glow intensity for visualizations with glow effects (0.0 - 1.0) */
+  public readonly glowIntensity: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().visualization?.glowIntensity ?? 0.5
+  );
+
+  /** Default volume on startup (0.0 - 1.0) */
+  public readonly defaultVolume: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().playback?.defaultVolume ?? 0.5
+  );
+
+  /** Crossfade duration between tracks in milliseconds */
+  public readonly crossfadeDuration: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().playback?.crossfadeDuration ?? 100
+  );
+
+  /** Video quality preset for transcoding */
+  public readonly videoQuality: ReturnType<typeof computed<VideoQuality>> = computed(
+    (): VideoQuality => this.settings().transcoding?.videoQuality ?? 'medium'
+  );
+
+  /** Audio bitrate for transcoding in kbps */
+  public readonly audioBitrate: ReturnType<typeof computed<AudioBitrate>> = computed(
+    (): AudioBitrate => this.settings().transcoding?.audioBitrate ?? 192
   );
 
   // ============================================================================
@@ -616,6 +694,152 @@ export class SettingsService {
 
     if (!response.ok) {
       console.error(`[SettingsService] Failed to save previous track threshold: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the line width for waveform visualizations.
+   *
+   * @param width - Line width value between 1.0 and 5.0
+   */
+  public async setLineWidth(width: number): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Clamp value to valid range
+    const clampedValue: number = Math.max(1, Math.min(5, width));
+
+    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({lineWidth: clampedValue}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save line width: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the glow intensity for visualizations.
+   *
+   * @param intensity - Glow intensity value between 0.0 and 1.0
+   */
+  public async setGlowIntensity(intensity: number): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Clamp value to valid range
+    const clampedValue: number = Math.max(0, Math.min(1, intensity));
+
+    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({glowIntensity: clampedValue}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save glow intensity: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the default volume for playback.
+   *
+   * @param volume - Volume value between 0.0 and 1.0
+   */
+  public async setDefaultVolume(volume: number): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Clamp value to valid range
+    const clampedValue: number = Math.max(0, Math.min(1, volume));
+
+    const response: Response = await fetch(`${serverUrl}/settings/playback`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({defaultVolume: clampedValue}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save default volume: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the crossfade duration between tracks.
+   *
+   * @param duration - Crossfade duration in milliseconds (0-500)
+   */
+  public async setCrossfadeDuration(duration: number): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Clamp value to valid range
+    const clampedValue: number = Math.max(0, Math.min(500, Math.round(duration)));
+
+    const response: Response = await fetch(`${serverUrl}/settings/playback`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({crossfadeDuration: clampedValue}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save crossfade duration: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the video quality preset for transcoding.
+   *
+   * @param quality - Video quality preset ('low', 'medium', or 'high')
+   */
+  public async setVideoQuality(quality: VideoQuality): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Validate: must be a valid video quality
+    const validQualities: readonly VideoQuality[] = ['low', 'medium', 'high'];
+    if (!validQualities.includes(quality)) {
+      console.error(`[SettingsService] Invalid video quality: ${quality}`);
+      return;
+    }
+
+    const response: Response = await fetch(`${serverUrl}/settings/transcoding`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({videoQuality: quality}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save video quality: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the audio bitrate for transcoding.
+   *
+   * @param bitrate - Audio bitrate in kbps (128, 192, 256, or 320)
+   */
+  public async setAudioBitrate(bitrate: AudioBitrate): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Validate: must be a valid audio bitrate
+    const validBitrates: readonly AudioBitrate[] = [128, 192, 256, 320];
+    if (!validBitrates.includes(bitrate)) {
+      console.error(`[SettingsService] Invalid audio bitrate: ${bitrate}`);
+      return;
+    }
+
+    const response: Response = await fetch(`${serverUrl}/settings/transcoding`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({audioBitrate: bitrate}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save audio bitrate: ${response.status}`);
     }
   }
 

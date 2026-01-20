@@ -14,7 +14,7 @@
 
 import {Component, output, signal, computed, inject} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VisualizationType, FftSize, BarDensity} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VisualizationType, FftSize, BarDensity, VideoQuality, AudioBitrate} from '../../../services/settings.service';
 
 /**
  * Settings category definition.
@@ -47,9 +47,18 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     icon: 'fa-solid fa-gear',
     description: 'Configure application-level settings.',
   },
-  // Future categories:
-  // { id: 'playback', name: 'Playback', icon: 'fa-solid fa-play', description: 'Playback settings.' },
-  // { id: 'audio', name: 'Audio', icon: 'fa-solid fa-volume-high', description: 'Audio output settings.' },
+  {
+    id: 'playback',
+    name: 'Playback',
+    icon: 'fa-solid fa-play',
+    description: 'Configure playback behavior and volume.',
+  },
+  {
+    id: 'transcoding',
+    name: 'Transcoding',
+    icon: 'fa-solid fa-film',
+    description: 'Configure video and audio transcoding quality.',
+  },
 ];
 
 /**
@@ -157,6 +166,36 @@ export class ConfigurationView {
     (): BarDensity => this.settingsService.barDensity()
   );
 
+  /** Current line width for waveform visualizations */
+  public readonly currentLineWidth: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.lineWidth()
+  );
+
+  /** Current glow intensity for visualizations */
+  public readonly currentGlowIntensity: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.glowIntensity()
+  );
+
+  /** Current default volume (0.0 - 1.0) */
+  public readonly currentDefaultVolume: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.defaultVolume()
+  );
+
+  /** Current crossfade duration in milliseconds */
+  public readonly currentCrossfadeDuration: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.crossfadeDuration()
+  );
+
+  /** Current video quality preset */
+  public readonly currentVideoQuality: ReturnType<typeof computed<VideoQuality>> = computed(
+    (): VideoQuality => this.settingsService.videoQuality()
+  );
+
+  /** Current audio bitrate */
+  public readonly currentAudioBitrate: ReturnType<typeof computed<AudioBitrate>> = computed(
+    (): AudioBitrate => this.settingsService.audioBitrate()
+  );
+
   /** Current server port (0 = auto-assign) */
   public readonly currentServerPort: ReturnType<typeof computed<number>> = computed(
     (): number => this.settingsService.serverPort()
@@ -201,6 +240,21 @@ export class ConfigurationView {
     {value: 'low', label: 'Low'},
     {value: 'medium', label: 'Medium (Default)'},
     {value: 'high', label: 'High'},
+  ];
+
+  /** Available video quality options for the dropdown */
+  public readonly videoQualityOptions: readonly {value: VideoQuality; label: string}[] = [
+    {value: 'low', label: 'Low (Faster, smaller files)'},
+    {value: 'medium', label: 'Medium (Default)'},
+    {value: 'high', label: 'High (Better quality)'},
+  ];
+
+  /** Available audio bitrate options for the dropdown */
+  public readonly audioBitrateOptions: readonly {value: AudioBitrate; label: string}[] = [
+    {value: 128, label: '128 kbps'},
+    {value: 192, label: '192 kbps (Default)'},
+    {value: 256, label: '256 kbps'},
+    {value: 320, label: '320 kbps'},
   ];
 
   // ============================================================================
@@ -312,6 +366,72 @@ export class ConfigurationView {
   }
 
   /**
+   * Handles line width slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onLineWidthChange(event: Event): Promise<void> {
+    const input: HTMLInputElement = event.target as HTMLInputElement;
+    const width: number = parseFloat(input.value);
+    await this.settingsService.setLineWidth(width);
+  }
+
+  /**
+   * Handles glow intensity slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onGlowIntensityChange(event: Event): Promise<void> {
+    const input: HTMLInputElement = event.target as HTMLInputElement;
+    const intensity: number = parseFloat(input.value);
+    await this.settingsService.setGlowIntensity(intensity);
+  }
+
+  /**
+   * Handles default volume slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onDefaultVolumeChange(event: Event): Promise<void> {
+    const input: HTMLInputElement = event.target as HTMLInputElement;
+    const volume: number = parseFloat(input.value);
+    await this.settingsService.setDefaultVolume(volume);
+  }
+
+  /**
+   * Handles crossfade duration slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onCrossfadeDurationChange(event: Event): Promise<void> {
+    const input: HTMLInputElement = event.target as HTMLInputElement;
+    const duration: number = parseInt(input.value, 10);
+    await this.settingsService.setCrossfadeDuration(duration);
+  }
+
+  /**
+   * Handles video quality selection change.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onVideoQualityChange(event: Event): Promise<void> {
+    const select: HTMLSelectElement = event.target as HTMLSelectElement;
+    const quality: VideoQuality = select.value as VideoQuality;
+    await this.settingsService.setVideoQuality(quality);
+  }
+
+  /**
+   * Handles audio bitrate selection change.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onAudioBitrateChange(event: Event): Promise<void> {
+    const select: HTMLSelectElement = event.target as HTMLSelectElement;
+    const bitrate: AudioBitrate = parseInt(select.value, 10) as AudioBitrate;
+    await this.settingsService.setAudioBitrate(bitrate);
+  }
+
+  /**
    * Formats the current sensitivity value as a percentage string.
    *
    * @returns The sensitivity as a percentage (e.g., "50%")
@@ -336,6 +456,43 @@ export class ConfigurationView {
    */
   public formatHueShift(): string {
     return `${Math.round(this.currentHueShift())}°`;
+  }
+
+  /**
+   * Formats the current line width value.
+   *
+   * @returns The line width as a number with one decimal place
+   */
+  public formatLineWidth(): string {
+    return `${this.currentLineWidth().toFixed(1)}px`;
+  }
+
+  /**
+   * Formats the current glow intensity value as a percentage string.
+   *
+   * @returns The glow intensity as a percentage (e.g., "50%")
+   */
+  public formatGlowIntensity(): string {
+    return `${Math.round(this.currentGlowIntensity() * 100)}%`;
+  }
+
+  /**
+   * Formats the current default volume value as a percentage string.
+   *
+   * @returns The volume as a percentage (e.g., "50%")
+   */
+  public formatDefaultVolume(): string {
+    return `${Math.round(this.currentDefaultVolume() * 100)}%`;
+  }
+
+  /**
+   * Formats the current crossfade duration value.
+   *
+   * @returns The duration in milliseconds
+   */
+  public formatCrossfadeDuration(): string {
+    const duration: number = this.currentCrossfadeDuration();
+    return duration === 0 ? 'Off' : `${duration}ms`;
   }
 
   // ============================================================================

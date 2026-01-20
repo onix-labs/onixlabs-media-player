@@ -56,6 +56,19 @@ export type FftSize = 256 | 512 | 1024 | 2048 | 4096;
 export type BarDensity = 'low' | 'medium' | 'high';
 
 /**
+ * Video quality preset levels for transcoding.
+ * - low: CRF 28, faster encoding, smaller files
+ * - medium: CRF 23, balanced quality/size
+ * - high: CRF 18, better quality, larger files
+ */
+export type VideoQuality = 'low' | 'medium' | 'high';
+
+/**
+ * Audio bitrate options for transcoding (kbps).
+ */
+export type AudioBitrate = 128 | 192 | 256 | 320;
+
+/**
  * Visualization settings.
  */
 export interface VisualizationSettings {
@@ -75,6 +88,10 @@ export interface VisualizationSettings {
   readonly fftSize: FftSize;
   /** Bar density for bar-based visualizations (low, medium, high, default medium) */
   readonly barDensity: BarDensity;
+  /** Line width for waveform visualizations (1.0 - 5.0, default 2.0) */
+  readonly lineWidth: number;
+  /** Glow intensity for visualizations with glow effects (0.0 - 1.0, default 0.5) */
+  readonly glowIntensity: number;
 }
 
 /**
@@ -90,6 +107,26 @@ export interface ApplicationSettings {
 }
 
 /**
+ * Playback settings.
+ */
+export interface PlaybackSettings {
+  /** Default volume on startup (0.0 - 1.0, default 0.5) */
+  readonly defaultVolume: number;
+  /** Crossfade duration between tracks in milliseconds (0-500, default 100) */
+  readonly crossfadeDuration: number;
+}
+
+/**
+ * Transcoding settings.
+ */
+export interface TranscodingSettings {
+  /** Video quality preset for transcoding (low, medium, high, default medium) */
+  readonly videoQuality: VideoQuality;
+  /** Audio bitrate in kbps (128, 192, 256, 320, default 192) */
+  readonly audioBitrate: AudioBitrate;
+}
+
+/**
  * Complete application settings structure.
  *
  * Version field enables future migrations when the schema changes.
@@ -101,6 +138,10 @@ export interface AppSettings {
   readonly visualization: VisualizationSettings;
   /** Application-level settings */
   readonly application: ApplicationSettings;
+  /** Playback settings */
+  readonly playback: PlaybackSettings;
+  /** Transcoding settings */
+  readonly transcoding: TranscodingSettings;
 }
 
 /**
@@ -115,6 +156,8 @@ export interface VisualizationSettingsUpdate {
   readonly hueShift?: number;
   readonly fftSize?: FftSize;
   readonly barDensity?: BarDensity;
+  readonly lineWidth?: number;
+  readonly glowIntensity?: number;
 }
 
 /**
@@ -124,6 +167,22 @@ export interface ApplicationSettingsUpdate {
   readonly serverPort?: number;
   readonly controlsAutoHideDelay?: number;
   readonly previousTrackThreshold?: number;
+}
+
+/**
+ * Partial playback settings for updates.
+ */
+export interface PlaybackSettingsUpdate {
+  readonly defaultVolume?: number;
+  readonly crossfadeDuration?: number;
+}
+
+/**
+ * Partial transcoding settings for updates.
+ */
+export interface TranscodingSettingsUpdate {
+  readonly videoQuality?: VideoQuality;
+  readonly audioBitrate?: AudioBitrate;
 }
 
 // ============================================================================
@@ -139,6 +198,12 @@ const VALID_FFT_SIZES: readonly FftSize[] = [256, 512, 1024, 2048, 4096];
 /** Valid bar density values */
 const VALID_BAR_DENSITIES: readonly BarDensity[] = ['low', 'medium', 'high'];
 
+/** Valid video quality values */
+const VALID_VIDEO_QUALITIES: readonly VideoQuality[] = ['low', 'medium', 'high'];
+
+/** Valid audio bitrate values */
+const VALID_AUDIO_BITRATES: readonly AudioBitrate[] = [128, 192, 256, 320];
+
 /** Default settings used when no file exists or on parse error */
 const DEFAULT_SETTINGS: AppSettings = {
   version: SETTINGS_VERSION,
@@ -151,11 +216,21 @@ const DEFAULT_SETTINGS: AppSettings = {
     hueShift: 0,  // 0 = no color shift
     fftSize: 2048,  // 2048 = balanced resolution/performance
     barDensity: 'medium',  // medium = default bar count
+    lineWidth: 2.0,  // 2.0 = default line width
+    glowIntensity: 0.5,  // 0.5 = default glow intensity
   },
   application: {
     serverPort: 0,  // 0 = auto-assign
     controlsAutoHideDelay: 5,  // 5 seconds default
     previousTrackThreshold: 3,  // 3 seconds default
+  },
+  playback: {
+    defaultVolume: 0.5,  // 50% default volume
+    crossfadeDuration: 100,  // 100ms crossfade
+  },
+  transcoding: {
+    videoQuality: 'medium',  // medium = CRF 23
+    audioBitrate: 192,  // 192 kbps
   },
 };
 
@@ -297,6 +372,22 @@ export class SettingsManager {
       }
     }
 
+    // Validate lineWidth if provided
+    if (update.lineWidth !== undefined) {
+      if (!this.isValidLineWidth(update.lineWidth)) {
+        console.warn(`[SettingsManager] Invalid line width: ${update.lineWidth}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate glowIntensity if provided
+    if (update.glowIntensity !== undefined) {
+      if (!this.isValidGlowIntensity(update.glowIntensity)) {
+        console.warn(`[SettingsManager] Invalid glow intensity: ${update.glowIntensity}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -310,6 +401,8 @@ export class SettingsManager {
         hueShift: update.hueShift ?? this.settings.visualization.hueShift,
         fftSize: update.fftSize ?? this.settings.visualization.fftSize,
         barDensity: update.barDensity ?? this.settings.visualization.barDensity,
+        lineWidth: update.lineWidth ?? this.settings.visualization.lineWidth,
+        glowIntensity: update.glowIntensity ?? this.settings.visualization.glowIntensity,
       },
     };
 
@@ -359,6 +452,86 @@ export class SettingsManager {
         serverPort: update.serverPort ?? this.settings.application.serverPort,
         controlsAutoHideDelay: update.controlsAutoHideDelay ?? this.settings.application.controlsAutoHideDelay,
         previousTrackThreshold: update.previousTrackThreshold ?? this.settings.application.previousTrackThreshold,
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
+  /**
+   * Updates playback settings with partial values.
+   *
+   * Only provided fields are updated; others retain their current values.
+   * Changes are immediately persisted to disk.
+   *
+   * @param update - Partial playback settings to apply
+   * @returns The updated complete settings object
+   */
+  public updatePlaybackSettings(update: PlaybackSettingsUpdate): AppSettings {
+    // Validate defaultVolume if provided
+    if (update.defaultVolume !== undefined) {
+      if (!this.isValidVolume(update.defaultVolume)) {
+        console.warn(`[SettingsManager] Invalid default volume: ${update.defaultVolume}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate crossfadeDuration if provided
+    if (update.crossfadeDuration !== undefined) {
+      if (!this.isValidCrossfadeDuration(update.crossfadeDuration)) {
+        console.warn(`[SettingsManager] Invalid crossfade duration: ${update.crossfadeDuration}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Merge the update
+    this.settings = {
+      ...this.settings,
+      playback: {
+        ...this.settings.playback,
+        defaultVolume: update.defaultVolume ?? this.settings.playback.defaultVolume,
+        crossfadeDuration: update.crossfadeDuration ?? this.settings.playback.crossfadeDuration,
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
+  /**
+   * Updates transcoding settings with partial values.
+   *
+   * Only provided fields are updated; others retain their current values.
+   * Changes are immediately persisted to disk.
+   *
+   * @param update - Partial transcoding settings to apply
+   * @returns The updated complete settings object
+   */
+  public updateTranscodingSettings(update: TranscodingSettingsUpdate): AppSettings {
+    // Validate videoQuality if provided
+    if (update.videoQuality !== undefined) {
+      if (!this.isValidVideoQuality(update.videoQuality)) {
+        console.warn(`[SettingsManager] Invalid video quality: ${update.videoQuality}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate audioBitrate if provided
+    if (update.audioBitrate !== undefined) {
+      if (!this.isValidAudioBitrate(update.audioBitrate)) {
+        console.warn(`[SettingsManager] Invalid audio bitrate: ${update.audioBitrate}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Merge the update
+    this.settings = {
+      ...this.settings,
+      transcoding: {
+        ...this.settings.transcoding,
+        videoQuality: update.videoQuality ?? this.settings.transcoding.videoQuality,
+        audioBitrate: update.audioBitrate ?? this.settings.transcoding.audioBitrate,
       },
     };
 
@@ -455,10 +628,22 @@ export class SettingsManager {
       obj['application']
     );
 
+    // Extract and validate playback settings
+    const playbackSettings: PlaybackSettings = this.validatePlaybackSettings(
+      obj['playback']
+    );
+
+    // Extract and validate transcoding settings
+    const transcodingSettings: TranscodingSettings = this.validateTranscodingSettings(
+      obj['transcoding']
+    );
+
     return {
       version: typeof obj['version'] === 'number' ? obj['version'] : SETTINGS_VERSION,
       visualization: vizSettings,
       application: appSettings,
+      playback: playbackSettings,
+      transcoding: transcodingSettings,
     };
   }
 
@@ -482,6 +667,8 @@ export class SettingsManager {
     const hueShift: unknown = vizObj['hueShift'];
     const fftSize: unknown = vizObj['fftSize'];
     const barDensity: unknown = vizObj['barDensity'];
+    const lineWidth: unknown = vizObj['lineWidth'];
+    const glowIntensity: unknown = vizObj['glowIntensity'];
 
     return {
       defaultType: this.isValidVisualizationType(defaultType)
@@ -506,6 +693,12 @@ export class SettingsManager {
       barDensity: this.isValidBarDensity(barDensity)
         ? barDensity
         : DEFAULT_SETTINGS.visualization.barDensity,
+      lineWidth: this.isValidLineWidth(lineWidth)
+        ? lineWidth
+        : DEFAULT_SETTINGS.visualization.lineWidth,
+      glowIntensity: this.isValidGlowIntensity(glowIntensity)
+        ? glowIntensity
+        : DEFAULT_SETTINGS.visualization.glowIntensity,
     };
   }
 
@@ -578,6 +771,56 @@ export class SettingsManager {
       previousTrackThreshold: this.isValidPreviousTrackThreshold(previousTrackThreshold)
         ? previousTrackThreshold
         : DEFAULT_SETTINGS.application.previousTrackThreshold,
+    };
+  }
+
+  /**
+   * Validates playback settings object.
+   *
+   * @param playback - The playback settings to validate (unknown type)
+   * @returns Valid playback settings with defaults for invalid values
+   */
+  private validatePlaybackSettings(playback: unknown): PlaybackSettings {
+    if (!playback || typeof playback !== 'object') {
+      return DEFAULT_SETTINGS.playback;
+    }
+
+    const playbackObj: Record<string, unknown> = playback as Record<string, unknown>;
+    const defaultVolume: unknown = playbackObj['defaultVolume'];
+    const crossfadeDuration: unknown = playbackObj['crossfadeDuration'];
+
+    return {
+      defaultVolume: this.isValidVolume(defaultVolume)
+        ? defaultVolume
+        : DEFAULT_SETTINGS.playback.defaultVolume,
+      crossfadeDuration: this.isValidCrossfadeDuration(crossfadeDuration)
+        ? crossfadeDuration
+        : DEFAULT_SETTINGS.playback.crossfadeDuration,
+    };
+  }
+
+  /**
+   * Validates transcoding settings object.
+   *
+   * @param transcoding - The transcoding settings to validate (unknown type)
+   * @returns Valid transcoding settings with defaults for invalid values
+   */
+  private validateTranscodingSettings(transcoding: unknown): TranscodingSettings {
+    if (!transcoding || typeof transcoding !== 'object') {
+      return DEFAULT_SETTINGS.transcoding;
+    }
+
+    const transcodingObj: Record<string, unknown> = transcoding as Record<string, unknown>;
+    const videoQuality: unknown = transcodingObj['videoQuality'];
+    const audioBitrate: unknown = transcodingObj['audioBitrate'];
+
+    return {
+      videoQuality: this.isValidVideoQuality(videoQuality)
+        ? videoQuality
+        : DEFAULT_SETTINGS.transcoding.videoQuality,
+      audioBitrate: this.isValidAudioBitrate(audioBitrate)
+        ? audioBitrate
+        : DEFAULT_SETTINGS.transcoding.audioBitrate,
     };
   }
 
@@ -690,5 +933,77 @@ export class SettingsManager {
    */
   private isValidBarDensity(value: unknown): value is BarDensity {
     return typeof value === 'string' && VALID_BAR_DENSITIES.includes(value as BarDensity);
+  }
+
+  /**
+   * Type guard to check if a value is a valid line width.
+   *
+   * Valid values are between 1.0 and 5.0.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid line width
+   */
+  private isValidLineWidth(value: unknown): value is number {
+    return typeof value === 'number' && value >= 1 && value <= 5;
+  }
+
+  /**
+   * Type guard to check if a value is a valid glow intensity.
+   *
+   * Valid values are between 0.0 and 1.0.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid glow intensity
+   */
+  private isValidGlowIntensity(value: unknown): value is number {
+    return typeof value === 'number' && value >= 0 && value <= 1;
+  }
+
+  /**
+   * Type guard to check if a value is a valid volume.
+   *
+   * Valid values are between 0.0 and 1.0.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid volume
+   */
+  private isValidVolume(value: unknown): value is number {
+    return typeof value === 'number' && value >= 0 && value <= 1;
+  }
+
+  /**
+   * Type guard to check if a value is a valid crossfade duration.
+   *
+   * Valid values are integers between 0 and 500 milliseconds.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid crossfade duration
+   */
+  private isValidCrossfadeDuration(value: unknown): value is number {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 500;
+  }
+
+  /**
+   * Type guard to check if a value is a valid video quality.
+   *
+   * Valid values are 'low', 'medium', or 'high'.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid video quality
+   */
+  private isValidVideoQuality(value: unknown): value is VideoQuality {
+    return typeof value === 'string' && VALID_VIDEO_QUALITIES.includes(value as VideoQuality);
+  }
+
+  /**
+   * Type guard to check if a value is a valid audio bitrate.
+   *
+   * Valid values are 128, 192, 256, or 320 kbps.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid audio bitrate
+   */
+  private isValidAudioBitrate(value: unknown): value is AudioBitrate {
+    return typeof value === 'number' && VALID_AUDIO_BITRATES.includes(value as AudioBitrate);
   }
 }

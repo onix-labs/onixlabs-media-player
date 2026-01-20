@@ -107,6 +107,27 @@
     - Slider from 0-10 seconds (0 = always go to previous track)
     - Default: 3 seconds (if past this point, restart current track instead)
     - Changes apply immediately
+  - **Line Width**: Controls thickness of waveform lines (Visualization category)
+    - Slider from 1-5px
+    - Default: 2px
+    - Affects: Waveform, Flare, Neon, Flux visualizations
+  - **Glow Intensity**: Controls glow effect strength (Visualization category)
+    - Slider from 0-100%
+    - Default: 50%
+    - Affects all visualizations with glow effects
+  - **Default Volume**: Initial volume when application starts (Playback category)
+    - Slider from 0-100%
+    - Default: 50%
+  - **Crossfade Duration**: Fade time for play/pause transitions (Playback category)
+    - Slider from 0-500ms
+    - Default: 100ms
+    - Set to 0 to disable fading
+  - **Video Quality**: Transcoding quality preset (Transcoding category)
+    - Options: Low (CRF 28), Medium (CRF 23), High (CRF 18)
+    - Default: Medium
+  - **Audio Bitrate**: Transcoding audio bitrate (Transcoding category)
+    - Options: 128, 192, 256, 320 kbps
+    - Default: 192 kbps
 - All visualization settings apply in real-time to the active visualization
 - Extensible category-based UI with search filtering
 
@@ -293,8 +314,10 @@ AudioContext.destination (speakers)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/settings` | Get all settings |
-| PUT | `/settings/visualization` | Body: `{ defaultType?: string, sensitivity?: number, perVisualizationSensitivity?: object, maxFrameRate?: number, trailIntensity?: number, hueShift?: number, fftSize?: number, barDensity?: string }` |
+| PUT | `/settings/visualization` | Body: `{ defaultType?: string, sensitivity?: number, perVisualizationSensitivity?: object, maxFrameRate?: number, trailIntensity?: number, hueShift?: number, fftSize?: number, barDensity?: string, lineWidth?: number, glowIntensity?: number }` |
 | PUT | `/settings/application` | Body: `{ serverPort?: number, controlsAutoHideDelay?: number, previousTrackThreshold?: number }` |
+| PUT | `/settings/playback` | Body: `{ defaultVolume?: number, crossfadeDuration?: number }` |
+| PUT | `/settings/transcoding` | Body: `{ videoQuality?: string, audioBitrate?: number }` |
 
 ### Server-Sent Events
 | Endpoint | Events |
@@ -305,19 +328,22 @@ AudioContext.destination (speakers)
 
 **Video Transcoding (non-native formats):**
 ```bash
+# CRF value based on Video Quality setting: Low=28, Medium=23, High=18
+# Audio bitrate from Audio Bitrate setting: 128k, 192k, 256k, 320k
 ffmpeg -ss <time> -i <file> \
   -c:v libx264 -preset veryfast -tune zerolatency \
-  -profile:v high -level 4.1 -pix_fmt yuv420p -crf 23 \
-  -c:a aac -b:a 192k -ar 48000 \
+  -profile:v high -level 4.1 -pix_fmt yuv420p -crf <quality> \
+  -c:a aac -b:a <bitrate>k -ar 48000 \
   -movflags frag_keyframe+empty_moov+default_base_moof \
   -f mp4 pipe:1
 ```
 
 **MIDI to MP3 (via FluidSynth):**
 ```bash
+# Audio bitrate from Audio Bitrate setting
 fluidsynth -ni -g 1.0 -r 44100 <soundfont.sf2> <file.mid> -F - -O raw \
   | ffmpeg -f s16le -ar 44100 -ac 2 -i - \
-    -c:a libmp3lame -b:a 192k -f mp3 pipe:1
+    -c:a libmp3lame -b:a <bitrate>k -f mp3 pipe:1
 ```
 
 **Metadata Extraction:**

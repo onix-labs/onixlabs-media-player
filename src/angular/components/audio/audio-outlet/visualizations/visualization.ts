@@ -113,6 +113,18 @@ export abstract class Visualization {
   protected barDensity: 'low' | 'medium' | 'high' = 'medium';
 
   /**
+   * Line width for waveform visualizations (1.0 - 5.0, default 2.0).
+   * Affects visualizations that draw lines (Waveform, Flare, Neon, Water, Flux).
+   */
+  protected lineWidth: number = 2.0;
+
+  /**
+   * Glow intensity for visualizations with glow effects (0.0 - 1.0, default 0.5).
+   * 0 = no glow, 1 = full glow intensity.
+   */
+  protected glowIntensity: number = 0.5;
+
+  /**
    * Current fade alpha level (0 = fully visible, 1 = fully black).
    * Used for smooth fade transitions when pausing/stopping.
    */
@@ -373,6 +385,52 @@ export abstract class Visualization {
    */
   protected onBarDensityChanged(): void {
     // Override in subclass to recalculate bar counts
+  }
+
+  /**
+   * Sets the line width for waveform visualizations.
+   *
+   * @param width - Line width value (1.0 to 5.0)
+   */
+  public setLineWidth(width: number): void {
+    this.lineWidth = Math.max(1, Math.min(5, width));
+  }
+
+  /**
+   * Gets the current line width.
+   *
+   * @returns Current line width (1.0 to 5.0)
+   */
+  public getLineWidth(): number {
+    return this.lineWidth;
+  }
+
+  /**
+   * Sets the glow intensity for visualizations.
+   *
+   * @param intensity - Glow intensity value (0.0 to 1.0)
+   */
+  public setGlowIntensity(intensity: number): void {
+    this.glowIntensity = Math.max(0, Math.min(1, intensity));
+  }
+
+  /**
+   * Gets the current glow intensity.
+   *
+   * @returns Current glow intensity (0.0 to 1.0)
+   */
+  public getGlowIntensity(): number {
+    return this.glowIntensity;
+  }
+
+  /**
+   * Calculates the glow blur radius based on intensity and base value.
+   *
+   * @param baseBlur - The base blur radius (when intensity is 1.0)
+   * @returns Scaled blur radius
+   */
+  protected getScaledGlowBlur(baseBlur: number): number {
+    return baseBlur * this.glowIntensity;
   }
 
   /**

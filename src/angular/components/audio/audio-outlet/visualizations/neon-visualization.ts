@@ -30,8 +30,7 @@ export class NeonVisualization extends Canvas2DVisualization {
   private readonly FADE_RATE: number = 0.05;
   private readonly ZOOM_SCALE: number = 1.02;
   private readonly ROTATION_SPEED: number = 0.008;
-  private readonly LINE_WIDTH: number = 2;
-  private readonly GLOW_BLUR: number = 12;
+  private readonly BASE_GLOW_BLUR: number = 12;
   private dataArray: Uint8Array<ArrayBuffer>;
   private rotationAngle: number = 0;
 
@@ -134,10 +133,10 @@ export class NeonVisualization extends Canvas2DVisualization {
 
     // Glow layer
     ctx.save();
-    ctx.shadowBlur = this.GLOW_BLUR;
+    ctx.shadowBlur = this.getScaledGlowBlur(this.BASE_GLOW_BLUR);
     ctx.shadowColor = glowColor;
     ctx.strokeStyle = glowColor.replace('0.8', '0.3');
-    ctx.lineWidth = this.LINE_WIDTH + 4;
+    ctx.lineWidth = this.lineWidth + 4;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -161,7 +160,7 @@ export class NeonVisualization extends Canvas2DVisualization {
 
     // Main line
     ctx.strokeStyle = color;
-    ctx.lineWidth = this.LINE_WIDTH;
+    ctx.lineWidth = this.lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 

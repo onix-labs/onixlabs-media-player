@@ -214,13 +214,21 @@ export class AudioOutlet implements OnInit, OnDestroy {
           this.initVisualization();
         }
         if (audio.src && audio.paused) {
+          // Fade in when starting playback
+          this.fadeToVolume(this.mediaPlayer.muted() ? 0 : this.mediaPlayer.volume());
           audio.play().catch(console.error);
         }
       } else if (state === 'paused') {
-        audio.pause();
+        // Fade out when pausing
+        this.fadeToVolume(0, (): void => {
+          audio.pause();
+        });
       } else if (state === 'stopped') {
-        audio.pause();
-        audio.currentTime = 0;
+        // Fade out when stopping
+        this.fadeToVolume(0, (): void => {
+          audio.pause();
+          audio.currentTime = 0;
+        });
       }
     });
 
@@ -240,16 +248,22 @@ export class AudioOutlet implements OnInit, OnDestroy {
     // This keeps the analyser receiving full signal for visualization
     effect((): void => {
       const volume: number = this.mediaPlayer.volume();
-      if (this.gainNode) {
-        this.gainNode.gain.value = volume;
+      if (this.gainNode && this.audioContext && !this.mediaPlayer.muted()) {
+        // Use Web Audio API scheduling for smooth volume changes
+        const currentTime: number = this.audioContext.currentTime;
+        this.gainNode.gain.cancelScheduledValues(currentTime);
+        this.gainNode.gain.setValueAtTime(volume, currentTime);
       }
     });
 
     // React to mute changes - use GainNode for muting
     effect((): void => {
       const muted: boolean = this.mediaPlayer.muted();
-      if (this.gainNode) {
-        this.gainNode.gain.value = muted ? 0 : this.mediaPlayer.volume();
+      if (this.gainNode && this.audioContext) {
+        const currentTime: number = this.audioContext.currentTime;
+        const targetVolume: number = muted ? 0 : this.mediaPlayer.volume();
+        this.gainNode.gain.cancelScheduledValues(currentTime);
+        this.gainNode.gain.setValueAtTime(targetVolume, currentTime);
       }
     });
 
@@ -318,6 +332,24 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
       if (this.visualization) {
         this.visualization.setBarDensity(barDensity);
+      }
+    });
+
+    // React to line width setting changes
+    effect((): void => {
+      const lineWidth: number = this.settings.lineWidth();
+
+      if (this.visualization) {
+        this.visualization.setLineWidth(lineWidth);
+      }
+    });
+
+    // React to glow intensity setting changes
+    effect((): void => {
+      const glowIntensity: number = this.settings.glowIntensity();
+
+      if (this.visualization) {
+        this.visualization.setGlowIntensity(glowIntensity);
       }
     });
   }
@@ -484,8 +516,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.analyser.smoothingTimeConstant = this.SMOOTHING;
 
     // Create GainNode for volume control (keeps analyser at full signal)
+    // Start at 0 for fade-in when playback begins
     this.gainNode = this.audioContext.createGain();
-    this.gainNode.gain.value = this.mediaPlayer.muted() ? 0 : this.mediaPlayer.volume();
+    this.gainNode.gain.value = 0;
 
     // Connect: source → analyser → gainNode → destination
     // This ensures analyser sees full signal regardless of volume
@@ -512,6 +545,46 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private resumeAudioContext(): void {
     if (this.audioContext && this.audioContext.state === 'suspended') {
       this.audioContext.resume().catch(console.error);
+    }
+  }
+
+  /**
+   * Fades the gain to a target volume over the crossfade duration.
+   *
+   * Uses the Web Audio API's linearRampToValueAtTime for smooth volume
+   * transitions, preventing audio pops when starting/stopping playback.
+   *
+   * @param targetVolume - The target volume (0-1)
+   * @param callback - Optional callback to execute after fade completes
+   */
+  private fadeToVolume(targetVolume: number, callback?: () => void): void {
+    if (!this.gainNode || !this.audioContext) {
+      // No audio context, just execute callback immediately
+      callback?.();
+      return;
+    }
+
+    const crossfadeDuration: number = this.settings.crossfadeDuration();
+    const currentTime: number = this.audioContext.currentTime;
+
+    // If crossfade is disabled (0ms), set volume immediately
+    if (crossfadeDuration <= 0) {
+      this.gainNode.gain.setValueAtTime(targetVolume, currentTime);
+      callback?.();
+      return;
+    }
+
+    // Convert ms to seconds for Web Audio API
+    const fadeTime: number = crossfadeDuration / 1000;
+
+    // Cancel any scheduled changes and ramp to target
+    this.gainNode.gain.cancelScheduledValues(currentTime);
+    this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, currentTime);
+    this.gainNode.gain.linearRampToValueAtTime(targetVolume, currentTime + fadeTime);
+
+    // Execute callback after fade completes
+    if (callback) {
+      setTimeout(callback, crossfadeDuration);
     }
   }
 
@@ -585,6 +658,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.visualization.setHueShift(this.settings.hueShift());
       this.visualization.setFftSize(this.settings.fftSize());
       this.visualization.setBarDensity(this.settings.barDensity());
+      this.visualization.setLineWidth(this.settings.lineWidth());
+      this.visualization.setGlowIntensity(this.settings.glowIntensity());
 
       const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
@@ -612,6 +687,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualization.setHueShift(this.settings.hueShift());
     this.visualization.setFftSize(this.settings.fftSize());
     this.visualization.setBarDensity(this.settings.barDensity());
+    this.visualization.setLineWidth(this.settings.lineWidth());
+    this.visualization.setGlowIntensity(this.settings.glowIntensity());
 
     const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));

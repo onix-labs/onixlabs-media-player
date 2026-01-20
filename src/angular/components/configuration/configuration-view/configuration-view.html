@@ -236,6 +236,48 @@
                     <span class="slider-value">{{ formatHueShift() }}</span>
                   </div>
                 </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="line-width">Line Width</label>
+                    <p class="setting-description">
+                      Controls the thickness of waveform lines in visualizations like Classic, Flare, Neon, and Flux.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="line-width"
+                      min="1"
+                      max="5"
+                      step="0.5"
+                      [value]="currentLineWidth()"
+                      (input)="onLineWidthChange($event)"
+                    />
+                    <span class="slider-value">{{ formatLineWidth() }}</span>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="glow-intensity">Glow Intensity</label>
+                    <p class="setting-description">
+                      Controls the intensity of glow effects on waveform visualizations.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="glow-intensity"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      [value]="currentGlowIntensity()"
+                      (input)="onGlowIntensityChange($event)"
+                    />
+                    <span class="slider-value">{{ formatGlowIntensity() }}</span>
+                  </div>
+                </div>
               </div>
             }
             @case ('application') {
@@ -316,6 +358,96 @@
                 <div class="restart-notice">
                   <i class="fa-solid fa-info-circle"></i>
                   <span>Some settings require an application restart to take effect.</span>
+                </div>
+              </div>
+            }
+
+            @case ('playback') {
+              <div class="settings-panel">
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="default-volume">Default Volume</label>
+                    <p class="setting-description">
+                      The volume level when the application starts.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="default-volume"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      [value]="currentDefaultVolume()"
+                      (input)="onDefaultVolumeChange($event)"
+                    />
+                    <span class="slider-value">{{ formatDefaultVolume() }}</span>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="crossfade-duration">Crossfade Duration</label>
+                    <p class="setting-description">
+                      Smooth transition between tracks. Set to 0 to disable crossfade.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="crossfade-duration"
+                      min="0"
+                      max="500"
+                      step="50"
+                      [value]="currentCrossfadeDuration()"
+                      (input)="onCrossfadeDurationChange($event)"
+                    />
+                    <span class="slider-value">{{ formatCrossfadeDuration() }}</span>
+                  </div>
+                </div>
+              </div>
+            }
+
+            @case ('transcoding') {
+              <div class="settings-panel">
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="video-quality">Video Quality</label>
+                    <p class="setting-description">
+                      Quality preset for transcoding non-native video formats. Higher quality uses more CPU.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="video-quality"
+                      [value]="currentVideoQuality()"
+                      (change)="onVideoQualityChange($event)"
+                    >
+                      @for (option of videoQualityOptions; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="audio-bitrate">Audio Bitrate</label>
+                    <p class="setting-description">
+                      Bitrate for transcoded audio. Higher values provide better quality but larger files.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="audio-bitrate"
+                      [value]="currentAudioBitrate()"
+                      (change)="onAudioBitrateChange($event)"
+                    >
+                      @for (option of audioBitrateOptions; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
                 </div>
               </div>
             }
