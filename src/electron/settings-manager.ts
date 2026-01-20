@@ -102,8 +102,6 @@ export interface ApplicationSettings {
   readonly serverPort: number;
   /** Controls auto-hide delay in seconds (0 = disabled, 1-30 seconds, default 5) */
   readonly controlsAutoHideDelay: number;
-  /** Previous track threshold in seconds (0-10, default 3) - if playback is past this, restart instead of previous */
-  readonly previousTrackThreshold: number;
 }
 
 /**
@@ -114,6 +112,8 @@ export interface PlaybackSettings {
   readonly defaultVolume: number;
   /** Crossfade duration between tracks in milliseconds (0-500, default 100) */
   readonly crossfadeDuration: number;
+  /** Previous track threshold in seconds (0-10, default 3) - if playback is past this, restart instead of previous */
+  readonly previousTrackThreshold: number;
 }
 
 /**
@@ -191,7 +191,6 @@ export interface VisualizationSettingsUpdate {
 export interface ApplicationSettingsUpdate {
   readonly serverPort?: number;
   readonly controlsAutoHideDelay?: number;
-  readonly previousTrackThreshold?: number;
 }
 
 /**
@@ -200,6 +199,7 @@ export interface ApplicationSettingsUpdate {
 export interface PlaybackSettingsUpdate {
   readonly defaultVolume?: number;
   readonly crossfadeDuration?: number;
+  readonly previousTrackThreshold?: number;
 }
 
 /**
@@ -247,11 +247,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   application: {
     serverPort: 0,  // 0 = auto-assign
     controlsAutoHideDelay: 5,  // 5 seconds default
-    previousTrackThreshold: 3,  // 3 seconds default
   },
   playback: {
     defaultVolume: 0.5,  // 50% default volume
     crossfadeDuration: 100,  // 100ms crossfade
+    previousTrackThreshold: 3,  // 3 seconds default
   },
   transcoding: {
     videoQuality: 'medium',  // medium = CRF 23
@@ -464,14 +464,6 @@ export class SettingsManager {
       }
     }
 
-    // Validate previousTrackThreshold if provided
-    if (update.previousTrackThreshold !== undefined) {
-      if (!this.isValidPreviousTrackThreshold(update.previousTrackThreshold)) {
-        console.warn(`[SettingsManager] Invalid previous track threshold: ${update.previousTrackThreshold}, ignoring`);
-        return this.settings;
-      }
-    }
-
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -479,7 +471,6 @@ export class SettingsManager {
         ...this.settings.application,
         serverPort: update.serverPort ?? this.settings.application.serverPort,
         controlsAutoHideDelay: update.controlsAutoHideDelay ?? this.settings.application.controlsAutoHideDelay,
-        previousTrackThreshold: update.previousTrackThreshold ?? this.settings.application.previousTrackThreshold,
       },
     };
 
@@ -513,6 +504,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate previousTrackThreshold if provided
+    if (update.previousTrackThreshold !== undefined) {
+      if (!this.isValidPreviousTrackThreshold(update.previousTrackThreshold)) {
+        console.warn(`[SettingsManager] Invalid previous track threshold: ${update.previousTrackThreshold}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -520,6 +519,7 @@ export class SettingsManager {
         ...this.settings.playback,
         defaultVolume: update.defaultVolume ?? this.settings.playback.defaultVolume,
         crossfadeDuration: update.crossfadeDuration ?? this.settings.playback.crossfadeDuration,
+        previousTrackThreshold: update.previousTrackThreshold ?? this.settings.playback.previousTrackThreshold,
       },
     };
 
@@ -830,7 +830,6 @@ export class SettingsManager {
     const appObj: Record<string, unknown> = app as Record<string, unknown>;
     const serverPort: unknown = appObj['serverPort'];
     const controlsAutoHideDelay: unknown = appObj['controlsAutoHideDelay'];
-    const previousTrackThreshold: unknown = appObj['previousTrackThreshold'];
 
     return {
       serverPort: this.isValidPort(serverPort)
@@ -839,9 +838,6 @@ export class SettingsManager {
       controlsAutoHideDelay: this.isValidAutoHideDelay(controlsAutoHideDelay)
         ? controlsAutoHideDelay
         : DEFAULT_SETTINGS.application.controlsAutoHideDelay,
-      previousTrackThreshold: this.isValidPreviousTrackThreshold(previousTrackThreshold)
-        ? previousTrackThreshold
-        : DEFAULT_SETTINGS.application.previousTrackThreshold,
     };
   }
 
@@ -859,6 +855,7 @@ export class SettingsManager {
     const playbackObj: Record<string, unknown> = playback as Record<string, unknown>;
     const defaultVolume: unknown = playbackObj['defaultVolume'];
     const crossfadeDuration: unknown = playbackObj['crossfadeDuration'];
+    const previousTrackThreshold: unknown = playbackObj['previousTrackThreshold'];
 
     return {
       defaultVolume: this.isValidVolume(defaultVolume)
@@ -867,6 +864,9 @@ export class SettingsManager {
       crossfadeDuration: this.isValidCrossfadeDuration(crossfadeDuration)
         ? crossfadeDuration
         : DEFAULT_SETTINGS.playback.crossfadeDuration,
+      previousTrackThreshold: this.isValidPreviousTrackThreshold(previousTrackThreshold)
+        ? previousTrackThreshold
+        : DEFAULT_SETTINGS.playback.previousTrackThreshold,
     };
   }
 

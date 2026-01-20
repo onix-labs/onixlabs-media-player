@@ -330,27 +330,6 @@
                   </div>
                 </div>
 
-                <div class="setting-row">
-                  <div class="setting-label">
-                    <label for="previous-track-threshold">Previous Track Threshold</label>
-                    <p class="setting-description">
-                      If playback is past this point, "previous" restarts the track instead of going back. Set to 0 to always go to previous.
-                    </p>
-                  </div>
-                  <div class="setting-control slider-control">
-                    <input
-                      type="range"
-                      id="previous-track-threshold"
-                      min="0"
-                      max="10"
-                      step="1"
-                      [value]="currentPreviousTrackThreshold()"
-                      (input)="onPreviousTrackThresholdChange($event)"
-                    />
-                    <span class="slider-value">{{ formatPreviousTrackThreshold() }}</span>
-                  </div>
-                </div>
-
                 <div class="restart-notice">
                   <i class="fa-solid fa-info-circle"></i>
                   <span>Some settings require an application restart to take effect.</span>
@@ -399,6 +378,27 @@
                       (input)="onCrossfadeDurationChange($event)"
                     />
                     <span class="slider-value">{{ formatCrossfadeDuration() }}</span>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="previous-track-threshold">Previous Track Threshold</label>
+                    <p class="setting-description">
+                      If playback is past this point, "previous" restarts the track instead of going back. Set to 0 to always go to previous.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="previous-track-threshold"
+                      min="0"
+                      max="10"
+                      step="1"
+                      [value]="currentPreviousTrackThreshold()"
+                      (input)="onPreviousTrackThresholdChange($event)"
+                    />
+                    <span class="slider-value">{{ formatPreviousTrackThreshold() }}</span>
                   </div>
                 </div>
               </div>

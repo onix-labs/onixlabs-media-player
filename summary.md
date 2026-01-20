@@ -123,7 +123,7 @@
     - Slider from 0-30 seconds (0 = disabled, controls always visible)
     - Default: 5 seconds
     - Changes apply immediately
-  - **Previous Track Threshold**: Configure "previous" button behavior (Application category)
+  - **Previous Track Threshold**: Configure "previous" button behavior (Playback category)
     - Slider from 0-10 seconds (0 = always go to previous track)
     - Default: 3 seconds (if past this point, restart current track instead)
     - Changes apply immediately
@@ -345,8 +345,8 @@ AudioContext.destination (speakers)
 |--------|----------|-------------|
 | GET | `/settings` | Get all settings |
 | PUT | `/settings/visualization` | Body: `{ defaultType?: string, sensitivity?: number, perVisualizationSensitivity?: object, maxFrameRate?: number, trailIntensity?: number, hueShift?: number, fftSize?: number, barDensity?: string, lineWidth?: number, glowIntensity?: number }` |
-| PUT | `/settings/application` | Body: `{ serverPort?: number, controlsAutoHideDelay?: number, previousTrackThreshold?: number }` |
-| PUT | `/settings/playback` | Body: `{ defaultVolume?: number, crossfadeDuration?: number }` |
+| PUT | `/settings/application` | Body: `{ serverPort?: number, controlsAutoHideDelay?: number }` |
+| PUT | `/settings/playback` | Body: `{ defaultVolume?: number, crossfadeDuration?: number, previousTrackThreshold?: number }` |
 | PUT | `/settings/transcoding` | Body: `{ videoQuality?: string, audioBitrate?: number }` |
 
 ### Server-Sent Events
