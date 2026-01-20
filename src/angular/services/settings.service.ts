@@ -104,6 +104,8 @@ export interface PlaybackSettings {
   readonly crossfadeDuration: number;
   /** Previous track threshold in seconds (0-10, default 3) */
   readonly previousTrackThreshold: number;
+  /** Skip duration in seconds (1-60, default 10) */
+  readonly skipDuration: number;
 }
 
 /**
@@ -173,6 +175,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     defaultVolume: 0.5,
     crossfadeDuration: 100,
     previousTrackThreshold: 3,
+    skipDuration: 10,
   },
   transcoding: {
     videoQuality: 'medium',
@@ -333,6 +336,11 @@ export class SettingsService implements OnDestroy {
   /** Previous track threshold in seconds */
   public readonly previousTrackThreshold: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().playback?.previousTrackThreshold ?? 3
+  );
+
+  /** Skip duration in seconds (how far to skip forward/backward) */
+  public readonly skipDuration: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().playback?.skipDuration ?? 10
   );
 
   /** Line width for waveform visualizations (1.0 - 5.0) */
@@ -557,6 +565,15 @@ export class SettingsService implements OnDestroy {
    */
   public async setPreviousTrackThreshold(threshold: number): Promise<void> {
     await this.updateSetting('playback', 'previousTrackThreshold', this.clamp(Math.round(threshold), 0, 10));
+  }
+
+  /**
+   * Sets the skip duration for forward/backward skip buttons.
+   *
+   * @param duration - Skip duration in seconds (1-60 valid range)
+   */
+  public async setSkipDuration(duration: number): Promise<void> {
+    await this.updateSetting('playback', 'skipDuration', this.clamp(Math.round(duration), 1, 60));
   }
 
   /**

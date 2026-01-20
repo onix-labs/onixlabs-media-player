@@ -338,6 +338,26 @@ export class MediaPlayerService implements OnDestroy {
     await this.seek(time);
   }
 
+  /**
+   * Skips forward by the configured skip duration.
+   * Clamps to the track duration.
+   */
+  public async skipForward(): Promise<void> {
+    const skipAmount: number = this.settings.skipDuration();
+    const newTime: number = Math.min(this.currentTime() + skipAmount, this.duration());
+    await this.seek(newTime);
+  }
+
+  /**
+   * Skips backward by the configured skip duration.
+   * Clamps to 0.
+   */
+  public async skipBackward(): Promise<void> {
+    const skipAmount: number = this.settings.skipDuration();
+    const newTime: number = Math.max(this.currentTime() - skipAmount, 0);
+    await this.seek(newTime);
+  }
+
   // ============================================================================
   // Volume Control (client-side for instant response)
   // ============================================================================

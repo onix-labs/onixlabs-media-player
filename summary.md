@@ -35,10 +35,12 @@
 ### Playlist & Controls
 - Server-managed playlist with shuffle (Fisher-Yates) and repeat modes
 - Play/pause, next/previous, seek, volume all responsive
-- Skip backward disabled when playlist has only one item
-- Skip forward disabled when on last track (unless repeat is enabled)
+- Shift+click on previous/next buttons skips backward/forward by configurable duration
+  - Button icons change dynamically when Shift is held (step → skip icons)
+  - Skip duration configurable in Settings > Playback (1-60 seconds, default 10)
 - Auto-advance to next track when current ends
 - Removing currently playing item auto-advances to next track (or stops if playlist empty)
+- Shuffle, repeat, fullscreen, and miniplayer buttons disabled when no media loaded
 - Drag-and-drop file support:
   - Playlist panel: adds files to playlist (auto-plays only if playlist was empty)
   - Idle state / visualization / video surface: adds files AND immediately starts playing
@@ -129,6 +131,10 @@
   - **Previous Track Threshold**: Configure "previous" button behavior (Playback category)
     - Slider from 0-10 seconds (0 = always go to previous track)
     - Default: 3 seconds (if past this point, restart current track instead)
+    - Changes apply immediately
+  - **Skip Duration**: How far to skip when Shift+clicking previous/next buttons (Playback category)
+    - Slider from 1-60 seconds
+    - Default: 10 seconds
     - Changes apply immediately
   - **Line Width**: Controls thickness of waveform lines (Visualization category)
     - Slider from 1-5px
