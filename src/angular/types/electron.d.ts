@@ -369,6 +369,12 @@ export interface MediaPlayerAPI {
   setTrafficLightVisibility: (visible: boolean) => Promise<void>;
 
   /**
+   * Saves the current miniplayer bounds to settings.
+   * Called after drag ends or resize completes in miniplayer mode.
+   */
+  saveMiniplayerBounds: () => Promise<void>;
+
+  /**
    * Registers a callback for view mode changes.
    * Called when the window mode changes between desktop, miniplayer, and fullscreen.
    * @param callback - Function called with new view mode

@@ -270,9 +270,14 @@ export class Root implements OnDestroy {
 
   /**
    * Handles mouse up to end window dragging in miniplayer mode.
+   * Saves the miniplayer bounds after drag completes.
    */
   @HostListener('document:mouseup')
   public onMouseUp(): void {
+    if (this.isDragging && this.isMiniplayer()) {
+      // Save bounds after drag ends
+      void this.electron.saveMiniplayerBounds();
+    }
     this.isDragging = false;
   }
 

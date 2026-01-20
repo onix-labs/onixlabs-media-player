@@ -953,6 +953,17 @@ export class UnifiedMediaServer {
     return this.port;
   }
 
+  /**
+   * Gets the settings manager instance.
+   *
+   * Used by main.ts to access window state settings (miniplayer bounds).
+   *
+   * @returns The SettingsManager instance
+   */
+  public getSettingsManager(): SettingsManager {
+    return this.settings;
+  }
+
   // ============================================================================
   // HTTP Request Router
   // ============================================================================

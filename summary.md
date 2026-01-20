@@ -61,6 +61,10 @@
 - macOS traffic lights hide/show with controls for cleaner appearance
 - Entire window is draggable (except control buttons)
 - Magnetic edge snapping: window snaps to screen edges/corners with 10px gap
+- Position/size memory: remembers last position and size, restores on re-entry
+  - Bounds saved immediately when drag ends or window is resized
+  - Stored in settings.json (windowState.miniplayerBounds)
+  - No UI setting exposed; purely automatic behavior
 - Only visualization or video shown (no playlist, media bar, or header)
 - Fullscreen from miniplayer returns to miniplayer (not desktop) on exit
 - Entering miniplayer from fullscreen properly waits for fullscreen exit transition
@@ -214,7 +218,7 @@
 │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
-│  IPC (minimal - 12 channels):                                          │
+│  IPC (minimal - 13 channels):                                          │
 │  ├── dialog:openFile         (native file picker)                      │
 │  ├── app:getServerPort       (get HTTP server port)                    │
 │  ├── webUtils:getPathForFile (drag-and-drop paths)                     │
@@ -226,7 +230,8 @@
 │  ├── window:getViewMode      (query view mode: desktop/miniplayer/fs)  │
 │  ├── window:getWindowPosition (get window position for drag)           │
 │  ├── window:setWindowPosition (set position with magnetic snapping)    │
-│  └── window:setTrafficLightVisibility (macOS traffic light control)    │
+│  ├── window:setTrafficLightVisibility (macOS traffic light control)    │
+│  └── window:saveMiniplayerBounds (persist miniplayer position/size)    │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -396,7 +401,7 @@ npm run package      # Package with electron-builder
 ## Architecture Benefits
 
 1. **Unified playback** - Audio and video use same HTTP streaming approach
-2. **Minimal IPC** - Only 12 channels vs 18 previously
+2. **Minimal IPC** - Only 13 channels vs 18 previously
 3. **Server as source of truth** - Playlist and playback state managed centrally
 4. **Instant volume** - Client-side control, no FFmpeg restart needed
 5. **Native browser decoding** - Leverages Chromium's optimized media stack
