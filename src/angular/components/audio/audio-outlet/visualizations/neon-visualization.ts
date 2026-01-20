@@ -66,16 +66,28 @@ export class NeonVisualization extends Canvas2DVisualization {
     const waveformOffset: number = height / 6;
     const waveformAmplitude: number = height / 8;
 
+    // Apply hue shift to base colors
+    const cyanColor: {r: number; g: number; b: number} = this.shiftRgbColor(0, 255, 255);
+    const magentaColor: {r: number; g: number; b: number} = this.shiftRgbColor(255, 0, 255);
+
     // Draw rotated waveforms around center
     ctx.save();
     ctx.translate(width / 2, height / 2);
     ctx.rotate(this.rotationAngle);
 
     // Draw cyan waveform (top, offset from center)
-    this.drawWaveform(-waveformOffset, waveformAmplitude, 'rgb(0, 255, 255)', 'rgba(0, 255, 255, 0.8)');
+    this.drawWaveform(
+      -waveformOffset, waveformAmplitude,
+      `rgb(${cyanColor.r}, ${cyanColor.g}, ${cyanColor.b})`,
+      `rgba(${cyanColor.r}, ${cyanColor.g}, ${cyanColor.b}, 0.8)`
+    );
 
     // Draw magenta waveform (bottom, offset from center)
-    this.drawWaveform(waveformOffset, waveformAmplitude, 'rgb(255, 0, 255)', 'rgba(255, 0, 255, 0.8)');
+    this.drawWaveform(
+      waveformOffset, waveformAmplitude,
+      `rgb(${magentaColor.r}, ${magentaColor.g}, ${magentaColor.b})`,
+      `rgba(${magentaColor.r}, ${magentaColor.g}, ${magentaColor.b}, 0.8)`
+    );
 
     ctx.restore();
 

@@ -52,6 +52,8 @@ export interface VisualizationSettings {
   readonly maxFrameRate: number;
   /** Trail intensity for visualizations with trail effects (0.0 - 1.0, default 0.5) */
   readonly trailIntensity: number;
+  /** Hue shift for visualization colors (0-360 degrees, default 0) */
+  readonly hueShift: number;
 }
 
 /**
@@ -105,6 +107,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     perVisualizationSensitivity: {},
     maxFrameRate: 0,
     trailIntensity: 0.5,
+    hueShift: 0,
   },
   application: {
     serverPort: 0,
@@ -223,6 +226,11 @@ export class SettingsService {
   /** Trail intensity for visualizations with trail effects (0.0 - 1.0) */
   public readonly trailIntensity: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().visualization?.trailIntensity ?? 0.5
+  );
+
+  /** Hue shift for visualization colors (0-360 degrees) */
+  public readonly hueShift: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().visualization?.hueShift ?? 0
   );
 
   /** Configured server port (0 = auto-assign) */
@@ -354,6 +362,31 @@ export class SettingsService {
 
     if (!response.ok) {
       console.error(`[SettingsService] Failed to save trail intensity: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the hue shift for visualization colors.
+   *
+   * Rotates all visualization colors by the specified amount.
+   *
+   * @param value - Hue shift value in degrees (0-360)
+   */
+  public async setHueShift(value: number): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Normalize to 0-360 range
+    const normalizedValue: number = ((value % 360) + 360) % 360;
+
+    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({hueShift: normalizedValue}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save hue shift: ${response.status}`);
     }
   }
 

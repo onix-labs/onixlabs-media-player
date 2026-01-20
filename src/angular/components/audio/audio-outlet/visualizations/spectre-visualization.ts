@@ -50,6 +50,9 @@ export class SpectreVisualization extends Canvas2DVisualization {
   /** Cached height for gradient invalidation */
   private gradientHeight: number = 0;
 
+  /** Cached hue shift for gradient invalidation */
+  private cachedHueShift: number = 0;
+
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
@@ -58,8 +61,8 @@ export class SpectreVisualization extends Canvas2DVisualization {
 
   /**
    * Creates gradients for bar coloring.
-   * Upward gradient: dark at center → bright green at top
-   * Downward gradient: dark at center → bright green at bottom
+   * Upward gradient: dark at center → bright color at top
+   * Downward gradient: dark at center → bright color at bottom
    */
   private createGradients(): void {
     if (this.height <= 0) {
@@ -71,21 +74,28 @@ export class SpectreVisualization extends Canvas2DVisualization {
 
     const centerY: number = this.height / 2;
 
-    // Gradient for upward bars (center to top): dark → green
-    this.gradientUp = this.ctx.createLinearGradient(0, centerY, 0, 0);
-    this.gradientUp.addColorStop(0, 'rgba(0, 20, 10, 1)');
-    this.gradientUp.addColorStop(0.3, 'rgba(0, 80, 30, 1)');
-    this.gradientUp.addColorStop(0.7, 'rgba(0, 180, 70, 1)');
-    this.gradientUp.addColorStop(1, 'rgba(0, 255, 100, 1)');
+    // Apply hue shift to base colors
+    const color1: {r: number; g: number; b: number} = this.shiftRgbColor(0, 20, 10);
+    const color2: {r: number; g: number; b: number} = this.shiftRgbColor(0, 80, 30);
+    const color3: {r: number; g: number; b: number} = this.shiftRgbColor(0, 180, 70);
+    const color4: {r: number; g: number; b: number} = this.shiftRgbColor(0, 255, 100);
 
-    // Gradient for downward bars (center to bottom): dark → green
+    // Gradient for upward bars (center to top): dark → bright
+    this.gradientUp = this.ctx.createLinearGradient(0, centerY, 0, 0);
+    this.gradientUp.addColorStop(0, `rgba(${color1.r}, ${color1.g}, ${color1.b}, 1)`);
+    this.gradientUp.addColorStop(0.3, `rgba(${color2.r}, ${color2.g}, ${color2.b}, 1)`);
+    this.gradientUp.addColorStop(0.7, `rgba(${color3.r}, ${color3.g}, ${color3.b}, 1)`);
+    this.gradientUp.addColorStop(1, `rgba(${color4.r}, ${color4.g}, ${color4.b}, 1)`);
+
+    // Gradient for downward bars (center to bottom): dark → bright
     this.gradientDown = this.ctx.createLinearGradient(0, centerY, 0, this.height);
-    this.gradientDown.addColorStop(0, 'rgba(0, 20, 10, 1)');
-    this.gradientDown.addColorStop(0.3, 'rgba(0, 80, 30, 1)');
-    this.gradientDown.addColorStop(0.7, 'rgba(0, 180, 70, 1)');
-    this.gradientDown.addColorStop(1, 'rgba(0, 255, 100, 1)');
+    this.gradientDown.addColorStop(0, `rgba(${color1.r}, ${color1.g}, ${color1.b}, 1)`);
+    this.gradientDown.addColorStop(0.3, `rgba(${color2.r}, ${color2.g}, ${color2.b}, 1)`);
+    this.gradientDown.addColorStop(0.7, `rgba(${color3.r}, ${color3.g}, ${color3.b}, 1)`);
+    this.gradientDown.addColorStop(1, `rgba(${color4.r}, ${color4.g}, ${color4.b}, 1)`);
 
     this.gradientHeight = this.height;
+    this.cachedHueShift = this.hueShift;
   }
 
   protected override onResize(): void {
@@ -102,8 +112,8 @@ export class SpectreVisualization extends Canvas2DVisualization {
 
     if (width <= 0 || height <= 0) return;
 
-    // Ensure gradients exist and match current height
-    if (!this.gradientUp || !this.gradientDown || this.gradientHeight !== height) {
+    // Ensure gradients exist and match current height and hue shift
+    if (!this.gradientUp || !this.gradientDown || this.gradientHeight !== height || this.cachedHueShift !== this.hueShift) {
       this.createGradients();
     }
 

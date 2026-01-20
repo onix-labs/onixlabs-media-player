@@ -113,40 +113,16 @@ export class WaterVisualization extends Canvas2DVisualization {
 
   // Cache gradient colors - only recalculate when hue changes by >= 1 degree
   private updateGradientColors(): boolean {
-    const hueInt: number = Math.floor(this.hueOffset);
+    const hueInt: number = Math.floor(this.hueOffset + this.hueShift);
     if (hueInt === this.cachedHue) return false;
 
     this.cachedHue = hueInt;
+    const shiftedHue: number = this.shiftHue(this.hueOffset);
     this.cachedGradientColors = this.GRADIENT_LEVELS.map(
       (level: {s: number; l: number}): {r: number; g: number; b: number} =>
-        this.hslToRgb(this.hueOffset, level.s, level.l)
+        this.hslToRgb(shiftedHue, level.s, level.l)
     );
     return true;
-  }
-
-  private hslToRgb(h: number, s: number, l: number): {r: number; g: number; b: number} {
-    h = h % 360;
-    const sNorm: number = s * 0.01;
-    const lNorm: number = l * 0.01;
-
-    const c: number = (1 - Math.abs(2 * lNorm - 1)) * sNorm;
-    const x: number = c * (1 - Math.abs((h / 60) % 2 - 1));
-    const m: number = lNorm - c * 0.5;
-
-    let r: number, g: number, b: number;
-
-    if (h < 60) { r = c; g = x; b = 0; }
-    else if (h < 120) { r = x; g = c; b = 0; }
-    else if (h < 180) { r = 0; g = c; b = x; }
-    else if (h < 240) { r = 0; g = x; b = c; }
-    else if (h < 300) { r = x; g = 0; b = c; }
-    else { r = c; g = 0; b = x; }
-
-    return {
-      r: ((r + m) * 255 + 0.5) | 0,
-      g: ((g + m) * 255 + 0.5) | 0,
-      b: ((b + m) * 255 + 0.5) | 0
-    };
   }
 
   protected override onResize(): void {

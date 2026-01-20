@@ -56,6 +56,8 @@ export interface VisualizationSettings {
   readonly maxFrameRate: number;
   /** Trail intensity for visualizations with trail effects (0.0 - 1.0, default 0.5) */
   readonly trailIntensity: number;
+  /** Hue shift for visualization colors (0-360 degrees, default 0) */
+  readonly hueShift: number;
 }
 
 /**
@@ -93,6 +95,7 @@ export interface VisualizationSettingsUpdate {
   readonly perVisualizationSensitivity?: PerVisualizationSensitivity;
   readonly maxFrameRate?: number;
   readonly trailIntensity?: number;
+  readonly hueShift?: number;
 }
 
 /**
@@ -120,6 +123,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     perVisualizationSensitivity: {},
     maxFrameRate: 0,  // 0 = uncapped
     trailIntensity: 0.5,  // 0.5 = default trail persistence
+    hueShift: 0,  // 0 = no color shift
   },
   application: {
     serverPort: 0,  // 0 = auto-assign
@@ -242,6 +246,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate hueShift if provided
+    if (update.hueShift !== undefined) {
+      if (!this.isValidHueShift(update.hueShift)) {
+        console.warn(`[SettingsManager] Invalid hue shift: ${update.hueShift}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -252,6 +264,7 @@ export class SettingsManager {
         perVisualizationSensitivity: mergedPerVizSensitivity,
         maxFrameRate: update.maxFrameRate ?? this.settings.visualization.maxFrameRate,
         trailIntensity: update.trailIntensity ?? this.settings.visualization.trailIntensity,
+        hueShift: update.hueShift ?? this.settings.visualization.hueShift,
       },
     };
 
@@ -421,6 +434,7 @@ export class SettingsManager {
     const perVizSensitivity: unknown = vizObj['perVisualizationSensitivity'];
     const maxFrameRate: unknown = vizObj['maxFrameRate'];
     const trailIntensity: unknown = vizObj['trailIntensity'];
+    const hueShift: unknown = vizObj['hueShift'];
 
     return {
       defaultType: this.isValidVisualizationType(defaultType)
@@ -436,6 +450,9 @@ export class SettingsManager {
       trailIntensity: this.isValidTrailIntensity(trailIntensity)
         ? trailIntensity
         : DEFAULT_SETTINGS.visualization.trailIntensity,
+      hueShift: this.isValidHueShift(hueShift)
+        ? hueShift
+        : DEFAULT_SETTINGS.visualization.hueShift,
     };
   }
 
@@ -584,5 +601,17 @@ export class SettingsManager {
    */
   private isValidTrailIntensity(value: unknown): value is number {
     return typeof value === 'number' && value >= 0 && value <= 1;
+  }
+
+  /**
+   * Type guard to check if a value is a valid hue shift.
+   *
+   * Valid values are between 0 and 360 (degrees).
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid hue shift
+   */
+  private isValidHueShift(value: unknown): value is number {
+    return typeof value === 'number' && value >= 0 && value <= 360;
   }
 }

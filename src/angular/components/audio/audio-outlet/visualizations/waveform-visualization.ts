@@ -67,11 +67,17 @@ export class WaveformVisualization extends Canvas2DVisualization {
     const centerY: number = height / 2;
     const sliceWidth: number = width / dataArray.length;
 
+    // Apply hue shift to base green color (0, 255, 100)
+    const baseColor: {r: number; g: number; b: number} = this.shiftRgbColor(0, 255, 100);
+    const colorMain: string = `rgb(${baseColor.r}, ${baseColor.g}, ${baseColor.b})`;
+    const colorGlow: string = `rgba(${baseColor.r}, ${baseColor.g}, ${baseColor.b}, 0.8)`;
+    const colorStroke: string = `rgba(${baseColor.r}, ${baseColor.g}, ${baseColor.b}, 0.3)`;
+
     // Draw glow layer (larger, blurred line underneath)
     ctx.save();
     ctx.shadowBlur = this.GLOW_BLUR;
-    ctx.shadowColor = 'rgba(0, 255, 100, 0.8)';
-    ctx.strokeStyle = 'rgba(0, 255, 100, 0.3)';
+    ctx.shadowColor = colorGlow;
+    ctx.strokeStyle = colorStroke;
     ctx.lineWidth = this.LINE_WIDTH + 4;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -96,8 +102,8 @@ export class WaveformVisualization extends Canvas2DVisualization {
     ctx.stroke();
     ctx.restore();
 
-    // Draw main waveform line (crisp green)
-    ctx.strokeStyle = 'rgb(0, 255, 100)';
+    // Draw main waveform line
+    ctx.strokeStyle = colorMain;
     ctx.lineWidth = this.LINE_WIDTH;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -121,7 +127,9 @@ export class WaveformVisualization extends Canvas2DVisualization {
     ctx.stroke();
 
     // Draw highlight line (brighter, thinner)
-    ctx.strokeStyle = 'rgba(150, 255, 180, 0.6)';
+    // Use a lighter version of the shifted color
+    const highlightColor: {r: number; g: number; b: number} = this.shiftRgbColor(150, 255, 180);
+    ctx.strokeStyle = `rgba(${highlightColor.r}, ${highlightColor.g}, ${highlightColor.b}, 0.6)`;
     ctx.lineWidth = 1;
 
     ctx.beginPath();

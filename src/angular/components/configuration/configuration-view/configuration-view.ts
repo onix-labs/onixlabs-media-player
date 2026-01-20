@@ -142,6 +142,11 @@ export class ConfigurationView {
     (): number => this.settingsService.trailIntensity()
   );
 
+  /** Current hue shift (0-360 degrees) */
+  public readonly currentHueShift: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.hueShift()
+  );
+
   /** Current server port (0 = auto-assign) */
   public readonly currentServerPort: ReturnType<typeof computed<number>> = computed(
     (): number => this.settingsService.serverPort()
@@ -248,6 +253,17 @@ export class ConfigurationView {
   }
 
   /**
+   * Handles hue shift slider change.
+   *
+   * @param event - The input event from the range element
+   */
+  public async onHueShiftChange(event: Event): Promise<void> {
+    const input: HTMLInputElement = event.target as HTMLInputElement;
+    const value: number = parseFloat(input.value);
+    await this.settingsService.setHueShift(value);
+  }
+
+  /**
    * Formats the current sensitivity value as a percentage string.
    *
    * @returns The sensitivity as a percentage (e.g., "50%")
@@ -263,6 +279,15 @@ export class ConfigurationView {
    */
   public formatTrailIntensity(): string {
     return `${Math.round(this.currentTrailIntensity() * 100)}%`;
+  }
+
+  /**
+   * Formats the current hue shift value in degrees.
+   *
+   * @returns The hue shift in degrees (e.g., "180°")
+   */
+  public formatHueShift(): string {
+    return `${Math.round(this.currentHueShift())}°`;
   }
 
   // ============================================================================
