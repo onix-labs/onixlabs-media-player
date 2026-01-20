@@ -290,10 +290,18 @@ class Program {
     });
 
     // Miniplayer control
-    ipcMain.handle("window:enterMiniplayer", (): void => {
+    ipcMain.handle("window:enterMiniplayer", async (): Promise<void> => {
       if (!this.window) return;
 
-      // Store current bounds for restoration
+      // If in fullscreen, exit first and wait for transition to complete
+      if (this.window.isFullScreen()) {
+        await new Promise<void>((resolve: () => void): void => {
+          this.window?.once('leave-full-screen', resolve);
+          this.window?.setFullScreen(false);
+        });
+      }
+
+      // Store current bounds for restoration (after exiting fullscreen)
       this.desktopBounds = this.window.getBounds();
 
       // Set miniplayer constraints

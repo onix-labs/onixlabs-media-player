@@ -50,6 +50,18 @@
 - Floating playback controls appear on mouse movement, hide after 5s inactivity
 - Gradient overlay for floating controls at bottom of screen
 
+### Miniplayer Mode
+- Compact floating window (320x200 default, max 640x400) for picture-in-picture viewing
+- Always-on-top behavior keeps miniplayer visible above other windows
+- Miniplayer button in playback controls (next to fullscreen button)
+- Minimal overlay controls: previous, play/pause, next, exit miniplayer
+- Controls appear on mouse hover, fade out when mouse leaves
+- Entire window is draggable (except control buttons)
+- Magnetic edge snapping: window snaps to screen edges/corners with 10px gap
+- Only visualization or video shown (no playlist, media bar, or header)
+- Fullscreen from miniplayer returns to miniplayer (not desktop) on exit
+- Entering miniplayer from fullscreen properly waits for fullscreen exit transition
+
 ### UI Layout
 - **Header**: Draggable area for window movement (macOS traffic lights region)
 - **Media bar** (bottom of outlet): Visualization switcher (audio only) + playlist toggle
@@ -199,13 +211,18 @@
 │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
-│  IPC (minimal - 6 channels):                                           │
+│  IPC (minimal - 11 channels):                                          │
 │  ├── dialog:openFile         (native file picker)                      │
 │  ├── app:getServerPort       (get HTTP server port)                    │
 │  ├── webUtils:getPathForFile (drag-and-drop paths)                     │
 │  ├── window:enterFullscreen  (enter fullscreen mode)                   │
 │  ├── window:exitFullscreen   (exit fullscreen mode)                    │
-│  └── window:isFullscreen     (query fullscreen state)                  │
+│  ├── window:isFullscreen     (query fullscreen state)                  │
+│  ├── window:enterMiniplayer  (enter miniplayer mode)                   │
+│  ├── window:exitMiniplayer   (exit miniplayer mode)                    │
+│  ├── window:getViewMode      (query view mode: desktop/miniplayer/fs)  │
+│  ├── window:getWindowPosition (get window position for drag)           │
+│  └── window:setWindowPosition (set position with magnetic snapping)    │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -253,6 +270,7 @@ AudioContext.destination (speakers)
 - `src/angular/components/video/video-outlet/` - Video playback
 - `src/angular/components/playlist/` - Playlist UI panel
 - `src/angular/components/layout/layout-controls/` - Playback controls
+- `src/angular/components/miniplayer/` - Miniplayer overlay controls
 - `src/angular/components/configuration/configuration-view/` - Settings UI with sidebar and panels
 
 **Visualizations:**
@@ -374,7 +392,7 @@ npm run package      # Package with electron-builder
 ## Architecture Benefits
 
 1. **Unified playback** - Audio and video use same HTTP streaming approach
-2. **Minimal IPC** - Only 6 channels vs 18 previously
+2. **Minimal IPC** - Only 11 channels vs 18 previously
 3. **Server as source of truth** - Playlist and playback state managed centrally
 4. **Instant volume** - Client-side control, no FFmpeg restart needed
 5. **Native browser decoding** - Leverages Chromium's optimized media stack
@@ -402,7 +420,7 @@ The entire TypeScript codebase is documented with comprehensive TSDoc comments f
 - `settings.service.ts` - Settings state with SSE sync and HTTP fetch fallback
 
 **Components:**
-- `root.ts` - Application shell, fullscreen handling, control visibility, config mode switching
+- `root.ts` - Application shell, fullscreen/miniplayer handling, control visibility, window dragging, config mode switching
 - `layout-header.ts`, `layout-controls.ts`, `layout-outlet.ts` - Layout components
 - `audio-outlet.ts` - Web Audio API integration, visualization management, default viz and sensitivity from settings
 - `video-outlet.ts` - Video playback, transcoding support
