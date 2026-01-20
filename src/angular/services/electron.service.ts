@@ -111,8 +111,17 @@ export class ElectronService implements OnDestroy {
   /** Whether the application is in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
+  /** Current view mode: desktop, miniplayer, or fullscreen */
+  public readonly viewMode: ReturnType<typeof signal<'desktop' | 'miniplayer' | 'fullscreen'>> = signal<'desktop' | 'miniplayer' | 'fullscreen'>('desktop');
+
   /** Cleanup function for fullscreen change listener */
   private fullscreenCleanup: (() => void) | null = null;
+
+  /** Cleanup function for view mode change listener */
+  private viewModeCleanup: (() => void) | null = null;
+
+  /** Previous view mode for restoring after fullscreen (miniplayer or desktop) */
+  private previousViewMode: 'desktop' | 'miniplayer' = 'desktop';
 
   /** Cleanup functions for menu event listeners */
   private menuCleanupFunctions: Array<() => void> = [];
@@ -205,6 +214,9 @@ export class ElectronService implements OnDestroy {
     // Setup fullscreen listener
     this.setupFullscreenListener();
 
+    // Setup view mode listener
+    this.setupViewModeListener();
+
     // Setup menu event listeners
     this.setupMenuListeners();
   }
@@ -229,6 +241,36 @@ export class ElectronService implements OnDestroy {
     this.fullscreenCleanup = this.api.onFullscreenChange((isFullscreen: boolean): void => {
       this.ngZone.run((): void => {
         this.isFullscreen.set(isFullscreen);
+      });
+    });
+  }
+
+  /**
+   * Sets up view mode state tracking via IPC.
+   *
+   * Gets the initial view mode and registers a listener for changes.
+   * All updates run through NgZone to trigger Angular change detection.
+   */
+  private setupViewModeListener(): void {
+    if (!this.isElectron || !this.api) return;
+
+    // Get initial view mode
+    this.api.getViewMode().then((mode: 'desktop' | 'miniplayer' | 'fullscreen'): void => {
+      this.ngZone.run((): void => {
+        this.viewMode.set(mode);
+        if (mode !== 'fullscreen') {
+          this.previousViewMode = mode;
+        }
+      });
+    });
+
+    // Listen for view mode changes
+    this.viewModeCleanup = this.api.onViewModeChange((mode: 'desktop' | 'miniplayer' | 'fullscreen'): void => {
+      this.ngZone.run((): void => {
+        this.viewMode.set(mode);
+        if (mode !== 'fullscreen') {
+          this.previousViewMode = mode;
+        }
       });
     });
   }
@@ -555,6 +597,58 @@ export class ElectronService implements OnDestroy {
   }
 
   // ============================================================================
+  // IPC Methods - Miniplayer Control
+  // ============================================================================
+
+  /**
+   * Enters miniplayer mode.
+   *
+   * Resizes the window to compact size (320x200), positions in bottom-right corner,
+   * sets always-on-top, and applies miniplayer size constraints (max 640x400).
+   */
+  public async enterMiniplayer(): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.enterMiniplayer();
+  }
+
+  /**
+   * Exits miniplayer mode and returns to desktop mode.
+   *
+   * Restores the previous window size and position, removes always-on-top,
+   * and restores desktop size constraints (min 800x600, no max).
+   */
+  public async exitMiniplayer(): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.exitMiniplayer();
+  }
+
+  /**
+   * Sets the window position with magnetic edge snapping.
+   *
+   * Used during window dragging in miniplayer mode. When the position
+   * is near screen edges (~40px), the window snaps to the edge.
+   *
+   * @param position - The desired window position {x, y}
+   * @returns Promise resolving to the actual position after snapping
+   */
+  public async setWindowPosition(position: {x: number; y: number}): Promise<{x: number; y: number}> {
+    if (!this.isElectron || !this.api) return position;
+    return this.api.setWindowPosition(position);
+  }
+
+  /**
+   * Gets the current window position.
+   *
+   * Used to get starting position for window dragging in miniplayer mode.
+   *
+   * @returns Promise resolving to the current window position {x, y}
+   */
+  public async getWindowPosition(): Promise<{x: number; y: number}> {
+    if (!this.isElectron || !this.api) return {x: 0, y: 0};
+    return this.api.getWindowPosition();
+  }
+
+  // ============================================================================
   // HTTP API Methods - Playback Control
   // ============================================================================
 
@@ -817,6 +911,7 @@ export class ElectronService implements OnDestroy {
   public ngOnDestroy(): void {
     this.eventSource?.close();
     this.fullscreenCleanup?.();
+    this.viewModeCleanup?.();
     this.menuCleanupFunctions.forEach((cleanup: () => void): void => cleanup());
   }
 }

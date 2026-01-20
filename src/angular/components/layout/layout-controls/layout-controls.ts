@@ -196,6 +196,14 @@ export class LayoutControls {
     await this.electron.toggleFullscreen();
   }
 
+  /**
+   * Enters miniplayer mode.
+   * Shrinks window to compact size with only visualization and minimal controls.
+   */
+  public async onEnterMiniplayer(): Promise<void> {
+    await this.electron.enterMiniplayer();
+  }
+
   // ============================================================================
   // Event Handlers - Seek Control
   // ============================================================================

@@ -326,6 +326,48 @@ export interface MediaPlayerAPI {
    * @returns Cleanup function to unregister the listener
    */
   onMenuEvent: (event: string, callback: (...args: unknown[]) => void) => () => void;
+
+  /**
+   * Enters miniplayer mode.
+   * Resizes window to compact size (320x200), sets always-on-top, and positions in corner.
+   * @returns Promise that resolves when miniplayer mode is entered
+   */
+  enterMiniplayer: () => Promise<void>;
+
+  /**
+   * Exits miniplayer mode and returns to desktop mode.
+   * Restores window size (800x600 min), removes always-on-top, and restores previous bounds.
+   * @returns Promise that resolves when miniplayer mode is exited
+   */
+  exitMiniplayer: () => Promise<void>;
+
+  /**
+   * Gets the current view mode of the window.
+   * @returns Promise resolving to 'desktop', 'miniplayer', or 'fullscreen'
+   */
+  getViewMode: () => Promise<'desktop' | 'miniplayer' | 'fullscreen'>;
+
+  /**
+   * Sets the window position with magnetic edge snapping.
+   * When position is near screen edges (within ~40px), snaps to the edge.
+   * @param position - The desired position {x, y}
+   * @returns Promise resolving to the actual position after snapping
+   */
+  setWindowPosition: (position: {x: number; y: number}) => Promise<{x: number; y: number}>;
+
+  /**
+   * Gets the current window position.
+   * @returns Promise resolving to the current position {x, y}
+   */
+  getWindowPosition: () => Promise<{x: number; y: number}>;
+
+  /**
+   * Registers a callback for view mode changes.
+   * Called when the window mode changes between desktop, miniplayer, and fullscreen.
+   * @param callback - Function called with new view mode
+   * @returns Cleanup function to unregister the listener
+   */
+  onViewModeChange: (callback: (mode: 'desktop' | 'miniplayer' | 'fullscreen') => void) => () => void;
 }
 
 /**
