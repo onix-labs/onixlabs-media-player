@@ -48,6 +48,7 @@ const api = {
     getViewMode: () => ipcRenderer.invoke('window:getViewMode'),
     setWindowPosition: (position) => ipcRenderer.invoke('window:setWindowPosition', position),
     getWindowPosition: () => ipcRenderer.invoke('window:getWindowPosition'),
+    setTrafficLightVisibility: (visible) => ipcRenderer.invoke('window:setTrafficLightVisibility', visible),
     onViewModeChange: (callback) => {
         const listener = (_event, mode) => callback(mode);
         ipcRenderer.on('window:viewModeChanged', listener);

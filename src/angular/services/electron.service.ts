@@ -648,6 +648,19 @@ export class ElectronService implements OnDestroy {
     return this.api.getWindowPosition();
   }
 
+  /**
+   * Sets the visibility of macOS traffic light buttons.
+   *
+   * Used in miniplayer mode to hide traffic lights when controls are hidden.
+   * Only affects macOS; no-op on other platforms.
+   *
+   * @param visible - Whether the traffic lights should be visible
+   */
+  public async setTrafficLightVisibility(visible: boolean): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.setTrafficLightVisibility(visible);
+  }
+
   // ============================================================================
   // HTTP API Methods - Playback Control
   // ============================================================================

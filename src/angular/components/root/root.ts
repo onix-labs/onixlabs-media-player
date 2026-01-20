@@ -100,12 +100,12 @@ export class Root implements OnDestroy {
    * Whether to show the control bar.
    *
    * Logic:
-   * - Not fullscreen: always show
-   * - Fullscreen with auto-hide disabled (delay=0): always show
-   * - Fullscreen with auto-hide enabled: show only if controlsVisible is true
+   * - Desktop mode (not fullscreen, not miniplayer): always show
+   * - Fullscreen or miniplayer with auto-hide disabled (delay=0): always show
+   * - Fullscreen or miniplayer with auto-hide enabled: show only if controlsVisible is true
    */
   public readonly showControls: ReturnType<typeof computed<boolean>> = computed((): boolean => {
-    if (!this.isFullscreen()) return true;
+    if (!this.isFullscreen() && !this.isMiniplayer()) return true;
     if (this.settings.controlsAutoHideDelay() === 0) return true;
     return this.controlsVisible();
   });
@@ -156,6 +156,16 @@ export class Root implements OnDestroy {
       if (trigger > 0) {
         void this.openFilesFromMenu();
       }
+    });
+
+    // Sync traffic light visibility with controls in miniplayer mode
+    effect((): void => {
+      const inMiniplayer: boolean = this.isMiniplayer();
+      const controlsShown: boolean = this.showControls();
+      // In miniplayer: hide traffic lights when controls are hidden
+      // In other modes: always show traffic lights
+      const shouldShowTrafficLights: boolean = !inMiniplayer || controlsShown;
+      void this.electron.setTrafficLightVisibility(shouldShowTrafficLights);
     });
   }
 
@@ -243,8 +253,8 @@ export class Root implements OnDestroy {
   @HostListener('document:mousemove', ['$event'])
   public onMouseMoveForDrag(event: MouseEvent): void {
     if (!this.isDragging) {
-      // Existing fullscreen mouse move handling
-      if (this.isFullscreen()) {
+      // Show controls temporarily on mouse movement in fullscreen or miniplayer
+      if (this.isFullscreen() || this.isMiniplayer()) {
         this.showControlsTemporarily();
       }
       return;

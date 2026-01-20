@@ -158,6 +158,14 @@ export interface MediaPlayerAPI {
   readonly getWindowPosition: () => Promise<{x: number; y: number}>;
 
   /**
+   * Sets the visibility of the macOS traffic light buttons.
+   * Only affects macOS; no-op on other platforms.
+   *
+   * @param visible - Whether the traffic lights should be visible
+   */
+  readonly setTrafficLightVisibility: (visible: boolean) => Promise<void>;
+
+  /**
    * Registers a callback for view mode changes.
    * Called when the window mode changes between desktop, miniplayer, and fullscreen.
    *
@@ -198,6 +206,7 @@ const api: MediaPlayerAPI = {
   getViewMode: (): Promise<'desktop' | 'miniplayer' | 'fullscreen'> => ipcRenderer.invoke('window:getViewMode'),
   setWindowPosition: (position: Readonly<{x: number; y: number}>): Promise<{x: number; y: number}> => ipcRenderer.invoke('window:setWindowPosition', position),
   getWindowPosition: (): Promise<{x: number; y: number}> => ipcRenderer.invoke('window:getWindowPosition'),
+  setTrafficLightVisibility: (visible: boolean): Promise<void> => ipcRenderer.invoke('window:setTrafficLightVisibility', visible),
   onViewModeChange: (callback: (mode: 'desktop' | 'miniplayer' | 'fullscreen') => void): () => void => {
     const listener: (_event: Electron.IpcRendererEvent, mode: 'desktop' | 'miniplayer' | 'fullscreen') => void = (_event: Electron.IpcRendererEvent, mode: 'desktop' | 'miniplayer' | 'fullscreen'): void => callback(mode);
     ipcRenderer.on('window:viewModeChanged', listener);

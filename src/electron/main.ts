@@ -378,6 +378,11 @@ class Program {
       this.window.setPosition(x, y);
       return {x, y};
     });
+
+    ipcMain.handle("window:setTrafficLightVisibility", (_: Readonly<Electron.IpcMainInvokeEvent>, visible: boolean): void => {
+      if (!this.window || process.platform !== 'darwin') return;
+      this.window.setWindowButtonVisibility(visible);
+    });
   }
 
   /**
