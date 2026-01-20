@@ -92,6 +92,12 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Non-native formats (.mkv, .avi, .mov) transcoded to fragmented MP4 on-the-fly
 - Synchronized with server-side time tracking
 - Configurable transcoding quality (CRF 18/23/28) and audio bitrate (128-320 kbps)
+- Video aspect ratio modes with media bar toggle (same UI pattern as visualizations):
+  - **Default**: Preserves video's native aspect ratio
+  - **4:3 Forced**: Stretches video to 4:3 aspect ratio
+  - **16:9 Forced**: Stretches video to 16:9 aspect ratio
+  - **Fit to Screen**: Stretches video to fill the entire canvas
+- Aspect ratio setting persists across sessions and applies in all view modes
 
 ### Playlist & Controls
 
@@ -478,6 +484,7 @@ The `Canvas2DVisualization` base class provides:
 | Crossfade Duration | 0-500ms | 100ms | Fade time for play/pause transitions |
 | Previous Track Threshold | 0-10s | 3s | Time before restart vs previous track |
 | Skip Duration | 1-60s | 10s | Shift+click skip amount |
+| Video Aspect Ratio | Default/4:3/16:9/Fit | Default | Video display aspect mode |
 
 #### Transcoding Category
 

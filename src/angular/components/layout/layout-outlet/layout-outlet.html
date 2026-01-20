@@ -4,7 +4,7 @@
       @if (isAudio()) {
         <app-audio-outlet #audioOutlet (visualizationChange)="visualizationDisplayName.set($event)"/>
       } @else if (isVideo()) {
-        <app-video-outlet/>
+        <app-video-outlet #videoOutlet (aspectModeChange)="aspectModeDisplayName.set($event)"/>
       } @else {
         <div class="idle-state"
              [class.drag-over]="isDragOver()"
@@ -32,6 +32,14 @@
           <i class="fa-solid fa-caret-right"></i>
         </button>
         <span class="visualization-name">{{ visualizationDisplayName() }}</span>
+      } @else if (isVideo()) {
+        <button (click)="previousAspectMode()" title="Previous aspect ratio">
+          <i class="fa-solid fa-caret-left"></i>
+        </button>
+        <button (click)="nextAspectMode()" title="Next aspect ratio">
+          <i class="fa-solid fa-caret-right"></i>
+        </button>
+        <span class="visualization-name">{{ aspectModeDisplayName() }}</span>
       }
       <div class="spacer"></div>
       <button class="playlist-toggle" (click)="togglePlaylist()" title="Toggle playlist">

@@ -14,7 +14,7 @@
 
 import {Component, output, signal, computed, inject, ChangeDetectionStrategy} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, FftSize, BarDensity, VideoQuality, AudioBitrate} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode} from '../../../services/settings.service';
 
 /**
  * Safely extracts value from an input element event target.
@@ -291,6 +291,14 @@ export class ConfigurationView {
     {value: 320, label: '320 kbps'},
   ];
 
+  /** Available video aspect mode options for the dropdown */
+  public readonly videoAspectOptions = VIDEO_ASPECT_OPTIONS;
+
+  /** Current video aspect mode */
+  public readonly currentVideoAspectMode: ReturnType<typeof computed<VideoAspectMode>> = computed(
+    (): VideoAspectMode => this.settingsService.videoAspectMode()
+  );
+
   // ============================================================================
   // Event Handlers
   // ============================================================================
@@ -449,6 +457,16 @@ export class ConfigurationView {
   public async onAudioBitrateChange(event: Event): Promise<void> {
     const bitrate: number = parseInt(getSelectValue(event), 10);
     if (!isNaN(bitrate)) await this.settingsService.setAudioBitrate(bitrate as AudioBitrate);
+  }
+
+  /**
+   * Handles video aspect mode selection change.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onVideoAspectModeChange(event: Event): Promise<void> {
+    const mode: string = getSelectValue(event);
+    await this.settingsService.setVideoAspectMode(mode as VideoAspectMode);
   }
 
   /**

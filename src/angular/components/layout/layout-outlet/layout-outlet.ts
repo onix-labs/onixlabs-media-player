@@ -58,6 +58,9 @@ export class LayoutOutlet {
   /** Reference to the audio outlet for visualization control */
   @ViewChild('audioOutlet') public audioOutlet?: AudioOutlet;
 
+  /** Reference to the video outlet for aspect mode control */
+  @ViewChild('videoOutlet') public videoOutlet?: VideoOutlet;
+
   /** Media player service for playback state */
   private readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
 
@@ -69,6 +72,9 @@ export class LayoutOutlet {
 
   /** Signal for visualization display name (updated reactively from audioOutlet) */
   public readonly visualizationDisplayName: ReturnType<typeof signal<string>> = signal<string>('');
+
+  /** Signal for video aspect mode display name (updated reactively from videoOutlet) */
+  public readonly aspectModeDisplayName: ReturnType<typeof signal<string>> = signal<string>('Default');
 
   // ============================================================================
   // Reactive State Signals
@@ -144,6 +150,20 @@ export class LayoutOutlet {
    */
   public previousVisualization(): void {
     this.audioOutlet?.previousVisualization();
+  }
+
+  /**
+   * Cycles to the next video aspect mode.
+   */
+  public nextAspectMode(): void {
+    this.videoOutlet?.nextAspectMode();
+  }
+
+  /**
+   * Cycles to the previous video aspect mode.
+   */
+  public previousAspectMode(): void {
+    this.videoOutlet?.previousAspectMode();
   }
 
   // ============================================================================
