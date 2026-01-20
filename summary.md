@@ -517,7 +517,7 @@ The entire TypeScript codebase is documented with comprehensive TSDoc comments f
 ### Application Menu
 - Native menu bar for macOS (app menu), Windows/Linux (File menu)
 - File menu: Open (Cmd+O), Close (Cmd+W), with placeholders for URL, playlists, Save As
-- View menu: Full Screen toggle, Visualizations submenu, Options (settings)
+- View menu: Full Screen toggle, Visualizations submenu (organized by category: Bars, Science, Team, Waves), Options (settings)
 - Playback menu: Play/Pause (Space) with dynamic label, Shuffle/Repeat toggles
 - Help menu: About ONIXPlayer (opens About view), placeholders for Help Topics
 - Menu callbacks communicated via IPC to renderer for UI updates
