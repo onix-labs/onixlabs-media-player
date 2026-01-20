@@ -48,6 +48,8 @@ export interface VisualizationSettings {
   readonly sensitivity: number;
   /** Per-visualization sensitivity overrides (0.0 - 1.0, optional per type) */
   readonly perVisualizationSensitivity: PerVisualizationSensitivity;
+  /** Maximum frame rate for visualizations (0 = uncapped, or 15/30/60) */
+  readonly maxFrameRate: number;
 }
 
 /**
@@ -99,6 +101,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     defaultType: 'bars',
     sensitivity: 0.5,
     perVisualizationSensitivity: {},
+    maxFrameRate: 0,
   },
   application: {
     serverPort: 0,
@@ -209,6 +212,11 @@ export class SettingsService {
     (): PerVisualizationSensitivity => this.settings().visualization.perVisualizationSensitivity ?? {}
   );
 
+  /** Maximum frame rate for visualizations (0 = uncapped) */
+  public readonly maxFrameRate: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().visualization?.maxFrameRate ?? 0
+  );
+
   /** Configured server port (0 = auto-assign) */
   public readonly serverPort: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().application?.serverPort ?? 0
@@ -286,6 +294,32 @@ export class SettingsService {
 
     if (!response.ok) {
       console.error(`[SettingsService] Failed to save sensitivity: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the maximum frame rate for visualizations.
+   *
+   * Makes an HTTP PUT request to update the server-side settings.
+   * The update is broadcast to all clients via SSE.
+   *
+   * @param fps - Frame rate (0 = uncapped, or 15/30/60)
+   */
+  public async setMaxFrameRate(fps: number): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Validate: must be 0, 15, 30, or 60
+    const validFps: number = [0, 15, 30, 60].includes(fps) ? fps : 0;
+
+    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({maxFrameRate: validFps}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save max frame rate: ${response.status}`);
     }
   }
 

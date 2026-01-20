@@ -144,6 +144,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Animation frame ID for the visualization loop */
   private animationId: number | null = null;
 
+  /** Timestamp of last frame render (for frame rate limiting) */
+  private lastFrameTime: number = 0;
+
   /** Whether the audio context has been initialized */
   private isInitialized: boolean = false;
 
@@ -573,14 +576,26 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /**
    * Starts the animation loop for continuous visualization rendering.
    *
-   * Uses requestAnimationFrame for smooth 60fps rendering. The loop
-   * handles canvas resizing and delegates drawing to the visualization.
+   * Uses requestAnimationFrame for smooth rendering. The loop handles
+   * canvas resizing and delegates drawing to the visualization.
+   * Frame rate can be limited via settings (0 = uncapped, or 15/30/60 FPS).
    */
   private startAnimationLoop(): void {
     const canvas: HTMLCanvasElement = this.canvasRef.nativeElement;
 
-    const draw: () => void = (): void => {
+    const draw: (timestamp: number) => void = (timestamp: number): void => {
       this.animationId = requestAnimationFrame(draw);
+
+      // Frame rate limiting
+      const maxFps: number = this.settings.maxFrameRate();
+      if (maxFps > 0) {
+        const frameInterval: number = 1000 / maxFps;
+        const elapsed: number = timestamp - this.lastFrameTime;
+        if (elapsed < frameInterval) {
+          return; // Skip this frame
+        }
+        this.lastFrameTime = timestamp - (elapsed % frameInterval);
+      }
 
       const rect: DOMRect = canvas.getBoundingClientRect();
       const width: number = Math.round(rect.width);
@@ -593,6 +608,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.visualization?.draw();
     };
 
-    draw();
+    requestAnimationFrame(draw);
   }
 }

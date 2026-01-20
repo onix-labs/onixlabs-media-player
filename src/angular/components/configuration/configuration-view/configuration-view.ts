@@ -132,6 +132,11 @@ export class ConfigurationView {
     (): number => this.settingsService.sensitivity()
   );
 
+  /** Current max frame rate (0 = uncapped) */
+  public readonly currentMaxFrameRate: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.maxFrameRate()
+  );
+
   /** Current server port (0 = auto-assign) */
   public readonly currentServerPort: ReturnType<typeof computed<number>> = computed(
     (): number => this.settingsService.serverPort()
@@ -153,6 +158,14 @@ export class ConfigurationView {
 
   /** Available visualization options for the dropdown */
   public readonly visualizationOptions = VISUALIZATION_OPTIONS;
+
+  /** Available frame rate options for the dropdown */
+  public readonly frameRateOptions: readonly {value: number; label: string}[] = [
+    {value: 0, label: 'Uncapped'},
+    {value: 60, label: '60 FPS'},
+    {value: 30, label: '30 FPS'},
+    {value: 15, label: '15 FPS'},
+  ];
 
   // ============================================================================
   // Event Handlers
@@ -205,6 +218,17 @@ export class ConfigurationView {
     const input: HTMLInputElement = event.target as HTMLInputElement;
     const value: number = parseFloat(input.value);
     await this.settingsService.setSensitivity(value);
+  }
+
+  /**
+   * Handles max frame rate selection change.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onMaxFrameRateChange(event: Event): Promise<void> {
+    const select: HTMLSelectElement = event.target as HTMLSelectElement;
+    const fps: number = parseInt(select.value, 10);
+    await this.settingsService.setMaxFrameRate(fps);
   }
 
   /**

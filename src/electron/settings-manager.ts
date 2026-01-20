@@ -52,6 +52,8 @@ export interface VisualizationSettings {
   readonly sensitivity: number;
   /** Per-visualization sensitivity overrides (0.0 - 1.0, optional per type) */
   readonly perVisualizationSensitivity: PerVisualizationSensitivity;
+  /** Maximum frame rate for visualizations (0 = uncapped, or 15/30/60, default 0) */
+  readonly maxFrameRate: number;
 }
 
 /**
@@ -87,6 +89,7 @@ export interface VisualizationSettingsUpdate {
   readonly defaultType?: VisualizationType;
   readonly sensitivity?: number;
   readonly perVisualizationSensitivity?: PerVisualizationSensitivity;
+  readonly maxFrameRate?: number;
 }
 
 /**
@@ -112,6 +115,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     defaultType: 'bars',
     sensitivity: 0.5,
     perVisualizationSensitivity: {},
+    maxFrameRate: 0,  // 0 = uncapped
   },
   application: {
     serverPort: 0,  // 0 = auto-assign
@@ -218,6 +222,14 @@ export class SettingsManager {
       };
     }
 
+    // Validate maxFrameRate if provided
+    if (update.maxFrameRate !== undefined) {
+      if (!this.isValidMaxFrameRate(update.maxFrameRate)) {
+        console.warn(`[SettingsManager] Invalid max frame rate: ${update.maxFrameRate}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -226,6 +238,7 @@ export class SettingsManager {
         defaultType: update.defaultType ?? this.settings.visualization.defaultType,
         sensitivity: update.sensitivity ?? this.settings.visualization.sensitivity,
         perVisualizationSensitivity: mergedPerVizSensitivity,
+        maxFrameRate: update.maxFrameRate ?? this.settings.visualization.maxFrameRate,
       },
     };
 
@@ -393,6 +406,7 @@ export class SettingsManager {
     const defaultType: unknown = vizObj['defaultType'];
     const sensitivity: unknown = vizObj['sensitivity'];
     const perVizSensitivity: unknown = vizObj['perVisualizationSensitivity'];
+    const maxFrameRate: unknown = vizObj['maxFrameRate'];
 
     return {
       defaultType: this.isValidVisualizationType(defaultType)
@@ -402,6 +416,9 @@ export class SettingsManager {
         ? sensitivity
         : DEFAULT_SETTINGS.visualization.sensitivity,
       perVisualizationSensitivity: this.validatePerVisualizationSensitivity(perVizSensitivity),
+      maxFrameRate: this.isValidMaxFrameRate(maxFrameRate)
+        ? maxFrameRate
+        : DEFAULT_SETTINGS.visualization.maxFrameRate,
     };
   }
 
@@ -522,5 +539,21 @@ export class SettingsManager {
       return false;
     }
     return value >= 0 && value <= 10;
+  }
+
+  /**
+   * Type guard to check if a value is a valid max frame rate.
+   *
+   * Valid values are 0 (uncapped), 15, 30, or 60.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid frame rate
+   */
+  private isValidMaxFrameRate(value: unknown): value is number {
+    if (typeof value !== 'number' || !Number.isInteger(value)) {
+      return false;
+    }
+    // 0 = uncapped, or specific FPS values
+    return value === 0 || value === 15 || value === 30 || value === 60;
   }
 }

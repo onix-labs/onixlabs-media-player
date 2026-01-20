@@ -134,6 +134,26 @@
                     </div>
                   }
                 </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="max-frame-rate">Max Frame Rate</label>
+                    <p class="setting-description">
+                      Limit visualization frame rate to reduce CPU/GPU usage. Uncapped uses your display's refresh rate.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="max-frame-rate"
+                      [value]="currentMaxFrameRate()"
+                      (change)="onMaxFrameRateChange($event)"
+                    >
+                      @for (option of frameRateOptions; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
               </div>
             }
             @case ('application') {
