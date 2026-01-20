@@ -10,7 +10,7 @@
  * @module app/components/miniplayer/miniplayer-controls
  */
 
-import {Component, computed, inject, ChangeDetectionStrategy} from '@angular/core';
+import {Component, computed, inject, signal, HostListener, ChangeDetectionStrategy} from '@angular/core';
 import {MediaPlayerService} from '../../services/media-player.service';
 import {ElectronService} from '../../services/electron.service';
 
@@ -44,14 +44,26 @@ export class MiniplayerControls {
   /** Whether playback is currently active */
   public readonly isPlaying: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.isPlaying());
 
-  /** Whether skip backward button should be enabled (requires 2+ tracks) */
-  public readonly canSkipBackward: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.playlistCount() > 1);
+  /** Whether any track is loaded */
+  public readonly hasTrack: ReturnType<typeof computed<boolean>> = computed((): boolean => !!this.mediaPlayer.currentTrack());
+
+  /** Whether the Shift key is currently pressed */
+  private readonly isShiftPressed: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /**
-   * Whether skip forward button should be enabled.
-   * Requires 2+ tracks AND either repeat is enabled OR not on the last track.
+   * Whether backward button should be enabled.
+   * Enabled when: Shift pressed (can skip by time) OR 2+ tracks (can change track).
+   */
+  public readonly canSkipBackward: ReturnType<typeof computed<boolean>> = computed((): boolean =>
+    this.isShiftPressed() || this.mediaPlayer.playlistCount() > 1
+  );
+
+  /**
+   * Whether forward button should be enabled.
+   * Enabled when: Shift pressed (can skip by time) OR can advance to next track.
    */
   public readonly canSkipForward: ReturnType<typeof computed<boolean>> = computed((): boolean => {
+    if (this.isShiftPressed()) return true;
     const count: number = this.mediaPlayer.playlistCount();
     if (count <= 1) return false;
     if (this.mediaPlayer.isRepeatEnabled()) return true;
@@ -59,15 +71,55 @@ export class MiniplayerControls {
     return currentIndex < count - 1;
   });
 
-  /** Whether any track is loaded */
-  public readonly hasTrack: ReturnType<typeof computed<boolean>> = computed((): boolean => !!this.mediaPlayer.currentTrack());
+  /** Icon class for the backward button (changes with Shift key) */
+  public readonly backwardIcon: ReturnType<typeof computed<string>> = computed((): string => {
+    if (this.hasTrack() && this.isShiftPressed()) {
+      return 'fa-solid fa-backward';
+    }
+    return 'fa-solid fa-backward-step';
+  });
+
+  /** Icon class for the forward button (changes with Shift key) */
+  public readonly forwardIcon: ReturnType<typeof computed<string>> = computed((): string => {
+    if (this.hasTrack() && this.isShiftPressed()) {
+      return 'fa-solid fa-forward';
+    }
+    return 'fa-solid fa-forward-step';
+  });
 
   /**
-   * Handles previous track button click.
-   * Uses the same logic as main controls (respects previous track threshold).
+   * Tracks Shift key press state for button icon changes.
    */
-  public async onBackward(): Promise<void> {
-    await this.mediaPlayer.previous();
+  @HostListener('document:keydown', ['$event'])
+  public onKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Shift') {
+      this.isShiftPressed.set(true);
+    }
+  }
+
+  /**
+   * Tracks Shift key release state for button icon changes.
+   */
+  @HostListener('document:keyup', ['$event'])
+  public onKeyUp(event: KeyboardEvent): void {
+    if (event.key === 'Shift') {
+      this.isShiftPressed.set(false);
+    }
+  }
+
+  /**
+   * Goes to previous track, or skips backward if Shift is pressed.
+   * Without Shift: previous track (or restart if past threshold)
+   * With Shift: skip backward by configured duration
+   *
+   * @param event - Mouse event to check for Shift modifier
+   */
+  public async onBackward(event: MouseEvent): Promise<void> {
+    if (event.shiftKey) {
+      await this.mediaPlayer.skipBackward();
+    } else {
+      await this.mediaPlayer.previous();
+    }
   }
 
   /**
@@ -78,10 +130,18 @@ export class MiniplayerControls {
   }
 
   /**
-   * Handles next track button click.
+   * Advances to next track, or skips forward if Shift is pressed.
+   * Without Shift: next track
+   * With Shift: skip forward by configured duration
+   *
+   * @param event - Mouse event to check for Shift modifier
    */
-  public async onForward(): Promise<void> {
-    await this.mediaPlayer.next();
+  public async onForward(event: MouseEvent): Promise<void> {
+    if (event.shiftKey) {
+      await this.mediaPlayer.skipForward();
+    } else {
+      await this.mediaPlayer.next();
+    }
   }
 
   /**

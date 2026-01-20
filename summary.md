@@ -5,7 +5,7 @@
 ### Audio Playback
 - Native `<audio>` element with HTTP streaming
 - Frequency visualizations via Web Audio API (`createMediaElementSource()`)
-- 8 visualization modes sorted by category: Analyzer, Spectre (Bars); Pulsar, Water (Science); Flare, Flux, Neon, Waveform (Waves)
+- 9 visualization modes sorted by category: Analyzer, Spectre (Bars); Pulsar, Water (Science); Onix (Team); Flare, Flux, Neon, Waveform (Waves)
 - Visualization names display with category prefix (e.g., "Waves : Flare")
 - Volume-independent visualizations with configurable settings:
   - Sensitivity (default 25%) - controls audio reactivity
@@ -36,7 +36,9 @@
 - Server-managed playlist with shuffle (Fisher-Yates) and repeat modes
 - Play/pause, next/previous, seek, volume all responsive
 - Shift+click on previous/next buttons skips backward/forward by configurable duration
+  - Works in both main controls and miniplayer controls
   - Button icons change dynamically when Shift is held (step → skip icons)
+  - Previous/next buttons disabled with single track unless Shift held (skip by time always available)
   - Skip duration configurable in Settings > Playback (1-60 seconds, default 10)
 - Auto-advance to next track when current ends
 - Removing currently playing item auto-advances to next track (or stops if playlist empty)
@@ -93,6 +95,7 @@
 - Atomic file writes (write to temp, then rename) prevent corruption
 - Current settings:
   - **Default Visualization**: Select which visualization plays on audio startup
+    - Also updated when user changes visualization during playback (persists selection)
   - **Sensitivity**: Global sensitivity slider (0-100%) controlling visualization responsiveness
   - **Per-Visualization Sensitivity**: Expandable section with individual sliders for each visualization
     - Overrides global sensitivity when set
@@ -321,6 +324,11 @@ AudioContext.destination (speakers)
     - Optimized: cached color values with hue threshold to avoid per-frame string generation
   - `neon-visualization.ts` - Neon (category: Waves) - rotating cyan/magenta waveforms with tunnel zoom
   - `waveform-visualization.ts` - Waveform (category: Waves) - oscilloscope-style with glow effect
+  - `onix-visualization.ts` - Onix (category: Team) - ONIXLabs logo with three concentric circles
+    - Outer ring: waveform-modulated circumference with brand color gradient and smoky trail effect
+    - Middle ring: static white circle
+    - Inner ring: black circle pulsating on deep bass/kick hits above threshold
+    - Optimized: pre-computed trig lookup tables, flat typed arrays, cached bass calculation
 
 ## HTTP API Reference
 

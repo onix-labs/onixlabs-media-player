@@ -100,14 +100,20 @@ export class LayoutControls {
   /** Whether a track is loaded (enables/disables transport controls) */
   public readonly hasTrack: ReturnType<typeof computed<boolean>> = computed((): boolean => !!this.mediaPlayer.currentTrack());
 
-  /** Whether skip backward button should be enabled (requires 2+ tracks) */
-  public readonly canSkipBackward: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.playlistCount() > 1);
+  /**
+   * Whether backward button should be enabled.
+   * Enabled when: Shift pressed (can skip by time) OR 2+ tracks (can change track).
+   */
+  public readonly canSkipBackward: ReturnType<typeof computed<boolean>> = computed((): boolean =>
+    this.isShiftPressed() || this.mediaPlayer.playlistCount() > 1
+  );
 
   /**
-   * Whether skip forward button should be enabled.
-   * Requires 2+ tracks AND either repeat is enabled OR not on the last track.
+   * Whether forward button should be enabled.
+   * Enabled when: Shift pressed (can skip by time) OR can advance to next track.
    */
   public readonly canSkipForward: ReturnType<typeof computed<boolean>> = computed((): boolean => {
+    if (this.isShiftPressed()) return true;
     const count: number = this.mediaPlayer.playlistCount();
     if (count <= 1) return false;
     if (this.mediaPlayer.isRepeatEnabled()) return true;
