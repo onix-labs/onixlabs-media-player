@@ -184,14 +184,17 @@ const DEFAULT_SETTINGS: AppSettings = {
  * Available visualization options for the settings UI.
  */
 export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
-  {value: 'bars', label: 'Frequency Bars', description: '96 bars mapped to frequency bins'},
-  {value: 'waveform', label: 'Waveform Classic', description: 'Oscilloscope-style with glow effect'},
-  {value: 'tether', label: 'Waveform Modern', description: 'Symmetrical waveform bars with smoke effect'},
-  {value: 'tunnel', label: 'Tunnel', description: 'Dual red/blue waveforms with zoom'},
-  {value: 'neon', label: 'Neon', description: 'Rotating cyan/magenta waveforms'},
-  {value: 'pulsar', label: 'Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
-  {value: 'water', label: 'Water', description: 'Water ripple effect with rotating waveforms'},
-  {value: 'flux', label: 'Flux', description: 'Dual orbiting circles with spectrum cycling'},
+  // Bars category
+  {value: 'bars', label: 'Bars : Analyzer', description: 'Configurable frequency bars with gradient'},
+  {value: 'tether', label: 'Bars : Spectre', description: 'Mirrored frequency bars with smoke effect'},
+  // Science category
+  {value: 'pulsar', label: 'Science : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
+  {value: 'water', label: 'Science : Record', description: 'Spinning vinyl record effect'},
+  // Waves category
+  {value: 'tunnel', label: 'Waves : Flare', description: 'Dual blue/red waveforms with tunnel zoom'},
+  {value: 'flux', label: 'Waves : Flux', description: 'Dual orbiting circles with spectrum cycling'},
+  {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
+  {value: 'waveform', label: 'Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
 ];
 
 // ============================================================================

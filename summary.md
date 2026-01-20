@@ -150,6 +150,8 @@
     - Default: 192 kbps
 - All visualization settings apply in real-time to the active visualization
 - Extensible category-based UI with search filtering
+- Categories ordered: Application, Playback, Transcoding, Visualization
+- Scrollable settings panel for long content
 
 ### Infrastructure
 - Electron 39 + Angular 21
