@@ -5,6 +5,12 @@
   min-height: 0;
   overflow: hidden;
 
+  app-configuration-view {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
   &.fullscreen {
     app-layout-controls.fullscreen-overlay {
       position: fixed;

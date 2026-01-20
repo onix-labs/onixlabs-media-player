@@ -36,12 +36,6 @@ interface SettingsCategory {
  */
 const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
-    id: 'visualization',
-    name: 'Visualization',
-    icon: 'fa-solid fa-waveform-lines',
-    description: 'Configure audio visualization preferences.',
-  },
-  {
     id: 'application',
     name: 'Application',
     icon: 'fa-solid fa-gear',
@@ -58,6 +52,12 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     name: 'Transcoding',
     icon: 'fa-solid fa-film',
     description: 'Configure video and audio transcoding quality.',
+  },
+  {
+    id: 'visualization',
+    name: 'Visualization',
+    icon: 'fa-solid fa-waveform-lines',
+    description: 'Configure audio visualization preferences.',
   },
 ];
 
@@ -104,7 +104,7 @@ export class ConfigurationView {
   public readonly searchQuery: ReturnType<typeof signal<string>> = signal<string>('');
 
   /** Currently selected category ID */
-  public readonly selectedCategory: ReturnType<typeof signal<string>> = signal<string>('visualization');
+  public readonly selectedCategory: ReturnType<typeof signal<string>> = signal<string>('application');
 
   /** Whether the per-visualization sensitivity section is expanded */
   public readonly isPerVizExpanded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);

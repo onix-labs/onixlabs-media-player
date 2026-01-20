@@ -57,11 +57,10 @@
                   <div class="setting-control">
                     <select
                       id="default-visualization"
-                      [value]="currentDefaultVisualization()"
                       (change)="onDefaultVisualizationChange($event)"
                     >
                       @for (option of visualizationOptions; track option.value) {
-                        <option [value]="option.value">{{ option.label }}</option>
+                        <option [value]="option.value" [selected]="option.value === currentDefaultVisualization()">{{ option.label }}</option>
                       }
                     </select>
                   </div>
@@ -145,11 +144,10 @@
                   <div class="setting-control">
                     <select
                       id="max-frame-rate"
-                      [value]="currentMaxFrameRate()"
                       (change)="onMaxFrameRateChange($event)"
                     >
                       @for (option of frameRateOptions; track option.value) {
-                        <option [value]="option.value">{{ option.label }}</option>
+                        <option [value]="option.value" [selected]="option.value === currentMaxFrameRate()">{{ option.label }}</option>
                       }
                     </select>
                   </div>
@@ -165,11 +163,10 @@
                   <div class="setting-control">
                     <select
                       id="fft-size"
-                      [value]="currentFftSize()"
                       (change)="onFftSizeChange($event)"
                     >
                       @for (option of fftSizeOptions; track option.value) {
-                        <option [value]="option.value">{{ option.label }}</option>
+                        <option [value]="option.value" [selected]="option.value === currentFftSize()">{{ option.label }}</option>
                       }
                     </select>
                   </div>
@@ -185,11 +182,10 @@
                   <div class="setting-control">
                     <select
                       id="bar-density"
-                      [value]="currentBarDensity()"
                       (change)="onBarDensityChange($event)"
                     >
                       @for (option of barDensityOptions; track option.value) {
-                        <option [value]="option.value">{{ option.label }}</option>
+                        <option [value]="option.value" [selected]="option.value === currentBarDensity()">{{ option.label }}</option>
                       }
                     </select>
                   </div>
@@ -363,7 +359,7 @@
             }
 
             @case ('playback') {
-              <div class="settings-panel">
+              <div class="setting-group">
                 <div class="setting-row">
                   <div class="setting-label">
                     <label for="default-volume">Default Volume</label>
@@ -409,7 +405,7 @@
             }
 
             @case ('transcoding') {
-              <div class="settings-panel">
+              <div class="setting-group">
                 <div class="setting-row">
                   <div class="setting-label">
                     <label for="video-quality">Video Quality</label>
@@ -420,11 +416,10 @@
                   <div class="setting-control">
                     <select
                       id="video-quality"
-                      [value]="currentVideoQuality()"
                       (change)="onVideoQualityChange($event)"
                     >
                       @for (option of videoQualityOptions; track option.value) {
-                        <option [value]="option.value">{{ option.label }}</option>
+                        <option [value]="option.value" [selected]="option.value === currentVideoQuality()">{{ option.label }}</option>
                       }
                     </select>
                   </div>
@@ -440,11 +435,10 @@
                   <div class="setting-control">
                     <select
                       id="audio-bitrate"
-                      [value]="currentAudioBitrate()"
                       (change)="onAudioBitrateChange($event)"
                     >
                       @for (option of audioBitrateOptions; track option.value) {
-                        <option [value]="option.value">{{ option.label }}</option>
+                        <option [value]="option.value" [selected]="option.value === currentAudioBitrate()">{{ option.label }}</option>
                       }
                     </select>
                   </div>
