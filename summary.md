@@ -415,7 +415,42 @@ npm run dev          # Development mode with hot reload
 npm run prod         # Production build + run
 npm run build:all    # Build Angular + Electron
 npm run package      # Package with electron-builder
+npm run package:mac  # Package for macOS (.app, .dmg, .zip)
+npm run package:win  # Package for Windows (.exe, portable)
+npm run package:linux # Package for Linux (.AppImage, .deb)
 ```
+
+## Packaging
+
+### Build Output
+- `release/mac/ONIXPlayer.app` - macOS application bundle
+- `release/ONIXPlayer-0.0.0.dmg` - macOS disk image
+- `release/ONIXPlayer-0.0.0-mac.zip` - macOS zip archive
+
+### Key Implementation Details
+
+**1. tsx Loader for Development**
+- Dev mode uses `NODE_OPTIONS='--import tsx'` to run TypeScript directly
+- Electron doesn't accept Node.js flags directly, so environment variable is required
+- Production builds compile TypeScript to JavaScript via `tsconfig.prod.json`
+
+**2. Absolute Paths for External Binaries**
+- FFmpeg, FFprobe, and FluidSynth must use absolute paths, not rely on PATH
+- When launched from Finder/Launchpad, apps don't inherit terminal's PATH environment
+- Binary search paths (checked in order):
+  - `/opt/homebrew/bin/` (Homebrew Apple Silicon)
+  - `/usr/local/bin/` (Homebrew Intel)
+  - `/usr/bin/` (System)
+
+**3. HTTP Serving in Production**
+- Angular app served via HTTP from the media server (same as dev mode)
+- Avoids CORS issues that occur with `file://` protocol + `crossorigin="anonymous"` audio element
+- Production loads from `http://127.0.0.1:{port}/` instead of `file://...app.asar/...`
+
+### Code Signing
+- Currently unsigned (skipped during development)
+- Production releases should be signed with Apple Developer ID for distribution
+- Unsigned apps may trigger Gatekeeper warnings on first launch
 
 ## Dependencies
 - Electron 39

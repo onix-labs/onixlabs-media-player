@@ -17,9 +17,9 @@
 import {app, BrowserWindow, dialog, ipcMain, net, protocol, screen} from "electron";
 import * as path from "path";
 import {fileURLToPath} from "url";
-import {UnifiedMediaServer} from './unified-media-server.ts';
-import {createApplicationMenu, updateMenuState} from './application-menu.ts';
-import type {WindowBounds} from './settings-manager.ts';
+import {UnifiedMediaServer} from './unified-media-server.js';
+import {createApplicationMenu, updateMenuState} from './application-menu.js';
+import type {WindowBounds} from './settings-manager.js';
 
 // Set app name (shows in dock/menu bar during development)
 app.setName('ONIXPlayer');
@@ -106,6 +106,9 @@ class Program {
   /** The unified HTTP media server instance */
   private mediaServer: UnifiedMediaServer | null = null;
 
+  /** The port the media server is running on */
+  private serverPort: number = 0;
+
   /** Stored desktop window bounds for restoring when exiting miniplayer */
   private desktopBounds: Electron.Rectangle | null = null;
 
@@ -150,8 +153,12 @@ class Program {
     this.registerMediaProtocol();
 
     // Start the unified media server (HTTP API + SSE)
-    this.mediaServer = new UnifiedMediaServer();
-    await this.mediaServer.start();
+    // In production, also serve the Angular app via HTTP to avoid file:// CORS issues
+    const staticPath: string | undefined = Program.IS_DEVELOPMENT
+      ? undefined
+      : path.join(Program.getProjectRoot(), "dist", "onixlabs-media-player", "browser");
+    this.mediaServer = new UnifiedMediaServer(staticPath);
+    this.serverPort = await this.mediaServer.start();
 
     // Register callback to update menu when shuffle/repeat mode changes
     this.mediaServer.onModeChange((shuffle: boolean, repeat: boolean): void => {
@@ -163,8 +170,12 @@ class Program {
     this.setupWindowEvents();
     this.setupApplicationMenu();
 
-    if (Program.IS_DEVELOPMENT) void this.window.loadURL(Program.DEVELOPMENT_SERVER_URL);
-    else void this.window.loadFile(path.join(Program.getProjectRoot(), "dist", "onixlabs-media-player", "browser", "index.html"));
+    // Load Angular app - use HTTP in both dev and prod to avoid CORS issues
+    if (Program.IS_DEVELOPMENT) {
+      void this.window.loadURL(Program.DEVELOPMENT_SERVER_URL);
+    } else {
+      void this.window.loadURL(`http://127.0.0.1:${this.serverPort}/`);
+    }
 
     this.window.on("closed", this.onClosed.bind(this));
     app.on("activate", this.onActivate.bind(this));
@@ -228,7 +239,8 @@ class Program {
         nodeIntegration: false,
         sandbox: false,
         preload: preloadPath,
-        zoomFactor: 1.0
+        zoomFactor: 1.0,
+        webSecurity: true
       }
     });
 
@@ -510,11 +522,11 @@ class Program {
       this.setupWindowEvents();
       this.setupApplicationMenu();
 
-      // Load the application
+      // Load the application - use HTTP in both dev and prod
       if (Program.IS_DEVELOPMENT) {
         void this.window.loadURL(Program.DEVELOPMENT_SERVER_URL);
       } else {
-        void this.window.loadFile(path.join(Program.getProjectRoot(), "dist", "onixlabs-media-player", "browser", "index.html"));
+        void this.window.loadURL(`http://127.0.0.1:${this.serverPort}/`);
       }
 
       this.window.on("closed", this.onClosed.bind(this));

@@ -23,8 +23,53 @@ import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { createReadStream, statSync, existsSync, readFileSync } from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
-import { SettingsManager } from './settings-manager.ts';
-import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate } from './settings-manager.ts';
+import { SettingsManager } from './settings-manager.js';
+
+// ============================================================================
+// Binary Path Resolution
+// ============================================================================
+
+/**
+ * Common installation paths for ffmpeg/ffprobe on macOS.
+ * Checked in order - first existing path is used.
+ */
+const FFMPEG_SEARCH_PATHS: string[] = [
+  '/opt/homebrew/bin/ffmpeg',      // Homebrew Apple Silicon
+  '/usr/local/bin/ffmpeg',         // Homebrew Intel
+  '/usr/bin/ffmpeg',               // System
+];
+
+const FFPROBE_SEARCH_PATHS: string[] = [
+  '/opt/homebrew/bin/ffprobe',     // Homebrew Apple Silicon
+  '/usr/local/bin/ffprobe',        // Homebrew Intel
+  '/usr/bin/ffprobe',              // System
+];
+
+const FLUIDSYNTH_SEARCH_PATHS: string[] = [
+  '/opt/homebrew/bin/fluidsynth',  // Homebrew Apple Silicon
+  '/usr/local/bin/fluidsynth',     // Homebrew Intel
+  '/usr/bin/fluidsynth',           // System
+];
+
+/**
+ * Finds the first existing binary from a list of paths.
+ */
+function findBinary(searchPaths: string[]): string | null {
+  for (const p of searchPaths) {
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
+/** Resolved path to ffmpeg binary */
+const FFMPEG_PATH: string | null = findBinary(FFMPEG_SEARCH_PATHS);
+
+/** Resolved path to ffprobe binary */
+const FFPROBE_PATH: string | null = findBinary(FFPROBE_SEARCH_PATHS);
+
+/** Resolved path to fluidsynth binary */
+const FLUIDSYNTH_PATH: string | null = findBinary(FLUIDSYNTH_SEARCH_PATHS);
+import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate } from './settings-manager.js';
 
 // ============================================================================
 // Types
@@ -930,6 +975,9 @@ export class UnifiedMediaServer {
   /** Interval for updating playback time */
   private timeUpdateInterval: NodeJS.Timeout | null = null;
 
+  /** Path to static files for serving Angular app in production */
+  private staticPath: string | null = null;
+
   /** Timestamp when playback started (for calculating current time) */
   private startTime: number = 0;
 
@@ -943,8 +991,9 @@ export class UnifiedMediaServer {
    * Creates a new unified media server.
    * Call start() to begin listening for connections.
    */
-  public constructor() {
+  public constructor(staticPath?: string) {
     this.playlist = new PlaylistManager(this.sse, this.handleModeChange.bind(this));
+    this.staticPath = staticPath ?? null;
   }
 
   /**
@@ -1104,6 +1153,9 @@ export class UnifiedMediaServer {
         await this.handleSettingsPlayback(req, res);
       } else if (pathname === '/settings/transcoding' && method === 'PUT') {
         await this.handleSettingsTranscoding(req, res);
+      } else if (this.staticPath) {
+        // Serve static files for Angular app in production
+        this.serveStaticFile(req, res, pathname);
       } else {
         res.writeHead(404);
         res.end(JSON.stringify({ error: 'Not found' }));
@@ -1312,6 +1364,72 @@ export class UnifiedMediaServer {
   }
 
   /**
+   * Serves static files for the Angular application in production.
+   */
+  private serveStaticFile(_req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, pathname: string): void {
+    if (!this.staticPath) {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: 'Not found' }));
+      return;
+    }
+
+    // Map pathname to file, default to index.html for SPA routing
+    let filePath: string = pathname === '/' ? '/index.html' : pathname;
+    filePath = path.join(this.staticPath, filePath);
+
+    // Security: ensure path is within static directory
+    if (!filePath.startsWith(this.staticPath)) {
+      res.writeHead(403);
+      res.end(JSON.stringify({ error: 'Forbidden' }));
+      return;
+    }
+
+    if (!existsSync(filePath)) {
+      // SPA fallback: serve index.html for unknown routes
+      filePath = path.join(this.staticPath, 'index.html');
+      if (!existsSync(filePath)) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: 'Not found' }));
+        return;
+      }
+    }
+
+    try {
+      const stat = statSync(filePath);
+      if (!stat.isFile()) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: 'Not found' }));
+        return;
+      }
+
+      const ext: string = path.extname(filePath).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        '.html': 'text/html',
+        '.js': 'application/javascript',
+        '.css': 'text/css',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.svg': 'image/svg+xml',
+        '.woff': 'font/woff',
+        '.woff2': 'font/woff2',
+        '.ttf': 'font/ttf',
+      };
+      const mimeType: string = mimeTypes[ext] || 'application/octet-stream';
+
+      res.writeHead(200, {
+        'Content-Type': mimeType,
+        'Content-Length': stat.size,
+      });
+      createReadStream(filePath).pipe(res);
+    } catch (err) {
+      console.error('Error serving static file:', err);
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'Error reading file' }));
+    }
+  }
+
+  /**
    * Serves a non-native format via FFmpeg transcoding.
    *
    * For video files (.mkv, .avi, .mov):
@@ -1401,7 +1519,12 @@ export class UnifiedMediaServer {
       });
     }
 
-    const ffmpeg: ChildProcess = spawn('ffmpeg', ffmpegArgs);
+    if (!FFMPEG_PATH) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'ffmpeg not found' }));
+      return;
+    }
+    const ffmpeg: ChildProcess = spawn(FFMPEG_PATH, ffmpegArgs);
     ffmpeg.stdout?.pipe(res);
 
     ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
@@ -1464,7 +1587,13 @@ export class UnifiedMediaServer {
     console.log(`Converting MIDI: ${filePath} (using SoundFont: ${soundfont})`);
 
     // FluidSynth converts MIDI to raw PCM and outputs to stdout
-    const fluidsynth: ChildProcess = spawn('fluidsynth', [
+    if (!FLUIDSYNTH_PATH || !FFMPEG_PATH) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'fluidsynth or ffmpeg not found' }));
+      return;
+    }
+
+    const fluidsynth: ChildProcess = spawn(FLUIDSYNTH_PATH, [
       '-ni',           // Non-interactive mode
       '-T', 'raw',     // Output format: raw PCM
       '-F', '-',       // Output to stdout
@@ -1474,7 +1603,7 @@ export class UnifiedMediaServer {
     ]);
 
     // Pipe FluidSynth output through FFmpeg to encode as MP3
-    const ffmpeg: ChildProcess = spawn('ffmpeg', [
+    const ffmpeg: ChildProcess = spawn(FFMPEG_PATH, [
       '-hide_banner',
       '-loglevel', 'warning',
       '-f', 's16le',        // Input: signed 16-bit little-endian PCM
@@ -1634,7 +1763,11 @@ export class UnifiedMediaServer {
     }
 
     return new Promise((resolve: (value: Readonly<MediaInfo>) => void, reject: (reason: Readonly<Error>) => void): void => {
-      const ffprobe: ChildProcess = spawn('ffprobe', [
+      if (!FFPROBE_PATH) {
+        reject(new Error('ffprobe not found'));
+        return;
+      }
+      const ffprobe: ChildProcess = spawn(FFPROBE_PATH, [
         '-v', 'quiet',
         '-print_format', 'json',
         '-show_format',
