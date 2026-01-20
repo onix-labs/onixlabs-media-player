@@ -311,6 +311,15 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.visualization.setFftSize(fftSize);
       }
     });
+
+    // React to bar density setting changes
+    effect((): void => {
+      const barDensity: 'low' | 'medium' | 'high' = this.settings.barDensity();
+
+      if (this.visualization) {
+        this.visualization.setBarDensity(barDensity);
+      }
+    });
   }
 
   // ============================================================================
@@ -575,6 +584,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.visualization.setTrailIntensity(this.settings.trailIntensity());
       this.visualization.setHueShift(this.settings.hueShift());
       this.visualization.setFftSize(this.settings.fftSize());
+      this.visualization.setBarDensity(this.settings.barDensity());
 
       const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
@@ -601,6 +611,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualization.setTrailIntensity(this.settings.trailIntensity());
     this.visualization.setHueShift(this.settings.hueShift());
     this.visualization.setFftSize(this.settings.fftSize());
+    this.visualization.setBarDensity(this.settings.barDensity());
 
     const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));

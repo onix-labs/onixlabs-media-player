@@ -14,6 +14,7 @@ This document outlines potential configurable items identified in the codebase t
 - **Controls Auto-Hide** - Configurable delay for fullscreen control bar auto-hide (0=disabled, 1-30s)
 - **Previous Track Threshold** - Time before "previous" restarts vs goes to previous track (0-10s, default 3s)
 - **FFT Size** - Audio analysis resolution (256, 512, 1024, 2048, 4096). Higher values = more detail but more CPU usage
+- **Bar Density** - Controls bar count in Analyzer (48/96/144) and Spectre (96/192/288) visualizations (Low/Medium/High)
 
 ## Server Settings
 
@@ -168,6 +169,6 @@ This document outlines potential configurable items identified in the codebase t
 
 ### Low Priority
 1. ~~FFT size options~~ ✓ DONE
-2. Bar/ring counts (affects performance)
+2. ~~Bar/ring counts~~ ✓ DONE (Bar Density setting)
 3. Line width/glow adjustments
 4. Full theme support

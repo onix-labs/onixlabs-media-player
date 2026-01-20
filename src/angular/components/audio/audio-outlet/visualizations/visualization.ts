@@ -107,6 +107,12 @@ export abstract class Visualization {
   protected fftSize: number = 2048;
 
   /**
+   * Current bar density level for bar-based visualizations.
+   * Only affects Analyzer and Spectre visualizations.
+   */
+  protected barDensity: 'low' | 'medium' | 'high' = 'medium';
+
+  /**
    * Current fade alpha level (0 = fully visible, 1 = fully black).
    * Used for smooth fade transitions when pausing/stopping.
    */
@@ -335,6 +341,38 @@ export abstract class Visualization {
    */
   protected onFftSizeChanged(): void {
     // Override in subclass to recreate data arrays
+  }
+
+  /**
+   * Sets the bar density for bar-based visualizations.
+   *
+   * @param density - Bar density level ('low', 'medium', or 'high')
+   */
+  public setBarDensity(density: 'low' | 'medium' | 'high'): void {
+    const validDensities: readonly string[] = ['low', 'medium', 'high'];
+    if (!validDensities.includes(density)) return;
+
+    this.barDensity = density;
+    this.onBarDensityChanged();
+  }
+
+  /**
+   * Gets the current bar density level.
+   *
+   * @returns Current bar density
+   */
+  public getBarDensity(): 'low' | 'medium' | 'high' {
+    return this.barDensity;
+  }
+
+  /**
+   * Called when bar density changes. Override in subclass to recalculate bar counts.
+   *
+   * Subclasses that render bars (Analyzer, Spectre) should override
+   * this method to update their bar counts based on the new density.
+   */
+  protected onBarDensityChanged(): void {
+    // Override in subclass to recalculate bar counts
   }
 
   /**

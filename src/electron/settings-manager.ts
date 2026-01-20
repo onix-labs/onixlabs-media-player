@@ -48,6 +48,14 @@ export type PerVisualizationSensitivity = Partial<Record<VisualizationType, numb
 export type FftSize = 256 | 512 | 1024 | 2048 | 4096;
 
 /**
+ * Bar density levels for bar-based visualizations.
+ * - low: Fewer bars, better performance
+ * - medium: Default balance
+ * - high: More bars, more detail
+ */
+export type BarDensity = 'low' | 'medium' | 'high';
+
+/**
  * Visualization settings.
  */
 export interface VisualizationSettings {
@@ -65,6 +73,8 @@ export interface VisualizationSettings {
   readonly hueShift: number;
   /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096, default 2048) */
   readonly fftSize: FftSize;
+  /** Bar density for bar-based visualizations (low, medium, high, default medium) */
+  readonly barDensity: BarDensity;
 }
 
 /**
@@ -104,6 +114,7 @@ export interface VisualizationSettingsUpdate {
   readonly trailIntensity?: number;
   readonly hueShift?: number;
   readonly fftSize?: FftSize;
+  readonly barDensity?: BarDensity;
 }
 
 /**
@@ -125,6 +136,9 @@ const SETTINGS_VERSION: number = 1;
 /** Valid FFT size values */
 const VALID_FFT_SIZES: readonly FftSize[] = [256, 512, 1024, 2048, 4096];
 
+/** Valid bar density values */
+const VALID_BAR_DENSITIES: readonly BarDensity[] = ['low', 'medium', 'high'];
+
 /** Default settings used when no file exists or on parse error */
 const DEFAULT_SETTINGS: AppSettings = {
   version: SETTINGS_VERSION,
@@ -136,6 +150,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     trailIntensity: 0.5,  // 0.5 = default trail persistence
     hueShift: 0,  // 0 = no color shift
     fftSize: 2048,  // 2048 = balanced resolution/performance
+    barDensity: 'medium',  // medium = default bar count
   },
   application: {
     serverPort: 0,  // 0 = auto-assign
@@ -274,6 +289,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate barDensity if provided
+    if (update.barDensity !== undefined) {
+      if (!this.isValidBarDensity(update.barDensity)) {
+        console.warn(`[SettingsManager] Invalid bar density: ${update.barDensity}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -286,6 +309,7 @@ export class SettingsManager {
         trailIntensity: update.trailIntensity ?? this.settings.visualization.trailIntensity,
         hueShift: update.hueShift ?? this.settings.visualization.hueShift,
         fftSize: update.fftSize ?? this.settings.visualization.fftSize,
+        barDensity: update.barDensity ?? this.settings.visualization.barDensity,
       },
     };
 
@@ -457,6 +481,7 @@ export class SettingsManager {
     const trailIntensity: unknown = vizObj['trailIntensity'];
     const hueShift: unknown = vizObj['hueShift'];
     const fftSize: unknown = vizObj['fftSize'];
+    const barDensity: unknown = vizObj['barDensity'];
 
     return {
       defaultType: this.isValidVisualizationType(defaultType)
@@ -478,6 +503,9 @@ export class SettingsManager {
       fftSize: this.isValidFftSize(fftSize)
         ? fftSize
         : DEFAULT_SETTINGS.visualization.fftSize,
+      barDensity: this.isValidBarDensity(barDensity)
+        ? barDensity
+        : DEFAULT_SETTINGS.visualization.barDensity,
     };
   }
 
@@ -650,5 +678,17 @@ export class SettingsManager {
    */
   private isValidFftSize(value: unknown): value is FftSize {
     return typeof value === 'number' && VALID_FFT_SIZES.includes(value as FftSize);
+  }
+
+  /**
+   * Type guard to check if a value is a valid bar density.
+   *
+   * Valid values are 'low', 'medium', or 'high'.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid bar density
+   */
+  private isValidBarDensity(value: unknown): value is BarDensity {
+    return typeof value === 'string' && VALID_BAR_DENSITIES.includes(value as BarDensity);
   }
 }

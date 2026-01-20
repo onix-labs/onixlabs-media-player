@@ -14,7 +14,7 @@
 
 import {Component, output, signal, computed, inject} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VisualizationType, FftSize} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VisualizationType, FftSize, BarDensity} from '../../../services/settings.service';
 
 /**
  * Settings category definition.
@@ -152,6 +152,11 @@ export class ConfigurationView {
     (): FftSize => this.settingsService.fftSize()
   );
 
+  /** Current bar density for bar-based visualizations */
+  public readonly currentBarDensity: ReturnType<typeof computed<BarDensity>> = computed(
+    (): BarDensity => this.settingsService.barDensity()
+  );
+
   /** Current server port (0 = auto-assign) */
   public readonly currentServerPort: ReturnType<typeof computed<number>> = computed(
     (): number => this.settingsService.serverPort()
@@ -189,6 +194,13 @@ export class ConfigurationView {
     {value: 1024, label: '1024'},
     {value: 2048, label: '2048 (Default)'},
     {value: 4096, label: '4096 (High Quality)'},
+  ];
+
+  /** Available bar density options for the dropdown */
+  public readonly barDensityOptions: readonly {value: BarDensity; label: string}[] = [
+    {value: 'low', label: 'Low'},
+    {value: 'medium', label: 'Medium (Default)'},
+    {value: 'high', label: 'High'},
   ];
 
   // ============================================================================
@@ -286,6 +298,17 @@ export class ConfigurationView {
     const select: HTMLSelectElement = event.target as HTMLSelectElement;
     const size: FftSize = parseInt(select.value, 10) as FftSize;
     await this.settingsService.setFftSize(size);
+  }
+
+  /**
+   * Handles bar density selection change.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onBarDensityChange(event: Event): Promise<void> {
+    const select: HTMLSelectElement = event.target as HTMLSelectElement;
+    const density: BarDensity = select.value as BarDensity;
+    await this.settingsService.setBarDensity(density);
   }
 
   /**

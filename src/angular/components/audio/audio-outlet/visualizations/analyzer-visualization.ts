@@ -28,7 +28,14 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Analyzer';
   public readonly category: string = 'Bars';
 
-  private readonly BAR_COUNT: number = 96;
+  /** Bar count mapping for each density level */
+  private static readonly BAR_COUNTS: Record<'low' | 'medium' | 'high', number> = {
+    low: 48,
+    medium: 96,
+    high: 144
+  };
+
+  private barCount: number = AnalyzerVisualization.BAR_COUNTS.medium;
   private readonly BAR_GAP: number = 2;
   private readonly FREQUENCY_RANGE: number = 0.75;
   private dataArray: Uint8Array<ArrayBuffer>;
@@ -40,6 +47,11 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.sensitivity = 0.5;
+    this.barCount = AnalyzerVisualization.BAR_COUNTS[this.barDensity];
+  }
+
+  protected override onBarDensityChanged(): void {
+    this.barCount = AnalyzerVisualization.BAR_COUNTS[this.barDensity];
   }
 
   protected override onFftSizeChanged(): void {
@@ -91,16 +103,16 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
 
     this.analyser.getByteFrequencyData(this.dataArray);
 
-    const barWidth: number = (width - (this.BAR_COUNT - 1) * this.BAR_GAP) / this.BAR_COUNT;
+    const barWidth: number = (width - (this.barCount - 1) * this.BAR_GAP) / this.barCount;
     const usableBins: number = Math.floor(this.dataArray.length * this.FREQUENCY_RANGE);
 
     // Use gradient if available, fallback to green
     ctx.fillStyle = this.barGradient || '#00cc00';
 
-    for (let i: number = 0; i < this.BAR_COUNT; i++) {
+    for (let i: number = 0; i < this.barCount; i++) {
       // Map bar index to bin range, spreading usableBins evenly across all bars
-      const startBin: number = Math.floor(i * usableBins / this.BAR_COUNT);
-      const endBin: number = Math.floor((i + 1) * usableBins / this.BAR_COUNT);
+      const startBin: number = Math.floor(i * usableBins / this.barCount);
+      const endBin: number = Math.floor((i + 1) * usableBins / this.barCount);
       const count: number = Math.max(1, endBin - startBin);
 
       // Average the bins in this range
