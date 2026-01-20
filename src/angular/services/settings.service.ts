@@ -10,7 +10,7 @@
  * @module app/services/settings.service
  */
 
-import {Injectable, signal, computed, inject, effect} from '@angular/core';
+import {Injectable, signal, computed, inject, effect, OnDestroy, EffectRef} from '@angular/core';
 import {ElectronService} from './electron.service';
 
 // ============================================================================
@@ -226,7 +226,7 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
  * }
  */
 @Injectable({providedIn: 'root'})
-export class SettingsService {
+export class SettingsService implements OnDestroy {
   // ============================================================================
   // Dependencies
   // ============================================================================
@@ -244,6 +244,9 @@ export class SettingsService {
   /** Whether settings have been loaded from the server */
   public readonly isLoaded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
+  /** Effect reference for cleanup */
+  private readonly serverUrlEffect: EffectRef;
+
   // ============================================================================
   // Constructor
   // ============================================================================
@@ -258,12 +261,19 @@ export class SettingsService {
     });
 
     // Fetch settings once serverUrl is available (SSE initial event may have been missed)
-    effect((): void => {
+    this.serverUrlEffect = effect((): void => {
       const serverUrl: string = this.electron.serverUrl();
       if (serverUrl && !this.isLoaded()) {
         void this.fetchSettings();
       }
     });
+  }
+
+  /**
+   * Cleans up resources when the service is destroyed.
+   */
+  public ngOnDestroy(): void {
+    this.serverUrlEffect.destroy();
   }
 
   // ============================================================================

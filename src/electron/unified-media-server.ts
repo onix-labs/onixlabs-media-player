@@ -1048,8 +1048,16 @@ export class UnifiedMediaServer {
       }
     } catch (err) {
       console.error('Request error:', err);
-      res.writeHead(500);
-      res.end(JSON.stringify({ error: 'Internal server error' }));
+      const errorMessage: string = err instanceof Error ? err.message : 'Unknown error';
+
+      // Return 413 for body too large errors
+      if (errorMessage === 'Request body too large') {
+        res.writeHead(413);
+        res.end(JSON.stringify({ error: 'Request body too large' }));
+      } else {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: 'Internal server error' }));
+      }
     }
   }
 
@@ -1097,6 +1105,55 @@ export class UnifiedMediaServer {
   // ============================================================================
 
   /**
+   * Validates that a file path is safe to serve.
+   *
+   * Security checks:
+   * - Path must be absolute (starts with /)
+   * - Path must not contain traversal sequences (..)
+   * - File must exist
+   * - Path must point to a regular file (not directory, symlink, etc.)
+   *
+   * @param filePath - The file path to validate
+   * @returns Object with valid flag and optional error message
+   */
+  private validateFilePath(filePath: string): { valid: boolean; error?: string } {
+    // Check for path traversal attempts
+    if (filePath.includes('..')) {
+      console.warn(`[Security] Path traversal attempt blocked: ${filePath}`);
+      return { valid: false, error: 'Invalid path: traversal not allowed' };
+    }
+
+    // Ensure path is absolute
+    if (!path.isAbsolute(filePath)) {
+      return { valid: false, error: 'Invalid path: must be absolute' };
+    }
+
+    // Normalize the path and verify it matches (catches encoded traversal)
+    const normalizedPath: string = path.normalize(filePath);
+    if (normalizedPath !== filePath && normalizedPath !== filePath.replace(/\/+/g, '/')) {
+      console.warn(`[Security] Path normalization mismatch blocked: ${filePath} -> ${normalizedPath}`);
+      return { valid: false, error: 'Invalid path: suspicious path detected' };
+    }
+
+    // Check file exists
+    if (!existsSync(filePath)) {
+      return { valid: false, error: 'File not found' };
+    }
+
+    // Verify it's a regular file (not directory, symlink to sensitive location, etc.)
+    try {
+      const stats = statSync(filePath);
+      if (!stats.isFile()) {
+        return { valid: false, error: 'Path is not a regular file' };
+      }
+    } catch {
+      return { valid: false, error: 'Cannot access file' };
+    }
+
+    return { valid: true };
+  }
+
+  /**
    * Routes media stream requests based on file type.
    *
    * Determines whether the file needs:
@@ -1113,6 +1170,14 @@ export class UnifiedMediaServer {
     if (!filePath) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Missing path parameter' }));
+      return;
+    }
+
+    // Validate file path for security
+    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    if (!validation.valid) {
+      res.writeHead(validation.error === 'File not found' ? 404 : 400);
+      res.end(JSON.stringify({ error: validation.error }));
       return;
     }
 
@@ -1456,6 +1521,14 @@ export class UnifiedMediaServer {
     if (!filePath) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Missing path parameter' }));
+      return;
+    }
+
+    // Validate file path for security
+    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    if (!validation.valid) {
+      res.writeHead(validation.error === 'File not found' ? 404 : 400);
+      res.end(JSON.stringify({ error: validation.error }));
       return;
     }
 
@@ -2106,16 +2179,39 @@ export class UnifiedMediaServer {
   // ============================================================================
 
   /**
+   * Maximum allowed request body size in bytes (1MB).
+   * Prevents memory exhaustion attacks from oversized requests.
+   */
+  private static readonly MAX_BODY_SIZE: number = 1024 * 1024;
+
+  /**
    * Reads the body of an HTTP request as a string.
+   *
+   * Security: Enforces maximum body size to prevent memory exhaustion.
    *
    * @param req - Incoming HTTP request
    * @returns Promise resolving to the body string
+   * @throws Error if body exceeds MAX_BODY_SIZE
    */
   private readBody(req: Readonly<IncomingMessage>): Promise<string> {
     return new Promise((resolve: (value: string) => void, reject: (reason: Readonly<Error>) => void): void => {
-      let body: string = '';
-      req.on('data', (chunk: Readonly<Buffer>): void => { body += chunk; });
-      req.on('end', (): void => { resolve(body); });
+      const chunks: Buffer[] = [];
+      let totalSize: number = 0;
+
+      req.on('data', (chunk: Readonly<Buffer>): void => {
+        totalSize += chunk.length;
+        if (totalSize > UnifiedMediaServer.MAX_BODY_SIZE) {
+          req.destroy();
+          reject(new Error('Request body too large'));
+          return;
+        }
+        chunks.push(chunk as Buffer);
+      });
+
+      req.on('end', (): void => {
+        resolve(Buffer.concat(chunks).toString('utf-8'));
+      });
+
       req.on('error', reject);
     });
   }

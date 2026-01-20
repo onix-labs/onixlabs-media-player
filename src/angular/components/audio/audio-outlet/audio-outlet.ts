@@ -32,16 +32,7 @@ import {ElectronService} from '../../../services/electron.service';
 import {SettingsService} from '../../../services/settings.service';
 import type {PlaylistItem} from '../../../types/electron';
 import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYPES} from './visualizations';
-
-/**
- * Supported media file extensions for drag-and-drop filtering.
- * Files with other extensions are ignored when dropped.
- */
-const MEDIA_EXTENSIONS: Set<string> = new Set([
-  '.mp3', '.mp4', '.flac', '.mkv', '.avi', '.wav',
-  '.ogg', '.webm', '.m4a', '.aac', '.wma', '.mov',
-  '.mid', '.midi'
-]);
+import {MEDIA_EXTENSIONS} from '../../../constants/media.constants';
 
 /**
  * Audio outlet component that plays audio and renders visualizations.
@@ -174,6 +165,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
   /** Whether the default visualization from settings has been applied */
   private defaultVisualizationApplied: boolean = false;
+
+  /** Bound gesture handler for cleanup (stored so it can be removed if component destroys before gesture) */
+  private gestureHandler: (() => void) | null = null;
 
   // ============================================================================
   // Constructor - Reactive Effects
@@ -384,6 +378,11 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualization?.destroy();
     if (this.audioContext) {
       this.audioContext.close();
+    }
+    if (this.gestureHandler) {
+      document.removeEventListener('click', this.gestureHandler);
+      document.removeEventListener('keydown', this.gestureHandler);
+      this.gestureHandler = null;
     }
   }
 
@@ -603,7 +602,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.resumeAudioContext();
       document.removeEventListener('click', initOnGesture);
       document.removeEventListener('keydown', initOnGesture);
+      this.gestureHandler = null;
     };
+    this.gestureHandler = initOnGesture;
     document.addEventListener('click', initOnGesture);
     document.addEventListener('keydown', initOnGesture);
   }

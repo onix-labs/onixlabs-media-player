@@ -23,21 +23,13 @@ import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, s
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import type {PlaylistItem} from '../../../services/electron.service';
+import {MEDIA_EXTENSIONS} from '../../../constants/media.constants';
 
 /**
  * Video formats that Chromium can play natively.
  * These formats support HTTP range requests for efficient seeking.
  */
 const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.webm', '.ogg']);
-
-/**
- * Supported media extensions for drag-and-drop filtering.
- */
-const MEDIA_EXTENSIONS: Set<string> = new Set([
-  '.mp3', '.mp4', '.flac', '.mkv', '.avi', '.wav',
-  '.ogg', '.webm', '.m4a', '.aac', '.wma', '.mov',
-  '.mid', '.midi'
-]);
 
 /**
  * Video outlet component for video media playback.
@@ -114,6 +106,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /** Timestamp of the last seek operation (for debouncing) */
   private lastSeekTime: number = 0;
+
+  /** Video event handlers (stored for cleanup) */
+  private videoErrorHandler: (() => void) | null = null;
+  private videoCanPlayHandler: (() => void) | null = null;
+  private videoLoadedMetadataHandler: (() => void) | null = null;
 
   // ============================================================================
   // Constructor - Reactive Effects
@@ -228,6 +225,17 @@ export class VideoOutlet implements OnInit, OnDestroy {
     video.pause();
     video.src = '';
     this.currentFilePath = null;
+
+    // Remove event listeners
+    if (this.videoErrorHandler) {
+      video.removeEventListener('error', this.videoErrorHandler);
+    }
+    if (this.videoCanPlayHandler) {
+      video.removeEventListener('canplay', this.videoCanPlayHandler);
+    }
+    if (this.videoLoadedMetadataHandler) {
+      video.removeEventListener('loadedmetadata', this.videoLoadedMetadataHandler);
+    }
   }
 
   // ============================================================================
@@ -353,20 +361,23 @@ export class VideoOutlet implements OnInit, OnDestroy {
   private setupVideoEvents(): void {
     const video: HTMLVideoElement = this.videoRef.nativeElement;
 
-    video.addEventListener('error', (): void => {
+    this.videoErrorHandler = (): void => {
       const error: MediaError | null = video.error;
       console.error('Video error:', error?.code, error?.message);
-    });
+    };
+    video.addEventListener('error', this.videoErrorHandler);
 
-    video.addEventListener('canplay', (): void => {
+    this.videoCanPlayHandler = (): void => {
       console.log('Video can play');
       if (this.mediaPlayer.isPlaying()) {
         video.play().catch(console.error);
       }
-    });
+    };
+    video.addEventListener('canplay', this.videoCanPlayHandler);
 
-    video.addEventListener('loadedmetadata', (): void => {
+    this.videoLoadedMetadataHandler = (): void => {
       console.log('Video metadata loaded, duration:', video.duration);
-    });
+    };
+    video.addEventListener('loadedmetadata', this.videoLoadedMetadataHandler);
   }
 }

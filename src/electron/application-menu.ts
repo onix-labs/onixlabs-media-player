@@ -21,7 +21,8 @@ const VISUALIZATIONS: ReadonlyArray<{id: string; name: string}> = [
   {id: 'tunnel', name: 'Tunnel'},
   {id: 'neon', name: 'Neon'},
   {id: 'pulsar', name: 'Pulsar'},
-  {id: 'water', name: 'Water'}
+  {id: 'water', name: 'Water'},
+  {id: 'flux', name: 'Flux'}
 ];
 
 /**
