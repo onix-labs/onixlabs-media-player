@@ -34,13 +34,12 @@ import * as path from 'path';
  * - water: WaterVisualization (water ripple effect, ambience category)
  * - flux: FluxVisualization (dual orbiting circles with spectrum cycling)
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux' | 'onix';
 
 /**
  * Per-visualization sensitivity overrides.
  * If a visualization type has a value here, it overrides the global sensitivity.
  */
-export type PerVisualizationSensitivity = Partial<Record<VisualizationType, number>>;
+export type PerVisualizationSensitivity = Partial<Record<string, number>>;
 
 /**
  * Valid FFT size values (must be powers of 2).
@@ -73,7 +72,7 @@ export type AudioBitrate = 128 | 192 | 256 | 320;
  */
 export interface VisualizationSettings {
   /** The default visualization to display on startup */
-  readonly defaultType: VisualizationType;
+  readonly defaultType: string;
   /** Global sensitivity for all visualizations (0.0 - 1.0, default 0.5) */
   readonly sensitivity: number;
   /** Per-visualization sensitivity overrides (0.0 - 1.0, optional per type) */
@@ -175,7 +174,7 @@ export interface AppSettings {
  * Partial visualization settings for updates.
  */
 export interface VisualizationSettingsUpdate {
-  readonly defaultType?: VisualizationType;
+  readonly defaultType?: string;
   readonly sensitivity?: number;
   readonly perVisualizationSensitivity?: PerVisualizationSensitivity;
   readonly maxFrameRate?: number;
@@ -267,7 +266,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 /** Valid visualization type values for validation */
-const VALID_VISUALIZATION_TYPES: readonly VisualizationType[] = [
+const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'bars',
   'waveform',
   'tether',
@@ -821,13 +820,13 @@ export class SettingsManager {
   }
 
   /**
-   * Type guard to check if a value is a valid VisualizationType.
+   * Type guard to check if a value is a valid visualization type.
    *
    * @param value - The value to check
    * @returns True if the value is a valid visualization type
    */
-  private isValidVisualizationType(value: unknown): value is VisualizationType {
-    return typeof value === 'string' && VALID_VISUALIZATION_TYPES.includes(value as VisualizationType);
+  private isValidVisualizationType(value: unknown): value is string {
+    return typeof value === 'string' && VALID_VISUALIZATION_TYPES.includes(value);
   }
 
   /**

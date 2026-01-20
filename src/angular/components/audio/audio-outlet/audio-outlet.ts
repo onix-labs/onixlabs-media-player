@@ -32,7 +32,7 @@ import {ElectronService} from '../../../services/electron.service';
 import {SettingsService} from '../../../services/settings.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import type {PlaylistItem} from '../../../types/electron';
-import {Visualization, createVisualization, VisualizationType, VISUALIZATION_TYPES, VISUALIZATION_METADATA} from './visualizations';
+import {Visualization, createVisualization, VISUALIZATION_TYPES, VISUALIZATION_METADATA} from './visualizations';
 
 /**
  * Audio outlet component that plays audio and renders visualizations.
@@ -166,7 +166,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private visualization: Visualization | null = null;
 
   /** Signal for the current visualization type */
-  private readonly visualizationType: ReturnType<typeof signal<VisualizationType>> = signal<VisualizationType>('bars');
+  private readonly visualizationType: ReturnType<typeof signal<string>> = signal<string>('bars');
 
   /** Signal for the visualization display name */
   private readonly visualizationNameSignal: ReturnType<typeof signal<string>> = signal<string>('Frequency Bars');
@@ -278,7 +278,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     // React to settings loading - apply default visualization once
     effect((): void => {
       const isLoaded: boolean = this.settings.isLoaded();
-      const defaultType: VisualizationType = this.settings.defaultVisualization();
+      const defaultType: string = this.settings.defaultVisualization();
 
       if (isLoaded && !this.defaultVisualizationApplied) {
         this.defaultVisualizationApplied = true;
@@ -289,8 +289,10 @@ export class AudioOutlet implements OnInit, OnDestroy {
     // React to menu visualization selection
     effect((): void => {
       const vizId: string = this.electron.menuSelectVisualization();
-      if (vizId && VISUALIZATION_TYPES.includes(vizId as VisualizationType)) {
-        this.setVisualization(vizId as VisualizationType);
+      if (vizId && VISUALIZATION_TYPES.includes(vizId)) {
+        // Clear the signal first to prevent re-triggering
+        this.electron.menuSelectVisualization.set('');
+        this.setVisualization(vizId);
       }
     });
 
@@ -299,7 +301,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       // Watch both global and per-viz sensitivity signals
       const _global: number = this.settings.sensitivity();
       const _perViz = this.settings.perVisualizationSensitivity();
-      const vizType: VisualizationType = this.visualizationType();
+      const vizType: string = this.visualizationType();
 
       if (this.visualization) {
         const effectiveSensitivity: number = this.settings.getEffectiveSensitivity(vizType);
@@ -669,7 +671,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * @param type - The visualization type to activate
    * @param persist - Whether to persist the change to config (default: true)
    */
-  public setVisualization(type: VisualizationType, persist: boolean = true): void {
+  public setVisualization(type: string, persist: boolean = true): void {
     this.visualizationType.set(type);
 
     // Persist to config so it survives component recreation (e.g., miniplayer toggle)

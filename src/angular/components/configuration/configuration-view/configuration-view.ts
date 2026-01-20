@@ -14,7 +14,7 @@
 
 import {Component, output, signal, computed, inject, ChangeDetectionStrategy} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VisualizationType, FftSize, BarDensity, VideoQuality, AudioBitrate} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, FftSize, BarDensity, VideoQuality, AudioBitrate} from '../../../services/settings.service';
 
 /**
  * Safely extracts value from an input element event target.
@@ -161,8 +161,8 @@ export class ConfigurationView {
   );
 
   /** Current default visualization type */
-  public readonly currentDefaultVisualization: ReturnType<typeof computed<VisualizationType>> = computed(
-    (): VisualizationType => this.settingsService.defaultVisualization()
+  public readonly currentDefaultVisualization: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settingsService.defaultVisualization()
   );
 
   /** Current sensitivity value (0.0 - 1.0) */
@@ -327,7 +327,7 @@ export class ConfigurationView {
    * @param event - The change event from the select element
    */
   public async onDefaultVisualizationChange(event: Event): Promise<void> {
-    const type: VisualizationType = getSelectValue(event) as VisualizationType;
+    const type: string = getSelectValue(event);
     await this.settingsService.setDefaultVisualization(type);
   }
 
@@ -532,7 +532,7 @@ export class ConfigurationView {
    * @param type - The visualization type to check
    * @returns True if the visualization has a custom sensitivity
    */
-  public hasPerVizSensitivity(type: VisualizationType): boolean {
+  public hasPerVizSensitivity(type: string): boolean {
     const perViz = this.settingsService.perVisualizationSensitivity();
     return perViz[type] !== undefined;
   }
@@ -544,7 +544,7 @@ export class ConfigurationView {
    * @param type - The visualization type
    * @returns The sensitivity value (0.0 - 1.0)
    */
-  public getVisualizationSensitivity(type: VisualizationType): number {
+  public getVisualizationSensitivity(type: string): number {
     return this.settingsService.getEffectiveSensitivity(type);
   }
 
@@ -554,7 +554,7 @@ export class ConfigurationView {
    * @param type - The visualization type
    * @returns The sensitivity as a percentage (e.g., "50%")
    */
-  public formatVisualizationSensitivity(type: VisualizationType): string {
+  public formatVisualizationSensitivity(type: string): string {
     return `${Math.round(this.getVisualizationSensitivity(type) * 100)}%`;
   }
 
@@ -564,7 +564,7 @@ export class ConfigurationView {
    * @param type - The visualization type being adjusted
    * @param event - The input event from the range element
    */
-  public async onVisualizationSensitivityChange(type: VisualizationType, event: Event): Promise<void> {
+  public async onVisualizationSensitivityChange(type: string, event: Event): Promise<void> {
     const value: number = parseFloat(getInputValue(event));
     if (!isNaN(value)) await this.settingsService.setVisualizationSensitivity(type, value);
   }
@@ -574,7 +574,7 @@ export class ConfigurationView {
    *
    * @param type - The visualization type to reset
    */
-  public async onResetVisualizationSensitivity(type: VisualizationType): Promise<void> {
+  public async onResetVisualizationSensitivity(type: string): Promise<void> {
     await this.settingsService.resetVisualizationSensitivity(type);
   }
 

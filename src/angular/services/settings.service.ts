@@ -30,13 +30,12 @@ import {ElectronService} from './electron.service';
  * - water: Water ripple effect with rotating waveforms (ambience category)
  * - flux: Dual orbiting circles with spectrum cycling
  */
-export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux' | 'onix';
 
 /**
  * Per-visualization sensitivity overrides.
  * If a visualization type has a value here, it overrides the global sensitivity.
  */
-export type PerVisualizationSensitivity = Partial<Record<VisualizationType, number>>;
+export type PerVisualizationSensitivity = Partial<Record<string, number>>;
 
 /**
  * Valid FFT size values (must be powers of 2).
@@ -63,7 +62,7 @@ export type AudioBitrate = 128 | 192 | 256 | 320;
  */
 export interface VisualizationSettings {
   /** The default visualization to display on startup */
-  readonly defaultType: VisualizationType;
+  readonly defaultType: string;
   /** Global sensitivity for all visualizations (0.0 - 1.0, default 0.5) */
   readonly sensitivity: number;
   /** Per-visualization sensitivity overrides (0.0 - 1.0, optional per type) */
@@ -139,7 +138,7 @@ export interface AppSettings {
  */
 export interface VisualizationOption {
   /** The visualization type value */
-  readonly value: VisualizationType;
+  readonly value: string;
   /** Human-readable display label */
   readonly label: string;
   /** Optional description */
@@ -225,7 +224,7 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
  *   defaultViz = this.settings.defaultVisualization;
  *
  *   // Update the default visualization
- *   async onVisualizationChange(type: VisualizationType) {
+ *   async onVisualizationChange(type: string) {
  *     await this.settings.setDefaultVisualization(type);
  *   }
  * }
@@ -286,8 +285,8 @@ export class SettingsService implements OnDestroy {
   // ============================================================================
 
   /** The default visualization type (persisted setting) */
-  public readonly defaultVisualization: ReturnType<typeof computed<VisualizationType>> = computed(
-    (): VisualizationType => this.settings().visualization.defaultType
+  public readonly defaultVisualization: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settings().visualization.defaultType
   );
 
   /** Global sensitivity for visualizations (0.0 - 1.0) */
@@ -434,7 +433,7 @@ export class SettingsService implements OnDestroy {
    *
    * @param type - The visualization type to set as default
    */
-  public async setDefaultVisualization(type: VisualizationType): Promise<void> {
+  public async setDefaultVisualization(type: string): Promise<void> {
     await this.updateSetting('visualization', 'defaultType', type);
   }
 
@@ -512,7 +511,7 @@ export class SettingsService implements OnDestroy {
    * @param type - The visualization type to get sensitivity for
    * @returns The effective sensitivity value (0.0 - 1.0)
    */
-  public getEffectiveSensitivity(type: VisualizationType): number {
+  public getEffectiveSensitivity(type: string): number {
     const perViz: PerVisualizationSensitivity = this.perVisualizationSensitivity();
     return perViz[type] ?? this.sensitivity();
   }
@@ -523,7 +522,7 @@ export class SettingsService implements OnDestroy {
    * @param type - The visualization type to set sensitivity for
    * @param value - Sensitivity value between 0.0 and 1.0
    */
-  public async setVisualizationSensitivity(type: VisualizationType, value: number): Promise<void> {
+  public async setVisualizationSensitivity(type: string, value: number): Promise<void> {
     const clampedValue: number = this.clamp(value, 0, 1);
     await this.updateSetting('visualization', 'perVisualizationSensitivity', {[type]: clampedValue});
   }
@@ -533,7 +532,7 @@ export class SettingsService implements OnDestroy {
    *
    * @param type - The visualization type to reset
    */
-  public async resetVisualizationSensitivity(type: VisualizationType): Promise<void> {
+  public async resetVisualizationSensitivity(type: string): Promise<void> {
     const current: PerVisualizationSensitivity = {...this.perVisualizationSensitivity()};
     delete current[type];
     await this.updateSetting('visualization', 'perVisualizationSensitivity', current);

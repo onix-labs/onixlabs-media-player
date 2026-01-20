@@ -44,16 +44,10 @@ import {FluxVisualization} from './flux-visualization';
 import {OnixVisualization} from './onix-visualization';
 
 /**
- * String literal type for available visualization modes.
- * Used to ensure type safety when switching visualizations.
- */
-export type VisualizationType = 'bars' | 'waveform' | 'tether' | 'tunnel' | 'neon' | 'pulsar' | 'water' | 'flux' | 'onix';
-
-/**
  * Map of visualization types to their constructor classes.
  * Used by the factory function to instantiate visualizations.
  */
-const VISUALIZATION_CONSTRUCTORS: Record<VisualizationType, new (config: VisualizationConfig) => Visualization> = {
+const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfig) => Visualization> = {
   bars: AnalyzerVisualization,
   waveform: WaveformVisualization,
   tether: SpectreVisualization,
@@ -69,7 +63,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<VisualizationType, new (config: Visuali
  * Metadata for each visualization type (name and category).
  * Used to display visualization info without creating an instance.
  */
-export const VISUALIZATION_METADATA: Record<VisualizationType, {name: string; category: string}> = {
+export const VISUALIZATION_METADATA: Record<string, {name: string; category: string}> = {
   bars: {name: 'Analyzer', category: 'Bars'},
   waveform: {name: 'Classic', category: 'Waves'},
   tether: {name: 'Spectre', category: 'Bars'},
@@ -100,7 +94,7 @@ export const VISUALIZATION_METADATA: Record<VisualizationType, {name: string; ca
  * viz.resize(800, 600);
  * viz.draw();
  */
-export function createVisualization(type: VisualizationType, config: VisualizationConfig): Visualization {
+export function createVisualization(type: string, config: VisualizationConfig): Visualization {
   const Constructor: new (config: VisualizationConfig) => Visualization = VISUALIZATION_CONSTRUCTORS[type];
   if (!Constructor) {
     throw new Error(`Unknown visualization type: ${type}`);
@@ -118,7 +112,7 @@ export function createVisualization(type: VisualizationType, config: Visualizati
  * - Team: onix
  * - Waves: flare, flux, neon, waveform
  */
-export const VISUALIZATION_TYPES: VisualizationType[] = [
+export const VISUALIZATION_TYPES: string[] = [
   // Bars
   'bars', 'tether',
   // Science

@@ -11,18 +11,42 @@ import {app, Menu} from 'electron';
 import type {MenuItemConstructorOptions} from 'electron';
 
 /**
- * Available visualization types for the Visualizations submenu.
- * IDs must match VisualizationType in the Angular app.
+ * Available visualization types organized by category.
+ * Each category becomes a submenu in the Visualizations menu.
  */
-const VISUALIZATIONS: ReadonlyArray<{id: string; name: string}> = [
-  {id: 'bars', name: 'Frequency Bars'},
-  {id: 'waveform', name: 'Waveform Classic'},
-  {id: 'tether', name: 'Waveform Modern'},
-  {id: 'tunnel', name: 'Tunnel'},
-  {id: 'neon', name: 'Neon'},
-  {id: 'pulsar', name: 'Pulsar'},
-  {id: 'water', name: 'Water'},
-  {id: 'flux', name: 'Flux'}
+const VISUALIZATION_CATEGORIES: ReadonlyArray<{
+  category: string;
+  items: ReadonlyArray<{id: string; name: string}>;
+}> = [
+  {
+    category: 'Bars',
+    items: [
+      {id: 'bars', name: 'Analyzer'},
+      {id: 'tether', name: 'Spectre'},
+    ],
+  },
+  {
+    category: 'Science',
+    items: [
+      {id: 'pulsar', name: 'Pulsar'},
+      {id: 'water', name: 'Record'},
+    ],
+  },
+  {
+    category: 'Team',
+    items: [
+      {id: 'onix', name: 'Onix'},
+    ],
+  },
+  {
+    category: 'Waves',
+    items: [
+      {id: 'waveform', name: 'Classic'},
+      {id: 'tunnel', name: 'Flare'},
+      {id: 'flux', name: 'Flux'},
+      {id: 'neon', name: 'Neon'},
+    ],
+  },
 ];
 
 /**
@@ -173,9 +197,12 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
       {type: 'separator'},
       {
         label: 'Visualizations',
-        submenu: VISUALIZATIONS.map((viz: {id: string; name: string}): MenuItemConstructorOptions => ({
-          label: viz.name,
-          click: (): void => callbacks.onSelectVisualization(viz.id)
+        submenu: VISUALIZATION_CATEGORIES.map((cat): MenuItemConstructorOptions => ({
+          label: cat.category,
+          submenu: cat.items.map((viz): MenuItemConstructorOptions => ({
+            label: viz.name,
+            click: (): void => callbacks.onSelectVisualization(viz.id)
+          }))
         }))
       },
       {type: 'separator'},
