@@ -87,6 +87,13 @@ export abstract class Visualization {
   protected sensitivity: number = 0.25;
 
   /**
+   * Trail intensity controls how long visual trails persist (0-1, default 0.5).
+   * 0 = fast fade (minimal trails), 1 = slow fade (long trails).
+   * Only affects visualizations with trail effects (Tunnel, Pulsar, Water, Flux).
+   */
+  protected trailIntensity: number = 0.5;
+
+  /**
    * Current fade alpha level (0 = fully visible, 1 = fully black).
    * Used for smooth fade transitions when pausing/stopping.
    */
@@ -128,6 +135,40 @@ export abstract class Visualization {
    */
   public getSensitivity(): number {
     return this.sensitivity;
+  }
+
+  /**
+   * Sets the trail intensity.
+   *
+   * @param value - Trail intensity level (0 to 1)
+   */
+  public setTrailIntensity(value: number): void {
+    this.trailIntensity = Math.max(0, Math.min(1, value));
+  }
+
+  /**
+   * Gets the current trail intensity level.
+   *
+   * @returns Current trail intensity (0 to 1)
+   */
+  public getTrailIntensity(): number {
+    return this.trailIntensity;
+  }
+
+  /**
+   * Calculates the fade rate multiplier based on trail intensity.
+   *
+   * Converts the user-friendly trail intensity (0=short, 1=long trails)
+   * to a fade rate multiplier. Uses exponential scaling for smooth control.
+   *
+   * - trailIntensity 0: multiplier = 2.0 (fast fade, short trails)
+   * - trailIntensity 0.5: multiplier = 1.0 (default)
+   * - trailIntensity 1: multiplier = 0.5 (slow fade, long trails)
+   *
+   * @returns Fade rate multiplier to apply to base fade rates
+   */
+  protected getFadeMultiplier(): number {
+    return Math.pow(2, (0.5 - this.trailIntensity) * 2);
   }
 
   /**

@@ -50,6 +50,8 @@ export interface VisualizationSettings {
   readonly perVisualizationSensitivity: PerVisualizationSensitivity;
   /** Maximum frame rate for visualizations (0 = uncapped, or 15/30/60) */
   readonly maxFrameRate: number;
+  /** Trail intensity for visualizations with trail effects (0.0 - 1.0, default 0.5) */
+  readonly trailIntensity: number;
 }
 
 /**
@@ -102,6 +104,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     sensitivity: 0.5,
     perVisualizationSensitivity: {},
     maxFrameRate: 0,
+    trailIntensity: 0.5,
   },
   application: {
     serverPort: 0,
@@ -217,6 +220,11 @@ export class SettingsService {
     (): number => this.settings().visualization?.maxFrameRate ?? 0
   );
 
+  /** Trail intensity for visualizations with trail effects (0.0 - 1.0) */
+  public readonly trailIntensity: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().visualization?.trailIntensity ?? 0.5
+  );
+
   /** Configured server port (0 = auto-assign) */
   public readonly serverPort: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().application?.serverPort ?? 0
@@ -320,6 +328,32 @@ export class SettingsService {
 
     if (!response.ok) {
       console.error(`[SettingsService] Failed to save max frame rate: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sets the trail intensity for visualizations.
+   *
+   * Controls how long visual trails persist in visualizations like
+   * Tunnel, Pulsar, Water, and Flux.
+   *
+   * @param value - Trail intensity value between 0.0 and 1.0
+   */
+  public async setTrailIntensity(value: number): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Clamp value to valid range
+    const clampedValue: number = Math.max(0, Math.min(1, value));
+
+    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({trailIntensity: clampedValue}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to save trail intensity: ${response.status}`);
     }
   }
 

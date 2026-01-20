@@ -53,9 +53,11 @@ export class WaveformVisualization extends Canvas2DVisualization {
     const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
 
     // Slow fade effect - creates the LCD ghosting/persistence (transparent background)
+    // Apply trail intensity multiplier to fade rate
+    const effectiveFadeRate: number = this.FADE_RATE * this.getFadeMultiplier();
     ctx.save();
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = `rgba(0, 0, 0, ${this.FADE_RATE})`;
+    ctx.fillStyle = `rgba(0, 0, 0, ${effectiveFadeRate})`;
     ctx.fillRect(0, 0, width, height);
     ctx.restore();
 
