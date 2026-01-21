@@ -77,6 +77,25 @@ export type AudioBitrate = 128 | 192 | 256 | 320;
 export type VideoAspectMode = 'default' | '4:3' | '16:9' | 'fit';
 
 /**
+ * macOS vibrancy effect types.
+ * - none: No vibrancy (solid background)
+ * - fullscreen-ui: Appropriate for fullscreen UI elements
+ * - sidebar: Appropriate for sidebars
+ * - header: Appropriate for headers
+ * - under-window: Under window material
+ * - under-page: Under page material
+ */
+export type MacOSVibrancy = 'none' | 'fullscreen-ui' | 'sidebar' | 'header' | 'under-window' | 'under-page';
+
+/**
+ * macOS visual effect state.
+ * - followWindow: Effect follows window active state
+ * - active: Always active (even when window is inactive)
+ * - inactive: Always inactive
+ */
+export type MacOSVisualEffectState = 'followWindow' | 'active' | 'inactive';
+
+/**
  * Visualization settings.
  */
 export interface VisualizationSettings {
@@ -139,6 +158,17 @@ export interface TranscodingSettings {
 }
 
 /**
+ * Appearance settings (platform-specific).
+ * Currently supports macOS vibrancy settings.
+ */
+export interface AppearanceSettings {
+  /** macOS vibrancy effect (none, fullscreen-ui, sidebar, header, under-window, under-page, default fullscreen-ui) */
+  readonly macOSVibrancy: MacOSVibrancy;
+  /** macOS visual effect state (followWindow, active, inactive, default active) */
+  readonly macOSVisualEffectState: MacOSVisualEffectState;
+}
+
+/**
  * Window bounds (position and size).
  */
 export interface WindowBounds {
@@ -177,6 +207,8 @@ export interface AppSettings {
   readonly playback: PlaybackSettings;
   /** Transcoding settings */
   readonly transcoding: TranscodingSettings;
+  /** Appearance settings (platform-specific) */
+  readonly appearance: AppearanceSettings;
   /** Window state settings (not exposed in UI) */
   readonly windowState: WindowStateSettings;
 }
@@ -224,6 +256,14 @@ export interface TranscodingSettingsUpdate {
   readonly audioBitrate?: AudioBitrate;
 }
 
+/**
+ * Partial appearance settings for updates.
+ */
+export interface AppearanceSettingsUpdate {
+  readonly macOSVibrancy?: MacOSVibrancy;
+  readonly macOSVisualEffectState?: MacOSVisualEffectState;
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -245,6 +285,12 @@ const VALID_AUDIO_BITRATES: readonly AudioBitrate[] = [128, 192, 256, 320];
 
 /** Valid video aspect mode values */
 const VALID_VIDEO_ASPECT_MODES: readonly VideoAspectMode[] = ['default', '4:3', '16:9', 'fit'];
+
+/** Valid macOS vibrancy values */
+const VALID_MACOS_VIBRANCY: readonly MacOSVibrancy[] = ['none', 'fullscreen-ui', 'sidebar', 'header', 'under-window', 'under-page'];
+
+/** Valid macOS visual effect state values */
+const VALID_MACOS_VISUAL_EFFECT_STATE: readonly MacOSVisualEffectState[] = ['followWindow', 'active', 'inactive'];
 
 /** Default settings used when no file exists or on parse error */
 const DEFAULT_SETTINGS: AppSettings = {
@@ -275,6 +321,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   transcoding: {
     videoQuality: 'medium',  // medium = CRF 23
     audioBitrate: 192,  // 192 kbps
+  },
+  appearance: {
+    macOSVibrancy: 'fullscreen-ui',  // default macOS vibrancy effect
+    macOSVisualEffectState: 'active',  // always active (even when window inactive)
   },
   windowState: {
     miniplayerBounds: null,  // no saved position initially
@@ -606,6 +656,49 @@ export class SettingsManager {
   }
 
   /**
+   * Updates appearance settings with partial values.
+   *
+   * Only provided fields are updated; others retain their current values.
+   * Changes are immediately persisted to disk.
+   *
+   * Note: These settings require an application restart to take effect
+   * as they are applied during window creation.
+   *
+   * @param update - Partial appearance settings to apply
+   * @returns The updated complete settings object
+   */
+  public updateAppearanceSettings(update: AppearanceSettingsUpdate): AppSettings {
+    // Validate macOSVibrancy if provided
+    if (update.macOSVibrancy !== undefined) {
+      if (!this.isValidMacOSVibrancy(update.macOSVibrancy)) {
+        console.warn(`[SettingsManager] Invalid macOS vibrancy: ${update.macOSVibrancy}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate macOSVisualEffectState if provided
+    if (update.macOSVisualEffectState !== undefined) {
+      if (!this.isValidMacOSVisualEffectState(update.macOSVisualEffectState)) {
+        console.warn(`[SettingsManager] Invalid macOS visual effect state: ${update.macOSVisualEffectState}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Merge the update
+    this.settings = {
+      ...this.settings,
+      appearance: {
+        ...this.settings.appearance,
+        macOSVibrancy: update.macOSVibrancy ?? this.settings.appearance.macOSVibrancy,
+        macOSVisualEffectState: update.macOSVisualEffectState ?? this.settings.appearance.macOSVisualEffectState,
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
+  /**
    * Sets the miniplayer bounds (position and size).
    *
    * This is a non-UI setting used to remember miniplayer position between sessions.
@@ -741,6 +834,11 @@ export class SettingsManager {
       obj['transcoding']
     );
 
+    // Extract and validate appearance settings
+    const appearanceSettings: AppearanceSettings = this.validateAppearanceSettings(
+      obj['appearance']
+    );
+
     // Extract and validate window state settings
     const windowStateSettings: WindowStateSettings = this.validateWindowStateSettings(
       obj['windowState']
@@ -752,6 +850,7 @@ export class SettingsManager {
       application: appSettings,
       playback: playbackSettings,
       transcoding: transcodingSettings,
+      appearance: appearanceSettings,
       windowState: windowStateSettings,
     };
   }
@@ -938,6 +1037,31 @@ export class SettingsManager {
       audioBitrate: this.isValidAudioBitrate(audioBitrate)
         ? audioBitrate
         : DEFAULT_SETTINGS.transcoding.audioBitrate,
+    };
+  }
+
+  /**
+   * Validates appearance settings object.
+   *
+   * @param appearance - The appearance settings to validate (unknown type)
+   * @returns Valid appearance settings with defaults for invalid values
+   */
+  private validateAppearanceSettings(appearance: unknown): AppearanceSettings {
+    if (!appearance || typeof appearance !== 'object') {
+      return DEFAULT_SETTINGS.appearance;
+    }
+
+    const appearanceObj: Record<string, unknown> = appearance as Record<string, unknown>;
+    const macOSVibrancy: unknown = appearanceObj['macOSVibrancy'];
+    const macOSVisualEffectState: unknown = appearanceObj['macOSVisualEffectState'];
+
+    return {
+      macOSVibrancy: this.isValidMacOSVibrancy(macOSVibrancy)
+        ? macOSVibrancy
+        : DEFAULT_SETTINGS.appearance.macOSVibrancy,
+      macOSVisualEffectState: this.isValidMacOSVisualEffectState(macOSVisualEffectState)
+        ? macOSVisualEffectState
+        : DEFAULT_SETTINGS.appearance.macOSVisualEffectState,
     };
   }
 
@@ -1189,5 +1313,29 @@ export class SettingsManager {
    */
   private isValidVideoAspectMode(value: unknown): value is VideoAspectMode {
     return typeof value === 'string' && VALID_VIDEO_ASPECT_MODES.includes(value as VideoAspectMode);
+  }
+
+  /**
+   * Type guard to check if a value is a valid macOS vibrancy.
+   *
+   * Valid values are 'none', 'fullscreen-ui', 'sidebar', 'header', 'under-window', 'under-page'.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid macOS vibrancy
+   */
+  private isValidMacOSVibrancy(value: unknown): value is MacOSVibrancy {
+    return typeof value === 'string' && VALID_MACOS_VIBRANCY.includes(value as MacOSVibrancy);
+  }
+
+  /**
+   * Type guard to check if a value is a valid macOS visual effect state.
+   *
+   * Valid values are 'followWindow', 'active', 'inactive'.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid macOS visual effect state
+   */
+  private isValidMacOSVisualEffectState(value: unknown): value is MacOSVisualEffectState {
+    return typeof value === 'string' && VALID_MACOS_VISUAL_EFFECT_STATE.includes(value as MacOSVisualEffectState);
   }
 }

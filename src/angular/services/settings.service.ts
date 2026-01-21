@@ -129,6 +129,26 @@ export interface TranscodingSettings {
 }
 
 /**
+ * macOS vibrancy effect types.
+ */
+export type MacOSVibrancy = 'none' | 'fullscreen-ui' | 'sidebar' | 'header' | 'under-window' | 'under-page';
+
+/**
+ * macOS visual effect state.
+ */
+export type MacOSVisualEffectState = 'followWindow' | 'active' | 'inactive';
+
+/**
+ * Appearance settings (platform-specific).
+ */
+export interface AppearanceSettings {
+  /** macOS vibrancy effect */
+  readonly macOSVibrancy: MacOSVibrancy;
+  /** macOS visual effect state */
+  readonly macOSVisualEffectState: MacOSVisualEffectState;
+}
+
+/**
  * Complete application settings structure.
  */
 export interface AppSettings {
@@ -142,6 +162,8 @@ export interface AppSettings {
   readonly playback: PlaybackSettings;
   /** Transcoding settings */
   readonly transcoding: TranscodingSettings;
+  /** Appearance settings (platform-specific) */
+  readonly appearance: AppearanceSettings;
 }
 
 /**
@@ -191,6 +213,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   transcoding: {
     videoQuality: 'medium',
     audioBitrate: 192,
+  },
+  appearance: {
+    macOSVibrancy: 'fullscreen-ui',
+    macOSVisualEffectState: 'active',
   },
 };
 
@@ -411,6 +437,16 @@ export class SettingsService implements OnDestroy {
     (): VideoAspectMode => this.settings().playback?.videoAspectMode ?? 'default'
   );
 
+  /** macOS vibrancy effect (requires restart to apply) */
+  public readonly macOSVibrancy: ReturnType<typeof computed<MacOSVibrancy>> = computed(
+    (): MacOSVibrancy => this.settings().appearance?.macOSVibrancy ?? 'fullscreen-ui'
+  );
+
+  /** macOS visual effect state (requires restart to apply) */
+  public readonly macOSVisualEffectState: ReturnType<typeof computed<MacOSVisualEffectState>> = computed(
+    (): MacOSVisualEffectState => this.settings().appearance?.macOSVisualEffectState ?? 'active'
+  );
+
   // ============================================================================
   // Private Helper Methods
   // ============================================================================
@@ -423,7 +459,7 @@ export class SettingsService implements OnDestroy {
    * - HTTP request construction
    * - Error logging
    *
-   * @param category - Settings category ('visualization', 'application', 'playback', 'transcoding')
+   * @param category - Settings category ('visualization', 'application', 'playback', 'transcoding', 'appearance')
    * @param field - The field name to update
    * @param value - The value to set
    */
@@ -690,6 +726,40 @@ export class SettingsService implements OnDestroy {
       return;
     }
     await this.updateSetting('playback', 'videoAspectMode', mode);
+  }
+
+  // ============================================================================
+  // Appearance Settings (macOS)
+  // ============================================================================
+
+  /**
+   * Sets the macOS vibrancy effect.
+   * Requires application restart to take effect.
+   *
+   * @param vibrancy - Vibrancy effect type
+   */
+  public async setMacOSVibrancy(vibrancy: MacOSVibrancy): Promise<void> {
+    const validVibrancies: readonly MacOSVibrancy[] = ['none', 'fullscreen-ui', 'sidebar', 'header', 'under-window', 'under-page'];
+    if (!validVibrancies.includes(vibrancy)) {
+      console.error(`[SettingsService] Invalid macOS vibrancy: ${vibrancy}`);
+      return;
+    }
+    await this.updateSetting('appearance', 'macOSVibrancy', vibrancy);
+  }
+
+  /**
+   * Sets the macOS visual effect state.
+   * Requires application restart to take effect.
+   *
+   * @param state - Visual effect state
+   */
+  public async setMacOSVisualEffectState(state: MacOSVisualEffectState): Promise<void> {
+    const validStates: readonly MacOSVisualEffectState[] = ['followWindow', 'active', 'inactive'];
+    if (!validStates.includes(state)) {
+      console.error(`[SettingsService] Invalid macOS visual effect state: ${state}`);
+      return;
+    }
+    await this.updateSetting('appearance', 'macOSVisualEffectState', state);
   }
 
   /**
