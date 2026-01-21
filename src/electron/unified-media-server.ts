@@ -1392,7 +1392,7 @@ export class UnifiedMediaServer {
           'Access-Control-Allow-Origin': '*',
         });
 
-        createReadStream(filePath, { start, end }).pipe(res);
+        createReadStream(filePath, { start, end, highWaterMark: 2 * 1024 * 1024 }).pipe(res); // 2MB buffer for NAS/network latency
       } else {
         // Full file response (200)
         res.writeHead(200, {
@@ -1402,7 +1402,7 @@ export class UnifiedMediaServer {
           'Access-Control-Allow-Origin': '*',
         });
 
-        createReadStream(filePath).pipe(res);
+        createReadStream(filePath, { highWaterMark: 2 * 1024 * 1024 }).pipe(res); // 2MB buffer for NAS/network latency
       }
     } catch (err) {
       console.error('Error serving file:', err);
@@ -1539,24 +1539,27 @@ export class UnifiedMediaServer {
         'Cache-Control': 'no-cache',
       });
     } else {
-      // Video transcoding to fragmented MP4
+      // Video transcoding optimized for real-time 4K/UHD playback
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
-        '-ss', seekTime,          // Seek before input (fast seek)
+        '-threads', '0',            // Use all available CPU cores
+        '-ss', seekTime,            // Seek before input (fast seek)
         '-i', filePath,
         '-c:v', 'libx264',
-        '-preset', 'veryfast',    // Fast encoding for streaming
-        '-tune', 'zerolatency',   // Minimize latency
+        '-preset', 'ultrafast',     // Fastest encoding for real-time 4K
+        '-tune', 'zerolatency',     // Minimize latency
         '-profile:v', 'high',
-        '-level', '4.1',
-        '-pix_fmt', 'yuv420p',    // Maximum compatibility
-        '-crf', crfValue,         // Quality level from settings
-        '-g', '30',               // GOP size: keyframe every 30 frames (~1s at 30fps)
-        '-bf', '0',               // No B-frames (explicit, zerolatency implies this)
-        '-sc_threshold', '0',     // Disable scene change keyframes for consistent timing
+        '-level', '5.1',            // Level 5.1 supports 4K (level 4.1 only supports 1080p)
+        '-pix_fmt', 'yuv420p',      // Maximum compatibility
+        '-crf', crfValue,           // Quality level from settings
+        '-maxrate', '20M',          // Max bitrate for VBV buffering
+        '-bufsize', '8M',           // VBV buffer size for smooth delivery
+        '-g', '30',                 // GOP size: keyframe every 30 frames (~1s at 30fps)
+        '-bf', '0',                 // No B-frames for low latency
+        '-sc_threshold', '0',       // Disable scene change keyframes for consistent timing
         '-c:a', 'aac',
-        '-b:a', audioBitrateStr,  // Audio bitrate from settings
+        '-b:a', audioBitrateStr,    // Audio bitrate from settings
         '-ar', '48000',
         '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
         '-f', 'mp4',
