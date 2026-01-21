@@ -114,7 +114,7 @@ export abstract class Visualization {
 
   /**
    * Line width for waveform visualizations (1.0 - 5.0, default 2.0).
-   * Affects visualizations that draw lines (Waveform, Flare, Neon, Water, Infinity).
+   * Affects visualizations that draw lines (Waveform, Plasma, Neon, Water, Infinity).
    */
   protected lineWidth: number = 2.0;
 

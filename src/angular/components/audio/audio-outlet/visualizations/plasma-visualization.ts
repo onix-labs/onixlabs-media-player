@@ -1,32 +1,32 @@
 /**
- * @fileoverview Flare visualization with dual horizontal waveforms.
+ * @fileoverview Plasma visualization with dual horizontal waveforms.
  *
  * Creates a hypnotic effect with two horizontal waveforms that fade
  * outward from the center, creating expanding trail effects.
  *
  * Technical details:
- * - Two horizontal waveforms at 1/3 and 2/3 vertical positions
+ * - Two horizontal waveforms at 45% and 55% vertical positions
  * - Trails fade outward from center with zoom effect
  * - Colors cycle through the spectrum
  * - Each waveform has glow, main, and highlight layers
  *
- * @module app/components/audio/audio-outlet/visualizations/flare-visualization
+ * @module app/components/audio/audio-outlet/visualizations/plasma-visualization
  */
 
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 /**
- * Flare visualization with dual horizontal waveforms.
+ * Plasma visualization with dual horizontal waveforms.
  *
  * Renders two horizontal waveforms with trails that expand outward
  * from the center, creating a tunnel-like effect.
  */
-export class FlareVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Flare';
+export class PlasmaVisualization extends Canvas2DVisualization {
+  public readonly name: string = 'Plasma';
   public readonly category: string = 'Waves';
 
   private readonly FADE_RATE: number = 0.025;
-  private readonly ZOOM_SCALE: number = 1.03;
+  private readonly ZOOM_SCALE: number = 1.02;
   private readonly BASE_GLOW_BLUR: number = 15;
   private readonly WAVEFORM_POINTS: number = 128;
   private readonly HUE_CYCLE_SPEED: number = 0.5;
@@ -92,9 +92,9 @@ export class FlareVisualization extends Canvas2DVisualization {
     this.screenCenterX = width / 2;
     this.screenCenterY = height / 2;
 
-    // Waveform vertical positions (33% and 66% down)
-    this.topCenterY = height / 3;
-    this.bottomCenterY = (height * 2) / 3;
+    // Waveform vertical positions (45% and 55% down)
+    this.topCenterY = height * 0.45;
+    this.bottomCenterY = height * 0.55;
 
     // Amplitude for waveform displacement
     this.waveformAmplitude = height * 0.15;
