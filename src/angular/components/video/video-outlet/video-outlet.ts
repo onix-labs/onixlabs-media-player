@@ -237,6 +237,28 @@ export class VideoOutlet implements OnInit, OnDestroy {
       }
     });
 
+    // React to window close - fade out video audio to prevent speaker pop
+    effect((): void => {
+      const fadeDuration: number = this.electron.fadeOutRequested();
+      const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
+      if (fadeDuration > 0 && video && video.volume > 0) {
+        // Perform gradual volume fade using interval
+        const steps: number = 10;
+        const stepDuration: number = fadeDuration / steps;
+        const volumeStep: number = video.volume / steps;
+        let currentStep: number = 0;
+
+        const fadeInterval: ReturnType<typeof setInterval> = setInterval((): void => {
+          currentStep++;
+          video.volume = Math.max(0, video.volume - volumeStep);
+          if (currentStep >= steps) {
+            clearInterval(fadeInterval);
+            video.volume = 0;
+          }
+        }, stepDuration);
+      }
+    });
+
     // React to aspect mode changes and emit display name
     effect((): void => {
       const name: string = this.aspectModeName();

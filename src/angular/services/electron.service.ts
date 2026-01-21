@@ -135,6 +135,9 @@ export class ElectronService implements OnDestroy {
   /** Callback for settings updates (registered by SettingsService) */
   private settingsUpdateCallback: ((settings: AppSettings) => void) | null = null;
 
+  /** Cleanup function for prepare-for-close listener */
+  private prepareForCloseCleanup: (() => void) | null = null;
+
   // ============================================================================
   // Menu Event Signals - For components to react to menu actions
   // ============================================================================
@@ -150,6 +153,9 @@ export class ElectronService implements OnDestroy {
 
   /** Signal emitted when a visualization is selected from the menu */
   public readonly menuSelectVisualization: ReturnType<typeof signal<string>> = signal<string>('');
+
+  /** Signal emitted when window is about to close - value is fade duration in ms (0 = no fade requested) */
+  public readonly fadeOutRequested: ReturnType<typeof signal<number>> = signal<number>(0);
 
   /**
    * Registers a callback to receive settings updates from SSE.
@@ -228,6 +234,9 @@ export class ElectronService implements OnDestroy {
 
     // Setup menu event listeners
     this.setupMenuListeners();
+
+    // Setup prepare-for-close listener (for graceful audio fade-out)
+    this.setupPrepareForCloseListener();
   }
 
   /**
@@ -397,6 +406,30 @@ export class ElectronService implements OnDestroy {
 
     // Remove from playlist (server will auto-advance to next if available)
     await this.removeFromPlaylist(currentItem.id);
+  }
+
+  /**
+   * Sets up the prepare-for-close listener for graceful audio fade-out.
+   *
+   * When the window is about to close, the main process sends an event
+   * with the fade duration. This sets the fadeOutRequested signal which
+   * components (audio-outlet, video-outlet) watch to perform the fade.
+   * After the fade duration, we notify the main process to proceed with close.
+   */
+  private setupPrepareForCloseListener(): void {
+    if (!this.isElectron || !this.api) return;
+
+    this.prepareForCloseCleanup = this.api.onPrepareForClose((fadeDuration: number): void => {
+      this.ngZone.run((): void => {
+        // Signal components to fade out
+        this.fadeOutRequested.set(fadeDuration);
+
+        // After fade duration, notify main process that fade is complete
+        setTimeout((): void => {
+          this.api?.notifyFadeOutComplete();
+        }, fadeDuration);
+      });
+    });
   }
 
   // ============================================================================
@@ -1030,6 +1063,7 @@ export class ElectronService implements OnDestroy {
     this.eventSource?.close();
     this.fullscreenCleanup?.();
     this.viewModeCleanup?.();
+    this.prepareForCloseCleanup?.();
     this.menuCleanupFunctions.forEach((cleanup: () => void): void => cleanup());
     if (this.reconnectTimeoutId) {
       clearTimeout(this.reconnectTimeoutId);

@@ -275,6 +275,18 @@ export class AudioOutlet implements OnInit, OnDestroy {
       }
     });
 
+    // React to window close - fade out audio to prevent speaker pop
+    effect((): void => {
+      const fadeDuration: number = this.electron.fadeOutRequested();
+      if (fadeDuration > 0 && this.gainNode && this.audioContext) {
+        const currentTime: number = this.audioContext.currentTime;
+        const fadeTime: number = fadeDuration / 1000; // Convert to seconds
+        this.gainNode.gain.cancelScheduledValues(currentTime);
+        this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, currentTime);
+        this.gainNode.gain.linearRampToValueAtTime(0, currentTime + fadeTime);
+      }
+    });
+
     // React to settings loading - apply default visualization once
     effect((): void => {
       const isLoaded: boolean = this.settings.isLoaded();
