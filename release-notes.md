@@ -124,6 +124,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Audio fullscreen: only visualization visible (no controls or toggles)
 - Video fullscreen: clean video view with floating controls
 - Floating playback controls appear on mouse movement, hide after configurable delay (default 5s)
+- **Cursor auto-hide**: Mouse cursor hides with controls in video fullscreen/miniplayer, reappears on movement
 - Gradient overlay for floating controls at bottom of screen
 
 ### Miniplayer Mode
