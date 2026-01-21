@@ -107,7 +107,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Shift+click on previous/next buttons skips backward/forward by configurable duration
   - Works in both main controls and miniplayer controls
   - Button icons change dynamically when Shift is held (step → skip icons)
-  - Previous/next buttons disabled with single track unless Shift held
+  - Previous button always enabled (restarts track); next button disabled with single track unless Shift held
   - Skip duration configurable in Settings > Playback (1-60 seconds, default 10)
 - Auto-advance to next track when current ends
 - Removing currently playing item auto-advances to next track
@@ -151,10 +151,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
   - Audio outlet uses Web Audio API `linearRampToValueAtTime()` for smooth fade
   - Video outlet uses interval-based volume stepping
   - Main process waits for fade completion (with timeout fallback) before destroying window
-- **macOS behavior**: When red traffic light closes window, app stays running (standard macOS behavior)
-  - Playlist is cleared and playback state reset to idle
-  - Reopening window (via dock click) starts fresh with empty playlist
-- **Windows/Linux behavior**: Closing window quits the application entirely
+- **All platforms**: Closing window quits the application entirely
 
 ### UI Layout
 

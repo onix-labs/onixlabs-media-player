@@ -102,10 +102,10 @@ export class LayoutControls {
 
   /**
    * Whether backward button should be enabled.
-   * Enabled when: Shift pressed (can skip by time) OR 2+ tracks (can change track).
+   * Always enabled when a track is loaded (restart track, or go to previous if multiple).
    */
   public readonly canSkipBackward: ReturnType<typeof computed<boolean>> = computed((): boolean =>
-    this.isShiftPressed() || this.mediaPlayer.playlistCount() > 1
+    this.mediaPlayer.playlistCount() >= 1
   );
 
   /**
