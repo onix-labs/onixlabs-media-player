@@ -447,7 +447,7 @@ The `Canvas2DVisualization` base class provides:
 | **Analyzer** | Bars | Configurable frequency bars (48/96/144) with green-yellow-red gradient | — |
 | **Spectre** | Bars | Configurable frequency bars (96/192/288) with vertical mirroring, dark center gradient fading to bright green, smoke trail effect | Pre-calculated bar heights and positions |
 | **Classic** | Waves | Oscilloscope-style waveform with glow effect | — |
-| **Flare** | Waves | Dual blue/red horizontal waveforms with tunnel zoom effect | Cached temp canvas |
+| **Flare** | Waves | Dual horizontal waveforms at 1/3 and 2/3 positions, colors cycle through spectrum, trails expand from center with zoom effect, additive blending | Fixed 128 points, separate trail canvases, pre-allocated point arrays, cached color values |
 | **Infinity** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum, additive blending for overlapping trails | Cached color values with hue threshold, separate trail canvases with lighter compositing |
 | **Neon** | Waves | Rotating cyan/magenta waveforms with tunnel zoom | Cached temp canvas |
 | **Onix** | Waves | Pulsating gradient circle with ONIXLabs brand colors in stroke, rotating trail effect with zoom, inner white circle pulsates to bass/kick drums with black stroked edge | Pre-computed trig lookup tables, flat typed arrays, reuses trail/temp canvases |
