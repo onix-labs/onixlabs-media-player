@@ -5,6 +5,15 @@
   min-height: 0;
   overflow: hidden;
 
+  // Hide cursor when controls are auto-hidden in fullscreen/miniplayer video mode
+  &.cursor-hidden {
+    cursor: none;
+
+    * {
+      cursor: none !important;
+    }
+  }
+
   app-configuration-view {
     flex: 1;
     min-height: 0;

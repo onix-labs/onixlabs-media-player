@@ -92,6 +92,18 @@ export class Root implements OnDestroy {
   /** Whether the current media is video (used for styling) */
   public readonly isVideo: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.currentMediaType() === 'video');
 
+  /**
+   * Whether the cursor should be hidden.
+   *
+   * Cursor is hidden when:
+   * - In fullscreen or miniplayer mode
+   * - AND viewing video content
+   * - AND controls are currently hidden
+   */
+  public readonly cursorHidden: ReturnType<typeof computed<boolean>> = computed((): boolean => {
+    return (this.isFullscreen() || this.isMiniplayer()) && this.isVideo() && !this.showControls();
+  });
+
   /** Whether the configuration view is displayed (settings mode) */
   public readonly isConfigurationMode: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
@@ -223,6 +235,15 @@ export class Root implements OnDestroy {
   @HostBinding('class.miniplayer')
   public get miniplayerClass(): boolean {
     return this.isMiniplayer();
+  }
+
+  /**
+   * Adds 'cursor-hidden' CSS class to the host element when cursor should be hidden.
+   * This hides the mouse cursor when controls are auto-hidden in fullscreen/miniplayer video mode.
+   */
+  @HostBinding('class.cursor-hidden')
+  public get cursorHiddenClass(): boolean {
+    return this.cursorHidden();
   }
 
   // ============================================================================
