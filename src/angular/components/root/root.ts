@@ -298,18 +298,12 @@ export class Root implements OnDestroy {
   /**
    * Handles mouse up to end window dragging in miniplayer mode.
    * Saves the miniplayer bounds after drag completes.
-   * If no movement occurred, it was a click - toggle play/pause.
    */
   @HostListener('document:mouseup')
   public onMouseUp(): void {
-    if (this.isDragging && this.isMiniplayer()) {
-      if (this.hasMoved) {
-        // Was a drag - save bounds
-        void this.electron.saveMiniplayerBounds();
-      } else {
-        // Was a click (no movement) - toggle play/pause
-        void this.mediaPlayer.togglePlayPause();
-      }
+    if (this.isDragging && this.isMiniplayer() && this.hasMoved) {
+      // Was a drag - save bounds
+      void this.electron.saveMiniplayerBounds();
     }
     this.isDragging = false;
     this.hasMoved = false;
