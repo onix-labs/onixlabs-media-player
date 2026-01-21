@@ -14,7 +14,28 @@
 
 import {Component, output, signal, computed, inject, ChangeDetectionStrategy} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, MacOSVibrancy, MacOSVisualEffectState} from '../../../services/settings.service';
+
+/**
+ * macOS vibrancy options for the settings UI.
+ */
+export const MACOS_VIBRANCY_OPTIONS: readonly {value: MacOSVibrancy; label: string}[] = [
+  {value: 'none', label: 'None (Solid)'},
+  {value: 'fullscreen-ui', label: 'Fullscreen UI'},
+  {value: 'sidebar', label: 'Sidebar'},
+  {value: 'header', label: 'Header'},
+  {value: 'under-window', label: 'Under Window'},
+  {value: 'under-page', label: 'Under Page'},
+];
+
+/**
+ * macOS visual effect state options for the settings UI.
+ */
+export const MACOS_VISUAL_EFFECT_STATE_OPTIONS: readonly {value: MacOSVisualEffectState; label: string}[] = [
+  {value: 'followWindow', label: 'Follow Window'},
+  {value: 'active', label: 'Always Active'},
+  {value: 'inactive', label: 'Always Inactive'},
+];
 
 /**
  * Safely extracts value from an input element event target.
@@ -68,6 +89,12 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     name: 'Application',
     icon: 'fa-solid fa-gear',
     description: 'Configure application-level settings.',
+  },
+  {
+    id: 'appearance',
+    name: 'Appearance',
+    icon: 'fa-solid fa-palette',
+    description: 'Configure window appearance (macOS only).',
   },
   {
     id: 'playback',
@@ -300,6 +327,26 @@ export class ConfigurationView {
   );
 
   // ============================================================================
+  // Appearance Settings (macOS)
+  // ============================================================================
+
+  /** Available macOS vibrancy options for the dropdown */
+  public readonly macOSVibrancyOptions = MACOS_VIBRANCY_OPTIONS;
+
+  /** Available macOS visual effect state options for the dropdown */
+  public readonly macOSVisualEffectStateOptions = MACOS_VISUAL_EFFECT_STATE_OPTIONS;
+
+  /** Current macOS vibrancy setting */
+  public readonly currentMacOSVibrancy: ReturnType<typeof computed<MacOSVibrancy>> = computed(
+    (): MacOSVibrancy => this.settingsService.macOSVibrancy()
+  );
+
+  /** Current macOS visual effect state setting */
+  public readonly currentMacOSVisualEffectState: ReturnType<typeof computed<MacOSVisualEffectState>> = computed(
+    (): MacOSVisualEffectState => this.settingsService.macOSVisualEffectState()
+  );
+
+  // ============================================================================
   // Event Handlers
   // ============================================================================
 
@@ -467,6 +514,32 @@ export class ConfigurationView {
   public async onVideoAspectModeChange(event: Event): Promise<void> {
     const mode: string = getSelectValue(event);
     await this.settingsService.setVideoAspectMode(mode as VideoAspectMode);
+  }
+
+  // ============================================================================
+  // Appearance Settings Event Handlers (macOS)
+  // ============================================================================
+
+  /**
+   * Handles macOS vibrancy selection change.
+   * Note: Requires application restart to take effect.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onMacOSVibrancyChange(event: Event): Promise<void> {
+    const vibrancy: string = getSelectValue(event);
+    await this.settingsService.setMacOSVibrancy(vibrancy as MacOSVibrancy);
+  }
+
+  /**
+   * Handles macOS visual effect state selection change.
+   * Note: Requires application restart to take effect.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onMacOSVisualEffectStateChange(event: Event): Promise<void> {
+    const state: string = getSelectValue(event);
+    await this.settingsService.setMacOSVisualEffectState(state as MacOSVisualEffectState);
   }
 
   /**

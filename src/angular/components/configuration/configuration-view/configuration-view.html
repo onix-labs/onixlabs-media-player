@@ -485,6 +485,53 @@
                 </div>
               </div>
             }
+
+            @case ('appearance') {
+              <div class="setting-group">
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="macos-vibrancy">Vibrancy Effect (macOS)</label>
+                    <p class="setting-description">
+                      Window transparency effect. Uses the macOS system blur for a modern look.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="macos-vibrancy"
+                      (change)="onMacOSVibrancyChange($event)"
+                    >
+                      @for (option of macOSVibrancyOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentMacOSVibrancy()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="macos-visual-effect-state">Visual Effect State (macOS)</label>
+                    <p class="setting-description">
+                      Controls when the vibrancy effect is active. "Always Active" keeps the effect even when the window is in the background.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="macos-visual-effect-state"
+                      (change)="onMacOSVisualEffectStateChange($event)"
+                    >
+                      @for (option of macOSVisualEffectStateOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentMacOSVisualEffectState()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="restart-notice">
+                  <i class="fa-solid fa-info-circle"></i>
+                  <span>Appearance settings require an application restart to take effect.</span>
+                </div>
+              </div>
+            }
           }
         </div>
       }

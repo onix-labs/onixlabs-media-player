@@ -19,7 +19,7 @@ import * as path from "path";
 import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.js';
 import {createApplicationMenu, updateMenuState} from './application-menu.js';
-import type {WindowBounds} from './settings-manager.js';
+import type {WindowBounds, MacOSVibrancy, MacOSVisualEffectState} from './settings-manager.js';
 
 // Set app name (shows in dock/menu bar during development)
 app.setName('ONIXPlayer');
@@ -259,24 +259,31 @@ class Program {
     };
 
     // Platform-specific transparency and window chrome options
-    const platformOptions: Electron.BrowserWindowConstructorOptions =
-      process.platform === 'darwin'
-        ? {
-            // macOS: native vibrancy with hidden title bar
-            titleBarStyle: 'hiddenInset',
-            trafficLightPosition: {x: 12, y: 13},
-            vibrancy: 'fullscreen-ui',
-            visualEffectState: 'active'
-          }
-        : process.platform === 'win32'
-          ? {
-              // Windows 11: acrylic blur effect
-              transparent: true,
-              backgroundMaterial: 'acrylic'
-            }
-          : {
-              // Linux: no native blur support
-            };
+    let platformOptions: Electron.BrowserWindowConstructorOptions = {};
+
+    if (process.platform === 'darwin') {
+      // macOS: native vibrancy with hidden title bar
+      const appearanceSettings = this.mediaServer?.getSettingsManager().getSettings().appearance;
+      const vibrancy: MacOSVibrancy = appearanceSettings?.macOSVibrancy ?? 'fullscreen-ui';
+      const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
+
+      platformOptions = {
+        titleBarStyle: 'hiddenInset',
+        trafficLightPosition: {x: 12, y: 13},
+        // Only apply vibrancy if not 'none'
+        ...(vibrancy !== 'none' && {
+          vibrancy: vibrancy,
+          visualEffectState: visualEffectState
+        })
+      };
+    } else if (process.platform === 'win32') {
+      // Windows 11: acrylic blur effect
+      platformOptions = {
+        transparent: true,
+        backgroundMaterial: 'acrylic'
+      };
+    }
+    // Linux: no native blur support (empty platformOptions)
 
     const window: BrowserWindow = new BrowserWindow({
       ...baseOptions,

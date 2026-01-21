@@ -69,7 +69,7 @@ const FFPROBE_PATH: string | null = findBinary(FFPROBE_SEARCH_PATHS);
 
 /** Resolved path to fluidsynth binary */
 const FLUIDSYNTH_PATH: string | null = findBinary(FLUIDSYNTH_SEARCH_PATHS);
-import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate } from './settings-manager.js';
+import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate } from './settings-manager.js';
 
 // ============================================================================
 // Types
@@ -1201,6 +1201,8 @@ export class UnifiedMediaServer {
         await this.handleSettingsPlayback(req, res);
       } else if (pathname === '/settings/transcoding' && method === 'PUT') {
         await this.handleSettingsTranscoding(req, res);
+      } else if (pathname === '/settings/appearance' && method === 'PUT') {
+        await this.handleSettingsAppearance(req, res);
       } else if (this.staticPath) {
         // Serve static files for Angular app in production
         this.serveStaticFile(req, res, pathname);
@@ -2514,6 +2516,28 @@ export class UnifiedMediaServer {
     const update: TranscodingSettingsUpdate = JSON.parse(body) as TranscodingSettingsUpdate;
 
     const updatedSettings: AppSettings = this.settings.updateTranscodingSettings(update);
+
+    // Broadcast the updated settings to all clients
+    this.sse.broadcast('settings:updated', updatedSettings);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+  }
+
+  /**
+   * Handles PUT /settings/appearance requests.
+   *
+   * Updates appearance settings and broadcasts the change to all clients.
+   * Note: Appearance settings require an application restart to take effect.
+   *
+   * @param req - Incoming HTTP request with AppearanceSettingsUpdate body
+   * @param res - HTTP response to write to
+   */
+  private async handleSettingsAppearance(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const update: AppearanceSettingsUpdate = JSON.parse(body) as AppearanceSettingsUpdate;
+
+    const updatedSettings: AppSettings = this.settings.updateAppearanceSettings(update);
 
     // Broadcast the updated settings to all clients
     this.sse.broadcast('settings:updated', updatedSettings);
