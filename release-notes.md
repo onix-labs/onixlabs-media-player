@@ -90,6 +90,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Native `<video>` element with HTTP streaming
 - Native formats (.mp4, .m4v, .webm, .ogg) use HTTP range requests for seeking
 - Non-native formats (.mkv, .avi, .mov) transcoded to fragmented MP4 on-the-fly
+- **UHD/4K optimized**: Real-time transcoding with `-preset ultrafast`, `-level 5.1`, VBV buffering
 - Synchronized with server-side time tracking
 - Configurable transcoding quality (CRF 18/23/28) and audio bitrate (128-320 kbps)
 - Video aspect ratio modes with media bar toggle (same UI pattern as visualizations):
@@ -545,6 +546,7 @@ The `Canvas2DVisualization` base class provides:
 | Unsafe Type Assertions on Event Targets | configuration-view.ts, layout-controls.ts | Added `getInputValue()` and `getSelectValue()` helpers with instanceof checks. |
 | Miniplayer View Mode String Mismatch | main.ts | Changed `'mini-player'` to `'miniplayer'` in 3 locations to match TypeScript type definitions. Window resized but UI didn't switch because `viewMode() === 'miniplayer'` check failed. |
 | Video Playback Choppy During View Mode Transitions | unified-media-server.ts | Added FFmpeg parameters for real-time streaming: `-g 30` (keyframe every 30 frames), `-bf 0` (no B-frames), `-sc_threshold 0` (disable scene change keyframes). Default 250-frame GOP caused unpredictable fragment sizes and timing issues during miniplayer/fullscreen transitions, especially on UHD content. |
+| UHD/4K MKV Playback Choppy or Failing | unified-media-server.ts | Multiple fixes: (1) Changed `-level 4.1` to `-level 5.1` to support 4K macroblock limits, (2) Added `-preset ultrafast` for real-time 4K encoding, (3) Added `-threads 0` to use all CPU cores, (4) Added `-maxrate 20M -bufsize 8M` for VBV buffering, (5) Increased file read buffer from 64KB to 2MB via `highWaterMark` for NAS/network latency tolerance. |
 
 ### Code Duplication Eliminated
 
@@ -661,6 +663,29 @@ Full `playlist:updated` is now only sent on initial SSE connection.
 | Flux | Cached color values with hue threshold to avoid per-frame string generation |
 | Onix | Pre-computed trig lookup tables, flat typed arrays, cached bass calculation |
 
+### UHD/4K Video Streaming Optimizations
+
+**Issue**: 4K MKV files from NAS were choppy or failing to play due to real-time transcoding bottlenecks.
+
+**Root Causes Identified**:
+1. `-level 4.1` only supports 1080p (8192 macroblocks max); 4K requires 24000+ macroblocks
+2. `-preset veryfast` couldn't keep up with 4K real-time encoding
+3. `-bufsize` without `-maxrate` was being ignored by libx264
+4. Default 64KB file read buffer caused stuttering over network/NAS
+
+**Fixes Applied**:
+
+| Parameter | Before | After | Impact |
+|-----------|--------|-------|--------|
+| `-level` | `4.1` | `5.1` | Supports 4K resolution (up to 60fps) |
+| `-preset` | `veryfast` | `ultrafast` | ~2x faster encoding, enables real-time 4K |
+| `-threads` | (default) | `0` | Uses all available CPU cores |
+| `-maxrate` | (none) | `20M` | Enables VBV buffering to work |
+| `-bufsize` | `8M` | `8M` | Smooths frame delivery (now active with maxrate) |
+| `highWaterMark` | 64KB | 2MB | Absorbs NAS/network latency spikes |
+
+**Result**: Butter-smooth UHD/4K MKV playback from NAS over network.
+
 ---
 
 ## Build & Packaging
@@ -685,13 +710,15 @@ npm run package:linux # Package for Linux (.AppImage, .deb)
 
 ### FFmpeg Commands Used
 
-**Video Transcoding (non-native formats):**
+**Video Transcoding (non-native formats, optimized for UHD/4K):**
 ```bash
 # CRF value based on Video Quality setting: Low=28, Medium=23, High=18
 # Audio bitrate from Audio Bitrate setting: 128k, 192k, 256k, 320k
-ffmpeg -ss <time> -i <file> \
-  -c:v libx264 -preset veryfast -tune zerolatency \
-  -profile:v high -level 4.1 -pix_fmt yuv420p -crf <quality> \
+ffmpeg -threads 0 -ss <time> -i <file> \
+  -c:v libx264 -preset ultrafast -tune zerolatency \
+  -profile:v high -level 5.1 -pix_fmt yuv420p -crf <quality> \
+  -maxrate 20M -bufsize 8M \
+  -g 30 -bf 0 -sc_threshold 0 \
   -c:a aac -b:a <bitrate>k -ar 48000 \
   -movflags frag_keyframe+empty_moov+default_base_moof \
   -f mp4 pipe:1
