@@ -136,7 +136,6 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Controls reappear on mouse movement, hide when mouse stops or leaves window
 - macOS traffic lights hide/show with controls for cleaner appearance
 - Entire window is draggable (except control buttons)
-- Single-click toggles play/pause (distinguished from drag by 5px movement threshold)
 - Magnetic edge snapping: window snaps to screen edges/corners with 10px gap
 - Position/size memory: remembers last position and size, restores on re-entry
   - Bounds saved immediately when drag ends or window is resized
