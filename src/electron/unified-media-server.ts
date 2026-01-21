@@ -1552,6 +1552,9 @@ export class UnifiedMediaServer {
         '-level', '4.1',
         '-pix_fmt', 'yuv420p',    // Maximum compatibility
         '-crf', crfValue,         // Quality level from settings
+        '-g', '30',               // GOP size: keyframe every 30 frames (~1s at 30fps)
+        '-bf', '0',               // No B-frames (explicit, zerolatency implies this)
+        '-sc_threshold', '0',     // Disable scene change keyframes for consistent timing
         '-c:a', 'aac',
         '-b:a', audioBitrateStr,  // Audio bitrate from settings
         '-ar', '48000',
