@@ -63,7 +63,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
   - **Bars**: Analyzer, Spectre
   - **Science**: Pulsar, Record
   - **Team**: Onix
-  - **Waves**: Classic, Flare, Flux, Neon
+  - **Waves**: Classic, Flare, Infinity, Neon
 - Visualization names display with category prefix (e.g., "Waves : Flare")
 - Volume-independent visualizations with configurable settings:
   - Sensitivity (default 25%) - controls audio reactivity
@@ -453,7 +453,7 @@ The `Canvas2DVisualization` base class provides:
 | **Onix** | Team | Pulsating gradient circle with ONIXLabs brand colors in stroke, rotating trail effect with zoom, inner white circle pulsates to bass/kick drums with black stroked edge | Pre-computed trig lookup tables, flat typed arrays, reuses trail/temp canvases |
 | **Classic** | Waves | Oscilloscope-style waveform with glow effect | — |
 | **Flare** | Waves | Dual blue/red horizontal waveforms with tunnel zoom effect | Cached temp canvas |
-| **Flux** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum, additive blending for overlapping trails | Cached color values with hue threshold, separate trail canvases with lighter compositing |
+| **Infinity** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum, additive blending for overlapping trails | Cached color values with hue threshold, separate trail canvases with lighter compositing |
 | **Neon** | Waves | Rotating cyan/magenta waveforms with tunnel zoom | Cached temp canvas |
 
 ---
@@ -544,7 +544,7 @@ The `Canvas2DVisualization` base class provides:
 | Issue | Location | Fix Applied |
 |-------|----------|-------------|
 | MIDI Parsing Infinite Loop Risk | unified-media-server.ts:277-281 | Added 4-byte max limit per MIDI spec. |
-| Missing 'flux' and 'onix' Visualizations in Menu | application-menu.ts | Added all visualizations organized by category. |
+| Missing 'infinity' and 'onix' Visualizations in Menu | application-menu.ts | Added all visualizations organized by category. |
 | Shuffle/Repeat Menu Checkboxes Never Update | application-menu.ts | Added callback mechanism to sync state. |
 | Unsafe JSON.parse Without Validation | electron.service.ts | Added `safeParseJSON<T>()` helper with try-catch and fallback values. |
 | Unsafe Type Assertions on Event Targets | configuration-view.ts, layout-controls.ts | Added `getInputValue()` and `getSelectValue()` helpers with instanceof checks. |
@@ -664,7 +664,7 @@ Full `playlist:updated` is now only sent on initial SSE connection.
 | Spectre | Pre-calculated bar heights and positions for main and glow passes |
 | Pulsar | Reuses trail/temp canvases, pre-allocated point arrays, cached HSL→RGB colors |
 | Water | Reuses canvases, caches background gradient, pre-allocated arrays |
-| Flux | Cached color values with hue threshold to avoid per-frame string generation |
+| Infinity | Cached color values with hue threshold to avoid per-frame string generation |
 | Onix | Pre-computed trig lookup tables, flat typed arrays, cached bass calculation |
 
 ### UHD/4K Video Streaming Optimizations
@@ -832,7 +832,7 @@ npm run dev
 | Pattern | Files | Lines |
 |---------|-------|-------|
 | Skip forward/backward button logic | layout-controls.ts, miniplayer-controls.ts | ~30 |
-| Canvas trail initialization | pulsar, water, flux visualizations | ~60 |
+| Canvas trail initialization | pulsar, water, infinity visualizations | ~60 |
 | Event handler patterns (onDragOver/Leave) | 4 components | ~80 |
 | Transport control methods | layout-controls.ts, miniplayer-controls.ts | ~40 |
 

@@ -1,5 +1,5 @@
 /**
- * @fileoverview Flux visualization with dual circular waveforms.
+ * @fileoverview Infinity visualization with dual circular waveforms.
  *
  * Creates a hypnotic effect with two circular waveforms (blue and green)
  * that orbit around each other like binary black holes. Each circle fades
@@ -12,19 +12,19 @@
  * - Vivid blue and green color scheme
  * - Each waveform has glow, main, and highlight layers
  *
- * @module app/components/audio/audio-outlet/visualizations/flux-visualization
+ * @module app/components/audio/audio-outlet/visualizations/infinity-visualization
  */
 
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 /**
- * Flux visualization with dual circular waveforms fading in opposite directions.
+ * Infinity visualization with dual circular waveforms fading in opposite directions.
  *
  * Renders two circular waveforms (blue and green) side by side, with trails
  * that extend outward from the center.
  */
-export class FluxVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Flux';
+export class InfinityVisualization extends Canvas2DVisualization {
+  public readonly name: string = 'Infinity';
   public readonly category: string = 'Waves';
 
   private readonly FADE_RATE: number = 0.025;

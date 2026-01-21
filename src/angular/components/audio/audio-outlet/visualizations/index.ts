@@ -29,7 +29,7 @@ export {FlareVisualization} from './flare-visualization';
 export {NeonVisualization} from './neon-visualization';
 export {PulsarVisualization} from './pulsar-visualization';
 export {WaterVisualization} from './water-visualization';
-export {FluxVisualization} from './flux-visualization';
+export {InfinityVisualization} from './infinity-visualization';
 export {OnixVisualization} from './onix-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
@@ -40,7 +40,7 @@ import {FlareVisualization} from './flare-visualization';
 import {NeonVisualization} from './neon-visualization';
 import {PulsarVisualization} from './pulsar-visualization';
 import {WaterVisualization} from './water-visualization';
-import {FluxVisualization} from './flux-visualization';
+import {InfinityVisualization} from './infinity-visualization';
 import {OnixVisualization} from './onix-visualization';
 
 /**
@@ -55,7 +55,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   neon: NeonVisualization,
   pulsar: PulsarVisualization,
   water: WaterVisualization,
-  flux: FluxVisualization,
+  infinity: InfinityVisualization,
   onix: OnixVisualization,
 };
 
@@ -71,7 +71,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   neon: {name: 'Neon', category: 'Waves'},
   pulsar: {name: 'Pulsar', category: 'Science'},
   water: {name: 'Record', category: 'Science'},
-  flux: {name: 'Flux', category: 'Waves'},
+  infinity: {name: 'Infinity', category: 'Waves'},
   onix: {name: 'Onix', category: 'Team'},
 };
 
@@ -110,7 +110,7 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  * - Bars: bars, tether
  * - Science: pulsar, water
  * - Team: onix
- * - Waves: flare, flux, neon, waveform
+ * - Waves: flare, infinity, neon, waveform
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars
@@ -120,5 +120,5 @@ export const VISUALIZATION_TYPES: string[] = [
   // Team
   'onix',
   // Waves
-  'tunnel', 'flux', 'neon', 'waveform',
+  'tunnel', 'infinity', 'neon', 'waveform',
 ];
