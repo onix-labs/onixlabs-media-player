@@ -525,12 +525,6 @@ class Program {
       });
 
       Promise.race([fadePromise, timeout]).then((): void => {
-        // On macOS, clear the playlist when window closes (app stays running)
-        if (process.platform === 'darwin') {
-          this.mediaServer?.clearPlaylist();
-        }
-
-        // Now actually close the window
         this.window?.destroy();
       });
     });
@@ -632,15 +626,10 @@ class Program {
 
   /**
    * Handles all windows closed event.
-   *
-   * Behavior:
-   * - Development mode: Always quit (faster iteration)
-   * - macOS production: Stay running (standard macOS behavior)
-   * - Other platforms: Quit the application
+   * Quits the application on all platforms.
    */
   private onAllWindowsClosed(): void {
-    if (Program.IS_DEVELOPMENT || process.platform !== "darwin")
-      app.quit();
+    app.quit();
   }
 }
 
