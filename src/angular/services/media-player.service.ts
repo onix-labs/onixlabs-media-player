@@ -220,8 +220,8 @@ export class MediaPlayerService implements OnDestroy {
   /**
    * Opens file picker and adds selected files to playlist.
    *
-   * If the playlist was empty before adding files, automatically
-   * starts playback of the first added file.
+   * Always selects and plays the first added file, regardless of
+   * whether the playlist was empty.
    *
    * @example
    * // Called from an "Open" button
@@ -231,14 +231,12 @@ export class MediaPlayerService implements OnDestroy {
     const files: string[] = await this.electron.openFileDialog(true);
     if (files.length === 0) return;
 
-    const wasEmpty: boolean = this.isEmpty();
-
     // Server will probe files and add to playlist
-    await this.electron.addToPlaylist(files);
+    const result: {added: PlaylistItem[]} = await this.electron.addToPlaylist(files);
 
-    // If playlist was empty and we added files, auto-play first
-    if (wasEmpty && files.length > 0) {
-      await this.electron.play();
+    // Select and play the first added file
+    if (result.added.length > 0) {
+      await this.electron.selectTrack(result.added[0].id);
     }
   }
 
