@@ -544,6 +544,7 @@ The `Canvas2DVisualization` base class provides:
 | Shuffle/Repeat Menu Checkboxes Never Update | application-menu.ts | Added callback mechanism to sync state. |
 | Unsafe JSON.parse Without Validation | electron.service.ts | Added `safeParseJSON<T>()` helper with try-catch and fallback values. |
 | Unsafe Type Assertions on Event Targets | configuration-view.ts, layout-controls.ts | Added `getInputValue()` and `getSelectValue()` helpers with instanceof checks. |
+| Miniplayer View Mode String Mismatch | main.ts | Changed `'mini-player'` to `'miniplayer'` in 3 locations to match TypeScript type definitions. Window resized but UI didn't switch because `viewMode() === 'miniplayer'` check failed. |
 
 ### Code Duplication Eliminated
 
