@@ -394,6 +394,21 @@ export interface MediaPlayerAPI {
    * @returns Object containing electron, node, chrome, and v8 versions
    */
   getVersionInfo: () => {electron: string; node: string; chrome: string; v8: string};
+
+  /**
+   * Registers a callback for the prepare-for-close event.
+   * Called by main process when the window is about to close,
+   * allowing the renderer to fade out audio before the window is destroyed.
+   * @param callback - Function called with fade duration in milliseconds
+   * @returns Cleanup function to unregister the listener
+   */
+  onPrepareForClose: (callback: (fadeDuration: number) => void) => () => void;
+
+  /**
+   * Notifies the main process that the fade-out is complete.
+   * Should be called after fading out audio in response to onPrepareForClose.
+   */
+  notifyFadeOutComplete: () => void;
 }
 
 /**

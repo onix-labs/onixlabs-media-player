@@ -109,17 +109,23 @@ class Program {
   /** The port the media server is running on */
   private serverPort: number = 0;
 
-  /** Stored desktop window bounds for restoring when exiting miniplayer */
+  /** Stored desktop window bounds for restoring when exiting mini-player */
   private desktopBounds: Electron.Rectangle | null = null;
 
-  /** Whether the window is currently in miniplayer mode */
-  private isInMiniplayerMode: boolean = false;
+  /** Whether the window is currently in mini-player mode */
+  private isInMiniPlayerMode: boolean = false;
 
   /** Snap threshold in pixels for magnetic edge snapping */
   private readonly SNAP_THRESHOLD: number = 40;
 
   /** Gap in pixels between window and screen edge when snapped */
   private readonly SNAP_GAP: number = 10;
+
+  /** Whether the window is currently closing (to prevent re-entry) */
+  private isClosing: boolean = false;
+
+  /** Duration for audio fade-out before window close (milliseconds) */
+  private readonly CLOSE_FADE_DURATION: number = 150;
 
   /**
    * Private constructor - use Program.run() to start the application.
@@ -239,6 +245,7 @@ class Program {
       height: 800,
       minWidth: 800,
       minHeight: 600,
+      center: true,
       icon: iconPath,
       titleBarStyle: "hiddenInset",
       trafficLightPosition: {x: 12, y: 13},
@@ -332,12 +339,12 @@ class Program {
       // Store current bounds for restoration (after exiting fullscreen)
       this.desktopBounds = this.window.getBounds();
 
-      // Set miniplayer constraints
+      // Set mini-player constraints
       this.window.setMinimumSize(320, 200);
       this.window.setMaximumSize(640, 400);
       this.window.setAlwaysOnTop(true, 'floating');
 
-      // Try to restore saved miniplayer bounds, otherwise use default position
+      // Try to restore saved mini-player bounds, otherwise use default position
       const savedBounds: WindowBounds | null = this.mediaServer?.getSettingsManager().getMiniplayerBounds() ?? null;
       if (savedBounds) {
         // Restore saved position and size (clamped to min/max constraints)
@@ -356,14 +363,14 @@ class Program {
         );
       }
 
-      this.isInMiniplayerMode = true;
-      this.window.webContents.send('window:viewModeChanged', 'miniplayer');
+      this.isInMiniPlayerMode = true;
+      this.window.webContents.send('window:viewModeChanged', 'mini-player');
     });
 
     ipcMain.handle("window:exitMiniplayer", (): void => {
       if (!this.window) return;
 
-      // Save current miniplayer bounds before exiting
+      // Save current mini-player bounds before exiting
       const currentBounds: Electron.Rectangle = this.window.getBounds();
       this.mediaServer?.getSettingsManager().setMiniplayerBounds({
         x: currentBounds.x,
@@ -385,13 +392,13 @@ class Program {
         this.window.setBounds(this.desktopBounds);
       }
 
-      this.isInMiniplayerMode = false;
+      this.isInMiniPlayerMode = false;
       this.window.webContents.send('window:viewModeChanged', 'desktop');
     });
 
     ipcMain.handle("window:getViewMode", (): string => {
       if (this.window?.isFullScreen()) return 'fullscreen';
-      if (this.isInMiniplayerMode) return 'miniplayer';
+      if (this.isInMiniPlayerMode) return 'mini-player';
       return 'desktop';
     });
 
@@ -437,9 +444,9 @@ class Program {
       this.window.setWindowButtonVisibility(visible);
     });
 
-    // Save miniplayer bounds (called after drag ends or resize)
+    // Save mini-player bounds (called after drag ends or resize)
     ipcMain.handle("window:saveMiniplayerBounds", (): void => {
-      if (!this.window || !this.isInMiniplayerMode) return;
+      if (!this.window || !this.isInMiniPlayerMode) return;
       const bounds: Electron.Rectangle = this.window.getBounds();
       this.mediaServer?.getSettingsManager().setMiniplayerBounds({
         x: bounds.x,
@@ -460,6 +467,45 @@ class Program {
   private setupWindowEvents(): void {
     if (!this.window) return;
 
+    // Handle window close - fade out audio and clear playlist on macOS
+    this.window.on('close', (event: Electron.Event): void => {
+      // Prevent re-entry while closing
+      if (this.isClosing) return;
+
+      // Prevent immediate close to allow fade-out
+      event.preventDefault();
+      this.isClosing = true;
+
+      // Request renderer to fade out audio, with timeout fallback
+      const fadePromise: Promise<void> = new Promise((resolve: () => void): void => {
+        // Listen for fade complete response
+        const onFadeComplete: () => void = (): void => {
+          ipcMain.removeHandler('app:fadeOutComplete');
+          resolve();
+        };
+
+        ipcMain.handleOnce('app:fadeOutComplete', onFadeComplete);
+
+        // Tell renderer to start fading out
+        this.window?.webContents.send('app:prepareForClose', this.CLOSE_FADE_DURATION);
+      });
+
+      // Wait for fade to complete (with timeout)
+      const timeout: Promise<void> = new Promise((resolve: () => void): void => {
+        setTimeout(resolve, this.CLOSE_FADE_DURATION + 100);
+      });
+
+      Promise.race([fadePromise, timeout]).then((): void => {
+        // On macOS, clear the playlist when window closes (app stays running)
+        if (process.platform === 'darwin') {
+          this.mediaServer?.clearPlaylist();
+        }
+
+        // Now actually close the window
+        this.window?.destroy();
+      });
+    });
+
     // Notify renderer when fullscreen state changes (including via green button)
     this.window.on('enter-full-screen', (): void => {
       this.window?.webContents.send('window:fullscreenChanged', true);
@@ -468,14 +514,14 @@ class Program {
 
     this.window.on('leave-full-screen', (): void => {
       this.window?.webContents.send('window:fullscreenChanged', false);
-      // Send the mode we're returning to (miniplayer or desktop)
-      const mode: string = this.isInMiniplayerMode ? 'miniplayer' : 'desktop';
+      // Send the mode we're returning to (mini-player or desktop)
+      const mode: string = this.isInMiniPlayerMode ? 'mini-player' : 'desktop';
       this.window?.webContents.send('window:viewModeChanged', mode);
     });
 
-    // Save miniplayer bounds when window is resized (in miniplayer mode)
+    // Save mini-player bounds when window is resized (in mini-player mode)
     this.window.on('resized', (): void => {
-      if (!this.isInMiniplayerMode) return;
+      if (!this.isInMiniPlayerMode) return;
       const bounds: Electron.Rectangle = this.window!.getBounds();
       this.mediaServer?.getSettingsManager().setMiniplayerBounds({
         x: bounds.x,
@@ -548,10 +594,11 @@ class Program {
 
   /**
    * Handles window closed event.
-   * Clears the window reference to allow garbage collection.
+   * Clears the window reference and resets closing state.
    */
   private onClosed(): void {
     this.window = null;
+    this.isClosing = false;
   }
 
   /**

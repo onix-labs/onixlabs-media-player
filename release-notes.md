@@ -46,7 +46,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 ### Key Architectural Decisions
 
 1. **Unified HTTP Server** - All media streaming, playback control, and settings managed through a single HTTP server with SSE for real-time updates
-2. **Minimal IPC** - Only 13 IPC channels (vs typical 50+ in Electron apps) by routing most communication through HTTP
+2. **Minimal IPC** - Only 15 IPC channels (vs typical 50+ in Electron apps) by routing most communication through HTTP
 3. **Signal-Based State** - Angular signals throughout for reactive, predictable state flow
 4. **OnPush Change Detection** - All components use OnPush strategy for optimal performance
 5. **Type-Safe Event Handling** - Helper functions with instanceof checks for runtime safety
@@ -144,6 +144,17 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Only visualization or video shown (no playlist, media bar, or header)
 - Fullscreen from miniplayer returns to miniplayer (not desktop) on exit
 - Entering miniplayer from fullscreen properly waits for fullscreen exit transition
+
+### Window Close Behavior
+
+- **Graceful audio fade-out**: When window closes, audio fades to zero over 150ms to prevent speaker pop
+  - Audio outlet uses Web Audio API `linearRampToValueAtTime()` for smooth fade
+  - Video outlet uses interval-based volume stepping
+  - Main process waits for fade completion (with timeout fallback) before destroying window
+- **macOS behavior**: When red traffic light closes window, app stays running (standard macOS behavior)
+  - Playlist is cleared and playback state reset to idle
+  - Reopening window (via dock click) starts fresh with empty playlist
+- **Windows/Linux behavior**: Closing window quits the application entirely
 
 ### UI Layout
 
@@ -245,9 +256,11 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
-│  IPC (minimal - 13 channels):                                          │
+│  IPC (minimal - 15 channels):                                          │
 │  ├── dialog:openFile         (native file picker)                      │
 │  ├── app:getServerPort       (get HTTP server port)                    │
+│  ├── app:prepareForClose     (signal renderer to fade out audio)       │
+│  ├── app:fadeOutComplete     (renderer signals fade complete)          │
 │  ├── webUtils:getPathForFile (drag-and-drop paths)                     │
 │  ├── window:enterFullscreen  (enter fullscreen mode)                   │
 │  ├── window:exitFullscreen   (exit fullscreen mode)                    │
@@ -433,7 +446,7 @@ The `Canvas2DVisualization` base class provides:
 | **Spectre** | Bars | Configurable frequency bars (96/192/288) with vertical mirroring, dark center gradient fading to bright green, smoke trail effect | Pre-calculated bar heights and positions |
 | **Pulsar** | Science | Pulsing concentric rings with curved waveforms | Reuses trail/temp canvases, pre-allocated point arrays, cached HSL→RGB colors |
 | **Record** | Science | Water ripple effect with rotating waveforms, bass-reactive rotation | Reuses canvases, caches background gradient, pre-allocated arrays |
-| **Onix** | Team | ONIXLabs logo with three concentric circles: outer waveform-modulated ring with brand gradient, middle static white ring, inner bass-pulsating black circle | Pre-computed trig lookup tables, flat typed arrays, cached bass calculation |
+| **Onix** | Team | ONIXLabs logo with three concentric circles: outer waveform-modulated ring with brand gradient and tunnel effect, middle waveform-modulated white ring with fade effect (no tunnel), inner bass-pulsating black circle | Pre-computed trig lookup tables, flat typed arrays, cached bass calculation, separate trail canvas for white ring |
 | **Classic** | Waves | Oscilloscope-style waveform with glow effect | — |
 | **Flare** | Waves | Dual blue/red horizontal waveforms with tunnel zoom effect | Cached temp canvas |
 | **Flux** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum | Cached color values with hue threshold |

@@ -1100,6 +1100,29 @@ export class UnifiedMediaServer {
     return this.settings;
   }
 
+  /**
+   * Clears the playlist and resets playback state.
+   *
+   * Used by main.ts to clear playlist when window closes on macOS.
+   * Also resets playback to idle state to prevent stale state on window reopen.
+   */
+  public clearPlaylist(): void {
+    // Stop playback and reset state
+    this.playback.state = 'idle';
+    this.playback.currentTime = 0;
+    this.playback.duration = 0;
+    this.playback.currentMedia = null;
+    this.playback.errorMessage = null;
+    this.stopTimeTracking();
+
+    // Clear the playlist
+    this.playlist.clear();
+
+    // Broadcast the reset state
+    this.broadcastState();
+    this.broadcastTime();
+  }
+
   // ============================================================================
   // HTTP Request Router
   // ============================================================================

@@ -62,6 +62,14 @@ const api = {
         chrome: process.versions.chrome,
         v8: process.versions.v8,
     }),
+    onPrepareForClose: (callback) => {
+        const listener = (_event, fadeDuration) => callback(fadeDuration);
+        ipcRenderer.on('app:prepareForClose', listener);
+        return () => { ipcRenderer.removeListener('app:prepareForClose', listener); };
+    },
+    notifyFadeOutComplete: () => {
+        ipcRenderer.invoke('app:fadeOutComplete');
+    },
 };
 /**
  * Expose the API to the renderer process under window.mediaPlayer.
