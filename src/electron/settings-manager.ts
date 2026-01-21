@@ -31,7 +31,7 @@ import * as path from 'path';
  * - tunnel: TunnelVisualization (dual waveforms with zoom)
  * - neon: NeonVisualization (rotating cyan/magenta waveforms)
  * - pulsar: PulsarVisualization (pulsing concentric rings, space category)
- * - water: WaterVisualization (water ripple effect, ambience category)
+ * - water: WaterVisualization (water ripple effect, waves category)
  * - infinity: InfinityVisualization (dual orbiting circles with spectrum cycling)
  */
 

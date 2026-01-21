@@ -29,7 +29,6 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     category: 'Science',
     items: [
       {id: 'pulsar', name: 'Pulsar'},
-      {id: 'water', name: 'Record'},
     ],
   },
   {
@@ -45,6 +44,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'tunnel', name: 'Flare'},
       {id: 'infinity', name: 'Infinity'},
       {id: 'neon', name: 'Neon'},
+      {id: 'water', name: 'Water'},
     ],
   },
 ];
