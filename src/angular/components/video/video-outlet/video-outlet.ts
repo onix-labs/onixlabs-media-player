@@ -134,9 +134,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Timestamp of the last seek operation (for debouncing) */
   private lastSeekTime: number = 0;
 
-  /** Timer ID for click/double-click disambiguation */
-  private clickTimer: ReturnType<typeof setTimeout> | null = null;
-
   /** Video event handlers (stored for cleanup) */
   private videoErrorHandler: (() => void) | null = null;
   private videoCanPlayHandler: (() => void) | null = null;
@@ -287,11 +284,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
     video.src = '';
     this.currentFilePath = null;
 
-    // Clear click timer
-    if (this.clickTimer) {
-      clearTimeout(this.clickTimer);
-    }
-
     // Remove event listeners
     if (this.videoErrorHandler) {
       video.removeEventListener('error', this.videoErrorHandler);
@@ -309,36 +301,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
   // ============================================================================
 
   /**
-   * Handles single-click to toggle play/pause.
-   * Uses a timer to distinguish from double-click (which toggles fullscreen).
-   * In miniplayer mode, click handling is done by the root component to avoid
-   * conflicts with window dragging.
-   */
-  public onClick(): void {
-    // In miniplayer mode, root component handles click-to-play/pause
-    // (to distinguish from drag-to-move)
-    if (this.electron.viewMode() === 'miniplayer') return;
-
-    // If there's already a pending click, this is part of a double-click - ignore
-    if (this.clickTimer) return;
-
-    // Set a timer - if no double-click within 200ms, toggle play/pause
-    this.clickTimer = setTimeout((): void => {
-      this.clickTimer = null;
-      void this.mediaPlayer.togglePlayPause();
-    }, 200);
-  }
-
-  /**
    * Toggles fullscreen mode on double-click.
-   * Cancels the single-click play/pause action.
    */
   public onDoubleClick(): void {
-    // Cancel the pending single-click action
-    if (this.clickTimer) {
-      clearTimeout(this.clickTimer);
-      this.clickTimer = null;
-    }
     void this.electron.toggleFullscreen();
   }
 

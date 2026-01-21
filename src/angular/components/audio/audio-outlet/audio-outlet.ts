@@ -146,9 +146,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Animation frame ID for the visualization loop */
   private animationId: number | null = null;
 
-  /** Timer ID for click/double-click disambiguation */
-  private clickTimer: ReturnType<typeof setTimeout> | null = null;
-
   /** Timestamp of last frame render (for frame rate limiting) */
   private lastFrameTime: number = 0;
 
@@ -403,9 +400,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
     }
-    if (this.clickTimer) {
-      clearTimeout(this.clickTimer);
-    }
     this.visualization?.destroy();
     if (this.audioContext) {
       this.audioContext.close();
@@ -422,36 +416,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
   // ============================================================================
 
   /**
-   * Handles single-click to toggle play/pause.
-   * Uses a timer to distinguish from double-click (which toggles fullscreen).
-   * In miniplayer mode, click handling is done by the root component to avoid
-   * conflicts with window dragging.
-   */
-  public onClick(): void {
-    // In miniplayer mode, root component handles click-to-play/pause
-    // (to distinguish from drag-to-move)
-    if (this.electron.viewMode() === 'miniplayer') return;
-
-    // If there's already a pending click, this is part of a double-click - ignore
-    if (this.clickTimer) return;
-
-    // Set a timer - if no double-click within 200ms, toggle play/pause
-    this.clickTimer = setTimeout((): void => {
-      this.clickTimer = null;
-      void this.mediaPlayer.togglePlayPause();
-    }, 200);
-  }
-
-  /**
    * Toggles fullscreen mode on double-click.
-   * Cancels the single-click play/pause action.
    */
   public onDoubleClick(): void {
-    // Cancel the pending single-click action
-    if (this.clickTimer) {
-      clearTimeout(this.clickTimer);
-      this.clickTimer = null;
-    }
     void this.electron.toggleFullscreen();
   }
 

@@ -118,7 +118,6 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 ### Fullscreen Mode
 
 - Fullscreen button in playback controls bar (or macOS green traffic light)
-- Single-click visualization or video to toggle play/pause
 - Double-click visualization or video to toggle fullscreen
 - Escape key exits fullscreen
 - Audio fullscreen: only visualization visible (no controls or toggles)
