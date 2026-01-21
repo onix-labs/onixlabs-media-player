@@ -455,7 +455,7 @@ The `Canvas2DVisualization` base class provides:
 | **Onix** | Team | Pulsating gradient circle with ONIXLabs brand colors in stroke, rotating trail effect with zoom, inner white circle pulsates to bass/kick drums with black stroked edge | Pre-computed trig lookup tables, flat typed arrays, reuses trail/temp canvases |
 | **Classic** | Waves | Oscilloscope-style waveform with glow effect | — |
 | **Flare** | Waves | Dual blue/red horizontal waveforms with tunnel zoom effect | Cached temp canvas |
-| **Flux** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum | Cached color values with hue threshold |
+| **Flux** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum, additive blending for overlapping trails | Cached color values with hue threshold, separate trail canvases with lighter compositing |
 | **Neon** | Waves | Rotating cyan/magenta waveforms with tunnel zoom | Cached temp canvas |
 
 ---
