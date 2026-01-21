@@ -449,7 +449,7 @@ The `Canvas2DVisualization` base class provides:
 | **Classic** | Waves | Oscilloscope-style waveform with glow effect | — |
 | **Flare** | Waves | Dual horizontal waveforms at 1/3 and 2/3 positions, colors cycle through spectrum, trails expand from center with zoom effect, additive blending | Fixed 128 points, separate trail canvases, pre-allocated point arrays, cached color values |
 | **Infinity** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum, additive blending for overlapping trails | Cached color values with hue threshold, separate trail canvases with lighter compositing |
-| **Neon** | Waves | Rotating cyan/magenta waveforms with tunnel zoom | Cached temp canvas |
+| **Neon** | Waves | Rotating cross pattern with cyan horizontal and magenta vertical waveforms intersecting at center, trails expand outward with zoom effect | Pre-allocated point arrays, point-based rotation for seamless spin |
 | **Onix** | Waves | Pulsating gradient circle with ONIXLabs brand colors in stroke, rotating trail effect with zoom, inner white circle pulsates to bass/kick drums with black stroked edge | Pre-computed trig lookup tables, flat typed arrays, reuses trail/temp canvases |
 | **Pulsar** | Waves | Pulsing concentric rings with curved waveforms | Reuses trail/temp canvases, pre-allocated point arrays, cached HSL→RGB colors |
 | **Water** | Waves | Water ripple effect with rotating waveforms, bass-reactive rotation | Reuses canvases, caches background gradient, pre-allocated arrays |
