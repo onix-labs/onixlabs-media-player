@@ -31,8 +31,8 @@ import {Canvas2DVisualization, VisualizationConfig} from './visualization';
  * direction that changes based on bass transients in the audio.
  */
 export class WaterVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Record';
-  public readonly category: string = 'Science';
+  public readonly name: string = 'Water';
+  public readonly category: string = 'Waves';
 
   private readonly ROTATION_SPEED: number = 0.009;
   private readonly FADE_RATE: number = 0.008;
