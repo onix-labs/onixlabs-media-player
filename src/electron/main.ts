@@ -364,7 +364,7 @@ class Program {
       }
 
       this.isInMiniPlayerMode = true;
-      this.window.webContents.send('window:viewModeChanged', 'mini-player');
+      this.window.webContents.send('window:viewModeChanged', 'miniplayer');
     });
 
     ipcMain.handle("window:exitMiniplayer", (): void => {
@@ -398,7 +398,7 @@ class Program {
 
     ipcMain.handle("window:getViewMode", (): string => {
       if (this.window?.isFullScreen()) return 'fullscreen';
-      if (this.isInMiniPlayerMode) return 'mini-player';
+      if (this.isInMiniPlayerMode) return 'miniplayer';
       return 'desktop';
     });
 
@@ -514,8 +514,8 @@ class Program {
 
     this.window.on('leave-full-screen', (): void => {
       this.window?.webContents.send('window:fullscreenChanged', false);
-      // Send the mode we're returning to (mini-player or desktop)
-      const mode: string = this.isInMiniPlayerMode ? 'mini-player' : 'desktop';
+      // Send the mode we're returning to (miniplayer or desktop)
+      const mode: string = this.isInMiniPlayerMode ? 'miniplayer' : 'desktop';
       this.window?.webContents.send('window:viewModeChanged', mode);
     });
 
