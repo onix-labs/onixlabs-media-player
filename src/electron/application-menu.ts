@@ -26,12 +26,6 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     ],
   },
   {
-    category: 'Science',
-    items: [
-      {id: 'pulsar', name: 'Pulsar'},
-    ],
-  },
-  {
     category: 'Waves',
     items: [
       {id: 'waveform', name: 'Classic'},
@@ -39,6 +33,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'infinity', name: 'Infinity'},
       {id: 'neon', name: 'Neon'},
       {id: 'onix', name: 'Onix'},
+      {id: 'pulsar', name: 'Pulsar'},
       {id: 'water', name: 'Water'},
     ],
   },

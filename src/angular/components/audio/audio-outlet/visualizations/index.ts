@@ -14,7 +14,7 @@
  * - tether: Symmetrical waveform bars with smoke trail effect
  * - tunnel: Hypnotic tunnel/vortex effect
  * - neon: Glowing neon ring visualization
- * - pulsar: Pulsing concentric rings with curved waveforms (space category)
+ * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
  * - water: Water ripple effect with rotating waveforms (waves category)
  *
  * @module app/components/audio/audio-outlet/visualizations
@@ -69,7 +69,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   tether: {name: 'Spectre', category: 'Bars'},
   tunnel: {name: 'Flare', category: 'Waves'},
   neon: {name: 'Neon', category: 'Waves'},
-  pulsar: {name: 'Pulsar', category: 'Science'},
+  pulsar: {name: 'Pulsar', category: 'Waves'},
   water: {name: 'Water', category: 'Waves'},
   infinity: {name: 'Infinity', category: 'Waves'},
   onix: {name: 'Onix', category: 'Waves'},
@@ -108,14 +108,11 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  *
  * Categories (in order):
  * - Bars: bars, tether
- * - Science: pulsar
- * - Waves: flare, infinity, neon, onix, water, waveform
+ * - Waves: flare, infinity, neon, onix, pulsar, water, waveform
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars
   'bars', 'tether',
-  // Science
-  'pulsar',
   // Waves
-  'tunnel', 'infinity', 'neon', 'onix', 'water', 'waveform',
+  'tunnel', 'infinity', 'neon', 'onix', 'pulsar', 'water', 'waveform',
 ];
