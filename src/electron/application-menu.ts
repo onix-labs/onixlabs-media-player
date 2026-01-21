@@ -32,18 +32,13 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     ],
   },
   {
-    category: 'Team',
-    items: [
-      {id: 'onix', name: 'Onix'},
-    ],
-  },
-  {
     category: 'Waves',
     items: [
       {id: 'waveform', name: 'Classic'},
       {id: 'tunnel', name: 'Flare'},
       {id: 'infinity', name: 'Infinity'},
       {id: 'neon', name: 'Neon'},
+      {id: 'onix', name: 'Onix'},
       {id: 'water', name: 'Water'},
     ],
   },

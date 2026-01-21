@@ -72,7 +72,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   pulsar: {name: 'Pulsar', category: 'Science'},
   water: {name: 'Water', category: 'Waves'},
   infinity: {name: 'Infinity', category: 'Waves'},
-  onix: {name: 'Onix', category: 'Team'},
+  onix: {name: 'Onix', category: 'Waves'},
 };
 
 /**
@@ -109,16 +109,13 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  * Categories (in order):
  * - Bars: bars, tether
  * - Science: pulsar
- * - Team: onix
- * - Waves: flare, infinity, neon, water, waveform
+ * - Waves: flare, infinity, neon, onix, water, waveform
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars
   'bars', 'tether',
   // Science
   'pulsar',
-  // Team
-  'onix',
   // Waves
-  'tunnel', 'infinity', 'neon', 'water', 'waveform',
+  'tunnel', 'infinity', 'neon', 'onix', 'water', 'waveform',
 ];

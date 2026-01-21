@@ -52,7 +52,7 @@ const ONIX_COLORS_FLAT: Uint8Array = new Uint8Array([
  */
 export class OnixVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Onix';
-  public readonly category: string = 'Team';
+  public readonly category: string = 'Waves';
 
   private readonly ROTATION_SPEED: number = 0.009;
   private readonly WAVEFORM_ROTATION_SPEED: number = 0.015;

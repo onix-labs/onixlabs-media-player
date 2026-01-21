@@ -229,12 +229,11 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'tether', label: 'Bars : Spectre', description: 'Mirrored frequency bars with smoke effect'},
   // Science category
   {value: 'pulsar', label: 'Science : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
-  // Team category
-  {value: 'onix', label: 'Team : Onix', description: 'ONIXLabs logo with pulsating rings'},
   // Waves category
   {value: 'tunnel', label: 'Waves : Flare', description: 'Dual blue/red waveforms with tunnel zoom'},
   {value: 'infinity', label: 'Waves : Infinity', description: 'Dual orbiting circles with spectrum cycling'},
   {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
+  {value: 'onix', label: 'Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
   {value: 'water', label: 'Waves : Water', description: 'Water ripple effect with rotating waveforms'},
   {value: 'waveform', label: 'Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
 ];
