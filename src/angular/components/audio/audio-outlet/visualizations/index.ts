@@ -25,7 +25,7 @@ export type {VisualizationConfig} from './visualization';
 export {AnalyzerVisualization} from './analyzer-visualization';
 export {WaveformVisualization} from './waveform-visualization';
 export {SpectreVisualization} from './spectre-visualization';
-export {FlareVisualization} from './flare-visualization';
+export {PlasmaVisualization} from './plasma-visualization';
 export {NeonVisualization} from './neon-visualization';
 export {PulsarVisualization} from './pulsar-visualization';
 export {WaterVisualization} from './water-visualization';
@@ -36,7 +36,7 @@ import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
 import {WaveformVisualization} from './waveform-visualization';
 import {SpectreVisualization} from './spectre-visualization';
-import {FlareVisualization} from './flare-visualization';
+import {PlasmaVisualization} from './plasma-visualization';
 import {NeonVisualization} from './neon-visualization';
 import {PulsarVisualization} from './pulsar-visualization';
 import {WaterVisualization} from './water-visualization';
@@ -51,7 +51,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   bars: AnalyzerVisualization,
   waveform: WaveformVisualization,
   tether: SpectreVisualization,
-  tunnel: FlareVisualization,
+  tunnel: PlasmaVisualization,
   neon: NeonVisualization,
   pulsar: PulsarVisualization,
   water: WaterVisualization,
@@ -67,7 +67,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   bars: {name: 'Analyzer', category: 'Bars'},
   waveform: {name: 'Classic', category: 'Waves'},
   tether: {name: 'Spectre', category: 'Bars'},
-  tunnel: {name: 'Flare', category: 'Waves'},
+  tunnel: {name: 'Plasma', category: 'Waves'},
   neon: {name: 'Neon', category: 'Waves'},
   pulsar: {name: 'Pulsar', category: 'Waves'},
   water: {name: 'Water', category: 'Waves'},
@@ -108,7 +108,7 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  *
  * Categories (in order):
  * - Bars: bars, tether
- * - Waves: flare, infinity, neon, onix, pulsar, water, waveform
+ * - Waves: plasma, infinity, neon, onix, pulsar, water, waveform
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars

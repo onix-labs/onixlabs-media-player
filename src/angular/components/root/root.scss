@@ -5,7 +5,7 @@
   min-height: 0;
   overflow: hidden;
 
-  // Hide cursor when controls are auto-hidden in fullscreen/miniplayer video mode
+  // Hide cursor when controls are auto-hidden in fullscreen/miniplayer mode
   &.cursor-hidden {
     cursor: none;
 

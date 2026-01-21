@@ -97,11 +97,10 @@ export class Root implements OnDestroy {
    *
    * Cursor is hidden when:
    * - In fullscreen or miniplayer mode
-   * - AND viewing video content
    * - AND controls are currently hidden
    */
   public readonly cursorHidden: ReturnType<typeof computed<boolean>> = computed((): boolean => {
-    return (this.isFullscreen() || this.isMiniplayer()) && this.isVideo() && !this.showControls();
+    return (this.isFullscreen() || this.isMiniplayer()) && !this.showControls();
   });
 
   /** Whether the configuration view is displayed (settings mode) */

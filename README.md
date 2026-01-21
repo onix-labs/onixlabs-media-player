@@ -23,7 +23,7 @@ Play your music with stunning real-time visualizations. ONIXPlayer supports MP3,
 - **Record** — Water ripple effect with rotating waveforms
 - **Onix** — The ONIXLabs logo brought to life
 - **Classic** — Oscilloscope-style waveform
-- **Flare** — Dual waveforms with flare
+- **Plasma** — Dual waveforms with plasma effect
 - **Flux** — Orbiting circles with rainbow spectrum
 - **Neon** — Rotating waveforms with a neon glow
 

@@ -61,8 +61,8 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Frequency visualizations via Web Audio API (`createMediaElementSource()`)
 - 9 visualization modes sorted by category:
   - **Bars**: Analyzer, Spectre
-  - **Waves**: Classic, Flare, Infinity, Neon, Onix, Pulsar, Water
-- Visualization names display with category prefix (e.g., "Waves : Flare")
+  - **Waves**: Classic, Plasma, Infinity, Neon, Onix, Pulsar, Water
+- Visualization names display with category prefix (e.g., "Waves : Plasma")
 - Volume-independent visualizations with configurable settings:
   - Sensitivity (default 25%) - controls audio reactivity
   - Max frame rate cap (uncapped, 60/30/15 FPS)
@@ -122,7 +122,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Audio fullscreen: only visualization visible (no controls or toggles)
 - Video fullscreen: clean video view with floating controls
 - Floating playback controls appear on mouse movement, hide after configurable delay (default 5s)
-- **Cursor auto-hide**: Mouse cursor hides with controls in video fullscreen/miniplayer, reappears on movement
+- **Cursor auto-hide**: Mouse cursor hides with controls in fullscreen/miniplayer (both audio and video), reappears on movement
 - Gradient overlay for floating controls at bottom of screen
 
 ### Miniplayer Mode
@@ -447,7 +447,7 @@ The `Canvas2DVisualization` base class provides:
 | **Analyzer** | Bars | Configurable frequency bars (48/96/144) with green-yellow-red gradient | — |
 | **Spectre** | Bars | Configurable frequency bars (96/192/288) with vertical mirroring, dark center gradient fading to bright green, smoke trail effect | Pre-calculated bar heights and positions |
 | **Classic** | Waves | Oscilloscope-style waveform with glow effect | — |
-| **Flare** | Waves | Dual horizontal waveforms at 1/3 and 2/3 positions, colors cycle through spectrum, trails expand from center with zoom effect, additive blending | Fixed 128 points, separate trail canvases, pre-allocated point arrays, cached color values |
+| **Plasma** | Waves | Dual horizontal waveforms at 45% and 55% positions, colors cycle through spectrum, trails expand from center with zoom effect, additive blending | Fixed 128 points, separate trail canvases, pre-allocated point arrays, cached color values |
 | **Infinity** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum, additive blending for overlapping trails | Cached color values with hue threshold, separate trail canvases with lighter compositing |
 | **Neon** | Waves | Rotating cross pattern with cyan horizontal and magenta vertical waveforms intersecting at center, trails expand outward with zoom effect | Pre-allocated point arrays, point-based rotation for seamless spin |
 | **Onix** | Waves | Pulsating gradient circle with ONIXLabs brand colors in stroke, rotating trail effect with zoom, inner white circle pulsates to bass/kick drums with black stroked edge | Pre-computed trig lookup tables, flat typed arrays, reuses trail/temp canvases |
@@ -634,7 +634,7 @@ private async readBody(request: IncomingMessage): Promise<string> {
 
 ### Canvas Allocation
 
-**Issue**: Temporary canvas creation per frame in flare-visualization.ts and neon-visualization.ts
+**Issue**: Temporary canvas creation per frame in plasma-visualization.ts and neon-visualization.ts
 
 **Fix**: Added cached `tempCanvas` and `tempCtx` fields, initialized in constructor, resized in `onResize()`, reused in `applyZoomEffect()`.
 
