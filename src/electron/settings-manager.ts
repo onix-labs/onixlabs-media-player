@@ -32,7 +32,7 @@ import * as path from 'path';
  * - neon: NeonVisualization (rotating cyan/magenta waveforms)
  * - pulsar: PulsarVisualization (pulsing concentric rings, space category)
  * - water: WaterVisualization (water ripple effect, ambience category)
- * - flux: FluxVisualization (dual orbiting circles with spectrum cycling)
+ * - infinity: InfinityVisualization (dual orbiting circles with spectrum cycling)
  */
 
 /**
@@ -340,7 +340,7 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'neon',
   'pulsar',
   'water',
-  'flux',
+  'infinity',
   'onix',
 ];
 

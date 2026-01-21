@@ -43,7 +43,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     items: [
       {id: 'waveform', name: 'Classic'},
       {id: 'tunnel', name: 'Flare'},
-      {id: 'flux', name: 'Flux'},
+      {id: 'infinity', name: 'Infinity'},
       {id: 'neon', name: 'Neon'},
     ],
   },

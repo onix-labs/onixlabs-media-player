@@ -28,7 +28,7 @@ import {ElectronService} from './electron.service';
  * - neon: Rotating cyan/magenta waveforms
  * - pulsar: Pulsing concentric rings with curved waveforms (space category)
  * - water: Water ripple effect with rotating waveforms (ambience category)
- * - flux: Dual orbiting circles with spectrum cycling
+ * - infinity: Dual orbiting circles with spectrum cycling
  */
 
 /**
@@ -234,7 +234,7 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'onix', label: 'Team : Onix', description: 'ONIXLabs logo with pulsating rings'},
   // Waves category
   {value: 'tunnel', label: 'Waves : Flare', description: 'Dual blue/red waveforms with tunnel zoom'},
-  {value: 'flux', label: 'Waves : Flux', description: 'Dual orbiting circles with spectrum cycling'},
+  {value: 'infinity', label: 'Waves : Infinity', description: 'Dual orbiting circles with spectrum cycling'},
   {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'waveform', label: 'Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
 ];

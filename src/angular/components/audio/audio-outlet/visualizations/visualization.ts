@@ -89,7 +89,7 @@ export abstract class Visualization {
   /**
    * Trail intensity controls how long visual trails persist (0-1, default 0.5).
    * 0 = fast fade (minimal trails), 1 = slow fade (long trails).
-   * Only affects visualizations with trail effects (Tunnel, Pulsar, Water, Flux).
+   * Only affects visualizations with trail effects (Tunnel, Pulsar, Water, Infinity).
    */
   protected trailIntensity: number = 0.5;
 
@@ -114,7 +114,7 @@ export abstract class Visualization {
 
   /**
    * Line width for waveform visualizations (1.0 - 5.0, default 2.0).
-   * Affects visualizations that draw lines (Waveform, Flare, Neon, Water, Flux).
+   * Affects visualizations that draw lines (Waveform, Flare, Neon, Water, Infinity).
    */
   protected lineWidth: number = 2.0;
 
