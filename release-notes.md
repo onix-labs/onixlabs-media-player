@@ -61,8 +61,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Frequency visualizations via Web Audio API (`createMediaElementSource()`)
 - 9 visualization modes sorted by category:
   - **Bars**: Analyzer, Spectre
-  - **Science**: Pulsar
-  - **Waves**: Classic, Flare, Infinity, Neon, Onix, Water
+  - **Waves**: Classic, Flare, Infinity, Neon, Onix, Pulsar, Water
 - Visualization names display with category prefix (e.g., "Waves : Flare")
 - Volume-independent visualizations with configurable settings:
   - Sensitivity (default 25%) - controls audio reactivity
@@ -171,7 +170,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 
 - Native menu bar for macOS (app menu), Windows/Linux (File menu)
 - **File menu**: Open (Cmd+O), Close (Cmd+W), with placeholders for URL, playlists, Save As
-- **View menu**: Full Screen toggle, Visualizations submenu (organized by category: Bars, Science, Waves), Options (settings)
+- **View menu**: Full Screen toggle, Visualizations submenu (organized by category: Bars, Waves), Options (settings)
 - **Playback menu**: Play/Pause (Space) with dynamic label, Shuffle/Repeat toggles
 - **Help menu**: About ONIXPlayer (opens About view), placeholders for Help Topics
 - Menu callbacks communicated via IPC to renderer for UI updates
@@ -447,12 +446,12 @@ The `Canvas2DVisualization` base class provides:
 |------|----------|-------------|---------------|
 | **Analyzer** | Bars | Configurable frequency bars (48/96/144) with green-yellow-red gradient | — |
 | **Spectre** | Bars | Configurable frequency bars (96/192/288) with vertical mirroring, dark center gradient fading to bright green, smoke trail effect | Pre-calculated bar heights and positions |
-| **Pulsar** | Science | Pulsing concentric rings with curved waveforms | Reuses trail/temp canvases, pre-allocated point arrays, cached HSL→RGB colors |
 | **Classic** | Waves | Oscilloscope-style waveform with glow effect | — |
 | **Flare** | Waves | Dual blue/red horizontal waveforms with tunnel zoom effect | Cached temp canvas |
 | **Infinity** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum, additive blending for overlapping trails | Cached color values with hue threshold, separate trail canvases with lighter compositing |
 | **Neon** | Waves | Rotating cyan/magenta waveforms with tunnel zoom | Cached temp canvas |
 | **Onix** | Waves | Pulsating gradient circle with ONIXLabs brand colors in stroke, rotating trail effect with zoom, inner white circle pulsates to bass/kick drums with black stroked edge | Pre-computed trig lookup tables, flat typed arrays, reuses trail/temp canvases |
+| **Pulsar** | Waves | Pulsing concentric rings with curved waveforms | Reuses trail/temp canvases, pre-allocated point arrays, cached HSL→RGB colors |
 | **Water** | Waves | Water ripple effect with rotating waveforms, bass-reactive rotation | Reuses canvases, caches background gradient, pre-allocated arrays |
 
 ---

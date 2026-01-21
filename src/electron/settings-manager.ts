@@ -30,7 +30,7 @@ import * as path from 'path';
  * - tether: SpectreVisualization (symmetrical bars with smoke effect)
  * - tunnel: TunnelVisualization (dual waveforms with zoom)
  * - neon: NeonVisualization (rotating cyan/magenta waveforms)
- * - pulsar: PulsarVisualization (pulsing concentric rings, space category)
+ * - pulsar: PulsarVisualization (pulsing concentric rings, waves category)
  * - water: WaterVisualization (water ripple effect, waves category)
  * - infinity: InfinityVisualization (dual orbiting circles with spectrum cycling)
  */
