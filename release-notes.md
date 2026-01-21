@@ -162,6 +162,10 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
   - Always visible when not in fullscreen (even with no media loaded)
 - **Playback controls**: Media title, transport controls, volume, fullscreen toggle
 - Track title displayed in playback controls (format: "Artist - Title" or just title)
+- **Window transparency**: Platform-native blur effects for modern appearance
+  - macOS: Vibrancy effect (`fullscreen-ui`) with hidden inset title bar
+  - Windows 11: Acrylic blur effect via `backgroundMaterial`
+  - Linux: Solid background (no native blur support in Electron)
 
 ### Application Menu
 

@@ -240,17 +240,14 @@ class Program {
       app.dock?.setIcon(iconPath);
     }
 
-    const window: BrowserWindow = new BrowserWindow({
+    // Build platform-specific window options
+    const baseOptions: Electron.BrowserWindowConstructorOptions = {
       width: 1200,
       height: 800,
       minWidth: 800,
       minHeight: 600,
       center: true,
       icon: iconPath,
-      titleBarStyle: "hiddenInset",
-      trafficLightPosition: {x: 12, y: 13},
-      vibrancy: "fullscreen-ui",
-      visualEffectState: "active",
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
@@ -259,6 +256,31 @@ class Program {
         zoomFactor: 1.0,
         webSecurity: true
       }
+    };
+
+    // Platform-specific transparency and window chrome options
+    const platformOptions: Electron.BrowserWindowConstructorOptions =
+      process.platform === 'darwin'
+        ? {
+            // macOS: native vibrancy with hidden title bar
+            titleBarStyle: 'hiddenInset',
+            trafficLightPosition: {x: 12, y: 13},
+            vibrancy: 'fullscreen-ui',
+            visualEffectState: 'active'
+          }
+        : process.platform === 'win32'
+          ? {
+              // Windows 11: acrylic blur effect
+              transparent: true,
+              backgroundMaterial: 'acrylic'
+            }
+          : {
+              // Linux: no native blur support
+            };
+
+    const window: BrowserWindow = new BrowserWindow({
+      ...baseOptions,
+      ...platformOptions
     });
 
     // Prevent zoom via keyboard shortcuts
