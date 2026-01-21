@@ -96,11 +96,12 @@ export class FluxVisualization extends Canvas2DVisualization {
     this.screenCenterX = width / 2;
     this.screenCenterY = height / 2;
 
-    // Orbit radius - distance from center to each circle
-    this.orbitRadius = width * 0.08;
+    // Circle size - larger for more visual impact
+    this.baseRadius = Math.min(width, height) * 0.18;
 
-    // Small circles
-    this.baseRadius = Math.min(width, height) * 0.12;
+    // Orbit radius - distance from center to each circle
+    // Set to base radius plus half the line width so circles are separated by the stroke width
+    this.orbitRadius = this.baseRadius + this.lineWidth;
 
     // Create/resize trail canvases
     if (!this.leftTrailCanvas) {
@@ -179,10 +180,13 @@ export class FluxVisualization extends Canvas2DVisualization {
     this.calculateCirclePoints(this.rightPoints, circle2X, circle2Y, amplitudeScale, this.CIRCLE_POINTS / 2);
     this.drawCircleWaveform(this.rightTrailCtx!, this.rightPoints, color2.main, color2.glow);
 
-    // Composite both trail canvases to main canvas
+    // Composite both trail canvases to main canvas with additive blending
+    // This makes overlapping trails mix together rather than one covering the other
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(this.leftTrailCanvas!, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
     ctx.drawImage(this.rightTrailCanvas!, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
 
     this.applyFadeOverlay();
   }
