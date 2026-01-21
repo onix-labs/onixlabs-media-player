@@ -545,6 +545,7 @@ The `Canvas2DVisualization` base class provides:
 | Unsafe JSON.parse Without Validation | electron.service.ts | Added `safeParseJSON<T>()` helper with try-catch and fallback values. |
 | Unsafe Type Assertions on Event Targets | configuration-view.ts, layout-controls.ts | Added `getInputValue()` and `getSelectValue()` helpers with instanceof checks. |
 | Miniplayer View Mode String Mismatch | main.ts | Changed `'mini-player'` to `'miniplayer'` in 3 locations to match TypeScript type definitions. Window resized but UI didn't switch because `viewMode() === 'miniplayer'` check failed. |
+| Video Playback Choppy During View Mode Transitions | unified-media-server.ts | Added FFmpeg parameters for real-time streaming: `-g 30` (keyframe every 30 frames), `-bf 0` (no B-frames), `-sc_threshold 0` (disable scene change keyframes). Default 250-frame GOP caused unpredictable fragment sizes and timing issues during miniplayer/fullscreen transitions, especially on UHD content. |
 
 ### Code Duplication Eliminated
 
