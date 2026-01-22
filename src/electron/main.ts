@@ -242,10 +242,10 @@ class Program {
 
     // Build platform-specific window options
     const baseOptions: Electron.BrowserWindowConstructorOptions = {
-      width: 1200,
-      height: 800,
-      minWidth: 800,
-      minHeight: 600,
+      width: 960,
+      height: 720,
+      minWidth: 640,
+      minHeight: 480,
       center: true,
       icon: iconPath,
       webPreferences: {
