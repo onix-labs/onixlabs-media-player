@@ -29,19 +29,11 @@
   padding: 0 1rem 1rem;
 }
 
-// Sidebar wrapper (contains sidebar + back button)
-.sidebar-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  height: 100%;
-}
-
 // Sidebar
 .configuration-sidebar {
   width: 192px;
   min-width: 192px;
-  flex: 1;
+  flex: none;
   display: flex;
   flex-direction: column;
   padding: 1rem;
@@ -151,33 +143,6 @@
     }
   }
 
-}
-
-// Back to Media Player button (outside sidebar)
-.back-button {
-  width: 192px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 0.8125rem;
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-
-  i {
-    font-size: 0.75rem;
-  }
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.2);
-    color: white;
-  }
 }
 
 // Settings panel

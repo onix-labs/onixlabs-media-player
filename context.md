@@ -46,7 +46,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 ### Key Architectural Decisions
 
 1. **Unified HTTP Server** - All media streaming, playback control, and settings managed through a single HTTP server with SSE for real-time updates
-2. **Minimal IPC** - Only 15 IPC channels (vs typical 50+ in Electron apps) by routing most communication through HTTP
+2. **Minimal IPC** - Only 16 IPC channels (vs typical 50+ in Electron apps) by routing most communication through HTTP
 3. **Signal-Based State** - Angular signals throughout for reactive, predictable state flow
 4. **OnPush Change Detection** - All components use OnPush strategy for optimal performance
 5. **Type-Safe Event Handling** - Helper functions with instanceof checks for runtime safety
@@ -261,11 +261,12 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
-│  IPC (minimal - 15 channels):                                          │
+│  IPC (minimal - 16 channels):                                          │
 │  ├── dialog:openFile         (native file picker)                      │
 │  ├── app:getServerPort       (get HTTP server port)                    │
 │  ├── app:prepareForClose     (signal renderer to fade out audio)       │
 │  ├── app:fadeOutComplete     (renderer signals fade complete)          │
+│  ├── app:setConfigurationMode (track settings view for close behavior) │
 │  ├── webUtils:getPathForFile (drag-and-drop paths)                     │
 │  ├── window:enterFullscreen  (enter fullscreen mode)                   │
 │  ├── window:exitFullscreen   (exit fullscreen mode)                    │
@@ -308,7 +309,7 @@ AudioContext.destination (speakers)
 ### Architecture Benefits
 
 1. **Unified playback** - Audio and video use same HTTP streaming approach
-2. **Minimal IPC** - Only 13 channels vs typical 50+ in Electron apps
+2. **Minimal IPC** - Only 16 channels vs typical 50+ in Electron apps
 3. **Server as source of truth** - Playlist and playback state managed centrally
 4. **Instant volume** - Client-side control via GainNode, no FFmpeg restart needed
 5. **Native browser decoding** - Leverages Chromium's optimized media stack
@@ -358,7 +359,7 @@ AudioContext.destination (speakers)
 | `src/angular/components/video/video-outlet/` | Video playback, transcoding support |
 | `src/angular/components/playlist/` | Playlist UI panel with drag-and-drop |
 | `src/angular/components/miniplayer/` | Miniplayer overlay controls |
-| `src/angular/components/configuration/configuration-view/` | Settings UI with accordion sidebar, per-visualization settings, and "Back to Media Player" button |
+| `src/angular/components/configuration/configuration-view/` | Settings UI with accordion sidebar, per-visualization settings; close button returns to player |
 | `src/angular/components/about/about-view/` | About dialog with version info and links |
 
 ### Shared Constants
@@ -471,6 +472,7 @@ The `Canvas2DVisualization` base class provides:
 - Atomic file writes (write to temp, then rename) prevent corruption
 - Real-time sync via SSE (`settings:updated` event)
 - Settings fetched on service init (handles missed initial SSE event)
+- **Close button behavior**: In settings view, the window close button (macOS red traffic light) returns to the media player instead of quitting the application
 
 ### Available Settings
 

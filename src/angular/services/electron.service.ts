@@ -138,6 +138,9 @@ export class ElectronService implements OnDestroy {
   /** Cleanup function for prepare-for-close listener */
   private prepareForCloseCleanup: (() => void) | null = null;
 
+  /** Cleanup function for exit-configuration-mode listener */
+  private exitConfigurationModeCleanup: (() => void) | null = null;
+
   // ============================================================================
   // Menu Event Signals - For components to react to menu actions
   // ============================================================================
@@ -156,6 +159,9 @@ export class ElectronService implements OnDestroy {
 
   /** Signal emitted when window is about to close - value is fade duration in ms (0 = no fade requested) */
   public readonly fadeOutRequested: ReturnType<typeof signal<number>> = signal<number>(0);
+
+  /** Signal emitted when close button is pressed in configuration mode - increments to trigger effect */
+  public readonly exitConfigurationModeRequested: ReturnType<typeof signal<number>> = signal<number>(0);
 
   /**
    * Registers a callback to receive settings updates from SSE.
@@ -237,6 +243,9 @@ export class ElectronService implements OnDestroy {
 
     // Setup prepare-for-close listener (for graceful audio fade-out)
     this.setupPrepareForCloseListener();
+
+    // Setup exit-configuration-mode listener (for close button in config mode)
+    this.setupExitConfigurationModeListener();
   }
 
   /**
@@ -428,6 +437,23 @@ export class ElectronService implements OnDestroy {
         setTimeout((): void => {
           this.api?.notifyFadeOutComplete();
         }, fadeDuration);
+      });
+    });
+  }
+
+  /**
+   * Sets up the exit-configuration-mode listener.
+   *
+   * When the close button is pressed while in configuration mode, the main
+   * process intercepts it and sends an event to tell the renderer to exit
+   * configuration mode instead of closing the window.
+   */
+  private setupExitConfigurationModeListener(): void {
+    if (!this.isElectron || !this.api) return;
+
+    this.exitConfigurationModeCleanup = this.api.onExitConfigurationMode((): void => {
+      this.ngZone.run((): void => {
+        this.exitConfigurationModeRequested.update((v: number): number => v + 1);
       });
     });
   }
@@ -799,6 +825,20 @@ export class ElectronService implements OnDestroy {
     await this.api.saveMiniplayerBounds();
   }
 
+  /**
+   * Sets the configuration mode state in the main process.
+   *
+   * Used to track whether the renderer is showing the settings view.
+   * When in configuration mode, the close button returns to the media
+   * player instead of closing the window.
+   *
+   * @param enabled - Whether configuration mode is active
+   */
+  public async setConfigurationMode(enabled: boolean): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.setConfigurationMode(enabled);
+  }
+
   // ============================================================================
   // HTTP API Methods - Playback Control
   // ============================================================================
@@ -1064,6 +1104,7 @@ export class ElectronService implements OnDestroy {
     this.fullscreenCleanup?.();
     this.viewModeCleanup?.();
     this.prepareForCloseCleanup?.();
+    this.exitConfigurationModeCleanup?.();
     this.menuCleanupFunctions.forEach((cleanup: () => void): void => cleanup());
     if (this.reconnectTimeoutId) {
       clearTimeout(this.reconnectTimeoutId);

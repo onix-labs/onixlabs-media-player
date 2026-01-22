@@ -409,6 +409,22 @@ export interface MediaPlayerAPI {
    * Should be called after fading out audio in response to onPrepareForClose.
    */
   notifyFadeOutComplete: () => void;
+
+  /**
+   * Sets the configuration mode state in the main process.
+   * Used to track whether the renderer is showing the settings view.
+   * When in configuration mode, the close button returns to the media player instead of quitting.
+   * @param enabled - Whether configuration mode is active
+   */
+  setConfigurationMode: (enabled: boolean) => Promise<void>;
+
+  /**
+   * Registers a callback for when the close button is pressed in configuration mode.
+   * The main process intercepts the close and tells the renderer to exit config mode instead.
+   * @param callback - Function called when close is pressed in configuration mode
+   * @returns Cleanup function to unregister the listener
+   */
+  onExitConfigurationMode: (callback: () => void) => () => void;
 }
 
 /**

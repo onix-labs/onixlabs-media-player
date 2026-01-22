@@ -127,6 +127,9 @@ class Program {
   /** Duration for audio fade-out before window close (milliseconds) */
   private readonly CLOSE_FADE_DURATION: number = 150;
 
+  /** Whether the application is currently in configuration mode (settings view) */
+  private isInConfigurationMode: boolean = false;
+
   /**
    * Private constructor - use Program.run() to start the application.
    * Waits for Electron's app ready event before initializing.
@@ -484,6 +487,11 @@ class Program {
         height: bounds.height,
       });
     });
+
+    // Configuration mode tracking (for close button behavior)
+    ipcMain.handle("app:setConfigurationMode", (_: Readonly<Electron.IpcMainInvokeEvent>, enabled: boolean): void => {
+      this.isInConfigurationMode = enabled;
+    });
   }
 
   /**
@@ -496,10 +504,17 @@ class Program {
   private setupWindowEvents(): void {
     if (!this.window) return;
 
-    // Handle window close - fade out audio and clear playlist on macOS
+    // Handle window close - intercept in configuration mode, otherwise fade out audio
     this.window.on('close', (event: Electron.Event): void => {
       // Prevent re-entry while closing
       if (this.isClosing) return;
+
+      // In configuration mode, intercept close and return to media player instead
+      if (this.isInConfigurationMode) {
+        event.preventDefault();
+        this.window?.webContents.send('app:exitConfigurationMode');
+        return;
+      }
 
       // Prevent immediate close to allow fade-out
       event.preventDefault();
