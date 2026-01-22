@@ -12,7 +12,7 @@
  * @module app/components/configuration/configuration-view
  */
 
-import {Component, output, signal, computed, inject, ChangeDetectionStrategy} from '@angular/core';
+import {Component, signal, computed, inject, ChangeDetectionStrategy} from '@angular/core';
 import {FormsModule} from '@angular/forms';
 import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, MacOSVibrancy, MacOSVisualEffectState} from '../../../services/settings.service';
 
@@ -144,13 +144,6 @@ export class ConfigurationView {
 
   /** Settings service for reading and updating preferences */
   private readonly settingsService: SettingsService = inject(SettingsService);
-
-  // ============================================================================
-  // Outputs
-  // ============================================================================
-
-  /** Event emitted when the close button is clicked */
-  public readonly close = output<void>();
 
   // ============================================================================
   // Reactive State
@@ -314,14 +307,6 @@ export class ConfigurationView {
   // ============================================================================
   // Event Handlers
   // ============================================================================
-
-  /**
-   * Handles close button click / back to media player.
-   * Emits the close event to return to the media player view.
-   */
-  public onClose(): void {
-    this.close.emit();
-  }
 
   /**
    * Handles category selection.

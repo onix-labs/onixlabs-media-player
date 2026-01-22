@@ -4,62 +4,54 @@
 
   <!-- Content area with sidebar and panel -->
   <div class="configuration-content">
-    <!-- Sidebar wrapper with categories and back button -->
-    <div class="sidebar-wrapper">
-      <div class="configuration-sidebar">
-        <nav class="category-list">
-          @for (category of categories; track category.id) {
-            @if (category.id === 'visualisations') {
-              <!-- Visualisations with accordion -->
-              <div class="accordion-category">
-                <button
-                  class="category-item has-accordion"
-                  [class.active]="selectedCategory() === 'visualisations' && selectedVisualization() === null"
-                  (click)="onSelectCategory('visualisations')"
-                >
-                  <span>{{ category.name }}</span>
-                  <button
-                    class="accordion-toggle"
-                    [class.expanded]="isVisualisationsExpanded()"
-                    (click)="toggleVisualisationsAccordion($event)"
-                    title="Show individual visualizations"
-                  >
-                    <i class="fa-solid fa-chevron-right"></i>
-                  </button>
-                </button>
-                @if (isVisualisationsExpanded()) {
-                  <div class="accordion-children">
-                    @for (viz of visualizationMetadata; track viz.id) {
-                      <button
-                        class="category-child"
-                        [class.active]="selectedVisualization() === viz.id"
-                        (click)="onSelectVisualization(viz.id)"
-                      >
-                        {{ viz.name }}
-                      </button>
-                    }
-                  </div>
-                }
-              </div>
-            } @else {
-              <!-- Standard category -->
+    <!-- Sidebar with categories -->
+    <div class="configuration-sidebar">
+      <nav class="category-list">
+        @for (category of categories; track category.id) {
+          @if (category.id === 'visualisations') {
+            <!-- Visualisations with accordion -->
+            <div class="accordion-category">
               <button
-                class="category-item"
-                [class.active]="selectedCategory() === category.id"
-                (click)="onSelectCategory(category.id)"
+                class="category-item has-accordion"
+                [class.active]="selectedCategory() === 'visualisations' && selectedVisualization() === null"
+                (click)="onSelectCategory('visualisations')"
               >
                 <span>{{ category.name }}</span>
+                <button
+                  class="accordion-toggle"
+                  [class.expanded]="isVisualisationsExpanded()"
+                  (click)="toggleVisualisationsAccordion($event)"
+                  title="Show individual visualizations"
+                >
+                  <i class="fa-solid fa-chevron-right"></i>
+                </button>
               </button>
-            }
+              @if (isVisualisationsExpanded()) {
+                <div class="accordion-children">
+                  @for (viz of visualizationMetadata; track viz.id) {
+                    <button
+                      class="category-child"
+                      [class.active]="selectedVisualization() === viz.id"
+                      (click)="onSelectVisualization(viz.id)"
+                    >
+                      {{ viz.name }}
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          } @else {
+            <!-- Standard category -->
+            <button
+              class="category-item"
+              [class.active]="selectedCategory() === category.id"
+              (click)="onSelectCategory(category.id)"
+            >
+              <span>{{ category.name }}</span>
+            </button>
           }
-        </nav>
-      </div>
-
-      <!-- Back to Media Player button (outside sidebar) -->
-      <button class="back-button" (click)="onClose()">
-        <i class="fa-solid fa-arrow-left"></i>
-        <span>Back to Media Player</span>
-      </button>
+        }
+      </nav>
     </div>
 
     <!-- Settings panel -->

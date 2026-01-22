@@ -70,6 +70,12 @@ const api = {
     notifyFadeOutComplete: () => {
         ipcRenderer.invoke('app:fadeOutComplete');
     },
+    setConfigurationMode: (enabled) => ipcRenderer.invoke('app:setConfigurationMode', enabled),
+    onExitConfigurationMode: (callback) => {
+        const listener = () => callback();
+        ipcRenderer.on('app:exitConfigurationMode', listener);
+        return () => { ipcRenderer.removeListener('app:exitConfigurationMode', listener); };
+    },
 };
 /**
  * Expose the API to the renderer process under window.mediaPlayer.

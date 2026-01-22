@@ -188,6 +188,14 @@ export class Root implements OnDestroy {
       }
     });
 
+    // React to close button pressed in configuration mode
+    effect((): void => {
+      const trigger: number = this.electron.exitConfigurationModeRequested();
+      if (trigger > 0) {
+        this.exitConfigurationMode();
+      }
+    });
+
     // Sync traffic light visibility with controls in miniplayer mode
     effect((): void => {
       const inMiniplayer: boolean = this.isMiniplayer();
@@ -365,14 +373,19 @@ export class Root implements OnDestroy {
       await this.electron.exitMiniplayer();
     }
     this.isConfigurationMode.set(true);
+    // Notify main process so close button returns to media player instead of quitting
+    await this.electron.setConfigurationMode(true);
   }
 
   /**
    * Exits configuration mode, returning to the media player view.
-   * Called when the close button in the configuration view is clicked.
+   * Called when the close button in the configuration view is clicked,
+   * or when the window close button is pressed in configuration mode.
    */
   public exitConfigurationMode(): void {
     this.isConfigurationMode.set(false);
+    // Notify main process that we're no longer in configuration mode
+    void this.electron.setConfigurationMode(false);
   }
 
   // ============================================================================
