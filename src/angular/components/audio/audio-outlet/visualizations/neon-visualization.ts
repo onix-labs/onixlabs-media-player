@@ -1,13 +1,13 @@
 /**
- * @fileoverview Neon visualization with rotating crossing waveforms.
+ * @fileoverview Neon visualization with two counter-rotating crosses.
  *
- * Creates a hypnotic rotating cross effect with one horizontal and one
- * vertical waveform that intersect at the center, spinning continuously.
+ * Creates a hypnotic effect with two complete crosses (each with horizontal
+ * and vertical waveforms) that rotate in opposite directions.
  *
  * Technical details:
- * - Horizontal waveform (cyan) at 50% vertical position
- * - Vertical waveform (magenta) at 50% horizontal position
- * - Cross rotates continuously around the center
+ * - Cyan cross rotates clockwise
+ * - Magenta cross rotates counter-clockwise
+ * - All waveforms are equal length (8/9 of shorter screen dimension)
  * - Trails fade outward from center with zoom effect
  * - Each waveform has glow, main, and highlight layers
  *
@@ -17,10 +17,11 @@
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 /**
- * Neon visualization with rotating crossing waveforms.
+ * Neon visualization with two counter-rotating crosses.
  *
- * Renders one horizontal (cyan) and one vertical (magenta) waveform that
- * intersect at the center, rotating continuously with expanding trails.
+ * Renders two complete crosses: a cyan cross rotating clockwise and a magenta
+ * cross rotating counter-clockwise. Each cross consists of horizontal and
+ * vertical waveforms of equal length with expanding trails.
  */
 export class NeonVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Neon';
@@ -47,39 +48,46 @@ export class NeonVisualization extends Canvas2DVisualization {
 
   private dataArray: Uint8Array<ArrayBuffer>;
 
-  /** Trail canvases for each waveform */
-  private horizontalTrailCanvas: HTMLCanvasElement | null = null;
-  private horizontalTrailCtx: CanvasRenderingContext2D | null = null;
-  private verticalTrailCanvas: HTMLCanvasElement | null = null;
-  private verticalTrailCtx: CanvasRenderingContext2D | null = null;
+  /** Trail canvases for each cross */
+  private cyanTrailCanvas: HTMLCanvasElement | null = null;
+  private cyanTrailCtx: CanvasRenderingContext2D | null = null;
+  private magentaTrailCanvas: HTMLCanvasElement | null = null;
+  private magentaTrailCtx: CanvasRenderingContext2D | null = null;
 
   /** Temp canvas for zoom effect */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
 
-  /** Pre-allocated point arrays for waveforms */
-  private readonly horizontalPoints: Array<{x: number; y: number}>;
-  private readonly verticalPoints: Array<{x: number; y: number}>;
+  /** Pre-allocated point arrays for waveforms (2 per cross) */
+  private readonly cyanHorizontalPoints: Array<{x: number; y: number}>;
+  private readonly cyanVerticalPoints: Array<{x: number; y: number}>;
+  private readonly magentaHorizontalPoints: Array<{x: number; y: number}>;
+  private readonly magentaVerticalPoints: Array<{x: number; y: number}>;
 
   /** Layout values */
   private screenCenterX: number = 0;
   private screenCenterY: number = 0;
-  private horizontalAmplitude: number = 0;
-  private verticalAmplitude: number = 0;
-  private sliceWidth: number = 0;
-  private sliceHeight: number = 0;
+  private waveformLength: number = 0;
+  private waveformAmplitude: number = 0;
+  private sliceSize: number = 0;
+  private horizontalStartX: number = 0;
+  private verticalStartY: number = 0;
 
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.sensitivity = 1;
 
-    // Pre-allocate point arrays
-    this.horizontalPoints = [];
-    this.verticalPoints = [];
+    // Pre-allocate point arrays for both crosses
+    this.cyanHorizontalPoints = [];
+    this.cyanVerticalPoints = [];
+    this.magentaHorizontalPoints = [];
+    this.magentaVerticalPoints = [];
     for (let i: number = 0; i <= this.WAVEFORM_POINTS; i++) {
-      this.horizontalPoints.push({x: 0, y: 0});
-      this.verticalPoints.push({x: 0, y: 0});
+      this.cyanHorizontalPoints.push({x: 0, y: 0});
+      this.cyanVerticalPoints.push({x: 0, y: 0});
+      this.magentaHorizontalPoints.push({x: 0, y: 0});
+      this.magentaVerticalPoints.push({x: 0, y: 0});
     }
   }
 
@@ -95,28 +103,29 @@ export class NeonVisualization extends Canvas2DVisualization {
     this.screenCenterX = width / 2;
     this.screenCenterY = height / 2;
 
-    // Amplitude for waveform displacement
-    this.horizontalAmplitude = height * 0.15;
-    this.verticalAmplitude = width * 0.15;
+    // Both waveforms use 8/9 of the shorter axis so they stay visible when rotating
+    this.waveformLength = Math.min(width, height) * 8 / 9;
+    this.waveformAmplitude = this.waveformLength * 0.15;
+    this.sliceSize = this.waveformLength / this.WAVEFORM_POINTS;
 
-    // Size per point for each direction
-    this.sliceWidth = width / this.WAVEFORM_POINTS;
-    this.sliceHeight = height / this.WAVEFORM_POINTS;
+    // Center the waveforms on screen
+    this.horizontalStartX = (width - this.waveformLength) / 2;
+    this.verticalStartY = (height - this.waveformLength) / 2;
 
-    // Create/resize trail canvases
-    if (!this.horizontalTrailCanvas) {
-      this.horizontalTrailCanvas = document.createElement('canvas');
-      this.horizontalTrailCtx = this.horizontalTrailCanvas.getContext('2d', {alpha: true})!;
+    // Create/resize trail canvases for each cross
+    if (!this.cyanTrailCanvas) {
+      this.cyanTrailCanvas = document.createElement('canvas');
+      this.cyanTrailCtx = this.cyanTrailCanvas.getContext('2d', {alpha: true})!;
     }
-    this.horizontalTrailCanvas.width = width;
-    this.horizontalTrailCanvas.height = height;
+    this.cyanTrailCanvas.width = width;
+    this.cyanTrailCanvas.height = height;
 
-    if (!this.verticalTrailCanvas) {
-      this.verticalTrailCanvas = document.createElement('canvas');
-      this.verticalTrailCtx = this.verticalTrailCanvas.getContext('2d', {alpha: true})!;
+    if (!this.magentaTrailCanvas) {
+      this.magentaTrailCanvas = document.createElement('canvas');
+      this.magentaTrailCtx = this.magentaTrailCanvas.getContext('2d', {alpha: true})!;
     }
-    this.verticalTrailCanvas.width = width;
-    this.verticalTrailCanvas.height = height;
+    this.magentaTrailCanvas.width = width;
+    this.magentaTrailCanvas.height = height;
 
     if (!this.tempCanvas) {
       this.tempCanvas = document.createElement('canvas');
@@ -138,7 +147,7 @@ export class NeonVisualization extends Canvas2DVisualization {
     if (width <= 0 || height <= 0) return;
 
     // Ensure canvases exist
-    if (!this.horizontalTrailCanvas || !this.verticalTrailCanvas || !this.tempCanvas) {
+    if (!this.cyanTrailCanvas || !this.magentaTrailCanvas || !this.tempCanvas) {
       this.onResize();
     }
 
@@ -148,29 +157,37 @@ export class NeonVisualization extends Canvas2DVisualization {
     // Update rotation angle
     this.rotationAngle += this.ROTATION_SPEED;
 
-    // Process horizontal waveform (cyan, centered vertically)
+    // Apply zoom effect to both trail canvases
     this.applyDirectionalZoom(
-      this.horizontalTrailCanvas!, this.horizontalTrailCtx!,
+      this.cyanTrailCanvas!, this.cyanTrailCtx!,
       this.screenCenterX, this.screenCenterY
     );
-    this.calculateHorizontalWaveformPoints(this.horizontalPoints, 0);
-    this.rotatePoints(this.horizontalPoints, this.rotationAngle);
-    this.drawWaveform(this.horizontalTrailCtx!, this.horizontalPoints, this.CYAN_COLOR.main, this.CYAN_COLOR.glow);
+    this.applyDirectionalZoom(
+      this.magentaTrailCanvas!, this.magentaTrailCtx!,
+      this.screenCenterX, this.screenCenterY
+    );
 
-    // Process vertical waveform (magenta, centered horizontally)
-    this.applyDirectionalZoom(
-      this.verticalTrailCanvas!, this.verticalTrailCtx!,
-      this.screenCenterX, this.screenCenterY
-    );
-    this.calculateVerticalWaveformPoints(this.verticalPoints, this.WAVEFORM_POINTS / 2);
-    this.rotatePoints(this.verticalPoints, this.rotationAngle);
-    this.drawWaveform(this.verticalTrailCtx!, this.verticalPoints, this.MAGENTA_COLOR.main, this.MAGENTA_COLOR.glow);
+    // Cyan cross (rotates clockwise)
+    this.calculateHorizontalWaveformPoints(this.cyanHorizontalPoints, 0);
+    this.calculateVerticalWaveformPoints(this.cyanVerticalPoints, 0);
+    this.rotatePoints(this.cyanHorizontalPoints, this.rotationAngle);
+    this.rotatePoints(this.cyanVerticalPoints, this.rotationAngle);
+    this.drawWaveform(this.cyanTrailCtx!, this.cyanHorizontalPoints, this.CYAN_COLOR.main, this.CYAN_COLOR.glow);
+    this.drawWaveform(this.cyanTrailCtx!, this.cyanVerticalPoints, this.CYAN_COLOR.main, this.CYAN_COLOR.glow);
+
+    // Magenta cross (rotates counter-clockwise)
+    this.calculateHorizontalWaveformPoints(this.magentaHorizontalPoints, this.WAVEFORM_POINTS / 2);
+    this.calculateVerticalWaveformPoints(this.magentaVerticalPoints, this.WAVEFORM_POINTS / 2);
+    this.rotatePoints(this.magentaHorizontalPoints, -this.rotationAngle);
+    this.rotatePoints(this.magentaVerticalPoints, -this.rotationAngle);
+    this.drawWaveform(this.magentaTrailCtx!, this.magentaHorizontalPoints, this.MAGENTA_COLOR.main, this.MAGENTA_COLOR.glow);
+    this.drawWaveform(this.magentaTrailCtx!, this.magentaVerticalPoints, this.MAGENTA_COLOR.main, this.MAGENTA_COLOR.glow);
 
     // Composite both trail canvases to main canvas with additive blending
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(this.horizontalTrailCanvas!, 0, 0);
+    ctx.drawImage(this.cyanTrailCanvas!, 0, 0);
     ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(this.verticalTrailCanvas!, 0, 0);
+    ctx.drawImage(this.magentaTrailCanvas!, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
 
     this.applyFadeOverlay();
@@ -211,9 +228,10 @@ export class NeonVisualization extends Canvas2DVisualization {
   ): void {
     const numPoints: number = this.WAVEFORM_POINTS;
     const dataLength: number = this.dataArray.length;
-    const sliceWidth: number = this.sliceWidth;
+    const sliceSize: number = this.sliceSize;
+    const startX: number = this.horizontalStartX;
     const centerY: number = this.screenCenterY;
-    const amplitude: number = this.horizontalAmplitude;
+    const amplitude: number = this.waveformAmplitude;
     const sensitivityFactor: number = this.sensitivity * 2;
 
     for (let i: number = 0; i <= numPoints; i++) {
@@ -221,7 +239,7 @@ export class NeonVisualization extends Canvas2DVisualization {
       const dataIndex: number = Math.floor(((i + dataOffset) % numPoints) / numPoints * dataLength);
       const sample: number = ((this.dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
 
-      points[i].x = i * sliceWidth;
+      points[i].x = startX + i * sliceSize;
       points[i].y = centerY + sample * amplitude;
     }
   }
@@ -232,9 +250,10 @@ export class NeonVisualization extends Canvas2DVisualization {
   ): void {
     const numPoints: number = this.WAVEFORM_POINTS;
     const dataLength: number = this.dataArray.length;
-    const sliceHeight: number = this.sliceHeight;
+    const sliceSize: number = this.sliceSize;
     const centerX: number = this.screenCenterX;
-    const amplitude: number = this.verticalAmplitude;
+    const startY: number = this.verticalStartY;
+    const amplitude: number = this.waveformAmplitude;
     const sensitivityFactor: number = this.sensitivity * 2;
 
     for (let i: number = 0; i <= numPoints; i++) {
@@ -243,7 +262,7 @@ export class NeonVisualization extends Canvas2DVisualization {
       const sample: number = ((this.dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
 
       points[i].x = centerX + sample * amplitude;
-      points[i].y = i * sliceHeight;
+      points[i].y = startY + i * sliceSize;
     }
   }
 
@@ -314,10 +333,10 @@ export class NeonVisualization extends Canvas2DVisualization {
   }
 
   public override destroy(): void {
-    this.horizontalTrailCanvas = null;
-    this.horizontalTrailCtx = null;
-    this.verticalTrailCanvas = null;
-    this.verticalTrailCtx = null;
+    this.cyanTrailCanvas = null;
+    this.cyanTrailCtx = null;
+    this.magentaTrailCanvas = null;
+    this.magentaTrailCtx = null;
     this.tempCanvas = null;
     this.tempCtx = null;
   }
