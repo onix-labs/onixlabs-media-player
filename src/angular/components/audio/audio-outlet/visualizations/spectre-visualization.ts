@@ -1,23 +1,43 @@
 /**
- * @fileoverview Waveform Modern visualization with symmetrical frequency bars and smoke effect.
+ * @fileoverview Spectre visualization with symmetrical frequency bars and smoke effect.
  *
  * Displays frequency data as vertical bars mirrored vertically (above/below center).
- * Each bar extends both up and down from the horizontal center line. Bars are dark
- * at the center and bright green at the extremes, with a smoke-like trail effect.
+ * Each bar extends both up and down from the horizontal center line. Bars use the
+ * ONIXLabs brand color spectrum from left to right, with a smoke-like trail effect.
  *
  * Technical details:
  * - Uses getByteFrequencyData() for frequency data
- * - 192 bars across the width, each mirrored above and below center
- * - Gradient coloring: dark center → bright green extremes
+ * - Configurable bar count (48/96/144), each mirrored above and below center
+ * - ONIXLabs brand color spectrum: Orange → Coral → Pink → Purple → Blue → Teal → Cyan → Green
  * - Smoke effect via slow canvas fade (destination-out)
  *
- * @module app/components/audio/audio-outlet/visualizations/waveform-modern-visualization
+ * @module app/components/audio/audio-outlet/visualizations/spectre-visualization
  */
 
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 /**
- * Waveform Modern visualization with symmetrical frequency bars and smoke trail.
+ * Number of colors in the ONIXLabs brand palette.
+ */
+const NUM_COLORS: number = 8;
+
+/**
+ * Pre-parsed RGB values for the ONIXLabs brand colors (flat array for cache efficiency).
+ * Format: [r0, g0, b0, r1, g1, b1, ...]
+ */
+const ONIX_COLORS_FLAT: Uint8Array = new Uint8Array([
+  247, 149, 51,   // #F79533 Orange
+  243, 112, 85,   // #F37055 Coral
+  239, 78, 123,   // #EF4E7B Pink
+  161, 102, 171,  // #A166AB Purple
+  80, 115, 184,   // #5073B8 Blue
+  16, 152, 173,   // #1098AD Teal
+  7, 179, 155,    // #07B39B Cyan
+  111, 186, 130,  // #6FBA82 Green
+]);
+
+/**
+ * Spectre visualization with symmetrical frequency bars and smoke trail.
  *
  * Renders frequency data as bars extending both up and down from the vertical
  * center, creating a mirror effect. The smoke effect creates visual persistence.
@@ -28,9 +48,9 @@ export class SpectreVisualization extends Canvas2DVisualization {
 
   /** Bar count mapping for each density level */
   private static readonly BAR_COUNTS: Record<'low' | 'medium' | 'high', number> = {
-    low: 96,
-    medium: 192,
-    high: 288
+    low: 48,
+    medium: 96,
+    high: 144
   };
 
   /** Total number of bars across the width */
@@ -48,15 +68,6 @@ export class SpectreVisualization extends Canvas2DVisualization {
   /** Array for frequency data */
   private dataArray: Uint8Array<ArrayBuffer>;
 
-  /** Cached gradient for upward bars */
-  private gradientUp: CanvasGradient | null = null;
-
-  /** Cached gradient for downward bars */
-  private gradientDown: CanvasGradient | null = null;
-
-  /** Cached height for gradient invalidation */
-  private gradientHeight: number = 0;
-
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
@@ -72,41 +83,49 @@ export class SpectreVisualization extends Canvas2DVisualization {
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
 
-  /**
-   * Creates gradients for bar coloring.
-   * Upward gradient: dark at center → bright color at top
-   * Downward gradient: dark at center → bright color at bottom
-   */
-  private createGradients(): void {
-    if (this.height <= 0) {
-      this.gradientUp = null;
-      this.gradientDown = null;
-      this.gradientHeight = 0;
-      return;
-    }
-
-    const centerY: number = this.height / 2;
-
-    // Gradient for upward bars (center to top): dark → bright green
-    this.gradientUp = this.ctx.createLinearGradient(0, centerY, 0, 0);
-    this.gradientUp.addColorStop(0, 'rgba(0, 20, 10, 1)');
-    this.gradientUp.addColorStop(0.3, 'rgba(0, 80, 30, 1)');
-    this.gradientUp.addColorStop(0.7, 'rgba(0, 180, 70, 1)');
-    this.gradientUp.addColorStop(1, 'rgba(0, 255, 100, 1)');
-
-    // Gradient for downward bars (center to bottom): dark → bright green
-    this.gradientDown = this.ctx.createLinearGradient(0, centerY, 0, this.height);
-    this.gradientDown.addColorStop(0, 'rgba(0, 20, 10, 1)');
-    this.gradientDown.addColorStop(0.3, 'rgba(0, 80, 30, 1)');
-    this.gradientDown.addColorStop(0.7, 'rgba(0, 180, 70, 1)');
-    this.gradientDown.addColorStop(1, 'rgba(0, 255, 100, 1)');
-
-    this.gradientHeight = this.height;
-  }
-
   protected override onResize(): void {
     this.ctx.clearRect(0, 0, this.width, this.height);
-    this.createGradients();
+  }
+
+  /**
+   * Gets the interpolated color for a bar based on its horizontal position.
+   * Returns RGB values interpolated across the ONIXLabs brand color spectrum.
+   * Spectrum spans from first to last color without wrapping.
+   */
+  private getBarColor(barIndex: number, totalBars: number): {r: number; g: number; b: number} {
+    // Map bar index to position in color spectrum (0 to NUM_COLORS - 1, no wrap)
+    const maxIndex: number = Math.max(1, totalBars - 1);
+    const colorPosition: number = (barIndex / maxIndex) * (NUM_COLORS - 1);
+    const colorIndex: number = Math.min(Math.floor(colorPosition), NUM_COLORS - 2);
+    const t: number = colorPosition - colorIndex;
+
+    // Get current and next color indices (clamped, no wrap-around)
+    const c1Idx: number = colorIndex * 3;
+    const c2Idx: number = (colorIndex + 1) * 3;
+
+    // Interpolate between colors
+    const r: number = Math.round(ONIX_COLORS_FLAT[c1Idx] + (ONIX_COLORS_FLAT[c2Idx] - ONIX_COLORS_FLAT[c1Idx]) * t);
+    const g: number = Math.round(ONIX_COLORS_FLAT[c1Idx + 1] + (ONIX_COLORS_FLAT[c2Idx + 1] - ONIX_COLORS_FLAT[c1Idx + 1]) * t);
+    const b: number = Math.round(ONIX_COLORS_FLAT[c1Idx + 2] + (ONIX_COLORS_FLAT[c2Idx + 2] - ONIX_COLORS_FLAT[c1Idx + 2]) * t);
+
+    return {r, g, b};
+  }
+
+  /**
+   * Creates a vertical gradient for a bar from dark at center to the given color at extremes.
+   */
+  private createBarGradient(x: number, barWidth: number, centerY: number, height: number, r: number, g: number, b: number, upward: boolean): CanvasGradient {
+    const gradient: CanvasGradient = upward
+      ? this.ctx.createLinearGradient(x, centerY, x, 0)
+      : this.ctx.createLinearGradient(x, centerY, x, height);
+
+    // Dark at center, bright color at extremes
+    gradient.addColorStop(0, `rgba(${Math.round(r * 0.08)}, ${Math.round(g * 0.08)}, ${Math.round(b * 0.08)}, 1)`);
+    gradient.addColorStop(0.3, `rgba(${Math.round(r * 0.35)}, ${Math.round(g * 0.35)}, ${Math.round(b * 0.35)}, 1)`);
+    gradient.addColorStop(0.7, `rgba(${Math.round(r * 0.75)}, ${Math.round(g * 0.75)}, ${Math.round(b * 0.75)}, 1)`);
+    gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 1)`);
+
+    return gradient;
   }
 
   public draw(): void {
@@ -117,11 +136,6 @@ export class SpectreVisualization extends Canvas2DVisualization {
     const height: number = this.height;
 
     if (width <= 0 || height <= 0) return;
-
-    // Ensure gradients exist and match current height
-    if (!this.gradientUp || !this.gradientDown || this.gradientHeight !== height) {
-      this.createGradients();
-    }
 
     // Apply smoke fade effect (destination-out creates transparency trails)
     ctx.save();
@@ -142,6 +156,7 @@ export class SpectreVisualization extends Canvas2DVisualization {
     const sensitivityFactor: number = this.sensitivity * 2;
     const barHeights: number[] = [];
     const barXPositions: number[] = [];
+    const barColors: Array<{r: number; g: number; b: number}> = [];
 
     for (let i: number = 0; i < this.totalBars; i++) {
       const startBin: number = Math.floor(i * usableBins / this.totalBars);
@@ -155,6 +170,7 @@ export class SpectreVisualization extends Canvas2DVisualization {
       const value: number = sum / count;
       barHeights.push((value / 255) * maxBarHeight * sensitivityFactor);
       barXPositions.push(i * (barWidth + this.BAR_GAP));
+      barColors.push(this.getBarColor(i, this.totalBars));
     }
 
     // Draw all bars with vertical mirroring (up and down from center)
@@ -163,21 +179,21 @@ export class SpectreVisualization extends Canvas2DVisualization {
       if (barHeight < 1) continue;
 
       const x: number = barXPositions[i];
+      const color: {r: number; g: number; b: number} = barColors[i];
 
       // Draw bar going UP from center
-      ctx.fillStyle = this.gradientUp || 'rgba(0, 255, 100, 0.8)';
+      ctx.fillStyle = this.createBarGradient(x, barWidth, centerY, height, color.r, color.g, color.b, true);
       this.drawBar(ctx, x, centerY - barHeight, barWidth, barHeight);
 
       // Draw bar going DOWN from center (mirrored)
-      ctx.fillStyle = this.gradientDown || 'rgba(0, 255, 100, 0.8)';
+      ctx.fillStyle = this.createBarGradient(x, barWidth, centerY, height, color.r, color.g, color.b, false);
       this.drawBar(ctx, x, centerY, barWidth, barHeight);
     }
 
-    // Add subtle glow effect
+    // Add subtle glow effect (vertical only, no horizontal extension into gaps)
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.3;
-    ctx.fillStyle = 'rgba(0, 255, 100, 0.5)';
 
     // Glow for all bars (reuse pre-calculated values)
     for (let i: number = 0; i < this.totalBars; i++) {
@@ -185,13 +201,22 @@ export class SpectreVisualization extends Canvas2DVisualization {
       if (barHeight < 2) continue;
 
       const x: number = barXPositions[i];
+      const color: {r: number; g: number; b: number} = barColors[i];
+      ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.5)`;
 
-      // Glow for upward bar
-      this.drawBar(ctx, x - 1, centerY - barHeight - 1, barWidth + 2, barHeight + 2);
-      // Glow for downward bar
-      this.drawBar(ctx, x - 1, centerY - 1, barWidth + 2, barHeight + 2);
+      // Glow for upward bar (only extends vertically)
+      this.drawBar(ctx, x, centerY - barHeight - 1, barWidth, barHeight + 1);
+      // Glow for downward bar (only extends vertically)
+      this.drawBar(ctx, x, centerY, barWidth, barHeight + 1);
     }
 
+    ctx.restore();
+
+    // Fill gaps with black (drawn behind existing content)
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-over';
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, width, height);
     ctx.restore();
 
     this.applyFadeOverlay();
