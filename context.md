@@ -451,7 +451,7 @@ The `Canvas2DVisualization` base class provides:
 | Name | Category | Description | Optimizations |
 |------|----------|-------------|---------------|
 | **Analyzer** | Bars | Configurable frequency bars (48/96/144) with green-yellow-red gradient | — |
-| **Spectre** | Bars | Configurable frequency bars (96/192/288) with vertical mirroring, dark center gradient fading to bright green, smoke trail effect | Pre-calculated bar heights and positions |
+| **Spectre** | Bars | Configurable frequency bars (48/96/144) with vertical mirroring, ONIXLabs brand color spectrum left-to-right (Orange→Green), dark center gradient, black background, smoke trail effect | Pre-calculated bar heights and positions |
 | **Classic** | Waves | Oscilloscope-style waveform with glow effect | — |
 | **Plasma** | Waves | Dual horizontal waveforms at 45% and 55% positions, colors cycle through spectrum, trails expand from center with zoom effect, additive blending | Fixed 128 points, separate trail canvases, pre-allocated point arrays, cached color values |
 | **Infinity** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum, additive blending for overlapping trails | Cached color values with hue threshold, separate trail canvases with lighter compositing |
