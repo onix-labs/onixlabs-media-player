@@ -305,38 +305,18 @@ export class AudioOutlet implements OnInit, OnDestroy {
       }
     });
 
-    // React to sensitivity setting changes (global or per-visualization)
+    // React to per-visualization settings changes
     effect((): void => {
-      // Watch both global and per-viz sensitivity signals
-      const _global: number = this.settings.sensitivity();
-      const _perViz = this.settings.perVisualizationSensitivity();
+      // Watch the per-visualization settings and current visualization type
+      const _perViz = this.settings.perVisualizationSettings();
       const vizType: string = this.visualizationType();
 
       if (this.visualization) {
-        const effectiveSensitivity: number = this.settings.getEffectiveSensitivity(vizType);
-        this.visualization.setSensitivity(effectiveSensitivity);
+        this.applyVisualizationSettings(vizType);
       }
     });
 
-    // React to trail intensity setting changes
-    effect((): void => {
-      const trailIntensity: number = this.settings.trailIntensity();
-
-      if (this.visualization) {
-        this.visualization.setTrailIntensity(trailIntensity);
-      }
-    });
-
-    // React to hue shift setting changes
-    effect((): void => {
-      const hueShift: number = this.settings.hueShift();
-
-      if (this.visualization) {
-        this.visualization.setHueShift(hueShift);
-      }
-    });
-
-    // React to FFT size setting changes
+    // React to FFT size setting changes (global setting)
     effect((): void => {
       const fftSize: number = this.settings.fftSize();
 
@@ -344,42 +324,31 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.visualization.setFftSize(fftSize);
       }
     });
+  }
 
-    // React to bar density setting changes
-    effect((): void => {
-      const barDensity: 'low' | 'medium' | 'high' = this.settings.barDensity();
+  /**
+   * Applies all per-visualization settings to the current visualization.
+   *
+   * @param vizId - The visualization type ID
+   */
+  private applyVisualizationSettings(vizId: string): void {
+    if (!this.visualization) return;
 
-      if (this.visualization) {
-        this.visualization.setBarDensity(barDensity);
-      }
-    });
+    // Get effective settings for this visualization (custom or defaults)
+    const sensitivity: number = this.settings.getEffectiveSetting(vizId, 'sensitivity') ?? 0.5;
+    const barDensity: 'low' | 'medium' | 'high' = this.settings.getEffectiveSetting(vizId, 'barDensity') ?? 'medium';
+    const trailIntensity: number = this.settings.getEffectiveSetting(vizId, 'trailIntensity') ?? 0.5;
+    const lineWidth: number = this.settings.getEffectiveSetting(vizId, 'lineWidth') ?? 2.0;
+    const glowIntensity: number = this.settings.getEffectiveSetting(vizId, 'glowIntensity') ?? 0.5;
+    const waveformSmoothing: number = this.settings.getEffectiveSetting(vizId, 'waveformSmoothing') ?? 0.5;
 
-    // React to line width setting changes
-    effect((): void => {
-      const lineWidth: number = this.settings.lineWidth();
-
-      if (this.visualization) {
-        this.visualization.setLineWidth(lineWidth);
-      }
-    });
-
-    // React to glow intensity setting changes
-    effect((): void => {
-      const glowIntensity: number = this.settings.glowIntensity();
-
-      if (this.visualization) {
-        this.visualization.setGlowIntensity(glowIntensity);
-      }
-    });
-
-    // React to waveform smoothing setting changes
-    effect((): void => {
-      const waveformSmoothing: number = this.settings.waveformSmoothing();
-
-      if (this.visualization) {
-        this.visualization.setWaveformSmoothing(waveformSmoothing);
-      }
-    });
+    // Apply settings
+    this.visualization.setSensitivity(sensitivity);
+    this.visualization.setBarDensity(barDensity);
+    this.visualization.setTrailIntensity(trailIntensity);
+    this.visualization.setLineWidth(lineWidth);
+    this.visualization.setGlowIntensity(glowIntensity);
+    this.visualization.setWaveformSmoothing(waveformSmoothing);
   }
 
   // ============================================================================
@@ -683,14 +652,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
         analyser: this.analyser
       });
       this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
-      this.visualization.setSensitivity(this.settings.getEffectiveSensitivity(type));
-      this.visualization.setTrailIntensity(this.settings.trailIntensity());
-      this.visualization.setHueShift(this.settings.hueShift());
       this.visualization.setFftSize(this.settings.fftSize());
-      this.visualization.setBarDensity(this.settings.barDensity());
-      this.visualization.setLineWidth(this.settings.lineWidth());
-      this.visualization.setGlowIntensity(this.settings.glowIntensity());
-      this.visualization.setWaveformSmoothing(this.settings.waveformSmoothing());
+      this.applyVisualizationSettings(type);
 
       const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
@@ -706,7 +669,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private initVisualization(): void {
     if (!this.analyser) return;
 
-    this.visualization = createVisualization(this.visualizationType(), {
+    const vizType: string = this.visualizationType();
+    this.visualization = createVisualization(vizType, {
       canvas: this.canvasRef.nativeElement,
       analyser: this.analyser
     });
@@ -714,14 +678,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualizationCategorySignal.set(this.visualization.category);
     this.visualizationChange.emit(`${this.visualization.category} : ${this.visualization.name}`);
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
-    this.visualization.setSensitivity(this.settings.getEffectiveSensitivity(this.visualizationType()));
-    this.visualization.setTrailIntensity(this.settings.trailIntensity());
-    this.visualization.setHueShift(this.settings.hueShift());
     this.visualization.setFftSize(this.settings.fftSize());
-    this.visualization.setBarDensity(this.settings.barDensity());
-    this.visualization.setLineWidth(this.settings.lineWidth());
-    this.visualization.setGlowIntensity(this.settings.glowIntensity());
-    this.visualization.setWaveformSmoothing(this.settings.waveformSmoothing());
+    this.applyVisualizationSettings(vizType);
 
     const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));

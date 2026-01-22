@@ -32,12 +32,6 @@ import {ElectronService} from './electron.service';
  */
 
 /**
- * Per-visualization sensitivity overrides.
- * If a visualization type has a value here, it overrides the global sensitivity.
- */
-export type PerVisualizationSensitivity = Partial<Record<string, number>>;
-
-/**
  * Valid FFT size values (must be powers of 2).
  */
 export type FftSize = 256 | 512 | 1024 | 2048 | 4096;
@@ -46,6 +40,39 @@ export type FftSize = 256 | 512 | 1024 | 2048 | 4096;
  * Bar density levels for bar-based visualizations.
  */
 export type BarDensity = 'low' | 'medium' | 'high';
+
+/**
+ * Per-visualization local settings.
+ * All values are optional - if not set, defaults are used.
+ */
+export interface VisualizationLocalSettings {
+  readonly sensitivity?: number;
+  readonly barDensity?: BarDensity;
+  readonly trailIntensity?: number;
+  readonly lineWidth?: number;
+  readonly glowIntensity?: number;
+  readonly waveformSmoothing?: number;
+}
+
+/**
+ * Map of visualization type to its local settings.
+ */
+export type PerVisualizationSettings = Partial<Record<string, VisualizationLocalSettings>>;
+
+/**
+ * Keys for local settings that can be customized per visualization.
+ */
+export type LocalSettingKey = keyof VisualizationLocalSettings;
+
+/**
+ * Metadata for a visualization including applicable settings.
+ */
+export interface VisualizationMetadata {
+  readonly id: string;
+  readonly name: string;
+  readonly category: 'Bars' | 'Waves';
+  readonly applicableSettings: readonly LocalSettingKey[];
+}
 
 /**
  * Video quality preset levels for transcoding.
@@ -68,30 +95,18 @@ export type VideoAspectMode = 'default' | '4:3' | '16:9' | 'fit';
 
 /**
  * Visualization settings structure.
+ * Global settings apply to all visualizations.
+ * Per-visualization settings are stored in perVisualizationSettings.
  */
 export interface VisualizationSettings {
   /** The default visualization to display on startup */
   readonly defaultType: string;
-  /** Global sensitivity for all visualizations (0.0 - 1.0, default 0.5) */
-  readonly sensitivity: number;
-  /** Per-visualization sensitivity overrides (0.0 - 1.0, optional per type) */
-  readonly perVisualizationSensitivity: PerVisualizationSensitivity;
   /** Maximum frame rate for visualizations (0 = uncapped, or 15/30/60) */
   readonly maxFrameRate: number;
-  /** Trail intensity for visualizations with trail effects (0.0 - 1.0, default 0.5) */
-  readonly trailIntensity: number;
-  /** Hue shift for visualization colors (0-360 degrees, default 0) */
-  readonly hueShift: number;
   /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096, default 2048) */
   readonly fftSize: FftSize;
-  /** Bar density for bar-based visualizations (low, medium, high, default medium) */
-  readonly barDensity: BarDensity;
-  /** Line width for waveform visualizations (1.0 - 5.0, default 2.0) */
-  readonly lineWidth: number;
-  /** Glow intensity for visualizations with glow effects (0.0 - 1.0, default 0.5) */
-  readonly glowIntensity: number;
-  /** Waveform smoothing for curve interpolation (0.0 - 1.0, default 0.5) */
-  readonly waveformSmoothing: number;
+  /** Per-visualization local settings (sensitivity, barDensity, trailIntensity, etc.) */
+  readonly perVisualizationSettings: PerVisualizationSettings;
 }
 
 /**
@@ -185,22 +200,45 @@ export interface VisualizationOption {
 // ============================================================================
 
 /**
+ * Default values for per-visualization local settings.
+ * Used when a setting is not customized for a visualization.
+ */
+export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> = {
+  sensitivity: 0.5,
+  barDensity: 'medium',
+  trailIntensity: 0.5,
+  lineWidth: 2.0,
+  glowIntensity: 0.5,
+  waveformSmoothing: 0.5,
+};
+
+/**
+ * Metadata for all visualizations including which settings apply to each.
+ */
+export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
+  // Bars category
+  {id: 'bars', name: 'Analyzer', category: 'Bars', applicableSettings: ['sensitivity', 'barDensity']},
+  {id: 'tether', name: 'Spectre', category: 'Bars', applicableSettings: ['sensitivity', 'barDensity']},
+  // Waves category
+  {id: 'waveform', name: 'Classic', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
+  {id: 'tunnel', name: 'Plasma', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
+  {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
+  {id: 'pulsar', name: 'Pulsar', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
+  {id: 'water', name: 'Water', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
+  {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
+  {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
+];
+
+/**
  * Default settings used before server data is received.
  */
 const DEFAULT_SETTINGS: AppSettings = {
-  version: 1,
+  version: 2,
   visualization: {
     defaultType: 'bars',
-    sensitivity: 0.5,
-    perVisualizationSensitivity: {},
     maxFrameRate: 0,
-    trailIntensity: 0.5,
-    hueShift: 0,
     fftSize: 2048,
-    barDensity: 'medium',
-    lineWidth: 2.0,
-    glowIntensity: 0.5,
-    waveformSmoothing: 0.5,
+    perVisualizationSettings: {},
   },
   application: {
     serverPort: 0,
@@ -348,29 +386,9 @@ export class SettingsService implements OnDestroy {
     (): string => this.settings().visualization.defaultType
   );
 
-  /** Global sensitivity for visualizations (0.0 - 1.0) */
-  public readonly sensitivity: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().visualization.sensitivity ?? 0.5
-  );
-
-  /** Per-visualization sensitivity overrides */
-  public readonly perVisualizationSensitivity: ReturnType<typeof computed<PerVisualizationSensitivity>> = computed(
-    (): PerVisualizationSensitivity => this.settings().visualization.perVisualizationSensitivity ?? {}
-  );
-
   /** Maximum frame rate for visualizations (0 = uncapped) */
   public readonly maxFrameRate: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().visualization?.maxFrameRate ?? 0
-  );
-
-  /** Trail intensity for visualizations with trail effects (0.0 - 1.0) */
-  public readonly trailIntensity: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().visualization?.trailIntensity ?? 0.5
-  );
-
-  /** Hue shift for visualization colors (0-360 degrees) */
-  public readonly hueShift: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().visualization?.hueShift ?? 0
   );
 
   /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096) */
@@ -378,9 +396,9 @@ export class SettingsService implements OnDestroy {
     (): FftSize => this.settings().visualization?.fftSize ?? 2048
   );
 
-  /** Bar density for bar-based visualizations */
-  public readonly barDensity: ReturnType<typeof computed<BarDensity>> = computed(
-    (): BarDensity => this.settings().visualization?.barDensity ?? 'medium'
+  /** Per-visualization settings map */
+  public readonly perVisualizationSettings: ReturnType<typeof computed<PerVisualizationSettings>> = computed(
+    (): PerVisualizationSettings => this.settings().visualization?.perVisualizationSettings ?? {}
   );
 
   /** Configured server port (0 = auto-assign) */
@@ -401,21 +419,6 @@ export class SettingsService implements OnDestroy {
   /** Skip duration in seconds (how far to skip forward/backward) */
   public readonly skipDuration: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().playback?.skipDuration ?? 10
-  );
-
-  /** Line width for waveform visualizations (1.0 - 5.0) */
-  public readonly lineWidth: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().visualization?.lineWidth ?? 2.0
-  );
-
-  /** Glow intensity for visualizations with glow effects (0.0 - 1.0) */
-  public readonly glowIntensity: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().visualization?.glowIntensity ?? 0.5
-  );
-
-  /** Waveform smoothing for curve interpolation (0.0 - 1.0) */
-  public readonly waveformSmoothing: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().visualization?.waveformSmoothing ?? 0.5
   );
 
   /** Default volume on startup (0.0 - 1.0) */
@@ -517,15 +520,6 @@ export class SettingsService implements OnDestroy {
   }
 
   /**
-   * Sets the global visualization sensitivity.
-   *
-   * @param value - Sensitivity value between 0.0 and 1.0
-   */
-  public async setSensitivity(value: number): Promise<void> {
-    await this.updateSetting('visualization', 'sensitivity', this.clamp(value, 0, 1));
-  }
-
-  /**
    * Sets the maximum frame rate for visualizations.
    *
    * @param fps - Frame rate (0 = uncapped, or 15/30/60)
@@ -533,25 +527,6 @@ export class SettingsService implements OnDestroy {
   public async setMaxFrameRate(fps: number): Promise<void> {
     const validFps: number = [0, 15, 30, 60].includes(fps) ? fps : 0;
     await this.updateSetting('visualization', 'maxFrameRate', validFps);
-  }
-
-  /**
-   * Sets the trail intensity for visualizations.
-   *
-   * @param value - Trail intensity value between 0.0 and 1.0
-   */
-  public async setTrailIntensity(value: number): Promise<void> {
-    await this.updateSetting('visualization', 'trailIntensity', this.clamp(value, 0, 1));
-  }
-
-  /**
-   * Sets the hue shift for visualization colors.
-   *
-   * @param value - Hue shift value in degrees (0-360)
-   */
-  public async setHueShift(value: number): Promise<void> {
-    const normalizedValue: number = ((value % 360) + 360) % 360;
-    await this.updateSetting('visualization', 'hueShift', normalizedValue);
   }
 
   /**
@@ -568,53 +543,152 @@ export class SettingsService implements OnDestroy {
     await this.updateSetting('visualization', 'fftSize', size);
   }
 
+  // ============================================================================
+  // Per-Visualization Settings Methods
+  // ============================================================================
+
   /**
-   * Sets the bar density for bar-based visualizations.
+   * Gets the effective value for a local setting on a specific visualization.
+   * Returns the customized value if set, otherwise the default.
    *
-   * @param density - Bar density level ('low', 'medium', or 'high')
+   * @param vizId - The visualization type ID
+   * @param setting - The setting key to get
+   * @returns The effective setting value
    */
-  public async setBarDensity(density: BarDensity): Promise<void> {
-    const validDensities: readonly BarDensity[] = ['low', 'medium', 'high'];
-    if (!validDensities.includes(density)) {
-      console.error(`[SettingsService] Invalid bar density: ${density}`);
-      return;
+  public getEffectiveSetting<K extends LocalSettingKey>(vizId: string, setting: K): VisualizationLocalSettings[K] {
+    const perViz: PerVisualizationSettings = this.perVisualizationSettings();
+    const vizSettings: VisualizationLocalSettings | undefined = perViz[vizId];
+    const customValue: VisualizationLocalSettings[K] | undefined = vizSettings?.[setting];
+    return customValue !== undefined ? customValue : VISUALIZATION_LOCAL_DEFAULTS[setting];
+  }
+
+  /**
+   * Checks if a setting has been customized for a visualization.
+   *
+   * @param vizId - The visualization type ID
+   * @param setting - The setting key to check
+   * @returns True if the setting has been customized
+   */
+  public hasCustomSetting(vizId: string, setting: LocalSettingKey): boolean {
+    const perViz: PerVisualizationSettings = this.perVisualizationSettings();
+    return perViz[vizId]?.[setting] !== undefined;
+  }
+
+  /**
+   * Checks if a setting is applicable to a visualization.
+   *
+   * @param vizId - The visualization type ID
+   * @param setting - The setting key to check
+   * @returns True if the setting applies to this visualization
+   */
+  public hasApplicableSetting(vizId: string, setting: LocalSettingKey): boolean {
+    const meta: VisualizationMetadata | undefined = VISUALIZATION_METADATA.find(
+      (v: VisualizationMetadata): boolean => v.id === vizId
+    );
+    return meta?.applicableSettings.includes(setting) ?? false;
+  }
+
+  /**
+   * Gets visualization metadata by ID.
+   *
+   * @param vizId - The visualization type ID
+   * @returns The visualization metadata, or undefined if not found
+   */
+  public getVisualizationMetadata(vizId: string): VisualizationMetadata | undefined {
+    return VISUALIZATION_METADATA.find((v: VisualizationMetadata): boolean => v.id === vizId);
+  }
+
+  /**
+   * Sets a local setting for a specific visualization.
+   *
+   * @param vizId - The visualization type ID
+   * @param setting - The setting key to set
+   * @param value - The value to set
+   */
+  public async setVisualizationSetting<K extends LocalSettingKey>(
+    vizId: string,
+    setting: K,
+    value: VisualizationLocalSettings[K]
+  ): Promise<void> {
+    // Validate and clamp numeric values
+    let validValue: VisualizationLocalSettings[K] = value;
+    if (setting === 'sensitivity' || setting === 'trailIntensity' || setting === 'glowIntensity' || setting === 'waveformSmoothing') {
+      validValue = this.clamp(value as number, 0, 1) as VisualizationLocalSettings[K];
+    } else if (setting === 'lineWidth') {
+      validValue = this.clamp(value as number, 1, 5) as VisualizationLocalSettings[K];
+    } else if (setting === 'barDensity') {
+      const validDensities: readonly BarDensity[] = ['low', 'medium', 'high'];
+      if (!validDensities.includes(value as BarDensity)) {
+        console.error(`[SettingsService] Invalid bar density: ${value}`);
+        return;
+      }
     }
-    await this.updateSetting('visualization', 'barDensity', density);
+
+    // Build the update with just this visualization's setting
+    const vizUpdate: VisualizationLocalSettings = {[setting]: validValue};
+    await this.updateSetting('visualization', 'perVisualizationSettings', {[vizId]: vizUpdate});
   }
 
   /**
-   * Gets the effective sensitivity for a specific visualization type.
+   * Resets a single setting for a visualization to its default.
    *
-   * Returns the per-visualization sensitivity if set, otherwise the global sensitivity.
-   *
-   * @param type - The visualization type to get sensitivity for
-   * @returns The effective sensitivity value (0.0 - 1.0)
+   * @param vizId - The visualization type ID
+   * @param setting - The setting key to reset
    */
-  public getEffectiveSensitivity(type: string): number {
-    const perViz: PerVisualizationSensitivity = this.perVisualizationSensitivity();
-    return perViz[type] ?? this.sensitivity();
+  public async resetVisualizationSetting(vizId: string, setting: LocalSettingKey): Promise<void> {
+    const current: PerVisualizationSettings = {...this.perVisualizationSettings()};
+    const vizSettings: VisualizationLocalSettings | undefined = current[vizId];
+
+    if (!vizSettings || vizSettings[setting] === undefined) {
+      return; // Nothing to reset
+    }
+
+    // Create new settings object without the specified setting
+    const {[setting]: _removed, ...remaining} = vizSettings;
+
+    // If no settings left, remove the visualization entry entirely
+    if (Object.keys(remaining).length === 0) {
+      delete current[vizId];
+    } else {
+      current[vizId] = remaining;
+    }
+
+    // Send the full updated perVisualizationSettings
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({perVisualizationSettings: current}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to reset setting: ${response.status}`);
+    }
   }
 
   /**
-   * Sets the sensitivity for a specific visualization type.
+   * Resets all settings for a visualization to defaults.
    *
-   * @param type - The visualization type to set sensitivity for
-   * @param value - Sensitivity value between 0.0 and 1.0
+   * @param vizId - The visualization type ID
    */
-  public async setVisualizationSensitivity(type: string, value: number): Promise<void> {
-    const clampedValue: number = this.clamp(value, 0, 1);
-    await this.updateSetting('visualization', 'perVisualizationSensitivity', {[type]: clampedValue});
-  }
+  public async resetAllVisualizationSettings(vizId: string): Promise<void> {
+    const current: PerVisualizationSettings = {...this.perVisualizationSettings()};
+    delete current[vizId];
 
-  /**
-   * Resets a visualization's sensitivity to use the global setting.
-   *
-   * @param type - The visualization type to reset
-   */
-  public async resetVisualizationSensitivity(type: string): Promise<void> {
-    const current: PerVisualizationSensitivity = {...this.perVisualizationSensitivity()};
-    delete current[type];
-    await this.updateSetting('visualization', 'perVisualizationSensitivity', current);
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({perVisualizationSettings: current}),
+    });
+
+    if (!response.ok) {
+      console.error(`[SettingsService] Failed to reset all settings: ${response.status}`);
+    }
   }
 
   /**
@@ -654,33 +728,6 @@ export class SettingsService implements OnDestroy {
    */
   public async setSkipDuration(duration: number): Promise<void> {
     await this.updateSetting('playback', 'skipDuration', this.clamp(Math.round(duration), 1, 60));
-  }
-
-  /**
-   * Sets the line width for waveform visualizations.
-   *
-   * @param width - Line width value between 1.0 and 5.0
-   */
-  public async setLineWidth(width: number): Promise<void> {
-    await this.updateSetting('visualization', 'lineWidth', this.clamp(width, 1, 5));
-  }
-
-  /**
-   * Sets the glow intensity for visualizations.
-   *
-   * @param intensity - Glow intensity value between 0.0 and 1.0
-   */
-  public async setGlowIntensity(intensity: number): Promise<void> {
-    await this.updateSetting('visualization', 'glowIntensity', this.clamp(intensity, 0, 1));
-  }
-
-  /**
-   * Sets the waveform smoothing for visualizations.
-   *
-   * @param smoothing - Waveform smoothing value between 0.0 and 1.0
-   */
-  public async setWaveformSmoothing(smoothing: number): Promise<void> {
-    await this.updateSetting('visualization', 'waveformSmoothing', this.clamp(smoothing, 0, 1));
   }
 
   /**

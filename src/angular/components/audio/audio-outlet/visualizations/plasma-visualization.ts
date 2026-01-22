@@ -40,7 +40,6 @@ export class PlasmaVisualization extends Canvas2DVisualization {
   private cachedColor2: {main: string; glow: string} | null = null;
   private cachedHue1: number = -1;
   private cachedHue2: number = -1;
-  private cachedHueShift: number = -1;
 
   private dataArray: Uint8Array<ArrayBuffer>;
 
@@ -282,19 +281,19 @@ export class PlasmaVisualization extends Canvas2DVisualization {
 
   /**
    * Gets color strings for a given hue, with caching.
-   * Invalidates cache when hue changes by more than 1 degree or hueShift changes.
+   * Invalidates cache when hue changes by more than 1 degree.
    */
   private getCachedColor(colorIndex: 1 | 2, hue: number): {main: string; glow: string} {
     const cachedHue: number = colorIndex === 1 ? this.cachedHue1 : this.cachedHue2;
     const cachedColor: {main: string; glow: string} | null = colorIndex === 1 ? this.cachedColor1 : this.cachedColor2;
 
-    // Check if cache is valid (hue within 1 degree and hueShift unchanged)
-    if (cachedColor && Math.abs(hue - cachedHue) < 1 && this.cachedHueShift === this.hueShift) {
+    // Check if cache is valid (hue within 1 degree)
+    if (cachedColor && Math.abs(hue - cachedHue) < 1) {
       return cachedColor;
     }
 
     // Calculate new color
-    const newColor: {main: string; glow: string} = this.getColorFromHue(this.shiftHue(hue));
+    const newColor: {main: string; glow: string} = this.getColorFromHue(hue);
 
     // Update cache
     if (colorIndex === 1) {
@@ -304,7 +303,6 @@ export class PlasmaVisualization extends Canvas2DVisualization {
       this.cachedColor2 = newColor;
       this.cachedHue2 = hue;
     }
-    this.cachedHueShift = this.hueShift;
 
     return newColor;
   }

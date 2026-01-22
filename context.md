@@ -64,12 +64,14 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
   - **Waves**: Classic, Plasma, Infinity, Neon, Onix, Pulsar, Water
 - Visualization names display with category prefix (e.g., "Waves : Plasma")
 - Volume-independent visualizations with configurable settings:
-  - Sensitivity (default 25%) - controls audio reactivity
-  - Max frame rate cap (uncapped, 60/30/15 FPS)
-  - Trail intensity (default 50%) - visual trail persistence
-  - Color shift (0-360°) - rotates colors around hue wheel
-  - FFT size (256-4096, default 2048) - analysis resolution
-  - Waveform smoothing (default 50%) - curve interpolation for waveform visualizations
+  - **Global settings**: Default visualization, max frame rate cap, FFT size
+  - **Per-visualization settings** (shown only if applicable to that visualization):
+    - Sensitivity (default 50%) - controls audio reactivity (all visualizations)
+    - Bar density (Low/Medium/High) - bar count (Analyzer, Spectre only)
+    - Trail intensity (default 50%) - visual trail persistence (waveform visualizations)
+    - Line width (default 2px) - waveform line thickness (waveform visualizations)
+    - Glow intensity (default 50%) - glow effect strength (waveform visualizations)
+    - Waveform smoothing (default 50%) - curve interpolation (waveform visualizations)
 - Transparent canvas backgrounds (CSS gradient shows through)
 - Fade-to-black effect (~5 seconds) when playback paused/stopped
 - Instant volume control via GainNode (no latency, doesn't affect visualizations)
@@ -291,10 +293,10 @@ AudioContext.createMediaElementSource(audioElement)
 MediaElementAudioSourceNode
     │
     ▼
-AnalyserNode (fftSize=256, smoothing=0.85)
+AnalyserNode (fftSize=2048, smoothing=0.85)
     │
     ├──► getByteFrequencyData() ──► Visualization Canvas
-    │     (sensitivity, trail intensity, hue shift applied)
+    │     (per-visualization settings applied)
     │
     ▼
 GainNode (volume control - keeps analyser at full signal)
@@ -356,7 +358,7 @@ AudioContext.destination (speakers)
 | `src/angular/components/video/video-outlet/` | Video playback, transcoding support |
 | `src/angular/components/playlist/` | Playlist UI panel with drag-and-drop |
 | `src/angular/components/miniplayer/` | Miniplayer overlay controls |
-| `src/angular/components/configuration/configuration-view/` | Settings UI with sidebar and panels |
+| `src/angular/components/configuration/configuration-view/` | Settings UI with accordion sidebar, per-visualization settings, and "Back to Media Player" button |
 | `src/angular/components/about/about-view/` | About dialog with version info and links |
 
 ### Shared Constants
@@ -435,11 +437,12 @@ The `Canvas2DVisualization` base class provides:
 - `name`, `category`, `sensitivity` properties
 - Fade-to-black support (paused/stopped state)
 - Trail intensity via `setTrailIntensity()` and `getFadeMultiplier()`
-- Hue shift via `setHueShift()`, `shiftHue()`, `shiftRgbColor()`
 - FFT size via `setFftSize()`, `getFftSize()`, `onFftSizeChanged()`
 - Bar density via `setBarDensity()`, `getBarDensity()`, `onBarDensityChanged()`
 - Waveform smoothing via `setWaveformSmoothing()`, `getWaveformSmoothing()`, `buildSmoothPath()`
-- Color conversion utilities: `hslToRgb()`, `rgbToHsl()`
+- Line width via `setLineWidth()`, `getLineWidth()`
+- Glow intensity via `setGlowIntensity()`, `getGlowIntensity()`
+- Color conversion utilities: `hslToRgb()`
 - Three-layer drawing helpers: `drawPathWithLayers()`, `drawPointsWithLayers()` (glow, main, highlight)
 
 ### Available Visualizations
@@ -471,21 +474,28 @@ The `Canvas2DVisualization` base class provides:
 
 ### Available Settings
 
-#### Visualization Category
+#### Visualisations Category
+
+The settings UI uses an accordion sidebar. Clicking "Visualisations" shows global settings; expanding the accordion reveals individual visualizations with per-visualization settings.
+
+**Global Settings** (shown when clicking "Visualisations"):
 
 | Setting | Range | Default | Description |
 |---------|-------|---------|-------------|
 | Default Visualization | dropdown | bars | Initial visualization on audio startup |
-| Sensitivity | 0-100% | 25% | Global visualization responsiveness |
-| Per-Visualization Sensitivity | 0-100% | (global) | Override sensitivity per visualization |
 | Max Frame Rate | Uncapped/60/30/15 | Uncapped | Limit visualization FPS |
-| Trail Intensity | 0-100% | 50% | Visual trail persistence |
-| Color Shift (Hue) | 0-360° | 0° | Rotate colors around hue wheel |
 | FFT Size | 256-4096 | 2048 | Audio analysis resolution |
-| Bar Density | Low/Medium/High | Medium | Bar count in bar visualizations |
-| Line Width | 1-5px | 2px | Waveform line thickness |
-| Glow Intensity | 0-100% | 50% | Glow effect strength |
-| Waveform Smoothing | 0-100% | 50% | Curve interpolation for waveform visualizations |
+
+**Per-Visualization Settings** (shown when selecting a specific visualization):
+
+| Setting | Range | Default | Applies To |
+|---------|-------|---------|------------|
+| Sensitivity | 0-100% | 50% | All visualizations |
+| Bar Density | Low/Medium/High | Medium | Analyzer, Spectre |
+| Trail Intensity | 0-100% | 50% | Classic, Plasma, Infinity, Neon, Onix, Pulsar, Water |
+| Line Width | 1-5px | 2px | Classic, Plasma, Infinity, Neon, Onix, Pulsar, Water |
+| Glow Intensity | 0-100% | 50% | Classic, Plasma, Infinity, Neon, Onix, Pulsar, Water |
+| Waveform Smoothing | 0-100% | 50% | Classic, Plasma, Infinity, Neon, Onix, Pulsar, Water |
 
 #### Application Category
 

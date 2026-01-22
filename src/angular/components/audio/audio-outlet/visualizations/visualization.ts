@@ -94,12 +94,6 @@ export abstract class Visualization {
   protected trailIntensity: number = 0.5;
 
   /**
-   * Hue shift rotates all visualization colors (0-360 degrees, default 0).
-   * Allows users to customize the color scheme of any visualization.
-   */
-  protected hueShift: number = 0;
-
-  /**
    * Current FFT size for audio analysis.
    * Larger values give more frequency resolution but require more processing.
    * Valid values: 256, 512, 1024, 2048, 4096
@@ -210,34 +204,6 @@ export abstract class Visualization {
   }
 
   /**
-   * Sets the hue shift value.
-   *
-   * @param value - Hue shift in degrees (0 to 360)
-   */
-  public setHueShift(value: number): void {
-    this.hueShift = ((value % 360) + 360) % 360;
-  }
-
-  /**
-   * Gets the current hue shift value.
-   *
-   * @returns Current hue shift in degrees (0 to 360)
-   */
-  public getHueShift(): number {
-    return this.hueShift;
-  }
-
-  /**
-   * Applies the hue shift to a given hue value.
-   *
-   * @param hue - The original hue value (0-360)
-   * @returns The shifted hue value (0-360)
-   */
-  protected shiftHue(hue: number): number {
-    return ((hue + this.hueShift) % 360 + 360) % 360;
-  }
-
-  /**
    * Converts HSL color values to RGB.
    *
    * Utility method for visualizations to convert colors.
@@ -270,60 +236,6 @@ export abstract class Visualization {
       g: Math.round((g + m) * 255),
       b: Math.round((b + m) * 255)
     };
-  }
-
-  /**
-   * Converts RGB color to HSL.
-   *
-   * Utility method for applying hue shift to RGB colors.
-   *
-   * @param r - Red (0-255)
-   * @param g - Green (0-255)
-   * @param b - Blue (0-255)
-   * @returns HSL object with h (0-360), s (0-100), l (0-100)
-   */
-  protected rgbToHsl(r: number, g: number, b: number): {h: number; s: number; l: number} {
-    r /= 255;
-    g /= 255;
-    b /= 255;
-
-    const max: number = Math.max(r, g, b);
-    const min: number = Math.min(r, g, b);
-    const l: number = (max + min) / 2;
-
-    if (max === min) {
-      return {h: 0, s: 0, l: l * 100};
-    }
-
-    const d: number = max - min;
-    const s: number = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-
-    let h: number;
-    switch (max) {
-      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-      case g: h = ((b - r) / d + 2) / 6; break;
-      default: h = ((r - g) / d + 4) / 6; break;
-    }
-
-    return {h: h * 360, s: s * 100, l: l * 100};
-  }
-
-  /**
-   * Shifts the hue of an RGB color and returns the new RGB values.
-   *
-   * Converts RGB to HSL, applies hue shift, converts back to RGB.
-   *
-   * @param r - Red (0-255)
-   * @param g - Green (0-255)
-   * @param b - Blue (0-255)
-   * @returns Shifted RGB object with r, g, b values (0-255)
-   */
-  protected shiftRgbColor(r: number, g: number, b: number): {r: number; g: number; b: number} {
-    if (this.hueShift === 0) return {r, g, b};
-
-    const hsl: {h: number; s: number; l: number} = this.rgbToHsl(r, g, b);
-    const shiftedHue: number = this.shiftHue(hsl.h);
-    return this.hslToRgb(shiftedHue, hsl.s, hsl.l);
   }
 
   /**
