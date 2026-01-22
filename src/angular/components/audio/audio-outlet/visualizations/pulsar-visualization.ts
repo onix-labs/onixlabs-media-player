@@ -183,11 +183,17 @@ export class PulsarVisualization extends Canvas2DVisualization {
     // Apply trail intensity multiplier to fade rate
     const effectiveFadeRate: number = this.FADE_RATE * this.getFadeMultiplier();
     trailCtx.save();
+    // Use high-quality image smoothing to reduce artifacts from repeated scaling
+    trailCtx.imageSmoothingEnabled = true;
+    trailCtx.imageSmoothingQuality = 'high';
     trailCtx.globalAlpha = 1 - effectiveFadeRate;
-    trailCtx.translate(centerX, centerY);
+    // Use floor to avoid sub-pixel center point which causes quadrant artifacts
+    const floorCenterX: number = Math.floor(centerX);
+    const floorCenterY: number = Math.floor(centerY);
+    trailCtx.translate(floorCenterX, floorCenterY);
     trailCtx.rotate(this.ROTATION_SPEED);
     trailCtx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
-    trailCtx.translate(-centerX, -centerY);
+    trailCtx.translate(-floorCenterX, -floorCenterY);
     trailCtx.drawImage(tempCanvas, 0, 0);
     trailCtx.restore();
 

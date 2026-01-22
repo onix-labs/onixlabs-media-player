@@ -214,10 +214,16 @@ export class NeonVisualization extends Canvas2DVisualization {
     // Draw back scaled from the specified zoom center with fade
     const effectiveFadeRate: number = this.FADE_RATE * this.getFadeMultiplier();
     trailCtx.save();
+    // Use high-quality image smoothing to reduce artifacts from repeated scaling
+    trailCtx.imageSmoothingEnabled = true;
+    trailCtx.imageSmoothingQuality = 'high';
     trailCtx.globalAlpha = 1 - effectiveFadeRate;
-    trailCtx.translate(zoomCenterX, zoomCenterY);
+    // Use floor to avoid sub-pixel center point which causes quadrant artifacts
+    const centerX: number = Math.floor(zoomCenterX);
+    const centerY: number = Math.floor(zoomCenterY);
+    trailCtx.translate(centerX, centerY);
     trailCtx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
-    trailCtx.translate(-zoomCenterX, -zoomCenterY);
+    trailCtx.translate(-centerX, -centerY);
     trailCtx.drawImage(tempCanvas, 0, 0);
     trailCtx.restore();
   }

@@ -665,6 +665,26 @@ Full `playlist:updated` is now only sent on initial SSE connection.
 | Infinity | Cached color values with hue threshold to avoid per-frame string generation |
 | Onix | Pre-computed trig lookup tables, flat typed arrays, cached bass calculation |
 
+### Zoom/Scale Quadrant Artifact Fix
+
+**Issue**: Visualizations using center-point zoom effects (Infinity, Plasma, Neon, Pulsar, Onix) displayed visible seams dividing the canvas into 4 quadrants. The artifacts appeared along the vertical and horizontal center lines.
+
+**Root Cause**: When canvas dimensions are odd (e.g., 1921×1081), the center point falls at a sub-pixel position (960.5, 540.5). Repeated scaling from a sub-pixel center causes the browser to interpolate each quadrant slightly differently, and these small errors accumulate over frames.
+
+**Fix Applied**:
+```typescript
+trailCtx.imageSmoothingEnabled = true;
+trailCtx.imageSmoothingQuality = 'high';
+const floorCenterX: number = Math.floor(centerX);
+const floorCenterY: number = Math.floor(centerY);
+trailCtx.translate(floorCenterX, floorCenterY);
+trailCtx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
+trailCtx.translate(-floorCenterX, -floorCenterY);
+```
+
+- High-quality image smoothing improves interpolation during scaling
+- Flooring center coordinates ensures zoom always originates from a whole pixel
+
 ### UHD/4K Video Streaming Optimizations
 
 **Issue**: 4K MKV files from NAS were choppy or failing to play due to real-time transcoding bottlenecks.
