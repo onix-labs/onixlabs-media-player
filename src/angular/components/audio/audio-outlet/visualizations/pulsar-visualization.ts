@@ -303,7 +303,12 @@ export class PulsarVisualization extends Canvas2DVisualization {
 
     const color: {r: number; g: number; b: number} = this.cachedGradientColors[this.cachedGradientColors.length - 1];
     const points: Array<{x: number; y: number}> = this.centerPoints;
-    const len: number = numPoints + 1;
+
+    // Build smooth closed path using the base class helper
+    const buildPath: () => void = (): void => {
+      this.buildSmoothPath(ctx, points, numPoints);
+      ctx.closePath();
+    };
 
     // Draw glow layer
     ctx.save();
@@ -313,13 +318,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     ctx.lineWidth = 5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < len; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
-    ctx.closePath();
+    buildPath();
     ctx.stroke();
     ctx.restore();
 
@@ -328,25 +327,13 @@ export class PulsarVisualization extends Canvas2DVisualization {
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < len; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
-    ctx.closePath();
+    buildPath();
     ctx.stroke();
 
     // Draw highlight
     ctx.strokeStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.5)`;
     ctx.lineWidth = 1;
-
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < len; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
-    ctx.closePath();
+    buildPath();
     ctx.stroke();
   }
 
@@ -359,6 +346,11 @@ export class PulsarVisualization extends Canvas2DVisualization {
   ): void {
     if (count < 2) return;
 
+    // Build path using the base class smooth path helper
+    const buildPath: () => void = (): void => {
+      this.buildSmoothPath(ctx, points, count - 1);
+    };
+
     // Draw glow layer (restored for visual quality)
     ctx.save();
     ctx.shadowBlur = 12;
@@ -367,12 +359,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     ctx.lineWidth = 5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < count; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
+    buildPath();
     ctx.stroke();
     ctx.restore();
 
@@ -381,23 +368,13 @@ export class PulsarVisualization extends Canvas2DVisualization {
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < count; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
+    buildPath();
     ctx.stroke();
 
     // Draw highlight
     ctx.strokeStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, ${0.5 * alpha})`;
     ctx.lineWidth = 1;
-
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < count; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
+    buildPath();
     ctx.stroke();
   }
 

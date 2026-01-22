@@ -125,6 +125,13 @@ export abstract class Visualization {
   protected glowIntensity: number = 0.5;
 
   /**
+   * Waveform smoothing controls curve interpolation (0.0 - 1.0, default 0.5).
+   * 0 = straight lines (jagged), 1 = maximum smoothing (rounded curves).
+   * Affects visualizations that draw waveforms (Waveform, Plasma, Neon, Infinity).
+   */
+  protected waveformSmoothing: number = 0.5;
+
+  /**
    * Current fade alpha level (0 = fully visible, 1 = fully black).
    * Used for smooth fade transitions when pausing/stopping.
    */
@@ -424,6 +431,24 @@ export abstract class Visualization {
   }
 
   /**
+   * Sets the waveform smoothing level.
+   *
+   * @param smoothing - Smoothing value (0.0 to 1.0)
+   */
+  public setWaveformSmoothing(smoothing: number): void {
+    this.waveformSmoothing = Math.max(0, Math.min(1, smoothing));
+  }
+
+  /**
+   * Gets the current waveform smoothing level.
+   *
+   * @returns Current waveform smoothing (0.0 to 1.0)
+   */
+  public getWaveformSmoothing(): number {
+    return this.waveformSmoothing;
+  }
+
+  /**
    * Calculates the glow blur radius based on intensity and base value.
    *
    * @param baseBlur - The base blur radius (when intensity is 1.0)
@@ -689,6 +714,56 @@ export abstract class Canvas2DVisualization extends Visualization {
     };
 
     this.drawPathWithLayers(buildPath, mainColor, glowColor, highlightColor, options);
+  }
+
+  /**
+   * Builds a smooth path through the given points using quadratic bezier curves.
+   *
+   * The smoothing is controlled by the waveformSmoothing property:
+   * - 0 = straight lines between points (no smoothing)
+   * - 1 = maximum smoothing using quadratic curves through midpoints
+   *
+   * @param ctx - The canvas rendering context to draw on
+   * @param points - Array of {x, y} points defining the path
+   * @param numPoints - Number of points to process (defaults to points.length - 1)
+   */
+  protected buildSmoothPath(
+    ctx: CanvasRenderingContext2D,
+    points: ReadonlyArray<{x: number; y: number}>,
+    numPoints?: number
+  ): void {
+    const count: number = numPoints ?? points.length - 1;
+    const smoothing: number = this.waveformSmoothing;
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+
+    if (smoothing === 0) {
+      // Straight lines (no smoothing)
+      for (let i: number = 1; i <= count; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+    } else {
+      // Smooth curves using quadratic bezier
+      for (let i: number = 0; i < count; i++) {
+        const current: {x: number; y: number} = points[i];
+        const next: {x: number; y: number} = points[i + 1];
+
+        // Calculate midpoint between current and next
+        const midX: number = (current.x + next.x) / 2;
+        const midY: number = (current.y + next.y) / 2;
+
+        // Control point interpolated between midpoint (no curve) and current point (max curve)
+        const cpX: number = midX + (current.x - midX) * smoothing;
+        const cpY: number = midY + (current.y - midY) * smoothing;
+
+        ctx.quadraticCurveTo(cpX, cpY, midX, midY);
+      }
+
+      // Final segment to the last point
+      const lastPoint: {x: number; y: number} = points[count];
+      ctx.lineTo(lastPoint.x, lastPoint.y);
+    }
   }
 }
 

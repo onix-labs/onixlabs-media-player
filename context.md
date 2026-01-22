@@ -69,6 +69,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
   - Trail intensity (default 50%) - visual trail persistence
   - Color shift (0-360°) - rotates colors around hue wheel
   - FFT size (256-4096, default 2048) - analysis resolution
+  - Waveform smoothing (default 50%) - curve interpolation for waveform visualizations
 - Transparent canvas backgrounds (CSS gradient shows through)
 - Fade-to-black effect (~5 seconds) when playback paused/stopped
 - Instant volume control via GainNode (no latency, doesn't affect visualizations)
@@ -437,6 +438,7 @@ The `Canvas2DVisualization` base class provides:
 - Hue shift via `setHueShift()`, `shiftHue()`, `shiftRgbColor()`
 - FFT size via `setFftSize()`, `getFftSize()`, `onFftSizeChanged()`
 - Bar density via `setBarDensity()`, `getBarDensity()`, `onBarDensityChanged()`
+- Waveform smoothing via `setWaveformSmoothing()`, `getWaveformSmoothing()`, `buildSmoothPath()`
 - Color conversion utilities: `hslToRgb()`, `rgbToHsl()`
 - Three-layer drawing helpers: `drawPathWithLayers()`, `drawPointsWithLayers()` (glow, main, highlight)
 
@@ -483,6 +485,7 @@ The `Canvas2DVisualization` base class provides:
 | Bar Density | Low/Medium/High | Medium | Bar count in bar visualizations |
 | Line Width | 1-5px | 2px | Waveform line thickness |
 | Glow Intensity | 0-100% | 50% | Glow effect strength |
+| Waveform Smoothing | 0-100% | 50% | Curve interpolation for waveform visualizations |
 
 #### Application Category
 

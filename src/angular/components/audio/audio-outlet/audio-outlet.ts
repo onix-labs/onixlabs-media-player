@@ -371,6 +371,15 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.visualization.setGlowIntensity(glowIntensity);
       }
     });
+
+    // React to waveform smoothing setting changes
+    effect((): void => {
+      const waveformSmoothing: number = this.settings.waveformSmoothing();
+
+      if (this.visualization) {
+        this.visualization.setWaveformSmoothing(waveformSmoothing);
+      }
+    });
   }
 
   // ============================================================================
@@ -681,6 +690,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.visualization.setBarDensity(this.settings.barDensity());
       this.visualization.setLineWidth(this.settings.lineWidth());
       this.visualization.setGlowIntensity(this.settings.glowIntensity());
+      this.visualization.setWaveformSmoothing(this.settings.waveformSmoothing());
 
       const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
@@ -711,6 +721,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualization.setBarDensity(this.settings.barDensity());
     this.visualization.setLineWidth(this.settings.lineWidth());
     this.visualization.setGlowIntensity(this.settings.glowIntensity());
+    this.visualization.setWaveformSmoothing(this.settings.waveformSmoothing());
 
     const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.visualization.resize(Math.round(rect.width), Math.round(rect.height));

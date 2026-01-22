@@ -274,6 +274,27 @@
                     <span class="slider-value">{{ formatGlowIntensity() }}</span>
                   </div>
                 </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="waveform-smoothing">Waveform Smoothing</label>
+                    <p class="setting-description">
+                      Controls curve smoothness on waveform visualizations. Lower values are jagged, higher values are smooth.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="waveform-smoothing"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      [value]="currentWaveformSmoothing()"
+                      (input)="onWaveformSmoothingChange($event)"
+                    />
+                    <span class="slider-value">{{ formatWaveformSmoothing() }}</span>
+                  </div>
+                </div>
               </div>
             }
             @case ('application') {

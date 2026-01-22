@@ -232,6 +232,11 @@ export class ConfigurationView {
     (): number => this.settingsService.glowIntensity()
   );
 
+  /** Current waveform smoothing for visualizations */
+  public readonly currentWaveformSmoothing: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.waveformSmoothing()
+  );
+
   /** Current default volume (0.0 - 1.0) */
   public readonly currentDefaultVolume: ReturnType<typeof computed<number>> = computed(
     (): number => this.settingsService.defaultVolume()
@@ -467,6 +472,16 @@ export class ConfigurationView {
   }
 
   /**
+   * Handles waveform smoothing slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onWaveformSmoothingChange(event: Event): Promise<void> {
+    const smoothing: number = parseFloat(getInputValue(event));
+    if (!isNaN(smoothing)) await this.settingsService.setWaveformSmoothing(smoothing);
+  }
+
+  /**
    * Handles default volume slider change.
    *
    * @param event - The input event from the slider
@@ -585,6 +600,15 @@ export class ConfigurationView {
    */
   public formatGlowIntensity(): string {
     return `${Math.round(this.currentGlowIntensity() * 100)}%`;
+  }
+
+  /**
+   * Formats the current waveform smoothing value as a percentage string.
+   *
+   * @returns The waveform smoothing as a percentage (e.g., "50%")
+   */
+  public formatWaveformSmoothing(): string {
+    return `${Math.round(this.currentWaveformSmoothing() * 100)}%`;
   }
 
   /**

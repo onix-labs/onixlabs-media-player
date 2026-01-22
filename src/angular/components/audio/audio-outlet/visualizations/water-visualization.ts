@@ -405,17 +405,13 @@ export class WaterVisualization extends Canvas2DVisualization {
     }
 
     const points: Array<{x: number; y: number}> = this.centerPoints;
-    const len: number = numPoints + 1;
     const mainColor: string = `rgb(${color.r}, ${color.g}, ${color.b})`;
     const glowColor: string = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
     const highlightColor: string = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.3)`;
 
+    // Build smooth closed path using the base class helper
     const buildPath: () => void = (): void => {
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i: number = 1; i < len; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
+      this.buildSmoothPath(ctx, points, numPoints);
     };
 
     // Glow layer (filled)
@@ -452,11 +448,27 @@ export class WaterVisualization extends Canvas2DVisualization {
     const glowColor: string = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
     const highlightColor: string = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.5)`;
 
+    // Build smooth path for the segment using quadratic bezier curves
+    const smoothing: number = this.waveformSmoothing;
     const buildPath: () => void = (): void => {
       ctx.beginPath();
       ctx.moveTo(points[startIdx].x, points[startIdx].y);
-      for (let i: number = startIdx + 1; i < endIdx; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
+
+      if (smoothing === 0) {
+        for (let i: number = startIdx + 1; i < endIdx; i++) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+      } else {
+        for (let i: number = startIdx; i < endIdx - 1; i++) {
+          const current: {x: number; y: number} = points[i];
+          const next: {x: number; y: number} = points[i + 1];
+          const midX: number = (current.x + next.x) / 2;
+          const midY: number = (current.y + next.y) / 2;
+          const cpX: number = midX + (current.x - midX) * smoothing;
+          const cpY: number = midY + (current.y - midY) * smoothing;
+          ctx.quadraticCurveTo(cpX, cpY, midX, midY);
+        }
+        ctx.lineTo(points[endIdx - 1].x, points[endIdx - 1].y);
       }
     };
 
