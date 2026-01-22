@@ -110,16 +110,15 @@ export class PulsarVisualization extends Canvas2DVisualization {
 
   // Cache gradient colors - only recalculate when hue changes by >= 1 degree
   private updateGradientColors(): void {
-    const hueInt: number = Math.floor(this.hueOffset + this.hueShift);
+    const hueInt: number = Math.floor(this.hueOffset);
     if (hueInt === this.cachedHue) return;
 
     this.cachedHue = hueInt;
-    const shiftedHue: number = this.shiftHue(this.hueOffset);
     this.cachedGradientColors = this.GRADIENT_LEVELS.map(
       (level: {s: number; l: number}): {r: number; g: number; b: number} =>
-        this.hslToRgb(shiftedHue, level.s, level.l)
+        this.hslToRgb(this.hueOffset, level.s, level.l)
     );
-    this.cachedLighterColor = this.hslToRgb(shiftedHue, 60, 75);
+    this.cachedLighterColor = this.hslToRgb(this.hueOffset, 60, 75);
   }
 
   protected override onResize(): void {

@@ -36,10 +36,28 @@ import * as path from 'path';
  */
 
 /**
- * Per-visualization sensitivity overrides.
- * If a visualization type has a value here, it overrides the global sensitivity.
+ * Per-visualization local settings.
+ * All values are optional - if not set, defaults are used.
  */
-export type PerVisualizationSensitivity = Partial<Record<string, number>>;
+export interface VisualizationLocalSettings {
+  /** Sensitivity for this visualization (0.0 - 1.0, default 0.5) */
+  readonly sensitivity?: number;
+  /** Bar density for bar-based visualizations (low, medium, high) - only for bars, tether */
+  readonly barDensity?: BarDensity;
+  /** Trail intensity for trail effects (0.0 - 1.0) - only for tunnel, infinity, neon, onix, pulsar, water */
+  readonly trailIntensity?: number;
+  /** Line width for waveform lines (1.0 - 5.0) - only for waveform, tunnel, infinity, neon, onix, pulsar, water */
+  readonly lineWidth?: number;
+  /** Glow intensity for glow effects (0.0 - 1.0) - only for waveform, tunnel, infinity, neon, onix, pulsar, water */
+  readonly glowIntensity?: number;
+  /** Waveform smoothing for curves (0.0 - 1.0) - only for waveform, tunnel, infinity, neon, onix, pulsar, water */
+  readonly waveformSmoothing?: number;
+}
+
+/**
+ * Map of visualization type to its local settings.
+ */
+export type PerVisualizationSettings = Partial<Record<string, VisualizationLocalSettings>>;
 
 /**
  * Valid FFT size values (must be powers of 2).
@@ -97,30 +115,19 @@ export type MacOSVisualEffectState = 'followWindow' | 'active' | 'inactive';
 
 /**
  * Visualization settings.
+ *
+ * Global settings apply to all visualizations.
+ * Per-visualization settings are stored in perVisualizationSettings.
  */
 export interface VisualizationSettings {
   /** The default visualization to display on startup */
   readonly defaultType: string;
-  /** Global sensitivity for all visualizations (0.0 - 1.0, default 0.5) */
-  readonly sensitivity: number;
-  /** Per-visualization sensitivity overrides (0.0 - 1.0, optional per type) */
-  readonly perVisualizationSensitivity: PerVisualizationSensitivity;
   /** Maximum frame rate for visualizations (0 = uncapped, or 15/30/60, default 0) */
   readonly maxFrameRate: number;
-  /** Trail intensity for visualizations with trail effects (0.0 - 1.0, default 0.5) */
-  readonly trailIntensity: number;
-  /** Hue shift for visualization colors (0-360 degrees, default 0) */
-  readonly hueShift: number;
   /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096, default 2048) */
   readonly fftSize: FftSize;
-  /** Bar density for bar-based visualizations (low, medium, high, default medium) */
-  readonly barDensity: BarDensity;
-  /** Line width for waveform visualizations (1.0 - 5.0, default 2.0) */
-  readonly lineWidth: number;
-  /** Glow intensity for visualizations with glow effects (0.0 - 1.0, default 0.5) */
-  readonly glowIntensity: number;
-  /** Waveform smoothing for curve interpolation (0.0 - 1.0, default 0.5) */
-  readonly waveformSmoothing: number;
+  /** Per-visualization local settings (sensitivity, barDensity, trailIntensity, etc.) */
+  readonly perVisualizationSettings: PerVisualizationSettings;
 }
 
 /**
@@ -220,16 +227,9 @@ export interface AppSettings {
  */
 export interface VisualizationSettingsUpdate {
   readonly defaultType?: string;
-  readonly sensitivity?: number;
-  readonly perVisualizationSensitivity?: PerVisualizationSensitivity;
   readonly maxFrameRate?: number;
-  readonly trailIntensity?: number;
-  readonly hueShift?: number;
   readonly fftSize?: FftSize;
-  readonly barDensity?: BarDensity;
-  readonly lineWidth?: number;
-  readonly glowIntensity?: number;
-  readonly waveformSmoothing?: number;
+  readonly perVisualizationSettings?: PerVisualizationSettings;
 }
 
 /**
@@ -272,7 +272,20 @@ export interface AppearanceSettingsUpdate {
 // ============================================================================
 
 /** Current settings schema version */
-const SETTINGS_VERSION: number = 1;
+const SETTINGS_VERSION: number = 2;
+
+/**
+ * Default values for per-visualization local settings.
+ * Used when a setting is not customized for a visualization.
+ */
+export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> = {
+  sensitivity: 0.5,
+  barDensity: 'medium',
+  trailIntensity: 0.5,
+  lineWidth: 2.0,
+  glowIntensity: 0.5,
+  waveformSmoothing: 0.5,
+};
 
 /** Valid FFT size values */
 const VALID_FFT_SIZES: readonly FftSize[] = [256, 512, 1024, 2048, 4096];
@@ -300,16 +313,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   version: SETTINGS_VERSION,
   visualization: {
     defaultType: 'bars',
-    sensitivity: 0.5,
-    perVisualizationSensitivity: {},
     maxFrameRate: 0,  // 0 = uncapped
-    trailIntensity: 0.5,  // 0.5 = default trail persistence
-    hueShift: 0,  // 0 = no color shift
     fftSize: 2048,  // 2048 = balanced resolution/performance
-    barDensity: 'medium',  // medium = default bar count
-    lineWidth: 2.0,  // 2.0 = default line width
-    glowIntensity: 0.5,  // 0.5 = default glow intensity
-    waveformSmoothing: 0.5,  // 0.5 = default waveform smoothing
+    perVisualizationSettings: {},  // Empty = use VISUALIZATION_LOCAL_DEFAULTS
   },
   application: {
     serverPort: 0,  // 0 = auto-assign
@@ -416,44 +422,10 @@ export class SettingsManager {
       }
     }
 
-    // Validate sensitivity if provided
-    if (update.sensitivity !== undefined) {
-      if (!this.isValidSensitivity(update.sensitivity)) {
-        console.warn(`[SettingsManager] Invalid sensitivity value: ${update.sensitivity}, ignoring`);
-        return this.settings;
-      }
-    }
-
-    // Validate and merge per-visualization sensitivity if provided
-    let mergedPerVizSensitivity: PerVisualizationSensitivity = this.settings.visualization.perVisualizationSensitivity;
-    if (update.perVisualizationSensitivity !== undefined) {
-      const validatedUpdate: PerVisualizationSensitivity = this.validatePerVisualizationSensitivity(update.perVisualizationSensitivity);
-      mergedPerVizSensitivity = {
-        ...this.settings.visualization.perVisualizationSensitivity,
-        ...validatedUpdate,
-      };
-    }
-
     // Validate maxFrameRate if provided
     if (update.maxFrameRate !== undefined) {
       if (!this.isValidMaxFrameRate(update.maxFrameRate)) {
         console.warn(`[SettingsManager] Invalid max frame rate: ${update.maxFrameRate}, ignoring`);
-        return this.settings;
-      }
-    }
-
-    // Validate trailIntensity if provided
-    if (update.trailIntensity !== undefined) {
-      if (!this.isValidTrailIntensity(update.trailIntensity)) {
-        console.warn(`[SettingsManager] Invalid trail intensity: ${update.trailIntensity}, ignoring`);
-        return this.settings;
-      }
-    }
-
-    // Validate hueShift if provided
-    if (update.hueShift !== undefined) {
-      if (!this.isValidHueShift(update.hueShift)) {
-        console.warn(`[SettingsManager] Invalid hue shift: ${update.hueShift}, ignoring`);
         return this.settings;
       }
     }
@@ -466,35 +438,16 @@ export class SettingsManager {
       }
     }
 
-    // Validate barDensity if provided
-    if (update.barDensity !== undefined) {
-      if (!this.isValidBarDensity(update.barDensity)) {
-        console.warn(`[SettingsManager] Invalid bar density: ${update.barDensity}, ignoring`);
-        return this.settings;
-      }
-    }
-
-    // Validate lineWidth if provided
-    if (update.lineWidth !== undefined) {
-      if (!this.isValidLineWidth(update.lineWidth)) {
-        console.warn(`[SettingsManager] Invalid line width: ${update.lineWidth}, ignoring`);
-        return this.settings;
-      }
-    }
-
-    // Validate glowIntensity if provided
-    if (update.glowIntensity !== undefined) {
-      if (!this.isValidGlowIntensity(update.glowIntensity)) {
-        console.warn(`[SettingsManager] Invalid glow intensity: ${update.glowIntensity}, ignoring`);
-        return this.settings;
-      }
-    }
-
-    // Validate waveformSmoothing if provided
-    if (update.waveformSmoothing !== undefined) {
-      if (!this.isValidWaveformSmoothing(update.waveformSmoothing)) {
-        console.warn(`[SettingsManager] Invalid waveform smoothing: ${update.waveformSmoothing}, ignoring`);
-        return this.settings;
+    // Validate and merge per-visualization settings if provided
+    let mergedPerVizSettings: PerVisualizationSettings = this.settings.visualization.perVisualizationSettings;
+    if (update.perVisualizationSettings !== undefined) {
+      const validatedUpdate: PerVisualizationSettings = this.validatePerVisualizationSettings(update.perVisualizationSettings);
+      // Deep merge: for each visualization, merge its settings
+      mergedPerVizSettings = {...this.settings.visualization.perVisualizationSettings};
+      for (const vizId of Object.keys(validatedUpdate)) {
+        const existingVizSettings: VisualizationLocalSettings = mergedPerVizSettings[vizId] ?? {};
+        const newVizSettings: VisualizationLocalSettings = validatedUpdate[vizId] ?? {};
+        mergedPerVizSettings[vizId] = {...existingVizSettings, ...newVizSettings};
       }
     }
 
@@ -502,18 +455,10 @@ export class SettingsManager {
     this.settings = {
       ...this.settings,
       visualization: {
-        ...this.settings.visualization,
         defaultType: update.defaultType ?? this.settings.visualization.defaultType,
-        sensitivity: update.sensitivity ?? this.settings.visualization.sensitivity,
-        perVisualizationSensitivity: mergedPerVizSensitivity,
         maxFrameRate: update.maxFrameRate ?? this.settings.visualization.maxFrameRate,
-        trailIntensity: update.trailIntensity ?? this.settings.visualization.trailIntensity,
-        hueShift: update.hueShift ?? this.settings.visualization.hueShift,
         fftSize: update.fftSize ?? this.settings.visualization.fftSize,
-        barDensity: update.barDensity ?? this.settings.visualization.barDensity,
-        lineWidth: update.lineWidth ?? this.settings.visualization.lineWidth,
-        glowIntensity: update.glowIntensity ?? this.settings.visualization.glowIntensity,
-        waveformSmoothing: update.waveformSmoothing ?? this.settings.visualization.waveformSmoothing,
+        perVisualizationSettings: mergedPerVizSettings,
       },
     };
 
@@ -870,6 +815,7 @@ export class SettingsManager {
 
   /**
    * Validates visualization settings object.
+   * Handles migration from v1 (global settings) to v2 (per-visualization settings).
    *
    * @param viz - The visualization settings to validate (unknown type)
    * @returns Valid visualization settings with defaults for invalid values
@@ -881,69 +827,100 @@ export class SettingsManager {
 
     const vizObj: Record<string, unknown> = viz as Record<string, unknown>;
     const defaultType: unknown = vizObj['defaultType'];
-    const sensitivity: unknown = vizObj['sensitivity'];
-    const perVizSensitivity: unknown = vizObj['perVisualizationSensitivity'];
     const maxFrameRate: unknown = vizObj['maxFrameRate'];
-    const trailIntensity: unknown = vizObj['trailIntensity'];
-    const hueShift: unknown = vizObj['hueShift'];
     const fftSize: unknown = vizObj['fftSize'];
-    const barDensity: unknown = vizObj['barDensity'];
-    const lineWidth: unknown = vizObj['lineWidth'];
-    const glowIntensity: unknown = vizObj['glowIntensity'];
-    const waveformSmoothing: unknown = vizObj['waveformSmoothing'];
+
+    // Handle migration from v1 to v2
+    let perVisualizationSettings: PerVisualizationSettings = {};
+
+    // Check if we have v2 format (perVisualizationSettings)
+    if (vizObj['perVisualizationSettings'] && typeof vizObj['perVisualizationSettings'] === 'object') {
+      perVisualizationSettings = this.validatePerVisualizationSettings(vizObj['perVisualizationSettings']);
+    }
+
+    // Migrate v1 settings if present (perVisualizationSensitivity and global values)
+    const oldPerVizSensitivity: unknown = vizObj['perVisualizationSensitivity'];
+    if (oldPerVizSensitivity && typeof oldPerVizSensitivity === 'object') {
+      // Migrate old per-visualization sensitivity to new format
+      const oldPerVizObj: Record<string, unknown> = oldPerVizSensitivity as Record<string, unknown>;
+      for (const vizId of Object.keys(oldPerVizObj)) {
+        if (this.isValidVisualizationType(vizId) && this.isValidSensitivity(oldPerVizObj[vizId])) {
+          if (!perVisualizationSettings[vizId]) {
+            perVisualizationSettings[vizId] = {};
+          }
+          perVisualizationSettings[vizId] = {
+            ...perVisualizationSettings[vizId],
+            sensitivity: oldPerVizObj[vizId] as number,
+          };
+        }
+      }
+    }
 
     return {
       defaultType: this.isValidVisualizationType(defaultType)
         ? defaultType
         : DEFAULT_SETTINGS.visualization.defaultType,
-      sensitivity: this.isValidSensitivity(sensitivity)
-        ? sensitivity
-        : DEFAULT_SETTINGS.visualization.sensitivity,
-      perVisualizationSensitivity: this.validatePerVisualizationSensitivity(perVizSensitivity),
       maxFrameRate: this.isValidMaxFrameRate(maxFrameRate)
         ? maxFrameRate
         : DEFAULT_SETTINGS.visualization.maxFrameRate,
-      trailIntensity: this.isValidTrailIntensity(trailIntensity)
-        ? trailIntensity
-        : DEFAULT_SETTINGS.visualization.trailIntensity,
-      hueShift: this.isValidHueShift(hueShift)
-        ? hueShift
-        : DEFAULT_SETTINGS.visualization.hueShift,
       fftSize: this.isValidFftSize(fftSize)
         ? fftSize
         : DEFAULT_SETTINGS.visualization.fftSize,
-      barDensity: this.isValidBarDensity(barDensity)
-        ? barDensity
-        : DEFAULT_SETTINGS.visualization.barDensity,
-      lineWidth: this.isValidLineWidth(lineWidth)
-        ? lineWidth
-        : DEFAULT_SETTINGS.visualization.lineWidth,
-      glowIntensity: this.isValidGlowIntensity(glowIntensity)
-        ? glowIntensity
-        : DEFAULT_SETTINGS.visualization.glowIntensity,
-      waveformSmoothing: this.isValidWaveformSmoothing(waveformSmoothing)
-        ? waveformSmoothing
-        : DEFAULT_SETTINGS.visualization.waveformSmoothing,
+      perVisualizationSettings,
     };
   }
 
   /**
-   * Validates per-visualization sensitivity object.
+   * Validates per-visualization settings object.
    *
-   * @param perViz - The per-visualization sensitivity to validate
-   * @returns Valid per-visualization sensitivity with invalid entries removed
+   * @param perViz - The per-visualization settings to validate
+   * @returns Valid per-visualization settings with invalid entries removed
    */
-  private validatePerVisualizationSensitivity(perViz: unknown): PerVisualizationSensitivity {
+  private validatePerVisualizationSettings(perViz: unknown): PerVisualizationSettings {
     if (!perViz || typeof perViz !== 'object') {
       return {};
     }
 
-    const result: PerVisualizationSensitivity = {};
+    const result: PerVisualizationSettings = {};
     const perVizObj: Record<string, unknown> = perViz as Record<string, unknown>;
 
-    for (const key of Object.keys(perVizObj)) {
-      if (this.isValidVisualizationType(key) && this.isValidSensitivity(perVizObj[key])) {
-        result[key] = perVizObj[key] as number;
+    for (const vizId of Object.keys(perVizObj)) {
+      if (!this.isValidVisualizationType(vizId)) {
+        continue;
+      }
+
+      const vizSettings: unknown = perVizObj[vizId];
+      if (!vizSettings || typeof vizSettings !== 'object') {
+        continue;
+      }
+
+      const vizSettingsObj: Record<string, unknown> = vizSettings as Record<string, unknown>;
+
+      // Build validated object with only valid settings
+      const validated: VisualizationLocalSettings = {
+        ...(this.isValidSensitivity(vizSettingsObj['sensitivity'])
+          ? {sensitivity: vizSettingsObj['sensitivity'] as number}
+          : {}),
+        ...(this.isValidBarDensity(vizSettingsObj['barDensity'])
+          ? {barDensity: vizSettingsObj['barDensity'] as BarDensity}
+          : {}),
+        ...(this.isValidTrailIntensity(vizSettingsObj['trailIntensity'])
+          ? {trailIntensity: vizSettingsObj['trailIntensity'] as number}
+          : {}),
+        ...(this.isValidLineWidth(vizSettingsObj['lineWidth'])
+          ? {lineWidth: vizSettingsObj['lineWidth'] as number}
+          : {}),
+        ...(this.isValidGlowIntensity(vizSettingsObj['glowIntensity'])
+          ? {glowIntensity: vizSettingsObj['glowIntensity'] as number}
+          : {}),
+        ...(this.isValidWaveformSmoothing(vizSettingsObj['waveformSmoothing'])
+          ? {waveformSmoothing: vizSettingsObj['waveformSmoothing'] as number}
+          : {}),
+      };
+
+      // Only add if there are any valid settings
+      if (Object.keys(validated).length > 0) {
+        result[vizId] = validated;
       }
     }
 

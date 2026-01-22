@@ -14,7 +14,7 @@
 
 import {Component, output, signal, computed, inject, ChangeDetectionStrategy} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, MacOSVibrancy, MacOSVisualEffectState} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, MacOSVibrancy, MacOSVisualEffectState} from '../../../services/settings.service';
 
 /**
  * macOS vibrancy options for the settings UI.
@@ -109,8 +109,8 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     description: 'Configure video and audio transcoding quality.',
   },
   {
-    id: 'visualization',
-    name: 'Visualization',
+    id: 'visualisations',
+    name: 'Visualisations',
     icon: 'fa-solid fa-waveform-lines',
     description: 'Configure audio visualization preferences.',
   },
@@ -156,29 +156,21 @@ export class ConfigurationView {
   // Reactive State
   // ============================================================================
 
-  /** Search query for filtering categories */
-  public readonly searchQuery: ReturnType<typeof signal<string>> = signal<string>('');
-
   /** Currently selected category ID */
   public readonly selectedCategory: ReturnType<typeof signal<string>> = signal<string>('application');
 
-  /** Whether the per-visualization sensitivity section is expanded */
-  public readonly isPerVizExpanded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+  /** Whether the visualisations accordion is expanded */
+  public readonly isVisualisationsExpanded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /** Currently selected visualization ID (null = global settings) */
+  public readonly selectedVisualization: ReturnType<typeof signal<string | null>> = signal<string | null>(null);
 
   // ============================================================================
   // Computed Values
   // ============================================================================
 
-  /** Filtered categories based on search query */
-  public readonly filteredCategories: ReturnType<typeof computed<readonly SettingsCategory[]>> = computed(
-    (): readonly SettingsCategory[] => {
-      const query: string = this.searchQuery().toLowerCase().trim();
-      if (!query) return SETTINGS_CATEGORIES;
-      return SETTINGS_CATEGORIES.filter(
-        (cat: SettingsCategory): boolean => cat.name.toLowerCase().includes(query)
-      );
-    }
-  );
+  /** All settings categories */
+  public readonly categories: readonly SettingsCategory[] = SETTINGS_CATEGORIES;
 
   /** Current category details */
   public readonly currentCategory: ReturnType<typeof computed<SettingsCategory | undefined>> = computed(
@@ -192,24 +184,9 @@ export class ConfigurationView {
     (): string => this.settingsService.defaultVisualization()
   );
 
-  /** Current sensitivity value (0.0 - 1.0) */
-  public readonly currentSensitivity: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.sensitivity()
-  );
-
   /** Current max frame rate (0 = uncapped) */
   public readonly currentMaxFrameRate: ReturnType<typeof computed<number>> = computed(
     (): number => this.settingsService.maxFrameRate()
-  );
-
-  /** Current trail intensity (0.0 - 1.0) */
-  public readonly currentTrailIntensity: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.trailIntensity()
-  );
-
-  /** Current hue shift (0-360 degrees) */
-  public readonly currentHueShift: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.hueShift()
   );
 
   /** Current FFT size for audio analysis */
@@ -217,25 +194,8 @@ export class ConfigurationView {
     (): FftSize => this.settingsService.fftSize()
   );
 
-  /** Current bar density for bar-based visualizations */
-  public readonly currentBarDensity: ReturnType<typeof computed<BarDensity>> = computed(
-    (): BarDensity => this.settingsService.barDensity()
-  );
-
-  /** Current line width for waveform visualizations */
-  public readonly currentLineWidth: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.lineWidth()
-  );
-
-  /** Current glow intensity for visualizations */
-  public readonly currentGlowIntensity: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.glowIntensity()
-  );
-
-  /** Current waveform smoothing for visualizations */
-  public readonly currentWaveformSmoothing: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.waveformSmoothing()
-  );
+  /** Visualization metadata for accordion items */
+  public readonly visualizationMetadata: readonly VisualizationMetadata[] = VISUALIZATION_METADATA;
 
   /** Current default volume (0.0 - 1.0) */
   public readonly currentDefaultVolume: ReturnType<typeof computed<number>> = computed(
@@ -356,7 +316,7 @@ export class ConfigurationView {
   // ============================================================================
 
   /**
-   * Handles close button click.
+   * Handles close button click / back to media player.
    * Emits the close event to return to the media player view.
    */
   public onClose(): void {
@@ -365,20 +325,35 @@ export class ConfigurationView {
 
   /**
    * Handles category selection.
+   * For visualisations, clicking the category name shows global settings.
    *
    * @param categoryId - The ID of the category to select
    */
   public onSelectCategory(categoryId: string): void {
     this.selectedCategory.set(categoryId);
+    if (categoryId === 'visualisations') {
+      this.selectedVisualization.set(null);
+    }
   }
 
   /**
-   * Handles search input changes.
+   * Toggles the visualisations accordion expansion.
    *
-   * @param event - The input event
+   * @param event - The mouse event (to prevent propagation)
    */
-  public onSearchChange(event: Event): void {
-    this.searchQuery.set(getInputValue(event));
+  public toggleVisualisationsAccordion(event: MouseEvent): void {
+    event.stopPropagation();
+    this.isVisualisationsExpanded.set(!this.isVisualisationsExpanded());
+  }
+
+  /**
+   * Selects a specific visualization for per-viz settings.
+   *
+   * @param vizId - The visualization ID to select
+   */
+  public onSelectVisualization(vizId: string): void {
+    this.selectedCategory.set('visualisations');
+    this.selectedVisualization.set(vizId);
   }
 
   /**
@@ -392,16 +367,6 @@ export class ConfigurationView {
   }
 
   /**
-   * Handles sensitivity slider change.
-   *
-   * @param event - The input event from the range element
-   */
-  public async onSensitivityChange(event: Event): Promise<void> {
-    const value: number = parseFloat(getInputValue(event));
-    if (!isNaN(value)) await this.settingsService.setSensitivity(value);
-  }
-
-  /**
    * Handles max frame rate selection change.
    *
    * @param event - The change event from the select element
@@ -412,26 +377,6 @@ export class ConfigurationView {
   }
 
   /**
-   * Handles trail intensity slider change.
-   *
-   * @param event - The input event from the range element
-   */
-  public async onTrailIntensityChange(event: Event): Promise<void> {
-    const value: number = parseFloat(getInputValue(event));
-    if (!isNaN(value)) await this.settingsService.setTrailIntensity(value);
-  }
-
-  /**
-   * Handles hue shift slider change.
-   *
-   * @param event - The input event from the range element
-   */
-  public async onHueShiftChange(event: Event): Promise<void> {
-    const value: number = parseFloat(getInputValue(event));
-    if (!isNaN(value)) await this.settingsService.setHueShift(value);
-  }
-
-  /**
    * Handles FFT size selection change.
    *
    * @param event - The change event from the select element
@@ -439,46 +384,6 @@ export class ConfigurationView {
   public async onFftSizeChange(event: Event): Promise<void> {
     const size: number = parseInt(getSelectValue(event), 10);
     if (!isNaN(size)) await this.settingsService.setFftSize(size as FftSize);
-  }
-
-  /**
-   * Handles bar density selection change.
-   *
-   * @param event - The change event from the select element
-   */
-  public async onBarDensityChange(event: Event): Promise<void> {
-    const density: BarDensity = getSelectValue(event) as BarDensity;
-    await this.settingsService.setBarDensity(density);
-  }
-
-  /**
-   * Handles line width slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onLineWidthChange(event: Event): Promise<void> {
-    const width: number = parseFloat(getInputValue(event));
-    if (!isNaN(width)) await this.settingsService.setLineWidth(width);
-  }
-
-  /**
-   * Handles glow intensity slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onGlowIntensityChange(event: Event): Promise<void> {
-    const intensity: number = parseFloat(getInputValue(event));
-    if (!isNaN(intensity)) await this.settingsService.setGlowIntensity(intensity);
-  }
-
-  /**
-   * Handles waveform smoothing slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWaveformSmoothingChange(event: Event): Promise<void> {
-    const smoothing: number = parseFloat(getInputValue(event));
-    if (!isNaN(smoothing)) await this.settingsService.setWaveformSmoothing(smoothing);
   }
 
   /**
@@ -557,59 +462,6 @@ export class ConfigurationView {
     await this.settingsService.setMacOSVisualEffectState(state as MacOSVisualEffectState);
   }
 
-  /**
-   * Formats the current sensitivity value as a percentage string.
-   *
-   * @returns The sensitivity as a percentage (e.g., "50%")
-   */
-  public formatSensitivity(): string {
-    return `${Math.round(this.currentSensitivity() * 100)}%`;
-  }
-
-  /**
-   * Formats the current trail intensity value as a percentage string.
-   *
-   * @returns The trail intensity as a percentage (e.g., "50%")
-   */
-  public formatTrailIntensity(): string {
-    return `${Math.round(this.currentTrailIntensity() * 100)}%`;
-  }
-
-  /**
-   * Formats the current hue shift value in degrees.
-   *
-   * @returns The hue shift in degrees (e.g., "180°")
-   */
-  public formatHueShift(): string {
-    return `${Math.round(this.currentHueShift())}°`;
-  }
-
-  /**
-   * Formats the current line width value.
-   *
-   * @returns The line width as a number with one decimal place
-   */
-  public formatLineWidth(): string {
-    return `${this.currentLineWidth().toFixed(1)}px`;
-  }
-
-  /**
-   * Formats the current glow intensity value as a percentage string.
-   *
-   * @returns The glow intensity as a percentage (e.g., "50%")
-   */
-  public formatGlowIntensity(): string {
-    return `${Math.round(this.currentGlowIntensity() * 100)}%`;
-  }
-
-  /**
-   * Formats the current waveform smoothing value as a percentage string.
-   *
-   * @returns The waveform smoothing as a percentage (e.g., "50%")
-   */
-  public formatWaveformSmoothing(): string {
-    return `${Math.round(this.currentWaveformSmoothing() * 100)}%`;
-  }
 
   /**
    * Formats the current default volume value as a percentage string.
@@ -631,66 +483,118 @@ export class ConfigurationView {
   }
 
   // ============================================================================
-  // Per-Visualization Sensitivity
+  // Per-Visualization Settings
   // ============================================================================
 
   /**
-   * Toggles the per-visualization sensitivity section expansion.
+   * Checks if a setting is applicable to the given visualization.
+   *
+   * @param vizId - The visualization ID
+   * @param setting - The setting key
+   * @returns True if the setting applies to this visualization
    */
-  public togglePerVizSection(): void {
-    this.isPerVizExpanded.set(!this.isPerVizExpanded());
+  public hasApplicableSetting(vizId: string, setting: LocalSettingKey): boolean {
+    return this.settingsService.hasApplicableSetting(vizId, setting);
   }
 
   /**
-   * Checks if a visualization has a custom sensitivity override.
+   * Checks if a visualization has a custom value for a setting.
    *
-   * @param type - The visualization type to check
-   * @returns True if the visualization has a custom sensitivity
+   * @param vizId - The visualization ID
+   * @param setting - The setting key
+   * @returns True if the setting has a custom value
    */
-  public hasPerVizSensitivity(type: string): boolean {
-    const perViz = this.settingsService.perVisualizationSensitivity();
-    return perViz[type] !== undefined;
+  public hasCustomSetting(vizId: string, setting: LocalSettingKey): boolean {
+    return this.settingsService.hasCustomSetting(vizId, setting);
   }
 
   /**
-   * Gets the effective sensitivity for a visualization.
-   * Returns the custom value if set, otherwise the global value.
+   * Gets the effective value for a per-visualization setting.
    *
-   * @param type - The visualization type
-   * @returns The sensitivity value (0.0 - 1.0)
+   * @param vizId - The visualization ID
+   * @param setting - The setting key
+   * @returns The effective value (custom or default)
    */
-  public getVisualizationSensitivity(type: string): number {
-    return this.settingsService.getEffectiveSensitivity(type);
+  public getEffectiveSetting<K extends LocalSettingKey>(vizId: string, setting: K): number | BarDensity {
+    return this.settingsService.getEffectiveSetting(vizId, setting) as number | BarDensity;
   }
 
   /**
-   * Formats the sensitivity for a specific visualization as a percentage.
+   * Formats a numeric setting value as a percentage string.
    *
-   * @param type - The visualization type
-   * @returns The sensitivity as a percentage (e.g., "50%")
+   * @param vizId - The visualization ID
+   * @param setting - The setting key
+   * @returns The value as a percentage (e.g., "50%")
    */
-  public formatVisualizationSensitivity(type: string): string {
-    return `${Math.round(this.getVisualizationSensitivity(type) * 100)}%`;
+  public formatPercentSetting(vizId: string, setting: LocalSettingKey): string {
+    const value = this.settingsService.getEffectiveSetting(vizId, setting) as number;
+    return `${Math.round(value * 100)}%`;
   }
 
   /**
-   * Handles per-visualization sensitivity slider change.
+   * Formats the line width setting with units.
    *
-   * @param type - The visualization type being adjusted
-   * @param event - The input event from the range element
+   * @param vizId - The visualization ID
+   * @returns The line width with px units (e.g., "2.0px")
    */
-  public async onVisualizationSensitivityChange(type: string, event: Event): Promise<void> {
+  public formatLineWidth(vizId: string): string {
+    const value = this.settingsService.getEffectiveSetting(vizId, 'lineWidth') as number;
+    return `${value.toFixed(1)}px`;
+  }
+
+  /**
+   * Handles per-visualization setting change.
+   *
+   * @param vizId - The visualization ID
+   * @param setting - The setting key
+   * @param event - The input event
+   */
+  public async onPerVizSettingChange(vizId: string, setting: LocalSettingKey, event: Event): Promise<void> {
     const value: number = parseFloat(getInputValue(event));
-    if (!isNaN(value)) await this.settingsService.setVisualizationSensitivity(type, value);
+    if (!isNaN(value)) {
+      await this.settingsService.setVisualizationSetting(vizId, setting, value);
+    }
   }
 
   /**
-   * Resets a visualization's sensitivity to use the global setting.
+   * Handles per-visualization bar density change.
    *
-   * @param type - The visualization type to reset
+   * @param vizId - The visualization ID
+   * @param event - The change event from the select element
    */
-  public async onResetVisualizationSensitivity(type: string): Promise<void> {
-    await this.settingsService.resetVisualizationSensitivity(type);
+  public async onPerVizBarDensityChange(vizId: string, event: Event): Promise<void> {
+    const density: BarDensity = getSelectValue(event) as BarDensity;
+    await this.settingsService.setVisualizationSetting(vizId, 'barDensity', density);
+  }
+
+  /**
+   * Resets a per-visualization setting to its default.
+   *
+   * @param vizId - The visualization ID
+   * @param setting - The setting key
+   */
+  public async onResetPerVizSetting(vizId: string, setting: LocalSettingKey): Promise<void> {
+    await this.settingsService.resetVisualizationSetting(vizId, setting);
+  }
+
+  /**
+   * Resets all settings for a visualization to defaults.
+   *
+   * @param vizId - The visualization ID
+   */
+  public async onResetAllVisualizationSettings(vizId: string): Promise<void> {
+    await this.settingsService.resetAllVisualizationSettings(vizId);
+  }
+
+  /**
+   * Gets the display name for a visualization by its ID.
+   *
+   * @param vizId - The visualization ID
+   * @returns The display name or the ID if not found
+   */
+  public getVisualizationName(vizId: string): string {
+    const meta = this.settingsService.getVisualizationMetadata(vizId);
+    return meta?.name ?? vizId;
   }
 
   // ============================================================================

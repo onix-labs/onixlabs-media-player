@@ -90,14 +90,10 @@ export class WaveformVisualization extends Canvas2DVisualization {
       this.points[i].y = centerY + amplitude * amplitudeScale;
     }
 
-    // Apply hue shift to base green color (0, 255, 100)
-    const baseColor: {r: number; g: number; b: number} = this.shiftRgbColor(0, 255, 100);
-    const colorMain: string = `rgb(${baseColor.r}, ${baseColor.g}, ${baseColor.b})`;
-    const colorGlow: string = `rgba(${baseColor.r}, ${baseColor.g}, ${baseColor.b}, 0.8)`;
-
-    // Use a lighter version of the shifted color for highlight
-    const highlightColor: {r: number; g: number; b: number} = this.shiftRgbColor(150, 255, 180);
-    const colorHighlight: string = `rgba(${highlightColor.r}, ${highlightColor.g}, ${highlightColor.b}, 0.6)`;
+    // Green color theme
+    const colorMain: string = 'rgb(0, 255, 100)';
+    const colorGlow: string = 'rgba(0, 255, 100, 0.8)';
+    const colorHighlight: string = 'rgba(150, 255, 180, 0.6)';
 
     // Build path using the base class smooth path helper
     const buildPath: () => void = (): void => {
