@@ -286,6 +286,13 @@ export class OnixVisualization extends Canvas2DVisualization {
         const g: number = (g1 + gDiff * t) | 0;
         const b: number = (b1 + bDiff * t) | 0;
 
+        // Calculate curve control point based on smoothing
+        const current: {x: number; y: number} = points[i];
+        const next: {x: number; y: number} = points[nextI];
+        const midX: number = (current.x + next.x) / 2;
+        const midY: number = (current.y + next.y) / 2;
+        const smoothing: number = this.waveformSmoothing;
+
         // Draw glow layer for this segment
         ctx.save();
         ctx.shadowBlur = 12;
@@ -293,8 +300,14 @@ export class OnixVisualization extends Canvas2DVisualization {
         ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.3)`;
         ctx.lineWidth = 5;
         ctx.beginPath();
-        ctx.moveTo(points[i].x, points[i].y);
-        ctx.lineTo(points[nextI].x, points[nextI].y);
+        ctx.moveTo(current.x, current.y);
+        if (smoothing === 0) {
+          ctx.lineTo(next.x, next.y);
+        } else {
+          const cpX: number = midX + (current.x - midX) * smoothing;
+          const cpY: number = midY + (current.y - midY) * smoothing;
+          ctx.quadraticCurveTo(cpX, cpY, next.x, next.y);
+        }
         ctx.stroke();
         ctx.restore();
 
@@ -302,8 +315,14 @@ export class OnixVisualization extends Canvas2DVisualization {
         ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(points[i].x, points[i].y);
-        ctx.lineTo(points[nextI].x, points[nextI].y);
+        ctx.moveTo(current.x, current.y);
+        if (smoothing === 0) {
+          ctx.lineTo(next.x, next.y);
+        } else {
+          const cpX: number = midX + (current.x - midX) * smoothing;
+          const cpY: number = midY + (current.y - midY) * smoothing;
+          ctx.quadraticCurveTo(cpX, cpY, next.x, next.y);
+        }
         ctx.stroke();
       }
     }

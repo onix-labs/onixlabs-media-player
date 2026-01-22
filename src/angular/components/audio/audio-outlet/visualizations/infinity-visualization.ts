@@ -261,12 +261,9 @@ export class InfinityVisualization extends Canvas2DVisualization {
     // Note: We need to use the passed ctx, not this.ctx, since this draws to trail canvases
     const numPoints: number = this.CIRCLE_POINTS;
 
+    // Build path using the base class smooth path helper
     const buildPath: () => void = (): void => {
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i: number = 1; i <= numPoints; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
+      this.buildSmoothPath(ctx, points, numPoints);
     };
 
     // Reduce glow color opacity for the stroke

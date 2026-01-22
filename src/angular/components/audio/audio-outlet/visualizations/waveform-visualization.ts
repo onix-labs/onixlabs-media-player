@@ -29,12 +29,22 @@ export class WaveformVisualization extends Canvas2DVisualization {
 
   private readonly FADE_RATE: number = 0.03; // Very slow fade for LCD ghosting effect
   private readonly BASE_GLOW_BLUR: number = 15;
+  private readonly WAVEFORM_POINTS: number = 128;
   private dataArray: Uint8Array<ArrayBuffer>;
+
+  /** Pre-allocated point array for waveform */
+  private readonly points: Array<{x: number; y: number}>;
 
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.sensitivity = 0.4;
+
+    // Pre-allocate point array
+    this.points = [];
+    for (let i: number = 0; i <= this.WAVEFORM_POINTS; i++) {
+      this.points.push({x: 0, y: 0});
+    }
   }
 
   protected override onFftSizeChanged(): void {
@@ -67,9 +77,18 @@ export class WaveformVisualization extends Canvas2DVisualization {
     this.analyser.getByteTimeDomainData(dataArray);
 
     const centerY: number = height / 2;
-    const sliceWidth: number = width / dataArray.length;
+    const numPoints: number = this.WAVEFORM_POINTS;
+    const sliceWidth: number = width / numPoints;
     const amplitudeScale: number = height * 0.4;
     const sensitivityFactor: number = this.sensitivity * 2;
+
+    // Calculate waveform points
+    for (let i: number = 0; i <= numPoints; i++) {
+      const dataIndex: number = Math.floor((i / numPoints) * dataArray.length);
+      const amplitude: number = ((dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
+      this.points[i].x = i * sliceWidth;
+      this.points[i].y = centerY + amplitude * amplitudeScale;
+    }
 
     // Apply hue shift to base green color (0, 255, 100)
     const baseColor: {r: number; g: number; b: number} = this.shiftRgbColor(0, 255, 100);
@@ -80,19 +99,9 @@ export class WaveformVisualization extends Canvas2DVisualization {
     const highlightColor: {r: number; g: number; b: number} = this.shiftRgbColor(150, 255, 180);
     const colorHighlight: string = `rgba(${highlightColor.r}, ${highlightColor.g}, ${highlightColor.b}, 0.6)`;
 
+    // Build path using the base class smooth path helper
     const buildPath: () => void = (): void => {
-      ctx.beginPath();
-      let x: number = 0;
-      for (let i: number = 0; i < dataArray.length; i++) {
-        const amplitude: number = ((dataArray[i] - 128) / 128) * sensitivityFactor;
-        const y: number = centerY + amplitude * amplitudeScale;
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-        x += sliceWidth;
-      }
+      this.buildSmoothPath(ctx, this.points, numPoints);
     };
 
     this.drawPathWithLayers(buildPath, colorMain, colorGlow, colorHighlight, {

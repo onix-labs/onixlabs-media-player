@@ -119,6 +119,8 @@ export interface VisualizationSettings {
   readonly lineWidth: number;
   /** Glow intensity for visualizations with glow effects (0.0 - 1.0, default 0.5) */
   readonly glowIntensity: number;
+  /** Waveform smoothing for curve interpolation (0.0 - 1.0, default 0.5) */
+  readonly waveformSmoothing: number;
 }
 
 /**
@@ -227,6 +229,7 @@ export interface VisualizationSettingsUpdate {
   readonly barDensity?: BarDensity;
   readonly lineWidth?: number;
   readonly glowIntensity?: number;
+  readonly waveformSmoothing?: number;
 }
 
 /**
@@ -306,6 +309,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     barDensity: 'medium',  // medium = default bar count
     lineWidth: 2.0,  // 2.0 = default line width
     glowIntensity: 0.5,  // 0.5 = default glow intensity
+    waveformSmoothing: 0.5,  // 0.5 = default waveform smoothing
   },
   application: {
     serverPort: 0,  // 0 = auto-assign
@@ -486,6 +490,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate waveformSmoothing if provided
+    if (update.waveformSmoothing !== undefined) {
+      if (!this.isValidWaveformSmoothing(update.waveformSmoothing)) {
+        console.warn(`[SettingsManager] Invalid waveform smoothing: ${update.waveformSmoothing}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -501,6 +513,7 @@ export class SettingsManager {
         barDensity: update.barDensity ?? this.settings.visualization.barDensity,
         lineWidth: update.lineWidth ?? this.settings.visualization.lineWidth,
         glowIntensity: update.glowIntensity ?? this.settings.visualization.glowIntensity,
+        waveformSmoothing: update.waveformSmoothing ?? this.settings.visualization.waveformSmoothing,
       },
     };
 
@@ -877,6 +890,7 @@ export class SettingsManager {
     const barDensity: unknown = vizObj['barDensity'];
     const lineWidth: unknown = vizObj['lineWidth'];
     const glowIntensity: unknown = vizObj['glowIntensity'];
+    const waveformSmoothing: unknown = vizObj['waveformSmoothing'];
 
     return {
       defaultType: this.isValidVisualizationType(defaultType)
@@ -907,6 +921,9 @@ export class SettingsManager {
       glowIntensity: this.isValidGlowIntensity(glowIntensity)
         ? glowIntensity
         : DEFAULT_SETTINGS.visualization.glowIntensity,
+      waveformSmoothing: this.isValidWaveformSmoothing(waveformSmoothing)
+        ? waveformSmoothing
+        : DEFAULT_SETTINGS.visualization.waveformSmoothing,
     };
   }
 
@@ -1252,6 +1269,18 @@ export class SettingsManager {
    * @returns True if the value is a valid glow intensity
    */
   private isValidGlowIntensity(value: unknown): value is number {
+    return typeof value === 'number' && value >= 0 && value <= 1;
+  }
+
+  /**
+   * Type guard to check if a value is a valid waveform smoothing.
+   *
+   * Valid values are between 0.0 and 1.0.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid waveform smoothing
+   */
+  private isValidWaveformSmoothing(value: unknown): value is number {
     return typeof value === 'number' && value >= 0 && value <= 1;
   }
 

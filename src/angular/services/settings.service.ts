@@ -90,6 +90,8 @@ export interface VisualizationSettings {
   readonly lineWidth: number;
   /** Glow intensity for visualizations with glow effects (0.0 - 1.0, default 0.5) */
   readonly glowIntensity: number;
+  /** Waveform smoothing for curve interpolation (0.0 - 1.0, default 0.5) */
+  readonly waveformSmoothing: number;
 }
 
 /**
@@ -198,6 +200,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     barDensity: 'medium',
     lineWidth: 2.0,
     glowIntensity: 0.5,
+    waveformSmoothing: 0.5,
   },
   application: {
     serverPort: 0,
@@ -408,6 +411,11 @@ export class SettingsService implements OnDestroy {
   /** Glow intensity for visualizations with glow effects (0.0 - 1.0) */
   public readonly glowIntensity: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().visualization?.glowIntensity ?? 0.5
+  );
+
+  /** Waveform smoothing for curve interpolation (0.0 - 1.0) */
+  public readonly waveformSmoothing: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().visualization?.waveformSmoothing ?? 0.5
   );
 
   /** Default volume on startup (0.0 - 1.0) */
@@ -664,6 +672,15 @@ export class SettingsService implements OnDestroy {
    */
   public async setGlowIntensity(intensity: number): Promise<void> {
     await this.updateSetting('visualization', 'glowIntensity', this.clamp(intensity, 0, 1));
+  }
+
+  /**
+   * Sets the waveform smoothing for visualizations.
+   *
+   * @param smoothing - Waveform smoothing value between 0.0 and 1.0
+   */
+  public async setWaveformSmoothing(smoothing: number): Promise<void> {
+    await this.updateSetting('visualization', 'waveformSmoothing', this.clamp(smoothing, 0, 1));
   }
 
   /**

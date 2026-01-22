@@ -297,12 +297,9 @@ export class NeonVisualization extends Canvas2DVisualization {
   ): void {
     const numPoints: number = this.WAVEFORM_POINTS;
 
+    // Build path using the base class smooth path helper
     const buildPath: () => void = (): void => {
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i: number = 1; i <= numPoints; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
+      this.buildSmoothPath(ctx, points, numPoints);
     };
 
     // Reduce glow color opacity for the stroke
