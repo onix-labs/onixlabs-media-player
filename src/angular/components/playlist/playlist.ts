@@ -203,10 +203,12 @@ export class Playlist {
   }
 
   /**
-   * Handles file drop to add media to playlist.
+   * Handles file drop to add media to playlist with smart auto-play.
    *
-   * Filters for supported media types and adds them to the playlist.
-   * If the playlist was empty, automatically starts playing the first track.
+   * Uses unified auto-play behavior:
+   * - Single file: plays immediately
+   * - Multiple files + empty playlist: plays from beginning
+   * - Multiple files + existing playlist: appends without interrupting
    */
   public async onDrop(event: DragEvent): Promise<void> {
     event.preventDefault();
@@ -216,26 +218,6 @@ export class Playlist {
     const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
     if (filePaths.length === 0) return;
 
-    // Add files to playlist
-    await this.addFilesToPlaylist(filePaths);
-  }
-
-  /**
-   * Adds files to the playlist and optionally auto-plays.
-   *
-   * If the playlist was empty before adding, starts playing the first file.
-   *
-   * @param filePaths - Array of absolute file paths to add
-   */
-  private async addFilesToPlaylist(filePaths: string[]): Promise<void> {
-    const wasEmpty: boolean = this.count() === 0;
-
-    // Server will probe each file for metadata
-    await this.mediaPlayer.addFiles(filePaths);
-
-    // Auto-play first item if playlist was empty
-    if (wasEmpty && filePaths.length > 0) {
-      await this.mediaPlayer.play();
-    }
+    await this.electron.addFilesWithAutoPlay(filePaths);
   }
 }

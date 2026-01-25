@@ -943,6 +943,51 @@ export class ElectronService implements OnDestroy {
   }
 
   /**
+   * Adds media files to the playlist with smart auto-play behavior.
+   *
+   * This is the unified method for adding files from any source (menu, drag/drop).
+   * It implements consistent auto-play rules:
+   *
+   * 1. Single file (any state) → append and play immediately
+   * 2. Multiple files + empty playlist → append all and play from beginning
+   * 3. Multiple files + existing playlist → append all but don't interrupt playback
+   *
+   * @param paths - Array of absolute file paths to add
+   * @returns Promise resolving to object with array of added items
+   *
+   * @example
+   * // From menu file open or drag/drop
+   * const result = await electron.addFilesWithAutoPlay(filePaths);
+   */
+  public async addFilesWithAutoPlay(paths: string[]): Promise<{added: PlaylistItem[]}> {
+    if (paths.length === 0) {
+      return {added: []};
+    }
+
+    // Capture playlist state BEFORE adding
+    const playlistWasEmpty: boolean = this.playlist().items.length === 0;
+
+    // Add files to playlist
+    const result: {added: PlaylistItem[]} = await this.addToPlaylist(paths);
+
+    if (result.added.length === 0) {
+      return result;
+    }
+
+    // Apply auto-play rules:
+    // - Single file: always play immediately
+    // - Multiple files + was empty: play first
+    // - Multiple files + had items: don't interrupt
+    const shouldAutoPlay: boolean = result.added.length === 1 || playlistWasEmpty;
+
+    if (shouldAutoPlay) {
+      await this.selectTrack(result.added[0].id);
+    }
+
+    return result;
+  }
+
+  /**
    * Removes a track from the playlist by its ID.
    *
    * @param id - The unique ID of the track to remove

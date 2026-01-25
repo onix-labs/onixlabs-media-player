@@ -357,7 +357,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
   }
 
   /**
-   * Handles file drop to add media to playlist.
+   * Handles file drop to add media to playlist with smart auto-play.
+   *
+   * Uses unified auto-play behavior:
+   * - Single file: plays immediately
+   * - Multiple files + empty playlist: plays from beginning
+   * - Multiple files + existing playlist: appends without interrupting
    */
   public async onDrop(event: DragEvent): Promise<void> {
     event.preventDefault();
@@ -367,11 +372,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
     if (filePaths.length === 0) return;
 
-    // Add files to playlist and select the first one to play immediately
-    const result: {added: PlaylistItem[]} = await this.electron.addToPlaylist(filePaths);
-    if (result.added.length > 0) {
-      await this.electron.selectTrack(result.added[0].id);
-    }
+    await this.electron.addFilesWithAutoPlay(filePaths);
   }
 
   // ============================================================================
