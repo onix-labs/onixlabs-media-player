@@ -149,6 +149,14 @@ export class Playlist {
     void this.mediaPlayer.removeTrack(item.id);
   }
 
+  /**
+   * Clears the entire playlist after stopping playback.
+   */
+  public async clearPlaylist(): Promise<void> {
+    await this.mediaPlayer.stop();
+    await this.mediaPlayer.clearPlaylist();
+  }
+
   // ============================================================================
   // Utility Methods
   // ============================================================================
