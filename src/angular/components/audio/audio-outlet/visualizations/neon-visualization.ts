@@ -5,8 +5,8 @@
  * and vertical waveforms) that rotate in opposite directions.
  *
  * Technical details:
- * - Cyan cross rotates clockwise
- * - Magenta cross rotates counter-clockwise
+ * - One cross rotates clockwise, the other counter-clockwise
+ * - Colors (cyan/magenta) randomly swap on intersection (every 45°)
  * - All waveforms are equal length (8/9 of shorter screen dimension)
  * - Trails fade outward from center with zoom effect
  * - Each waveform has glow, main, and highlight layers
@@ -45,6 +45,12 @@ export class NeonVisualization extends Canvas2DVisualization {
 
   /** Current rotation angle in radians */
   private rotationAngle: number = 0;
+
+  /** Tracks which intersection zone we're in (0-3) to detect crossings */
+  private lastIntersectionZone: number = 0;
+
+  /** Whether colors are currently swapped */
+  private colorsSwapped: boolean = false;
 
   private dataArray: Uint8Array<ArrayBuffer>;
 
@@ -157,6 +163,26 @@ export class NeonVisualization extends Canvas2DVisualization {
     // Update rotation angle
     this.rotationAngle += this.ROTATION_SPEED;
 
+    // Detect intersection crossings and randomly swap colors.
+    // Crosses align (intersect) every π/4 radians (45°) since one rotates
+    // clockwise and the other counter-clockwise.
+    const quarterPi: number = Math.PI / 4;
+    // Determine which intersection zone we're in (0, 1, 2, or 3 within each π cycle)
+    const currentZone: number = Math.floor(((this.rotationAngle % Math.PI) + Math.PI) % Math.PI / quarterPi);
+
+    // When we cross into a new zone (intersection point), randomly decide to swap
+    if (currentZone !== this.lastIntersectionZone) {
+      this.lastIntersectionZone = currentZone;
+      // 50% chance to toggle the swap state on each intersection
+      if (Math.random() < 0.5) {
+        this.colorsSwapped = !this.colorsSwapped;
+      }
+    }
+
+    // Select colors based on swap state
+    const color1: {main: string; glow: string} = this.colorsSwapped ? this.MAGENTA_COLOR : this.CYAN_COLOR;
+    const color2: {main: string; glow: string} = this.colorsSwapped ? this.CYAN_COLOR : this.MAGENTA_COLOR;
+
     // Apply zoom effect to both trail canvases
     this.applyDirectionalZoom(
       this.cyanTrailCanvas!, this.cyanTrailCtx!,
@@ -167,21 +193,21 @@ export class NeonVisualization extends Canvas2DVisualization {
       this.screenCenterX, this.screenCenterY
     );
 
-    // Cyan cross (rotates clockwise)
+    // Cross 1 (rotates clockwise)
     this.calculateHorizontalWaveformPoints(this.cyanHorizontalPoints, 0);
     this.calculateVerticalWaveformPoints(this.cyanVerticalPoints, 0);
     this.rotatePoints(this.cyanHorizontalPoints, this.rotationAngle);
     this.rotatePoints(this.cyanVerticalPoints, this.rotationAngle);
-    this.drawWaveform(this.cyanTrailCtx!, this.cyanHorizontalPoints, this.CYAN_COLOR.main, this.CYAN_COLOR.glow);
-    this.drawWaveform(this.cyanTrailCtx!, this.cyanVerticalPoints, this.CYAN_COLOR.main, this.CYAN_COLOR.glow);
+    this.drawWaveform(this.cyanTrailCtx!, this.cyanHorizontalPoints, color1.main, color1.glow);
+    this.drawWaveform(this.cyanTrailCtx!, this.cyanVerticalPoints, color1.main, color1.glow);
 
-    // Magenta cross (rotates counter-clockwise)
+    // Cross 2 (rotates counter-clockwise)
     this.calculateHorizontalWaveformPoints(this.magentaHorizontalPoints, this.WAVEFORM_POINTS / 2);
     this.calculateVerticalWaveformPoints(this.magentaVerticalPoints, this.WAVEFORM_POINTS / 2);
     this.rotatePoints(this.magentaHorizontalPoints, -this.rotationAngle);
     this.rotatePoints(this.magentaVerticalPoints, -this.rotationAngle);
-    this.drawWaveform(this.magentaTrailCtx!, this.magentaHorizontalPoints, this.MAGENTA_COLOR.main, this.MAGENTA_COLOR.glow);
-    this.drawWaveform(this.magentaTrailCtx!, this.magentaVerticalPoints, this.MAGENTA_COLOR.main, this.MAGENTA_COLOR.glow);
+    this.drawWaveform(this.magentaTrailCtx!, this.magentaHorizontalPoints, color2.main, color2.glow);
+    this.drawWaveform(this.magentaTrailCtx!, this.magentaVerticalPoints, color2.main, color2.glow);
 
     // Composite both trail canvases to main canvas with additive blending
     ctx.clearRect(0, 0, width, height);
