@@ -223,32 +223,19 @@ export class Root implements OnDestroy {
   }
 
   /**
-   * Opens file dialog, adds selected files to playlist, and conditionally plays.
+   * Opens file dialog and adds files with smart auto-play.
    * Called when File > Open is selected from the menu.
    *
-   * Playback behavior:
-   * - Single file added: always plays the new file
-   * - Multiple files + empty playlist: plays from the beginning
-   * - Multiple files + existing playlist: appends without interrupting playback
+   * Uses unified auto-play behavior (same as drag/drop):
+   * - Single file: plays immediately
+   * - Multiple files + empty playlist: plays from beginning
+   * - Multiple files + existing playlist: appends without interrupting
    */
   private async openFilesFromMenu(): Promise<void> {
     const files: string[] = await this.electron.openFileDialog();
     if (files.length === 0) return;
 
-    // Check if playlist was empty before adding
-    const playlistWasEmpty: boolean = this.electron.playlist().items.length === 0;
-
-    const result: {added: import('../../types/electron').PlaylistItem[]} = await this.electron.addToPlaylist(files);
-
-    // Determine whether to auto-play:
-    // - Single file: always play it
-    // - Multiple files + empty playlist: play from beginning
-    // - Multiple files + existing playlist: don't interrupt current playback
-    const shouldAutoPlay: boolean = result.added.length === 1 || playlistWasEmpty;
-
-    if (shouldAutoPlay && result.added.length > 0) {
-      await this.electron.selectTrack(result.added[0].id);
-    }
+    await this.electron.addFilesWithAutoPlay(files);
   }
 
   // ============================================================================
