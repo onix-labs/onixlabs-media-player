@@ -61,7 +61,7 @@
 
     .clear-text {
       display: none;
-      color: #ef4444;
+      color: white;
       font-size: 0.75rem;
       line-height: 1;
       gap: 0.25rem;
@@ -69,7 +69,7 @@
     }
 
     &:hover:not(.empty) {
-      background: rgba(239, 68, 68, 0.15);
+      background: #ef4444;
       border-color: #ef4444;
 
       .count-text {
