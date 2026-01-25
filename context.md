@@ -853,12 +853,13 @@ Production builds include code protection via bundling, minification, tree shaki
 | Component | Optimizations | Original | Final |
 |-----------|--------------|----------|-------|
 | Angular | esbuild minify + javascript-obfuscator | 382KB | 707KB |
-| Electron | esbuild bundle + minify + tree shake | 173KB | 91KB |
+| Electron | esbuild bundle + minify + tree shake | 173KB | 58KB |
 
 **Electron Build (esbuild)**:
-- Tree shaking removes unused code (40% size reduction)
-- Bundled to single `main.cjs` file with all dependencies inline
-- CommonJS format (`.cjs`) for electron-log compatibility
+- Pure ESM output (`.js` with `import`/`export`)
+- Tree shaking removes unused code (66% size reduction)
+- Bundled to single `main.js` file
+- `electron-log` kept external (loaded via `createRequire` for CJS interop)
 - Minified variable names and removed whitespace
 
 **Angular Build (javascript-obfuscator)**:
@@ -867,7 +868,14 @@ Production builds include code protection via bundling, minification, tree shaki
 - String array transformation (50% threshold)
 - String array rotation and shuffling
 
-**Why Electron code isn't obfuscated**: The `javascript-obfuscator` library doesn't support ES modules - it mangles ESM `import` statements. Since electron-log uses CommonJS internally with dynamic `require()` calls, we build as CommonJS. The Electron code is still well-protected through esbuild's bundling and minification.
+**Why Electron code isn't obfuscated**: The `javascript-obfuscator` library doesn't support ES modules - it mangles ESM `import` statements. The Electron code is still well-protected through esbuild's bundling and minification.
+
+**CJS Interop for electron-log**: The `electron-log` library is CommonJS with dynamic `require()` calls. To maintain pure ESM while supporting this, we use Node.js `createRequire()` to load it:
+```typescript
+import {createRequire} from 'module';
+const esmRequire = createRequire(import.meta.url);
+const log = esmRequire('electron-log/main');
+```
 
 ### Build Output
 
@@ -956,10 +964,11 @@ ffprobe -v quiet -print_format json -show_format -show_streams <file>
 
 ### TypeScript Configuration
 
+- Project uses `"type": "module"` in package.json for native ESM throughout
 - `src/electron/tsconfig.json` uses `allowImportingTsExtensions` + `noEmit` for tsx compatibility
 - `src/electron/tsconfig.preload.json` compiles preload.ts for development (production uses esbuild)
 - `src/electron/tsconfig.prod.json` compiles to JavaScript for debugging (production uses esbuild)
-- Production builds use `scripts/build-electron.ts` (esbuild) for bundling, tree shaking, and minification
+- Production builds use `scripts/build-electron.ts` (esbuild) with `format: 'esm'` for pure ESM output
 
 ### Installation
 

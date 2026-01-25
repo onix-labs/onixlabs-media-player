@@ -1,7 +1,7 @@
 {
   "name": "onixlabs-media-player",
   "version": "2026.0.0",
-  "main": "src/electron/dist/main.cjs",
+  "main": "src/electron/dist/main.js",
   "type": "module",
   "scripts": {
     "ng": "ng",
@@ -13,7 +13,7 @@
     "dev": "npm run lint && npm run build:preload && concurrently -k \"ng serve\" \"wait-on http://localhost:4200 && NODE_ENV=development DEV_SERVER_URL=http://localhost:4200 NODE_OPTIONS='--import tsx' electron src/electron/main.ts\"",
     "build:electron": "tsx scripts/build-electron.ts",
     "build:electron:dev": "tsc -p src/electron/tsconfig.prod.json",
-    "build:preload": "esbuild src/electron/preload.ts --bundle --platform=node --format=cjs --outfile=src/electron/dist/preload.cjs --external:electron",
+    "build:preload": "esbuild src/electron/preload.ts --bundle --platform=node --format=esm --outfile=src/electron/dist/preload.js --external:electron",
     "build:all": "npm run lint && npm run build && npm run build:electron",
     "obfuscate": "tsx scripts/obfuscate.ts",
     "package": "npm run build:all && npm run obfuscate && electron-builder",

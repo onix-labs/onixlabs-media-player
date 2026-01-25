@@ -17,9 +17,14 @@
  * @module electron/logger
  */
 
-import log from 'electron-log/main';
+import {createRequire} from 'module';
 import {app} from 'electron';
 import * as path from 'path';
+
+// Use createRequire to load CJS module electron-log from ESM context
+// electron-log doesn't have proper ESM exports, so we can't use `import`
+const esmRequire: NodeRequire = createRequire(import.meta.url);
+const log: typeof import('electron-log/main') = esmRequire('electron-log/main');
 
 /**
  * Simplified logger interface for helper functions.
