@@ -87,6 +87,14 @@ export class MiniplayerControls {
     return 'fa-solid fa-forward-step';
   });
 
+  /** Icon class for the play/pause button (changes to stop with Shift key) */
+  public readonly playPauseIcon: ReturnType<typeof computed<string>> = computed((): string => {
+    if (this.hasTrack() && this.isShiftPressed()) {
+      return 'fa-solid fa-stop';
+    }
+    return this.isPlaying() ? 'fa-solid fa-pause' : 'fa-solid fa-play';
+  });
+
   /**
    * Tracks Shift key press state for button icon changes.
    */
@@ -123,10 +131,16 @@ export class MiniplayerControls {
   }
 
   /**
-   * Handles play/pause button click.
+   * Handles play/pause button click, or stops if Shift is pressed.
+   *
+   * @param event - Mouse event to check for Shift modifier
    */
-  public async onPlayPause(): Promise<void> {
-    await this.mediaPlayer.togglePlayPause();
+  public async onPlayPause(event: MouseEvent): Promise<void> {
+    if (event.shiftKey) {
+      await this.mediaPlayer.stop();
+    } else {
+      await this.mediaPlayer.togglePlayPause();
+    }
   }
 
   /**

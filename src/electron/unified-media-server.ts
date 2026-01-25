@@ -1985,7 +1985,8 @@ export class UnifiedMediaServer {
   /**
    * Handles stop requests.
    *
-   * Resets playback position to the beginning.
+   * Resets playback position to the beginning and selects the first
+   * playlist item (if any items exist).
    *
    * @param res - HTTP response to write to
    */
@@ -1994,6 +1995,12 @@ export class UnifiedMediaServer {
     this.playback.state = 'stopped';
     this.playback.currentTime = 0;
     this.stopTimeTracking();
+
+    // Select first item if playlist has items
+    if (this.playlist.count() > 0) {
+      this.playlist.selectIndex(0);
+    }
+
     this.broadcastState();
     this.broadcastTime();
 
@@ -2649,7 +2656,8 @@ export class UnifiedMediaServer {
    * Handles media ended event.
    *
    * Attempts to play the next track. If no next track is available,
-   * transitions to idle state and broadcasts ended event.
+   * transitions to stopped state, selects the first item, and broadcasts
+   * the ended event.
    */
   private async onMediaEnded(): Promise<void> {
     this.stopTimeTracking();
@@ -2658,8 +2666,14 @@ export class UnifiedMediaServer {
     const nextItem: PlaylistItem | null = this.playlist.next();
 
     if (!nextItem) {
-      this.playback.state = 'idle';
+      this.playback.state = 'stopped';
       this.playback.currentTime = 0;
+
+      // Select first item if playlist has items
+      if (this.playlist.count() > 0) {
+        this.playlist.selectIndex(0);
+      }
+
       this.broadcastState();
       this.sse.broadcast('playback:ended', {});
       return;

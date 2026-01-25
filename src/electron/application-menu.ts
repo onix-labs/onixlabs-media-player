@@ -49,6 +49,7 @@ export interface MenuCallbacks {
   onCloseMedia: () => void;
   onToggleFullscreen: () => void;
   onTogglePlayPause: () => void;
+  onStop: () => void;
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
   onSelectVisualization: (id: string) => void;
@@ -213,6 +214,12 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
         accelerator: 'Space',
         enabled: state.hasMedia,
         click: callbacks.onTogglePlayPause
+      },
+      {
+        label: 'Stop',
+        accelerator: 'Shift+Space',
+        enabled: state.hasMedia,
+        click: callbacks.onStop
       },
       {type: 'separator'},
       {

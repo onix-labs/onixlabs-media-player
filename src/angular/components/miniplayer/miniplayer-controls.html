@@ -2,8 +2,8 @@
   <button (click)="onBackward($event)" [disabled]="!hasTrack() || !canSkipBackward()" title="Previous (Shift: skip back)">
     <i [class]="backwardIcon()"></i>
   </button>
-  <button (click)="onPlayPause()" [disabled]="!hasTrack()" title="Play/Pause">
-    <i [class]="isPlaying() ? 'fa-solid fa-pause' : 'fa-solid fa-play'"></i>
+  <button (click)="onPlayPause($event)" [disabled]="!hasTrack()" title="Play/Pause (Shift: Stop)">
+    <i [class]="playPauseIcon()"></i>
   </button>
   <button (click)="onForward($event)" [disabled]="!hasTrack() || !canSkipForward()" title="Next (Shift: skip forward)">
     <i [class]="forwardIcon()"></i>
