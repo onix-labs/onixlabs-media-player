@@ -16,12 +16,19 @@
       <div
         class="playlist-item"
         [class.playing]="isCurrentItem(item) && isPlaying()"
-        [class.paused]="isCurrentItem(item) && !isPlaying()"
+        [class.paused]="isCurrentItem(item) && isPaused()"
+        [class.stopped]="isCurrentItem(item) && isStopped()"
         (click)="selectItem(item)"
       >
         <div class="item-icon">
           @if (isCurrentItem(item)) {
-            <i [class]="isPlaying() ? 'fa-solid fa-play' : 'fa-solid fa-pause'"></i>
+            @if (isPlaying()) {
+              <i class="fa-solid fa-play"></i>
+            } @else if (isStopped()) {
+              <i class="fa-solid fa-stop"></i>
+            } @else {
+              <i class="fa-solid fa-pause"></i>
+            }
           } @else {
             <i [class]="item.type === 'audio' ? 'fa-solid fa-music' : 'fa-solid fa-film'"></i>
           }

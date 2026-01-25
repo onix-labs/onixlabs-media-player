@@ -98,6 +98,18 @@
     }
   }
 
+  &.stopped {
+    background: rgba(239, 68, 68, 0.15);
+
+    .item-title {
+      color: #ef4444;
+    }
+
+    .item-icon {
+      color: #ef4444;
+    }
+  }
+
   .item-icon {
     width: 1.5rem;
     color: rgba(255, 255, 255, 0.5);
