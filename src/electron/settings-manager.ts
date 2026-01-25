@@ -16,6 +16,7 @@
 import { app } from 'electron';
 import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'fs';
 import * as path from 'path';
+import { settingsLogger } from './logger.js';
 
 // ============================================================================
 // Types
@@ -707,17 +708,19 @@ export class SettingsManager {
    */
   private load(): AppSettings {
     if (!existsSync(this.settingsPath)) {
-      console.log('[SettingsManager] No settings file found, using defaults');
+      settingsLogger.info('No settings file found, using defaults');
       return DEFAULT_SETTINGS;
     }
 
     try {
+      settingsLogger.debug(`Loading settings from ${this.settingsPath}`);
       const raw: string = readFileSync(this.settingsPath, 'utf-8');
       const parsed: unknown = JSON.parse(raw);
+      settingsLogger.info('Settings loaded successfully');
       return this.validateAndMerge(parsed);
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : String(error);
-      console.error(`[SettingsManager] Failed to load settings: ${message}`);
+      settingsLogger.error(`Failed to load settings: ${message}`);
       return DEFAULT_SETTINGS;
     }
   }
@@ -738,10 +741,10 @@ export class SettingsManager {
       // Atomic rename (replaces existing file)
       renameSync(tempPath, this.settingsPath);
 
-      console.log('[SettingsManager] Settings saved successfully');
+      settingsLogger.debug('Settings saved successfully');
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : String(error);
-      console.error(`[SettingsManager] Failed to save settings: ${message}`);
+      settingsLogger.error(`Failed to save settings: ${message}`);
 
       // Clean up temp file if it exists
       try {

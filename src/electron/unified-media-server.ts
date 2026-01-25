@@ -24,6 +24,7 @@ import { createReadStream, statSync, existsSync, readFileSync } from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { SettingsManager } from './settings-manager.js';
+import { serverLogger, playlistLogger, playbackLogger, ffmpegLogger, midiLogger, logHttpRequest, logProcessSpawn, logProcessOutput, logProcessExit } from './logger.js';
 
 // ============================================================================
 // Binary Path Resolution
@@ -397,7 +398,7 @@ function parseMidiDuration(filePath: string): number {
 
     return totalSeconds;
   } catch (err) {
-    console.error('Failed to parse MIDI duration:', err);
+    midiLogger.error(`Failed to parse MIDI duration: ${err}`);
     return 0;
   }
 }
@@ -1054,14 +1055,16 @@ export class UnifiedMediaServer {
       // Use configured port, or 0 for auto-assign
       const configuredPort: number = this.settings.getSettings().application.serverPort;
 
+      serverLogger.debug(`Attempting to listen on port ${configuredPort}`);
       this.server.listen(configuredPort, '127.0.0.1', (): void => {
         const address: ReturnType<Server['address']> = this.server!.address();
         if (typeof address === 'object' && address) {
           this.port = address.port;
-          console.log(`Unified media server started on http://127.0.0.1:${this.port}`);
+          serverLogger.info(`Unified media server started on http://127.0.0.1:${this.port}`);
           this.sse.start();
           resolve(this.port);
         } else {
+          serverLogger.error('Failed to get server address');
           reject(new Error('Failed to get server address'));
         }
       });
@@ -1137,6 +1140,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleRequest(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const startTime = Date.now();
     const url: URL = new URL(req.url || '/', `http://127.0.0.1:${this.port}`);
     const method: string = req.method || 'GET';
     const pathname: string = url.pathname;
@@ -1152,6 +1156,15 @@ export class UnifiedMediaServer {
       res.end();
       return;
     }
+
+    // Log request completion
+    res.on('finish', (): void => {
+      const duration = Date.now() - startTime;
+      // Skip logging for /events (SSE) and /media/stream (noisy)
+      if (pathname !== '/events' && pathname !== '/media/stream') {
+        logHttpRequest(method, pathname, res.statusCode ?? 200, duration);
+      }
+    });
 
     try {
       // Route matching
@@ -1211,7 +1224,7 @@ export class UnifiedMediaServer {
         res.end(JSON.stringify({ error: 'Not found' }));
       }
     } catch (err) {
-      console.error('Request error:', err);
+      serverLogger.error(`Request error ${method} ${pathname}: ${err}`);
       const errorMessage: string = err instanceof Error ? err.message : 'Unknown error';
 
       // Return 413 for body too large errors
@@ -1407,7 +1420,7 @@ export class UnifiedMediaServer {
         createReadStream(filePath, { highWaterMark: 2 * 1024 * 1024 }).pipe(res); // 2MB buffer for NAS/network latency
       }
     } catch (err) {
-      console.error('Error serving file:', err);
+      serverLogger.error(`Error serving file: ${err}`);
       res.writeHead(500);
       res.end(JSON.stringify({ error: 'Error reading file' }));
     }
@@ -1473,7 +1486,7 @@ export class UnifiedMediaServer {
       });
       createReadStream(filePath).pipe(res);
     } catch (err) {
-      console.error('Error serving static file:', err);
+      serverLogger.error(`Error serving static file: ${err}`);
       res.writeHead(500);
       res.end(JSON.stringify({ error: 'Error reading file' }));
     }
@@ -1517,7 +1530,7 @@ export class UnifiedMediaServer {
     // Convert audio bitrate to FFmpeg format
     const audioBitrateStr: string = `${transcodingSettings.audioBitrate}k`;
 
-    console.log(`Transcoding: ${filePath} (seek: ${seekTime}s, audio-only: ${isAudioTranscode}, crf: ${crfValue}, audio: ${audioBitrateStr})`);
+    ffmpegLogger.info(`Transcoding: ${path.basename(filePath)} (seek: ${seekTime}s, audio-only: ${isAudioTranscode}, crf: ${crfValue}, audio: ${audioBitrateStr})`);
 
     let ffmpegArgs: string[];
 
@@ -1576,20 +1589,21 @@ export class UnifiedMediaServer {
     }
 
     if (!FFMPEG_PATH) {
+      ffmpegLogger.error('ffmpeg binary not found');
       res.writeHead(500);
       res.end(JSON.stringify({ error: 'ffmpeg not found' }));
       return;
     }
+    logProcessSpawn(ffmpegLogger, 'ffmpeg', ffmpegArgs);
     const ffmpeg: ChildProcess = spawn(FFMPEG_PATH, ffmpegArgs);
     ffmpeg.stdout?.pipe(res);
 
     ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
-      const msg: string = data.toString().trim();
-      if (msg) console.log('FFmpeg:', msg);
+      logProcessOutput(ffmpegLogger, 'stderr', data.toString());
     });
 
     ffmpeg.on('error', (err: Readonly<Error>): void => {
-      console.error('FFmpeg spawn error:', err);
+      ffmpegLogger.error(`FFmpeg spawn error: ${err.message}`);
       if (!res.headersSent) {
         (res as ServerResponse).writeHead(500);
       }
@@ -1597,9 +1611,7 @@ export class UnifiedMediaServer {
     });
 
     ffmpeg.on('close', (code: number | null): void => {
-      if (code !== 0 && code !== null) {
-        console.error(`FFmpeg exited with code ${code}`);
-      }
+      logProcessExit(ffmpegLogger, 'ffmpeg', code, null);
     });
 
     // Clean up FFmpeg process when client disconnects
@@ -1634,32 +1646,36 @@ export class UnifiedMediaServer {
     // Find available SoundFont
     const soundfont: string | undefined = this.findSoundFont();
     if (!soundfont) {
-      console.error('No SoundFont found for MIDI playback');
+      midiLogger.error('No SoundFont found for MIDI playback');
       res.writeHead(500);
       res.end(JSON.stringify({ error: 'No SoundFont available for MIDI playback' }));
       return;
     }
 
-    console.log(`Converting MIDI: ${filePath} (using SoundFont: ${soundfont})`);
+    midiLogger.info(`Converting MIDI: ${path.basename(filePath)} (using SoundFont: ${path.basename(soundfont)})`);
 
     // FluidSynth converts MIDI to raw PCM and outputs to stdout
     if (!FLUIDSYNTH_PATH || !FFMPEG_PATH) {
+      midiLogger.error('fluidsynth or ffmpeg binary not found');
       res.writeHead(500);
       res.end(JSON.stringify({ error: 'fluidsynth or ffmpeg not found' }));
       return;
     }
 
-    const fluidsynth: ChildProcess = spawn(FLUIDSYNTH_PATH, [
+    const fluidsynthArgs = [
       '-ni',           // Non-interactive mode
       '-T', 'raw',     // Output format: raw PCM
       '-F', '-',       // Output to stdout
       '-r', '44100',   // Sample rate: 44.1kHz
       soundfont,
       filePath
-    ]);
+    ];
+
+    logProcessSpawn(midiLogger, 'fluidsynth', fluidsynthArgs);
+    const fluidsynth: ChildProcess = spawn(FLUIDSYNTH_PATH, fluidsynthArgs);
 
     // Pipe FluidSynth output through FFmpeg to encode as MP3
-    const ffmpeg: ChildProcess = spawn(FFMPEG_PATH, [
+    const ffmpegMidiArgs = [
       '-hide_banner',
       '-loglevel', 'warning',
       '-f', 's16le',        // Input: signed 16-bit little-endian PCM
@@ -1670,7 +1686,10 @@ export class UnifiedMediaServer {
       '-b:a', audioBitrateStr, // Bitrate from settings
       '-f', 'mp3',          // Output format
       'pipe:1'              // Output to stdout
-    ]);
+    ];
+
+    logProcessSpawn(ffmpegLogger, 'ffmpeg (MIDI)', ffmpegMidiArgs);
+    const ffmpeg: ChildProcess = spawn(FFMPEG_PATH, ffmpegMidiArgs);
 
     res.writeHead(200, {
       'Content-Type': 'audio/mpeg',
@@ -1686,17 +1705,16 @@ export class UnifiedMediaServer {
     fluidsynth.stderr?.on('data', (data: Readonly<Buffer>): void => {
       const msg: string = data.toString().trim();
       if (msg && !msg.includes('FluidSynth')) {
-        console.log('FluidSynth:', msg);
+        logProcessOutput(midiLogger, 'stderr', msg);
       }
     });
 
     ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
-      const msg: string = data.toString().trim();
-      if (msg) console.log('FFmpeg (MIDI):', msg);
+      logProcessOutput(ffmpegLogger, 'stderr', data.toString());
     });
 
     fluidsynth.on('error', (err: Readonly<Error>): void => {
-      console.error('FluidSynth spawn error:', err);
+      midiLogger.error(`FluidSynth spawn error: ${err.message}`);
       if (!res.headersSent) {
         (res as ServerResponse).writeHead(500);
       }
@@ -1704,7 +1722,7 @@ export class UnifiedMediaServer {
     });
 
     ffmpeg.on('error', (err: Readonly<Error>): void => {
-      console.error('FFmpeg spawn error:', err);
+      ffmpegLogger.error(`FFmpeg spawn error: ${err.message}`);
       if (!res.headersSent) {
         (res as ServerResponse).writeHead(500);
       }
@@ -1712,17 +1730,13 @@ export class UnifiedMediaServer {
     });
 
     fluidsynth.on('close', (code: number | null): void => {
-      if (code !== 0 && code !== null) {
-        console.error(`FluidSynth exited with code ${code}`);
-      }
+      logProcessExit(midiLogger, 'fluidsynth', code, null);
       // Close FFmpeg stdin when FluidSynth is done
       ffmpeg.stdin?.end();
     });
 
     ffmpeg.on('close', (code: number | null): void => {
-      if (code !== 0 && code !== null) {
-        console.error(`FFmpeg exited with code ${code}`);
-      }
+      logProcessExit(ffmpegLogger, 'ffmpeg (MIDI)', code, null);
     });
 
     // Clean up processes when client disconnects
@@ -1820,9 +1834,11 @@ export class UnifiedMediaServer {
 
     return new Promise((resolve: (value: Readonly<MediaInfo>) => void, reject: (reason: Readonly<Error>) => void): void => {
       if (!FFPROBE_PATH) {
+        ffmpegLogger.error('ffprobe binary not found');
         reject(new Error('ffprobe not found'));
         return;
       }
+      ffmpegLogger.debug(`Probing: ${path.basename(filePath)}`);
       const ffprobe: ChildProcess = spawn(FFPROBE_PATH, [
         '-v', 'quiet',
         '-print_format', 'json',
@@ -1893,6 +1909,7 @@ export class UnifiedMediaServer {
   private async handlePlay(res: Readonly<ServerResponse>): Promise<void> {
     // If paused, resume from where we left off
     if (this.playback.state === 'paused') {
+      playbackLogger.info(`Resuming playback at ${this.pausedTime.toFixed(1)}s`);
       this.playback.state = 'playing';
       this.startTime = Date.now() - (this.pausedTime * 1000);
       this.startTimeTracking();
@@ -1912,6 +1929,7 @@ export class UnifiedMediaServer {
 
     // Load and play current track
     try {
+      playbackLogger.info(`Loading: ${currentItem.title}`);
       this.playback.state = 'loading';
       this.broadcastState();
 
@@ -1927,9 +1945,11 @@ export class UnifiedMediaServer {
       this.broadcastTime();
       this.startTimeTracking();
 
+      playbackLogger.info(`Playing: ${mediaInfo.title} (${mediaInfo.type}, ${mediaInfo.duration.toFixed(1)}s)`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, media: mediaInfo }));
     } catch (err) {
+      playbackLogger.error(`Failed to load media: ${(err as Error).message}`);
       this.playback.state = 'error';
       this.playback.errorMessage = (err as Error).message;
       this.broadcastState();
@@ -1952,6 +1972,7 @@ export class UnifiedMediaServer {
       return;
     }
 
+    playbackLogger.info(`Paused at ${this.playback.currentTime.toFixed(1)}s`);
     this.playback.state = 'paused';
     this.pausedTime = this.playback.currentTime;
     this.stopTimeTracking();
@@ -1969,6 +1990,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private handleStop(res: Readonly<ServerResponse>): void {
+    playbackLogger.info('Stopped');
     this.playback.state = 'stopped';
     this.playback.currentTime = 0;
     this.stopTimeTracking();
@@ -2107,10 +2129,11 @@ export class UnifiedMediaServer {
           height: info.height,
         });
       } catch (err) {
-        console.error(`Failed to probe ${filePath}:`, err);
+        playlistLogger.error(`Failed to probe ${filePath}: ${err}`);
       }
     }
 
+    playlistLogger.info(`Adding ${items.length} item(s) to playlist`);
     const added: PlaylistItem[] = this.playlist.addItems(items);
 
     // Notify of playlist count change for menu state

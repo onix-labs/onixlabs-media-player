@@ -439,6 +439,13 @@ export interface MediaPlayerAPI {
    * @returns Cleanup function to unregister the listener
    */
   onExitConfigurationMode: (callback: () => void) => () => void;
+
+  /**
+   * Gets the path to the application log file.
+   * Useful for debugging and support requests.
+   * @returns Promise resolving to the absolute path of the log file
+   */
+  getLogFilePath: () => Promise<string>;
 }
 
 /**

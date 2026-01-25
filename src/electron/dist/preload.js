@@ -77,6 +77,7 @@ const api = {
         ipcRenderer.on('app:exitConfigurationMode', listener);
         return () => { ipcRenderer.removeListener('app:exitConfigurationMode', listener); };
     },
+    getLogFilePath: () => ipcRenderer.invoke('app:getLogFilePath'),
 };
 /**
  * Expose the API to the renderer process under window.mediaPlayer.
