@@ -20,6 +20,7 @@ import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.js';
 import {createApplicationMenu, updateMenuState} from './application-menu.js';
 import type {WindowBounds, MacOSVisualEffectState} from './settings-manager.js';
+import {initializeLogger, mainLogger, ipcLogger, windowLogger, getLogFilePath} from './logger.js';
 
 // Set app name (shows in dock/menu bar during development)
 app.setName('ONIXPlayer');
@@ -164,55 +165,76 @@ class Program {
    * Initializes the application after Electron is ready.
    *
    * Initialization sequence:
-   * 1. Register the media:// protocol handler
-   * 2. Start the unified media server (HTTP API + SSE)
-   * 3. Create the main browser window
-   * 4. Set up IPC handlers for native functionality
-   * 5. Set up window events for fullscreen notifications
-   * 6. Load the Angular application (dev server or built files)
-   * 7. Register lifecycle event handlers
+   * 1. Initialize logging system
+   * 2. Register the media:// protocol handler
+   * 3. Start the unified media server (HTTP API + SSE)
+   * 4. Create the main browser window
+   * 5. Set up IPC handlers for native functionality
+   * 6. Set up window events for fullscreen notifications
+   * 7. Load the Angular application (dev server or built files)
+   * 8. Register lifecycle event handlers
    */
   private async initialize(): Promise<void> {
+    // Initialize logging first (captures renderer console.log via preload)
+    initializeLogger({spyRendererConsole: true});
+    mainLogger.info('Application starting');
+    mainLogger.debug(`Platform: ${process.platform}, Arch: ${process.arch}`);
+    mainLogger.debug(`Electron: ${process.versions.electron}, Node: ${process.versions.node}`);
+    mainLogger.debug(`Development mode: ${Program.IS_DEVELOPMENT}`);
+
     this.registerMediaProtocol();
+    mainLogger.debug('Media protocol registered');
 
     // Start the unified media server (HTTP API + SSE)
     // In production, also serve the Angular app via HTTP to avoid file:// CORS issues
     const staticPath: string | undefined = Program.IS_DEVELOPMENT
       ? undefined
       : path.join(Program.getProjectRoot(), "dist", "onixlabs-media-player", "browser");
+    mainLogger.debug('Starting unified media server');
     this.mediaServer = new UnifiedMediaServer(staticPath);
     this.serverPort = await this.mediaServer.start();
+    mainLogger.info(`Media server started on port ${this.serverPort}`);
 
     // Register callback to update menu when shuffle/repeat mode changes
     this.mediaServer.onModeChange((shuffle: boolean, repeat: boolean): void => {
+      mainLogger.debug(`Mode changed: shuffle=${shuffle}, repeat=${repeat}`);
       updateMenuState({shuffleEnabled: shuffle, repeatEnabled: repeat});
     });
 
     // Register callback to update menu when playlist count changes (enables/disables shuffle/repeat)
     this.mediaServer.onPlaylistCountChange((count: number): void => {
+      mainLogger.debug(`Playlist count changed: ${count}`);
       updateMenuState({hasMedia: count > 0});
     });
 
     // Register callback to update menu when playback state changes (Play/Pause label)
     this.mediaServer.onPlaybackStateChange((isPlaying: boolean): void => {
+      mainLogger.debug(`Playback state changed: ${isPlaying ? 'playing' : 'paused'}`);
       updateMenuState({isPlaying});
     });
 
+    mainLogger.debug('Creating browser window');
     this.window = this.createBrowserWindow();
     this.setupIpcHandlers();
     this.setupWindowEvents();
     this.setupApplicationMenu();
+    mainLogger.debug('Window setup complete');
 
     // Load Angular app - use HTTP in both dev and prod to avoid CORS issues
     if (Program.IS_DEVELOPMENT) {
+      mainLogger.info(`Loading development server: ${Program.DEVELOPMENT_SERVER_URL}`);
       void this.window.loadURL(Program.DEVELOPMENT_SERVER_URL);
     } else {
-      void this.window.loadURL(`http://127.0.0.1:${this.serverPort}/`);
+      const prodUrl = `http://127.0.0.1:${this.serverPort}/`;
+      mainLogger.info(`Loading production build: ${prodUrl}`);
+      void this.window.loadURL(prodUrl);
     }
 
     this.window.on("closed", this.onClosed.bind(this));
     app.on("activate", this.onActivate.bind(this));
     app.on("window-all-closed", this.onAllWindowsClosed.bind(this));
+
+    mainLogger.info('Application initialized successfully');
   }
 
   /**
@@ -338,12 +360,18 @@ class Program {
    * IPC is only used for operations that require native OS access.
    */
   private setupIpcHandlers(): void {
+    ipcLogger.debug('Setting up IPC handlers');
+
     // File dialog - requires native dialog
     ipcMain.handle("dialog:openFile", async (_: Readonly<Electron.IpcMainInvokeEvent>, options: Readonly<{
       filters: readonly Electron.FileFilter[];
       multiSelections: boolean
     }>): Promise<string[]> => {
-      if (!this.window) return [];
+      ipcLogger.debug(`dialog:openFile - multiSelections=${options.multiSelections}`);
+      if (!this.window) {
+        ipcLogger.warn('dialog:openFile - no window available');
+        return [];
+      }
 
       const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
         properties: options.multiSelections
@@ -352,42 +380,64 @@ class Program {
         filters: options.filters as Electron.FileFilter[]
       });
 
+      ipcLogger.info(`dialog:openFile - selected ${result.filePaths.length} file(s)`);
       return result.filePaths;
     });
 
     // Get server port - needed for renderer to connect to HTTP API
     ipcMain.handle("app:getServerPort", (): number => {
-      return this.mediaServer?.getPort() || 0;
+      const port = this.mediaServer?.getPort() || 0;
+      ipcLogger.debug(`app:getServerPort - returning ${port}`);
+      return port;
     });
 
     // Get platform info - needed for renderer to show platform-specific settings
     ipcMain.handle("app:getPlatformInfo", (): {platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'} => {
-      return {
-        platform: process.platform,
+      const systemTheme: 'dark' | 'light' = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+      const info = {
+        platform: process.platform as string,
         supportsGlass: process.platform === 'darwin' || process.platform === 'win32',
-        systemTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+        systemTheme
       };
+      ipcLogger.debug(`app:getPlatformInfo - ${JSON.stringify(info)}`);
+      return info;
+    });
+
+    // Get log file path - for debugging/support
+    ipcMain.handle("app:getLogFilePath", (): string => {
+      const logPath = getLogFilePath();
+      ipcLogger.debug(`app:getLogFilePath - ${logPath}`);
+      return logPath;
     });
 
     // Fullscreen control
     ipcMain.handle("window:enterFullscreen", (): void => {
+      windowLogger.debug('Entering fullscreen');
       this.window?.setFullScreen(true);
     });
 
     ipcMain.handle("window:exitFullscreen", (): void => {
+      windowLogger.debug('Exiting fullscreen');
       this.window?.setFullScreen(false);
     });
 
     ipcMain.handle("window:isFullscreen", (): boolean => {
-      return this.window?.isFullScreen() || false;
+      const isFullscreen = this.window?.isFullScreen() || false;
+      windowLogger.debug(`isFullscreen query: ${isFullscreen}`);
+      return isFullscreen;
     });
 
     // Miniplayer control
     ipcMain.handle("window:enterMiniplayer", async (): Promise<void> => {
-      if (!this.window) return;
+      windowLogger.info('Entering miniplayer mode');
+      if (!this.window) {
+        windowLogger.warn('enterMiniplayer - no window available');
+        return;
+      }
 
       // If in fullscreen, exit first and wait for transition to complete
       if (this.window.isFullScreen()) {
+        windowLogger.debug('Exiting fullscreen before entering miniplayer');
         await new Promise<void>((resolve: () => void): void => {
           this.window?.once('leave-full-screen', resolve);
           this.window?.setFullScreen(false);
@@ -396,6 +446,7 @@ class Program {
 
       // Store current bounds for restoration (after exiting fullscreen)
       this.desktopBounds = this.window.getBounds();
+      windowLogger.debug(`Stored desktop bounds: ${JSON.stringify(this.desktopBounds)}`);
 
       // Set mini-player constraints
       this.window.setMinimumSize(320, 200);
@@ -410,6 +461,7 @@ class Program {
         const height: number = Math.min(Math.max(savedBounds.height, 200), 400);
         this.window.setSize(width, height);
         this.window.setPosition(savedBounds.x, savedBounds.y);
+        windowLogger.debug(`Restored miniplayer bounds: ${width}x${height} at (${savedBounds.x}, ${savedBounds.y})`);
       } else {
         // Default: position in bottom-right corner of primary display
         this.window.setSize(320, 200);
@@ -419,14 +471,20 @@ class Program {
           workArea.x + workArea.width - 320 - this.SNAP_GAP,
           workArea.y + workArea.height - 200 - this.SNAP_GAP
         );
+        windowLogger.debug('Using default miniplayer position (bottom-right corner)');
       }
 
       this.isInMiniPlayerMode = true;
       this.window.webContents.send('window:viewModeChanged', 'miniplayer');
+      windowLogger.info('Miniplayer mode active');
     });
 
     ipcMain.handle("window:exitMiniplayer", (): void => {
-      if (!this.window) return;
+      windowLogger.info('Exiting miniplayer mode');
+      if (!this.window) {
+        windowLogger.warn('exitMiniplayer - no window available');
+        return;
+      }
 
       // Save current mini-player bounds before exiting
       const currentBounds: Electron.Rectangle = this.window.getBounds();
@@ -436,6 +494,7 @@ class Program {
         width: currentBounds.width,
         height: currentBounds.height,
       });
+      windowLogger.debug(`Saved miniplayer bounds: ${JSON.stringify(currentBounds)}`);
 
       // Restore desktop constraints
       // On macOS, must set minimum before maximum, and use large values instead of 0,0
@@ -448,16 +507,18 @@ class Program {
       // Restore previous bounds
       if (this.desktopBounds) {
         this.window.setBounds(this.desktopBounds);
+        windowLogger.debug(`Restored desktop bounds: ${JSON.stringify(this.desktopBounds)}`);
       }
 
       this.isInMiniPlayerMode = false;
       this.window.webContents.send('window:viewModeChanged', 'desktop');
+      windowLogger.info('Desktop mode restored');
     });
 
     ipcMain.handle("window:getViewMode", (): string => {
-      if (this.window?.isFullScreen()) return 'fullscreen';
-      if (this.isInMiniPlayerMode) return 'miniplayer';
-      return 'desktop';
+      const mode = this.window?.isFullScreen() ? 'fullscreen' : this.isInMiniPlayerMode ? 'miniplayer' : 'desktop';
+      windowLogger.debug(`getViewMode: ${mode}`);
+      return mode;
     });
 
     ipcMain.handle("window:getWindowPosition", (): {x: number; y: number} => {
@@ -529,6 +590,7 @@ class Program {
    */
   private setupWindowEvents(): void {
     if (!this.window) return;
+    windowLogger.debug('Setting up window events');
 
     // Handle window close - intercept in configuration mode, otherwise fade out audio
     this.window.on('close', (event: Electron.Event): void => {
@@ -537,11 +599,13 @@ class Program {
 
       // In configuration mode, intercept close and return to media player instead
       if (this.isInConfigurationMode) {
+        windowLogger.debug('Close intercepted in configuration mode');
         event.preventDefault();
         this.window?.webContents.send('app:exitConfigurationMode');
         return;
       }
 
+      windowLogger.info('Window closing - initiating fade out');
       // Prevent immediate close to allow fade-out
       event.preventDefault();
       this.isClosing = true;
@@ -551,6 +615,7 @@ class Program {
         // Listen for fade complete response
         const onFadeComplete: () => void = (): void => {
           ipcMain.removeHandler('app:fadeOutComplete');
+          windowLogger.debug('Fade out complete');
           resolve();
         };
 
@@ -566,20 +631,23 @@ class Program {
       });
 
       Promise.race([fadePromise, timeout]).then((): void => {
+        windowLogger.info('Destroying window');
         this.window?.destroy();
       });
     });
 
     // Notify renderer when fullscreen state changes (including via green button)
     this.window.on('enter-full-screen', (): void => {
+      windowLogger.info('Entered fullscreen');
       this.window?.webContents.send('window:fullscreenChanged', true);
       this.window?.webContents.send('window:viewModeChanged', 'fullscreen');
     });
 
     this.window.on('leave-full-screen', (): void => {
-      this.window?.webContents.send('window:fullscreenChanged', false);
       // Send the mode we're returning to (miniplayer or desktop)
       const mode: string = this.isInMiniPlayerMode ? 'miniplayer' : 'desktop';
+      windowLogger.info(`Left fullscreen, returning to ${mode}`);
+      this.window?.webContents.send('window:fullscreenChanged', false);
       this.window?.webContents.send('window:viewModeChanged', mode);
     });
 
@@ -641,6 +709,7 @@ class Program {
    */
   private onActivate(): void {
     if (BrowserWindow.getAllWindows().length === 0) {
+      mainLogger.info('Dock activation - creating new window');
       this.window = this.createBrowserWindow();
       this.setupWindowEvents();
       this.setupApplicationMenu();
@@ -661,6 +730,7 @@ class Program {
    * Clears the window reference and resets closing state.
    */
   private onClosed(): void {
+    windowLogger.debug('Window closed');
     this.window = null;
     this.isClosing = false;
   }
@@ -670,6 +740,7 @@ class Program {
    * Quits the application on all platforms.
    */
   private onAllWindowsClosed(): void {
+    mainLogger.info('All windows closed - quitting application');
     app.quit();
   }
 }

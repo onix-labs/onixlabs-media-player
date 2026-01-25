@@ -17,12 +17,13 @@
 5. [HTTP API Reference](#http-api-reference)
 6. [Visualizations](#visualizations)
 7. [Settings System](#settings-system)
-8. [Code Quality Analysis](#code-quality-analysis)
-9. [Security Implementation](#security-implementation)
-10. [Performance Optimizations](#performance-optimizations)
-11. [Build & Packaging](#build--packaging)
-12. [Dependencies](#dependencies)
-13. [Future Considerations](#future-considerations)
+8. [Logging System](#logging-system)
+9. [Code Quality Analysis](#code-quality-analysis)
+10. [Security Implementation](#security-implementation)
+11. [Performance Optimizations](#performance-optimizations)
+12. [Build & Packaging](#build--packaging)
+13. [Dependencies](#dependencies)
+14. [Future Considerations](#future-considerations)
 
 ---
 
@@ -336,10 +337,11 @@ AudioContext.destination (speakers)
 | File | Purpose |
 |------|---------|
 | `src/electron/main.ts` | App initialization, IPC handlers, fullscreen window events, menu setup |
-| `src/electron/preload.ts` | IPC bridge (file dialog, server port, fullscreen control, menu events, openExternal, version info) |
+| `src/electron/preload.ts` | IPC bridge (file dialog, server port, fullscreen control, menu events, openExternal, version info, log path) |
 | `src/electron/unified-media-server.ts` | HTTP API, SSE, playlist management, MIDI parsing |
 | `src/electron/settings-manager.ts` | Persistent settings storage (JSON file in userData) |
 | `src/electron/application-menu.ts` | Native application menu for macOS/Windows/Linux |
+| `src/electron/logger.ts` | Centralized logging with scoped loggers (electron-log) |
 
 ### Angular Services
 
@@ -533,6 +535,90 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 | Glass Effect | On/Off | On | Enables window transparency with blur | Yes |
 | Visual Effect State | Follow Window/Always Active/Always Inactive | Always Active | macOS vibrancy state (shown when glass enabled on macOS) | Yes |
 | Background Color | Hex color picker | Auto-detected | Window background when glass disabled | No |
+
+---
+
+## Logging System
+
+### Overview
+
+ONIXPlayer uses **electron-log** for comprehensive, unified logging across all processes. All logs are written to a single file with timestamps and source identification (scopes), similar to Serilog in .NET.
+
+### Log File Location
+
+| Platform | Path |
+|----------|------|
+| macOS | `~/Library/Application Support/ONIXPlayer/onixplayer.log` |
+| Windows | `%APPDATA%/ONIXPlayer/onixplayer.log` |
+| Linux | `~/.config/ONIXPlayer/onixplayer.log` |
+
+### Log Format
+
+```
+[YYYY-MM-DD HH:mm:ss.SSS] [LEVEL] [Scope] Message
+```
+
+Example:
+```
+[2026-01-25 08:30:45.123] [info] [Main] Application starting
+[2026-01-25 08:30:45.456] [debug] [Server] Attempting to listen on port 0
+[2026-01-25 08:30:45.789] [info] [Playback] Playing: Song Title (audio, 180.5s)
+```
+
+### Scoped Loggers
+
+| Scope | Purpose |
+|-------|---------|
+| Main | Application lifecycle, window creation, platform info |
+| IPC | Inter-process communication handlers |
+| Server | HTTP server, request handling |
+| Playlist | Playlist management operations |
+| Playback | Media playback state and control |
+| Settings | Settings load/save operations |
+| FFmpeg | FFmpeg process spawning and output |
+| MIDI | FluidSynth/MIDI operations |
+| FS | File system operations |
+| Window | Fullscreen, miniplayer, window events |
+| Menu | Application menu events |
+| Renderer | Angular frontend logs (auto-captured) |
+
+### Features
+
+- **Automatic renderer capture**: All `console.log/warn/error` from Angular are automatically captured via `spyRendererConsole`
+- **File rotation**: Log file rotates at 10MB to prevent unbounded growth
+- **Uncaught error handling**: Unhandled errors and rejections are automatically logged
+- **Log levels**: debug (dev only), info, warn, error
+- **API access**: `getLogFilePath()` API available for retrieving log location
+
+### What Gets Logged
+
+| Category | Examples |
+|----------|----------|
+| Application lifecycle | Startup, shutdown, window creation |
+| IPC calls | File dialogs, fullscreen, platform queries |
+| HTTP requests | Method, path, status, duration (except SSE and streaming) |
+| Playback events | Play, pause, stop, load, resume |
+| Playlist changes | Add items, remove items, selection |
+| Process spawning | FFmpeg/FluidSynth commands and arguments |
+| Process output | Transcoding progress, errors |
+| Settings | Load, save, validation errors |
+| Errors | All caught and uncaught exceptions |
+
+### Helper Functions
+
+```typescript
+// Log HTTP request with timing
+logHttpRequest(method: string, path: string, statusCode: number, durationMs: number): void
+
+// Log child process spawn with arguments
+logProcessSpawn(logger: ScopedLogger, command: string, args: readonly string[]): void
+
+// Log child process output (stdout/stderr)
+logProcessOutput(logger: ScopedLogger, stream: 'stdout' | 'stderr', data: string): void
+
+// Log child process exit
+logProcessExit(logger: ScopedLogger, command: string, code: number | null, signal: string | null): void
+```
 
 ---
 
@@ -820,6 +906,7 @@ ffprobe -v quiet -print_format json -show_format -show_streams <file>
 |------------|---------|---------|
 | Electron | 39 | Desktop application framework |
 | Angular | 21 | UI framework |
+| electron-log | 5.x | Unified logging across all processes |
 | FFmpeg/FFprobe | (system) | Media transcoding and metadata extraction |
 | FluidSynth | (system) | MIDI synthesis |
 | SoundFont | VintageDreamsWaves-v2.sf2 | MIDI instrument sounds |
@@ -906,6 +993,7 @@ ONIXPlayer is a **production-ready** media player with:
 - ✅ Efficient SSE delta updates for playlist changes
 - ✅ DRY visualization rendering with shared base class methods
 - ✅ Clean HTTP helper pattern in settings service
+- ✅ Comprehensive logging system with scoped loggers
 - ✅ All security vulnerabilities addressed
 - ✅ All memory leaks fixed
 - ✅ All race conditions resolved

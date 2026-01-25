@@ -242,6 +242,14 @@ export interface MediaPlayerAPI {
    * @returns Cleanup function to remove the listener
    */
   readonly onExitConfigurationMode: (callback: () => void) => () => void;
+
+  /**
+   * Gets the path to the log file.
+   * Useful for debugging and support requests.
+   *
+   * @returns Promise resolving to the absolute path of the log file
+   */
+  readonly getLogFilePath: () => Promise<string>;
 }
 
 /**
@@ -304,6 +312,7 @@ const api: MediaPlayerAPI = {
     ipcRenderer.on('app:exitConfigurationMode', listener);
     return (): void => { ipcRenderer.removeListener('app:exitConfigurationMode', listener); };
   },
+  getLogFilePath: (): Promise<string> => ipcRenderer.invoke('app:getLogFilePath'),
 };
 
 /**
