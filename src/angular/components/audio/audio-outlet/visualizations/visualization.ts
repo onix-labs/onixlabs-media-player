@@ -24,6 +24,30 @@
  * @module app/components/audio/audio-outlet/visualizations/visualization
  */
 
+import {
+  DEFAULT_SENSITIVITY,
+  DEFAULT_TRAIL_INTENSITY,
+  DEFAULT_FFT_SIZE,
+  DEFAULT_LINE_WIDTH,
+  DEFAULT_GLOW_INTENSITY,
+  DEFAULT_WAVEFORM_SMOOTHING,
+  GLOW_BLUR_RADIUS,
+  GLOW_OPACITY_MULTIPLIER,
+  GLOW_LINE_WIDTH_OFFSET,
+  HIGHLIGHT_LINE_WIDTH,
+  RGB_MAX,
+  PERCENT_100,
+  DEGREES_FULL_CIRCLE,
+  DEGREES_SEXTANT,
+  DEGREES_TWO_SEXTANTS,
+  DEGREES_THREE_SEXTANTS,
+  DEGREES_FOUR_SEXTANTS,
+  DEGREES_FIVE_SEXTANTS,
+  FADE_IN_DURATION_MS,
+  HALF,
+  MULTIPLIER_DOUBLE,
+} from './visualization-constants';
+
 /**
  * Configuration required to create a visualization.
  */
@@ -84,21 +108,21 @@ export abstract class Visualization {
    * This is independent of the master volume, allowing visualizations
    * to remain responsive even at low volume.
    */
-  protected sensitivity: number = 0.25;
+  protected sensitivity: number = DEFAULT_SENSITIVITY;
 
   /**
    * Trail intensity controls how long visual trails persist (0-1, default 0.5).
    * 0 = fast fade (minimal trails), 1 = slow fade (long trails).
    * Only affects visualizations with trail effects (Tunnel, Pulsar, Water, Infinity).
    */
-  protected trailIntensity: number = 0.5;
+  protected trailIntensity: number = DEFAULT_TRAIL_INTENSITY;
 
   /**
    * Current FFT size for audio analysis.
    * Larger values give more frequency resolution but require more processing.
    * Valid values: 256, 512, 1024, 2048, 4096
    */
-  protected fftSize: number = 2048;
+  protected fftSize: number = DEFAULT_FFT_SIZE;
 
   /**
    * Current bar density level for bar-based visualizations.
@@ -116,14 +140,14 @@ export abstract class Visualization {
    * Glow intensity for visualizations with glow effects (0.0 - 1.0, default 0.5).
    * 0 = no glow, 1 = full glow intensity.
    */
-  protected glowIntensity: number = 0.5;
+  protected glowIntensity: number = DEFAULT_GLOW_INTENSITY;
 
   /**
    * Waveform smoothing controls curve interpolation (0.0 - 1.0, default 0.5).
    * 0 = straight lines (jagged), 1 = maximum smoothing (rounded curves).
    * Affects visualizations that draw waveforms (Waveform, Plasma, Neon, Infinity).
    */
-  protected waveformSmoothing: number = 0.5;
+  protected waveformSmoothing: number = DEFAULT_WAVEFORM_SMOOTHING;
 
   /**
    * Current fade alpha level (0 = fully visible, 1 = fully black).
@@ -200,7 +224,7 @@ export abstract class Visualization {
    * @returns Fade rate multiplier to apply to base fade rates
    */
   protected getFadeMultiplier(): number {
-    return Math.pow(2, (0.5 - this.trailIntensity) * 2);
+    return Math.pow(MULTIPLIER_DOUBLE, (HALF - this.trailIntensity) * MULTIPLIER_DOUBLE);
   }
 
   /**
@@ -214,27 +238,27 @@ export abstract class Visualization {
    * @returns RGB object with r, g, b values (0-255)
    */
   protected hslToRgb(h: number, s: number, l: number): {r: number; g: number; b: number} {
-    h = ((h % 360) + 360) % 360;
-    const sNorm: number = s / 100;
-    const lNorm: number = l / 100;
+    h = ((h % DEGREES_FULL_CIRCLE) + DEGREES_FULL_CIRCLE) % DEGREES_FULL_CIRCLE;
+    const sNorm: number = s / PERCENT_100;
+    const lNorm: number = l / PERCENT_100;
 
-    const c: number = (1 - Math.abs(2 * lNorm - 1)) * sNorm;
-    const x: number = c * (1 - Math.abs((h / 60) % 2 - 1));
-    const m: number = lNorm - c / 2;
+    const c: number = (1 - Math.abs(MULTIPLIER_DOUBLE * lNorm - 1)) * sNorm;
+    const x: number = c * (1 - Math.abs((h / DEGREES_SEXTANT) % MULTIPLIER_DOUBLE - 1));
+    const m: number = lNorm - c / MULTIPLIER_DOUBLE;
 
     let r: number, g: number, b: number;
 
-    if (h < 60) { r = c; g = x; b = 0; }
-    else if (h < 120) { r = x; g = c; b = 0; }
-    else if (h < 180) { r = 0; g = c; b = x; }
-    else if (h < 240) { r = 0; g = x; b = c; }
-    else if (h < 300) { r = x; g = 0; b = c; }
+    if (h < DEGREES_SEXTANT) { r = c; g = x; b = 0; }
+    else if (h < DEGREES_TWO_SEXTANTS) { r = x; g = c; b = 0; }
+    else if (h < DEGREES_THREE_SEXTANTS) { r = 0; g = c; b = x; }
+    else if (h < DEGREES_FOUR_SEXTANTS) { r = 0; g = x; b = c; }
+    else if (h < DEGREES_FIVE_SEXTANTS) { r = x; g = 0; b = c; }
     else { r = c; g = 0; b = x; }
 
     return {
-      r: Math.round((r + m) * 255),
-      g: Math.round((g + m) * 255),
-      b: Math.round((b + m) * 255)
+      r: Math.round((r + m) * RGB_MAX),
+      g: Math.round((g + m) * RGB_MAX),
+      b: Math.round((b + m) * RGB_MAX)
     };
   }
 
@@ -424,7 +448,7 @@ export abstract class Visualization {
 
     if (this.isPlaying) {
       // Fade in quickly when playing
-      this.fadeAlpha = Math.max(0, this.fadeAlpha - deltaMs / 500);
+      this.fadeAlpha = Math.max(0, this.fadeAlpha - deltaMs / FADE_IN_DURATION_MS);
     } else {
       // Fade out slowly when paused/stopped
       this.fadeAlpha = Math.min(1, this.fadeAlpha + deltaMs / this.FADE_DURATION_MS);
@@ -525,17 +549,23 @@ export abstract class Canvas2DVisualization extends Visualization {
   ): void {
     const ctx: CanvasRenderingContext2D = this.ctx;
     const {
-      baseGlowBlur = 12,
+      baseGlowBlur = GLOW_BLUR_RADIUS,
       closePath = false,
       fill = false,
-      glowLineWidthOffset = 4,
-      highlightLineWidth = 1
+      glowLineWidthOffset = GLOW_LINE_WIDTH_OFFSET,
+      highlightLineWidth = HIGHLIGHT_LINE_WIDTH
+    }: {
+      baseGlowBlur?: number;
+      closePath?: boolean;
+      fill?: boolean;
+      glowLineWidthOffset?: number;
+      highlightLineWidth?: number;
     } = options;
 
     // Reduce glow color opacity for the stroke
     const glowStrokeColor: string = glowColor.replace(/[\d.]+\)$/, (match: string): string => {
-      const opacity: number = parseFloat(match) * 0.375;
-      return opacity.toFixed(2) + ')';
+      const opacity: number = parseFloat(match) * GLOW_OPACITY_MULTIPLIER;
+      return opacity.toFixed(MULTIPLIER_DOUBLE) + ')';
     });
 
     // Glow layer

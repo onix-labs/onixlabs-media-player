@@ -648,7 +648,7 @@ export class SettingsService implements OnDestroy {
     }
 
     // Create new settings object without the specified setting
-    const {[setting]: _removed, ...remaining} = vizSettings;
+    const {[setting]: _removed, ...remaining}: Partial<VisualizationLocalSettings> = vizSettings;
 
     // If no settings left, remove the visualization entry entirely
     if (Object.keys(remaining).length === 0) {

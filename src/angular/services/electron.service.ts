@@ -137,7 +137,7 @@ export class ElectronService implements OnDestroy {
   private mediaEndedTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   /** Cleanup functions for menu event listeners */
-  private menuCleanupFunctions: Array<() => void> = [];
+  private readonly menuCleanupFunctions: Array<() => void> = [];
 
   /** Callback for settings updates (registered by SettingsService) */
   private settingsUpdateCallback: ((settings: AppSettings) => void) | null = null;
@@ -237,7 +237,7 @@ export class ElectronService implements OnDestroy {
     console.log(`Connected to media server at ${this.serverUrl()}`);
 
     // Get platform info via IPC
-    const platformInfo = await this.api.getPlatformInfo();
+    const platformInfo: {platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'} = await this.api.getPlatformInfo();
     this.ngZone.run((): void => {
       this.platformInfo.set(platformInfo);
     });
@@ -543,7 +543,7 @@ export class ElectronService implements OnDestroy {
     // Playback state events
     this.eventSource.addEventListener('playback:state', (e: MessageEvent): void => {
       this.ngZone.run((): void => {
-        const data = this.safeParseJSON<{ state: string; errorMessage?: string }>(e.data, { state: 'idle' });
+        const data: { state: string; errorMessage?: string } = this.safeParseJSON<{ state: string; errorMessage?: string }>(e.data, { state: 'idle' });
         this.playbackState.set(data.state);
         this.errorMessage.set(data.errorMessage || null);
       });
@@ -551,7 +551,7 @@ export class ElectronService implements OnDestroy {
 
     this.eventSource.addEventListener('playback:time', (e: MessageEvent): void => {
       this.ngZone.run((): void => {
-        const data = this.safeParseJSON<{ currentTime: number; duration: number }>(e.data, { currentTime: 0, duration: 0 });
+        const data: { currentTime: number; duration: number } = this.safeParseJSON<{ currentTime: number; duration: number }>(e.data, { currentTime: 0, duration: 0 });
         this.currentTime.set(data.currentTime);
         this.duration.set(data.duration);
       });
@@ -559,7 +559,7 @@ export class ElectronService implements OnDestroy {
 
     this.eventSource.addEventListener('playback:loaded', (e: MessageEvent): void => {
       this.ngZone.run((): void => {
-        const data = this.safeParseJSON<MediaInfo | null>(e.data, null);
+        const data: MediaInfo | null = this.safeParseJSON<MediaInfo | null>(e.data, null);
         if (data) {
           this.currentMedia.set(data);
           this.duration.set(data.duration);
@@ -569,7 +569,7 @@ export class ElectronService implements OnDestroy {
 
     this.eventSource.addEventListener('playback:volume', (e: MessageEvent): void => {
       this.ngZone.run((): void => {
-        const data = this.safeParseJSON<{ volume: number; muted: boolean }>(e.data, { volume: 1, muted: false });
+        const data: { volume: number; muted: boolean } = this.safeParseJSON<{ volume: number; muted: boolean }>(e.data, { volume: 1, muted: false });
         this.volume.set(data.volume);
         this.muted.set(data.muted);
       });
@@ -590,14 +590,14 @@ export class ElectronService implements OnDestroy {
     this.eventSource.addEventListener('playlist:updated', (e: MessageEvent): void => {
       this.ngZone.run((): void => {
         const defaultPlaylist: PlaylistState = { items: [], currentIndex: -1, shuffleEnabled: false, repeatEnabled: false };
-        const data = this.safeParseJSON<PlaylistState>(e.data, defaultPlaylist);
+        const data: PlaylistState = this.safeParseJSON<PlaylistState>(e.data, defaultPlaylist);
         this.playlist.set(data);
       });
     });
 
     this.eventSource.addEventListener('playlist:selection', (e: MessageEvent): void => {
       this.ngZone.run((): void => {
-        const data = this.safeParseJSON<{ currentIndex: number; currentItem?: PlaylistItem }>(e.data, { currentIndex: -1 });
+        const data: { currentIndex: number; currentItem?: PlaylistItem } = this.safeParseJSON<{ currentIndex: number; currentItem?: PlaylistItem }>(e.data, { currentIndex: -1 });
         this.playlist.update((p: PlaylistState): PlaylistState => ({...p, currentIndex: data.currentIndex}));
         if (data.currentItem) {
           this.currentMedia.set(data.currentItem);
@@ -607,7 +607,7 @@ export class ElectronService implements OnDestroy {
 
     this.eventSource.addEventListener('playlist:mode', (e: MessageEvent): void => {
       this.ngZone.run((): void => {
-        const data = this.safeParseJSON<{ shuffleEnabled: boolean; repeatEnabled: boolean }>(e.data, { shuffleEnabled: false, repeatEnabled: false });
+        const data: { shuffleEnabled: boolean; repeatEnabled: boolean } = this.safeParseJSON<{ shuffleEnabled: boolean; repeatEnabled: boolean }>(e.data, { shuffleEnabled: false, repeatEnabled: false });
         this.playlist.update((p: PlaylistState): PlaylistState => ({
           ...p,
           shuffleEnabled: data.shuffleEnabled,
@@ -619,7 +619,7 @@ export class ElectronService implements OnDestroy {
     // Delta playlist events (more efficient than full playlist updates)
     this.eventSource.addEventListener('playlist:items:added', (e: MessageEvent): void => {
       this.ngZone.run((): void => {
-        const data = this.safeParseJSON<{ items: PlaylistItem[]; startIndex: number; currentIndex: number }>(
+        const data: { items: PlaylistItem[]; startIndex: number; currentIndex: number } = this.safeParseJSON<{ items: PlaylistItem[]; startIndex: number; currentIndex: number }>(
           e.data,
           { items: [], startIndex: 0, currentIndex: -1 }
         );
@@ -633,7 +633,7 @@ export class ElectronService implements OnDestroy {
 
     this.eventSource.addEventListener('playlist:items:removed', (e: MessageEvent): void => {
       this.ngZone.run((): void => {
-        const data = this.safeParseJSON<{ id: string; removedIndex: number; currentIndex: number }>(
+        const data: { id: string; removedIndex: number; currentIndex: number } = this.safeParseJSON<{ id: string; removedIndex: number; currentIndex: number }>(
           e.data,
           { id: '', removedIndex: -1, currentIndex: -1 }
         );
@@ -658,7 +658,7 @@ export class ElectronService implements OnDestroy {
     // Settings events
     this.eventSource.addEventListener('settings:updated', (e: MessageEvent): void => {
       this.ngZone.run((): void => {
-        const data = this.safeParseJSON<AppSettings | null>(e.data, null);
+        const data: AppSettings | null = this.safeParseJSON<AppSettings | null>(e.data, null);
         if (data) {
           this.settingsUpdateCallback?.(data);
         }

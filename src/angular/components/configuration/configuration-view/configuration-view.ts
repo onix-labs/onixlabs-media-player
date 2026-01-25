@@ -227,7 +227,7 @@ export class ConfigurationView {
   // ============================================================================
 
   /** Available visualization options for the dropdown */
-  public readonly visualizationOptions = VISUALIZATION_OPTIONS;
+  public readonly visualizationOptions: typeof VISUALIZATION_OPTIONS = VISUALIZATION_OPTIONS;
 
   /** Available frame rate options for the dropdown */
   public readonly frameRateOptions: readonly {value: number; label: string}[] = [
@@ -269,7 +269,7 @@ export class ConfigurationView {
   ];
 
   /** Available video aspect mode options for the dropdown */
-  public readonly videoAspectOptions = VIDEO_ASPECT_OPTIONS;
+  public readonly videoAspectOptions: typeof VIDEO_ASPECT_OPTIONS = VIDEO_ASPECT_OPTIONS;
 
   /** Current video aspect mode */
   public readonly currentVideoAspectMode: ReturnType<typeof computed<VideoAspectMode>> = computed(
@@ -281,7 +281,7 @@ export class ConfigurationView {
   // ============================================================================
 
   /** Available macOS visual effect state options for the dropdown */
-  public readonly macOSVisualEffectStateOptions = MACOS_VISUAL_EFFECT_STATE_OPTIONS;
+  public readonly macOSVisualEffectStateOptions: typeof MACOS_VISUAL_EFFECT_STATE_OPTIONS = MACOS_VISUAL_EFFECT_STATE_OPTIONS;
 
   /** Whether glass effects are supported on current platform */
   public readonly supportsGlass: ReturnType<typeof computed<boolean>> = computed(
@@ -536,7 +536,7 @@ export class ConfigurationView {
    * @returns The value as a percentage (e.g., "50%")
    */
   public formatPercentSetting(vizId: string, setting: LocalSettingKey): string {
-    const value = this.settingsService.getEffectiveSetting(vizId, setting) as number;
+    const value: number = this.settingsService.getEffectiveSetting(vizId, setting) as number;
     return `${Math.round(value * 100)}%`;
   }
 
@@ -547,7 +547,7 @@ export class ConfigurationView {
    * @returns The line width with px units (e.g., "2.0px")
    */
   public formatLineWidth(vizId: string): string {
-    const value = this.settingsService.getEffectiveSetting(vizId, 'lineWidth') as number;
+    const value: number = this.settingsService.getEffectiveSetting(vizId, 'lineWidth') as number;
     return `${value.toFixed(1)}px`;
   }
 
@@ -602,7 +602,7 @@ export class ConfigurationView {
    * @returns The display name or the ID if not found
    */
   public getVisualizationName(vizId: string): string {
-    const meta = this.settingsService.getVisualizationMetadata(vizId);
+    const meta: VisualizationMetadata | undefined = this.settingsService.getVisualizationMetadata(vizId);
     return meta?.name ?? vizId;
   }
 

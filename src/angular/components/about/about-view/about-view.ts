@@ -11,7 +11,7 @@
  * @module app/components/about/about-view
  */
 
-import {Component, output, ChangeDetectionStrategy} from '@angular/core';
+import {Component, output, ChangeDetectionStrategy, OutputEmitterRef} from '@angular/core';
 
 /**
  * Application version (CalVer format).
@@ -94,7 +94,7 @@ export class AboutView {
   // ============================================================================
 
   /** Event emitted when the close button is clicked */
-  public readonly close = output<void>();
+  public readonly close: OutputEmitterRef<void> = output<void>();
 
   // ============================================================================
   // Template Data
