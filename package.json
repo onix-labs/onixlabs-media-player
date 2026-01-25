@@ -1,7 +1,7 @@
 {
   "name": "onixlabs-media-player",
   "version": "2026.0.0",
-  "main": "src/electron/dist/main.js",
+  "main": "src/electron/dist/main.cjs",
   "type": "module",
   "scripts": {
     "ng": "ng",
@@ -11,13 +11,15 @@
     "test": "ng test",
     "lint": "eslint src/angular src/electron --ext .ts",
     "dev": "npm run lint && npm run build:preload && concurrently -k \"ng serve\" \"wait-on http://localhost:4200 && NODE_ENV=development DEV_SERVER_URL=http://localhost:4200 NODE_OPTIONS='--import tsx' electron src/electron/main.ts\"",
-    "build:electron": "tsc -p src/electron/tsconfig.prod.json",
-    "build:preload": "tsc -p src/electron/tsconfig.preload.json",
-    "build:all": "npm run lint && npm run build && npm run build:electron && npm run build:preload",
-    "package": "npm run build:all && electron-builder",
-    "package:mac": "npm run build:all && electron-builder --mac",
-    "package:win": "npm run build:all && electron-builder --win",
-    "package:linux": "npm run build:all && electron-builder --linux"
+    "build:electron": "tsx scripts/build-electron.ts",
+    "build:electron:dev": "tsc -p src/electron/tsconfig.prod.json",
+    "build:preload": "esbuild src/electron/preload.ts --bundle --platform=node --format=cjs --outfile=src/electron/dist/preload.cjs --external:electron",
+    "build:all": "npm run lint && npm run build && npm run build:electron",
+    "obfuscate": "tsx scripts/obfuscate.ts",
+    "package": "npm run build:all && npm run obfuscate && electron-builder",
+    "package:mac": "npm run build:all && npm run obfuscate && electron-builder --mac",
+    "package:win": "npm run build:all && npm run obfuscate && electron-builder --win",
+    "package:linux": "npm run build:all && npm run obfuscate && electron-builder --linux"
   },
   "prettier": {
     "printWidth": 100,
@@ -55,7 +57,9 @@
     "concurrently": "^9.2.1",
     "electron": "^39.2.7",
     "electron-builder": "^26.4.0",
+    "esbuild": "^0.27.2",
     "eslint": "^9.39.2",
+    "javascript-obfuscator": "^5.1.0",
     "jsdom": "^27.1.0",
     "tsx": "^4.21.0",
     "typescript": "~5.9.2",
@@ -71,7 +75,8 @@
     "files": [
       "dist/**/*",
       "src/electron/dist/**/*",
-      "public/icon.png"
+      "public/icon.png",
+      "node_modules/electron-log/**/*"
     ],
     "mac": {
       "category": "public.app-category.entertainment",

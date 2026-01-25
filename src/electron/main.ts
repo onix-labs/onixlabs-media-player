@@ -271,7 +271,7 @@ class Program {
   private createBrowserWindow(): BrowserWindow {
     const projectRoot: string = Program.getProjectRoot();
     // Preload must always be compiled JS - Electron can't run TS preload scripts
-    const preloadPath: string = path.join(projectRoot, "src", "electron", "dist", "preload.js");
+    const preloadPath: string = path.join(projectRoot, "src", "electron", "dist", "preload.cjs");
     const iconPath: string = path.join(projectRoot, "public", "icon.png");
 
     // Set dock icon on macOS (for development - packaged apps use Info.plist)
