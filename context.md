@@ -114,6 +114,11 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Auto-advance to next track when current ends
 - Removing currently playing item auto-advances to next track
 - Shuffle, repeat, fullscreen, and miniplayer buttons disabled when no media loaded
+- File > Open / Eject button behavior:
+  - Single file + empty playlist: adds and plays immediately
+  - Single file + existing playlist: appends and plays the new file
+  - Multiple files + empty playlist: adds all and plays from beginning
+  - Multiple files + existing playlist: appends without interrupting current playback
 - Drag-and-drop file support:
   - Playlist panel: adds files to playlist (auto-plays only if playlist was empty)
   - Idle state / visualization / video surface: adds files AND immediately starts playing
