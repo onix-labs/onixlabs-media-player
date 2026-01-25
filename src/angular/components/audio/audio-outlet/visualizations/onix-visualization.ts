@@ -88,10 +88,6 @@ export class OnixVisualization extends Canvas2DVisualization {
   private readonly cosTable: Float32Array;
   private readonly sinTable: Float32Array;
 
-  // Pre-computed color segment boundaries
-  private readonly colorSegmentStart: Uint16Array;
-  private readonly colorSegmentEnd: Uint16Array;
-
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
@@ -112,14 +108,6 @@ export class OnixVisualization extends Canvas2DVisualization {
       const angle: number = (i / numPoints) * TWO_PI;
       this.cosTable[i] = Math.cos(angle);
       this.sinTable[i] = Math.sin(angle);
-    }
-
-    // Pre-compute color segment boundaries
-    this.colorSegmentStart = new Uint16Array(NUM_COLORS);
-    this.colorSegmentEnd = new Uint16Array(NUM_COLORS);
-    for (let c: number = 0; c < NUM_COLORS; c++) {
-      this.colorSegmentStart[c] = (c / NUM_COLORS * numPoints) | 0;
-      this.colorSegmentEnd[c] = ((c + 1) / NUM_COLORS * numPoints) | 0;
     }
 
     this.sensitivity = 0.35;
@@ -255,77 +243,56 @@ export class OnixVisualization extends Canvas2DVisualization {
     const points: Array<{x: number; y: number}> = this.centerPoints;
     const colors: Uint8Array = ONIX_COLORS_FLAT;
 
-    // Draw the circular waveform stroke with ONIXLabs brand gradient colors
-    // Each segment of the circle gets a different color from the gradient
+    // Create conic gradient for the brand colors
+    // Start angle is -PI/2 (top of circle) to match point calculation which starts at angle 0 (right)
+    const gradient: CanvasGradient = ctx.createConicGradient(0, centerX, centerY);
+    const glowGradient: CanvasGradient = ctx.createConicGradient(0, centerX, centerY);
+
+    // Add color stops for each brand color
+    for (let i: number = 0; i < NUM_COLORS; i++) {
+      const idx: number = i * 3;
+      const r: number = colors[idx];
+      const g: number = colors[idx + 1];
+      const b: number = colors[idx + 2];
+      const stop: number = i / NUM_COLORS;
+
+      gradient.addColorStop(stop, `rgb(${r}, ${g}, ${b})`);
+      glowGradient.addColorStop(stop, `rgba(${r}, ${g}, ${b}, 0.6)`);
+    }
+    // Close the gradient loop
+    const r0: number = colors[0];
+    const g0: number = colors[1];
+    const b0: number = colors[2];
+    gradient.addColorStop(1, `rgb(${r0}, ${g0}, ${b0})`);
+    glowGradient.addColorStop(1, `rgba(${r0}, ${g0}, ${b0}, 0.6)`);
+
+    // Build smooth closed path using the base class helper
+    const buildPath: () => void = (): void => {
+      this.buildSmoothPath(ctx, points, numPoints);
+      ctx.closePath();
+    };
+
+    const glowBlur: number = this.getScaledGlowBlur(15);
+
+    // Draw glow layer
+    ctx.save();
+    ctx.shadowBlur = glowBlur;
+    ctx.shadowColor = `rgba(${r0}, ${g0}, ${b0}, 0.6)`;
+    ctx.strokeStyle = glowGradient;
+    ctx.lineWidth = this.lineWidth + 3;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    buildPath();
+    ctx.stroke();
+    ctx.restore();
 
-    for (let colorIndex: number = 0; colorIndex < NUM_COLORS; colorIndex++) {
-      const startPoint: number = this.colorSegmentStart[colorIndex];
-      const endPoint: number = this.colorSegmentEnd[colorIndex];
-      const nextColorIndex: number = (colorIndex + 1) % NUM_COLORS;
-      const segmentLength: number = endPoint - startPoint;
-      const invSegmentLength: number = 1 / segmentLength;
-
-      // Get color components from flat array
-      const c1Idx: number = colorIndex * 3;
-      const c2Idx: number = nextColorIndex * 3;
-      const r1: number = colors[c1Idx];
-      const g1: number = colors[c1Idx + 1];
-      const b1: number = colors[c1Idx + 2];
-      const rDiff: number = colors[c2Idx] - r1;
-      const gDiff: number = colors[c2Idx + 1] - g1;
-      const bDiff: number = colors[c2Idx + 2] - b1;
-
-      for (let i: number = startPoint; i < endPoint; i++) {
-        const nextI: number = i + 1 < numPoints ? i + 1 : 0;
-        const t: number = (i - startPoint) * invSegmentLength;
-
-        // Interpolate color (use bitwise OR for fast rounding)
-        const r: number = (r1 + rDiff * t) | 0;
-        const g: number = (g1 + gDiff * t) | 0;
-        const b: number = (b1 + bDiff * t) | 0;
-
-        // Calculate curve control point based on smoothing
-        const current: {x: number; y: number} = points[i];
-        const next: {x: number; y: number} = points[nextI];
-        const midX: number = (current.x + next.x) / 2;
-        const midY: number = (current.y + next.y) / 2;
-        const smoothing: number = this.waveformSmoothing;
-
-        // Draw glow layer for this segment
-        ctx.save();
-        ctx.shadowBlur = 12;
-        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.6)`;
-        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.3)`;
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        ctx.moveTo(current.x, current.y);
-        if (smoothing === 0) {
-          ctx.lineTo(next.x, next.y);
-        } else {
-          const cpX: number = midX + (current.x - midX) * smoothing;
-          const cpY: number = midY + (current.y - midY) * smoothing;
-          ctx.quadraticCurveTo(cpX, cpY, next.x, next.y);
-        }
-        ctx.stroke();
-        ctx.restore();
-
-        // Draw main stroke for this segment
-        ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(current.x, current.y);
-        if (smoothing === 0) {
-          ctx.lineTo(next.x, next.y);
-        } else {
-          const cpX: number = midX + (current.x - midX) * smoothing;
-          const cpY: number = midY + (current.y - midY) * smoothing;
-          ctx.quadraticCurveTo(cpX, cpY, next.x, next.y);
-        }
-        ctx.stroke();
-      }
-    }
+    // Draw main stroke with gradient
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = this.lineWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    buildPath();
+    ctx.stroke();
   }
 
   /**
@@ -365,7 +332,7 @@ export class OnixVisualization extends Canvas2DVisualization {
       ctx.fillStyle = 'white';
       ctx.fill();
       ctx.strokeStyle = 'black';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = this.lineWidth;
       ctx.stroke();
     }
   }

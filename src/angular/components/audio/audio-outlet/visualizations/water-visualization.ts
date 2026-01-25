@@ -413,9 +413,11 @@ export class WaterVisualization extends Canvas2DVisualization {
       this.buildSmoothPath(ctx, points, numPoints);
     };
 
+    const glowBlur: number = this.getScaledGlowBlur(15);
+
     // Glow layer (filled)
     ctx.save();
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = glowBlur;
     ctx.shadowColor = glowColor;
     ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
     buildPath();
@@ -471,12 +473,14 @@ export class WaterVisualization extends Canvas2DVisualization {
       }
     };
 
+    const glowBlur: number = this.getScaledGlowBlur(15);
+
     // Glow layer
     ctx.save();
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = glowBlur;
     ctx.shadowColor = glowColor;
     ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = this.lineWidth + 3;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     buildPath();
@@ -485,7 +489,7 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     // Main waveform
     ctx.strokeStyle = mainColor;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = this.lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     buildPath();
