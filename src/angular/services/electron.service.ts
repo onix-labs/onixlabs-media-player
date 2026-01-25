@@ -371,6 +371,15 @@ export class ElectronService implements OnDestroy {
       })
     );
 
+    // Stop playback
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('stop', (): void => {
+        this.ngZone.run((): void => {
+          void this.stop();
+        });
+      })
+    );
+
     // Toggle shuffle
     this.menuCleanupFunctions.push(
       this.api.onMenuEvent('toggleShuffle', (): void => {

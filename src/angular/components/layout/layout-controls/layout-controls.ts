@@ -153,6 +153,14 @@ export class LayoutControls {
     return 'fa-solid fa-forward-step';
   });
 
+  /** Icon class for the play/pause button (changes to stop with Shift key when enabled) */
+  public readonly playPauseIcon: ReturnType<typeof computed<string>> = computed((): string => {
+    if (this.hasTrack() && this.isShiftPressed()) {
+      return 'fa-solid fa-stop';
+    }
+    return this.isPlaying() ? 'fa-solid fa-pause' : 'fa-solid fa-play';
+  });
+
   // ============================================================================
   // Keyboard Event Listeners
   // ============================================================================
@@ -229,10 +237,16 @@ export class LayoutControls {
   }
 
   /**
-   * Toggles between play and pause states.
+   * Toggles between play and pause states, or stops if Shift is pressed.
+   *
+   * @param event - Mouse event to check for Shift modifier
    */
-  public async onPlayPause(): Promise<void> {
-    await this.mediaPlayer.togglePlayPause();
+  public async onPlayPause(event: MouseEvent): Promise<void> {
+    if (event.shiftKey) {
+      await this.mediaPlayer.stop();
+    } else {
+      await this.mediaPlayer.togglePlayPause();
+    }
   }
 
   /**

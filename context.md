@@ -110,8 +110,13 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
   - Works in both main controls and miniplayer controls
   - Button icons change dynamically when Shift is held (step → skip icons)
   - Previous button always enabled (restarts track); next button disabled with single track unless Shift held
+- Shift+click on play/pause button stops playback
+  - Works in both main controls and miniplayer controls
+  - Button icon changes to stop icon when Shift is held
+  - Stop resets seekbar to zero and selects first playlist item
   - Skip duration configurable in Settings > Playback (1-60 seconds, default 10)
 - Auto-advance to next track when current ends
+- End of playlist (no more tracks): enters stopped state, selects first item, seekbar resets to zero
 - Removing currently playing item auto-advances to next track
 - Shuffle, repeat, fullscreen, and miniplayer buttons disabled when no media loaded
 - Unified file add behavior (File > Open, eject button, and drag-and-drop all behave the same):
@@ -181,7 +186,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Native menu bar for macOS (app menu), Windows/Linux (File menu)
 - **File menu**: Open (Cmd+O), Close (Cmd+W), with placeholders for URL, playlists, Save As
 - **View menu**: Full Screen toggle, Visualizations submenu (organized by category: Bars, Waves), Options (settings)
-- **Playback menu**: Play/Pause (Space) with dynamic label, Shuffle/Repeat toggles
+- **Playback menu**: Play/Pause (Space) with dynamic label, Stop (Shift+Space), Shuffle/Repeat toggles
 - **Help menu**: About ONIXPlayer (opens About view), placeholders for Help Topics
 - Menu callbacks communicated via IPC to renderer for UI updates
 - UI zoom disabled (zoomFactor: 1.0, keyboard shortcuts blocked, pinch-to-zoom disabled)

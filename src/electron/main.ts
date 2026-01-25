@@ -690,6 +690,9 @@ class Program {
       onTogglePlayPause: (): void => {
         this.window?.webContents.send('menu:togglePlayPause');
       },
+      onStop: (): void => {
+        this.window?.webContents.send('menu:stop');
+      },
       onToggleShuffle: (): void => {
         this.window?.webContents.send('menu:toggleShuffle');
       },
