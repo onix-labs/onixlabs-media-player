@@ -23,7 +23,7 @@
  * @module app/components/root
  */
 
-import {Component, inject, computed, HostBinding, OnDestroy, HostListener, signal, effect, untracked, ChangeDetectionStrategy} from '@angular/core';
+import {Component, inject, computed, HostBinding, OnDestroy, HostListener, signal, effect, untracked, ChangeDetectionStrategy, ViewChild} from '@angular/core';
 import {LayoutHeader} from '../layout/layout-header/layout-header';
 import {LayoutOutlet} from '../layout/layout-outlet/layout-outlet';
 import {LayoutControls} from '../layout/layout-controls/layout-controls';
@@ -151,6 +151,13 @@ export class Root implements OnDestroy {
 
   /** Initial mouse position when drag started */
   private dragStartMousePos: {x: number; y: number} = {x: 0, y: 0};
+
+  // ============================================================================
+  // View Children
+  // ============================================================================
+
+  /** Reference to the layout outlet for playlist toggle */
+  @ViewChild(LayoutOutlet) private readonly layoutOutlet?: LayoutOutlet;
 
   // ============================================================================
   // Constructor - Menu Event Handling
@@ -283,6 +290,27 @@ export class Root implements OnDestroy {
   public onEscapeKey(): void {
     if (this.isFullscreen()) {
       void this.electron.exitFullscreen();
+    }
+  }
+
+  /**
+   * Handles global keydown events.
+   *
+   * Tab key:
+   * - Prevents default tab navigation (disables tabbing through UI elements)
+   * - In desktop mode (not fullscreen/miniplayer): toggles playlist visibility
+   */
+  @HostListener('document:keydown', ['$event'])
+  public onKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Tab') {
+      // Always prevent default tab behavior (no tabbing through UI)
+      event.preventDefault();
+
+      // Only toggle playlist in desktop mode (not fullscreen, not miniplayer)
+      const isDesktopMode: boolean = !this.isFullscreen() && !this.isMiniplayer();
+      if (isDesktopMode && !this.isConfigurationMode() && !this.isAboutMode()) {
+        this.layoutOutlet?.togglePlaylist();
+      }
     }
   }
 

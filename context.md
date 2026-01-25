@@ -119,6 +119,8 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
   - Multiple files + empty playlist: appends all and plays from beginning
   - Multiple files + existing playlist: appends without interrupting current playback
 - Drag-and-drop supported on: visualization surface, video surface, playlist panel, layout outlet
+- Tab key toggles playlist panel in desktop mode (disabled in fullscreen and miniplayer modes)
+- Default Tab navigation is disabled to prevent accidental UI traversal
 
 ### Fullscreen Mode
 
