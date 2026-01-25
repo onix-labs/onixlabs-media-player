@@ -836,14 +836,38 @@ trailCtx.translate(-floorCenterX, -floorCenterY);
 ```bash
 npm run lint         # Run ESLint on all TypeScript files
 npm run dev          # Lint + Development mode with hot reload
-npm run build:all    # Lint + Build Angular + Electron
-npm run package      # Lint + Build + Package with electron-builder
-npm run package:mac  # Lint + Build + Package for macOS (.app, .dmg, .zip)
-npm run package:win  # Lint + Build + Package for Windows (.exe, portable)
-npm run package:linux # Lint + Build + Package for Linux (.AppImage, .deb)
+npm run build:all    # Lint + Build Angular + Electron (with tree shaking)
+npm run obfuscate    # Obfuscate production code (Angular only)
+npm run package      # Lint + Build + Obfuscate + Package with electron-builder
+npm run package:mac  # Lint + Build + Obfuscate + Package for macOS (.app, .dmg, .zip)
+npm run package:win  # Lint + Build + Obfuscate + Package for Windows (.exe, portable)
+npm run package:linux # Lint + Build + Obfuscate + Package for Linux (.AppImage, .deb)
 ```
 
 **Note**: ESLint runs automatically before every build. The build will fail if there are any linting errors, ensuring code quality is enforced consistently.
+
+### Production Code Protection
+
+Production builds include code protection via bundling, minification, tree shaking, and obfuscation:
+
+| Component | Optimizations | Original | Final |
+|-----------|--------------|----------|-------|
+| Angular | esbuild minify + javascript-obfuscator | 382KB | 707KB |
+| Electron | esbuild bundle + minify + tree shake | 173KB | 91KB |
+
+**Electron Build (esbuild)**:
+- Tree shaking removes unused code (40% size reduction)
+- Bundled to single `main.cjs` file with all dependencies inline
+- CommonJS format (`.cjs`) for electron-log compatibility
+- Minified variable names and removed whitespace
+
+**Angular Build (javascript-obfuscator)**:
+- Lightweight obfuscation settings to minimize size increase
+- Identifier renaming (hexadecimal)
+- String array transformation (50% threshold)
+- String array rotation and shuffling
+
+**Why Electron code isn't obfuscated**: The `javascript-obfuscator` library doesn't support ES modules - it mangles ESM `import` statements. Since electron-log uses CommonJS internally with dynamic `require()` calls, we build as CommonJS. The Electron code is still well-protected through esbuild's bundling and minification.
 
 ### Build Output
 
@@ -925,14 +949,17 @@ ffprobe -v quiet -print_format json -show_format -show_streams <file>
 | Dependency | Purpose |
 |------------|---------|
 | tsx | Running TypeScript directly in development |
+| esbuild | Electron production bundling with tree shaking |
+| javascript-obfuscator | Angular code obfuscation for production |
 | ESLint + @typescript-eslint | Strict type safety rules |
 | electron-builder | Application packaging |
 
 ### TypeScript Configuration
 
 - `src/electron/tsconfig.json` uses `allowImportingTsExtensions` + `noEmit` for tsx compatibility
-- `src/electron/tsconfig.preload.json` compiles preload.ts to ESM (required for Electron preload scripts)
-- `src/electron/tsconfig.prod.json` compiles to JavaScript for production
+- `src/electron/tsconfig.preload.json` compiles preload.ts for development (production uses esbuild)
+- `src/electron/tsconfig.prod.json` compiles to JavaScript for debugging (production uses esbuild)
+- Production builds use `scripts/build-electron.ts` (esbuild) for bundling, tree shaking, and minification
 
 ### Installation
 
