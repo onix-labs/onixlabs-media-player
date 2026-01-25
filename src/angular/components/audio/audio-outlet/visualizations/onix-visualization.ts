@@ -9,8 +9,8 @@
  * Technical details:
  * - Central circle uses ONIXLabs brand color gradient stroke
  * - Circle pulses with audio waveform data
- * - White inner circle responds to bass frequencies (kick drums)
- * - Rotating trails with zoom and fade effects
+ * - White inner circle responds to bass frequencies (kick drums, no trail effect)
+ * - Rotating trails with zoom and fade effects on outer circle
  * - Optimized with canvas reuse and pre-allocated arrays
  *
  * Performance optimizations:
@@ -56,8 +56,9 @@ export class OnixVisualization extends Canvas2DVisualization {
 
   private readonly ROTATION_SPEED: number = 0.009;
   private readonly WAVEFORM_ROTATION_SPEED: number = 0.015;
-  private readonly FADE_RATE: number = 0.008;
+  private readonly FADE_RATE: number = 0.025;
   private readonly ZOOM_SCALE: number = 1.02;
+  private readonly FADE_POWER: number = 1.5;
 
   private readonly CENTER_CIRCLE_POINTS: number = 64;
 
@@ -170,8 +171,10 @@ export class OnixVisualization extends Canvas2DVisualization {
     trailCtx.clearRect(0, 0, width, height);
 
     // Draw back previous trails with rotation, zoom, and fade
-    // Apply trail intensity multiplier to fade rate
-    const effectiveFadeRate: number = this.FADE_RATE * this.getFadeMultiplier();
+    // Apply power curve to fade multiplier for more aggressive low-intensity fading
+    const baseMultiplier: number = this.getFadeMultiplier();
+    const scaledMultiplier: number = Math.pow(baseMultiplier, this.FADE_POWER);
+    const effectiveFadeRate: number = this.FADE_RATE * scaledMultiplier;
     trailCtx.save();
     // Use high-quality image smoothing to reduce artifacts from repeated scaling
     trailCtx.imageSmoothingEnabled = true;
@@ -204,12 +207,12 @@ export class OnixVisualization extends Canvas2DVisualization {
     this.drawCenterCircle(trailCtx);
     trailCtx.restore();
 
-    // Draw the bass-reactive white circle (no rotation - stays centered)
-    this.drawBassCircle(trailCtx);
-
     // Clear main canvas and draw trails
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(trailCanvas, 0, 0);
+
+    // Draw the bass-reactive white circle on main canvas (no trail effect)
+    this.drawBassCircle(ctx);
 
     this.applyFadeOverlay();
   }
