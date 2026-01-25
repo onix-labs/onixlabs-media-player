@@ -91,6 +91,12 @@ export class Playlist {
   /** Whether playback is active */
   public readonly isPlaying: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.isPlaying());
 
+  /** Whether playback is paused (not stopped) */
+  public readonly isPaused: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.isPaused());
+
+  /** Whether playback is stopped */
+  public readonly isStopped: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.playbackState() === 'stopped');
+
   // ============================================================================
   // Visibility Control
   // ============================================================================
