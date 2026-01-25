@@ -309,12 +309,14 @@ export class PulsarVisualization extends Canvas2DVisualization {
       ctx.closePath();
     };
 
+    const glowBlur: number = this.getScaledGlowBlur(15);
+
     // Draw glow layer
     ctx.save();
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = glowBlur;
     ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
     ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = this.lineWidth + 3;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     buildPath();
@@ -323,7 +325,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
 
     // Draw main circle
     ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = this.lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     buildPath();
@@ -350,12 +352,14 @@ export class PulsarVisualization extends Canvas2DVisualization {
       this.buildSmoothPath(ctx, points, count - 1);
     };
 
+    const glowBlur: number = this.getScaledGlowBlur(15);
+
     // Draw glow layer (restored for visual quality)
     ctx.save();
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = glowBlur;
     ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${0.6 * alpha})`;
     ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${0.3 * alpha})`;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = this.lineWidth + 3;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     buildPath();
@@ -364,7 +368,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
 
     // Draw main waveform
     ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = this.lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     buildPath();
