@@ -146,23 +146,21 @@ export interface TranscodingSettings {
 }
 
 /**
- * macOS vibrancy effect types.
- */
-export type MacOSVibrancy = 'none' | 'fullscreen-ui' | 'sidebar' | 'header' | 'under-window' | 'under-page';
-
-/**
  * macOS visual effect state.
  */
 export type MacOSVisualEffectState = 'followWindow' | 'active' | 'inactive';
 
 /**
- * Appearance settings (platform-specific).
+ * Appearance settings (cross-platform).
+ * Supports glass effects (vibrancy on macOS, acrylic on Windows) and background color.
  */
 export interface AppearanceSettings {
-  /** macOS vibrancy effect */
-  readonly macOSVibrancy: MacOSVibrancy;
-  /** macOS visual effect state */
+  /** Whether glass effect (transparency/blur) is enabled */
+  readonly glassEnabled: boolean;
+  /** macOS visual effect state - only used on macOS when glassEnabled */
   readonly macOSVisualEffectState: MacOSVisualEffectState;
+  /** Background color when glass is disabled or unsupported (hex format) */
+  readonly backgroundColor: string;
 }
 
 /**
@@ -256,8 +254,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     audioBitrate: 192,
   },
   appearance: {
-    macOSVibrancy: 'fullscreen-ui',
+    glassEnabled: true,
     macOSVisualEffectState: 'active',
+    backgroundColor: '#1e1e1e',
   },
 };
 
@@ -446,14 +445,19 @@ export class SettingsService implements OnDestroy {
     (): VideoAspectMode => this.settings().playback?.videoAspectMode ?? 'default'
   );
 
-  /** macOS vibrancy effect (requires restart to apply) */
-  public readonly macOSVibrancy: ReturnType<typeof computed<MacOSVibrancy>> = computed(
-    (): MacOSVibrancy => this.settings().appearance?.macOSVibrancy ?? 'fullscreen-ui'
+  /** Whether glass effect is enabled (requires restart to apply) */
+  public readonly glassEnabled: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.settings().appearance?.glassEnabled ?? true
   );
 
   /** macOS visual effect state (requires restart to apply) */
   public readonly macOSVisualEffectState: ReturnType<typeof computed<MacOSVisualEffectState>> = computed(
     (): MacOSVisualEffectState => this.settings().appearance?.macOSVisualEffectState ?? 'active'
+  );
+
+  /** Background color when glass is disabled (requires restart to apply) */
+  public readonly backgroundColor: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settings().appearance?.backgroundColor ?? '#1e1e1e'
   );
 
   // ============================================================================
@@ -791,22 +795,17 @@ export class SettingsService implements OnDestroy {
   }
 
   // ============================================================================
-  // Appearance Settings (macOS)
+  // Appearance Settings
   // ============================================================================
 
   /**
-   * Sets the macOS vibrancy effect.
+   * Sets whether glass effect is enabled.
    * Requires application restart to take effect.
    *
-   * @param vibrancy - Vibrancy effect type
+   * @param enabled - Whether glass should be enabled
    */
-  public async setMacOSVibrancy(vibrancy: MacOSVibrancy): Promise<void> {
-    const validVibrancies: readonly MacOSVibrancy[] = ['none', 'fullscreen-ui', 'sidebar', 'header', 'under-window', 'under-page'];
-    if (!validVibrancies.includes(vibrancy)) {
-      console.error(`[SettingsService] Invalid macOS vibrancy: ${vibrancy}`);
-      return;
-    }
-    await this.updateSetting('appearance', 'macOSVibrancy', vibrancy);
+  public async setGlassEnabled(enabled: boolean): Promise<void> {
+    await this.updateSetting('appearance', 'glassEnabled', enabled);
   }
 
   /**
@@ -822,6 +821,21 @@ export class SettingsService implements OnDestroy {
       return;
     }
     await this.updateSetting('appearance', 'macOSVisualEffectState', state);
+  }
+
+  /**
+   * Sets the background color when glass is disabled.
+   * Requires application restart to take effect.
+   *
+   * @param color - Hex color string (e.g., '#1e1e1e')
+   */
+  public async setBackgroundColor(color: string): Promise<void> {
+    // Validate hex color format
+    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+      console.error(`[SettingsService] Invalid hex color: ${color}`);
+      return;
+    }
+    await this.updateSetting('appearance', 'backgroundColor', color);
   }
 
   /**

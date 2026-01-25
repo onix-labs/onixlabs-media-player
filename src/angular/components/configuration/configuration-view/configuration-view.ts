@@ -14,19 +14,8 @@
 
 import {Component, signal, computed, inject, ChangeDetectionStrategy} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, MacOSVibrancy, MacOSVisualEffectState} from '../../../services/settings.service';
-
-/**
- * macOS vibrancy options for the settings UI.
- */
-export const MACOS_VIBRANCY_OPTIONS: readonly {value: MacOSVibrancy; label: string}[] = [
-  {value: 'none', label: 'None (Solid)'},
-  {value: 'fullscreen-ui', label: 'Fullscreen UI'},
-  {value: 'sidebar', label: 'Sidebar'},
-  {value: 'header', label: 'Header'},
-  {value: 'under-window', label: 'Under Window'},
-  {value: 'under-page', label: 'Under Page'},
-];
+import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, MacOSVisualEffectState} from '../../../services/settings.service';
+import {ElectronService} from '../../../services/electron.service';
 
 /**
  * macOS visual effect state options for the settings UI.
@@ -94,7 +83,7 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     id: 'appearance',
     name: 'Appearance',
     icon: 'fa-solid fa-palette',
-    description: 'Configure window appearance (macOS only).',
+    description: 'Configure window transparency and background.',
   },
   {
     id: 'playback',
@@ -144,6 +133,9 @@ export class ConfigurationView {
 
   /** Settings service for reading and updating preferences */
   private readonly settingsService: SettingsService = inject(SettingsService);
+
+  /** Electron service for platform information */
+  private readonly electronService: ElectronService = inject(ElectronService);
 
   // ============================================================================
   // Reactive State
@@ -285,18 +277,35 @@ export class ConfigurationView {
   );
 
   // ============================================================================
-  // Appearance Settings (macOS)
+  // Appearance Settings
   // ============================================================================
-
-  /** Available macOS vibrancy options for the dropdown */
-  public readonly macOSVibrancyOptions = MACOS_VIBRANCY_OPTIONS;
 
   /** Available macOS visual effect state options for the dropdown */
   public readonly macOSVisualEffectStateOptions = MACOS_VISUAL_EFFECT_STATE_OPTIONS;
 
-  /** Current macOS vibrancy setting */
-  public readonly currentMacOSVibrancy: ReturnType<typeof computed<MacOSVibrancy>> = computed(
-    (): MacOSVibrancy => this.settingsService.macOSVibrancy()
+  /** Whether glass effects are supported on current platform */
+  public readonly supportsGlass: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.electronService.platformInfo().supportsGlass
+  );
+
+  /** Current platform identifier */
+  public readonly platform: ReturnType<typeof computed<string>> = computed(
+    (): string => this.electronService.platformInfo().platform
+  );
+
+  /** Whether current platform is macOS */
+  public readonly isMacOS: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.platform() === 'darwin'
+  );
+
+  /** Current glass enabled setting */
+  public readonly currentGlassEnabled: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.settingsService.glassEnabled()
+  );
+
+  /** Current background color setting */
+  public readonly currentBackgroundColor: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settingsService.backgroundColor()
   );
 
   /** Current macOS visual effect state setting */
@@ -426,14 +435,29 @@ export class ConfigurationView {
   // ============================================================================
 
   /**
-   * Handles macOS vibrancy selection change.
+   * Handles glass enabled toggle change.
    * Note: Requires application restart to take effect.
    *
-   * @param event - The change event from the select element
+   * @param event - The change event from the checkbox
    */
-  public async onMacOSVibrancyChange(event: Event): Promise<void> {
-    const vibrancy: string = getSelectValue(event);
-    await this.settingsService.setMacOSVibrancy(vibrancy as MacOSVibrancy);
+  public async onGlassEnabledChange(event: Event): Promise<void> {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLInputElement) {
+      await this.settingsService.setGlassEnabled(target.checked);
+    }
+  }
+
+  /**
+   * Handles background color change.
+   * Note: Requires application restart to take effect.
+   *
+   * @param event - The change event from the color picker
+   */
+  public async onBackgroundColorChange(event: Event): Promise<void> {
+    const color: string = getInputValue(event);
+    if (color) {
+      await this.settingsService.setBackgroundColor(color);
+    }
   }
 
   /**

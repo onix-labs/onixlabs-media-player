@@ -1,8 +1,12 @@
+:root {
+  // Background color when glass effect is disabled (set dynamically by app.component)
+  --app-background-color: transparent;
+}
+
 html,
 body {
   display: flex;
   flex-direction: column;
-  //background: #101010;
   color: white;
   margin: 0;
   padding: 0;
@@ -14,4 +18,5 @@ body {
   "Helvetica Neue", Arial, sans-serif,
   "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   user-select: none;
+  background-color: var(--app-background-color);
 }

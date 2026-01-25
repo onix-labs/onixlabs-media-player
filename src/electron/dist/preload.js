@@ -29,6 +29,7 @@ const api = {
     openFileDialog: (options) => ipcRenderer.invoke('dialog:openFile', options),
     getPathForFile: (file) => webUtils.getPathForFile(file),
     getServerPort: () => ipcRenderer.invoke('app:getServerPort'),
+    getPlatformInfo: () => ipcRenderer.invoke('app:getPlatformInfo'),
     enterFullscreen: () => ipcRenderer.invoke('window:enterFullscreen'),
     exitFullscreen: () => ipcRenderer.invoke('window:exitFullscreen'),
     isFullscreen: () => ipcRenderer.invoke('window:isFullscreen'),

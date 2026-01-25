@@ -46,7 +46,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 ### Key Architectural Decisions
 
 1. **Unified HTTP Server** - All media streaming, playback control, and settings managed through a single HTTP server with SSE for real-time updates
-2. **Minimal IPC** - Only 16 IPC channels (vs typical 50+ in Electron apps) by routing most communication through HTTP
+2. **Minimal IPC** - Only 17 IPC channels (vs typical 50+ in Electron apps) by routing most communication through HTTP
 3. **Signal-Based State** - Angular signals throughout for reactive, predictable state flow
 4. **OnPush Change Detection** - All components use OnPush strategy for optimal performance
 5. **Type-Safe Event Handling** - Helper functions with instanceof checks for runtime safety
@@ -162,12 +162,14 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - **Playback controls**: Media title, transport controls, volume, fullscreen toggle
 - Track title displayed in playback controls (format: "Artist - Title" or just title)
 - **Window transparency**: Platform-native blur effects for modern appearance
-  - macOS: Configurable vibrancy effect with hidden inset title bar
-    - Vibrancy options: None (solid), Fullscreen UI (default), Sidebar, Header, Under Window, Under Page
-    - Visual effect state: Follow Window, Always Active (default), Always Inactive
-  - Windows 11: Acrylic blur effect via `backgroundMaterial`
-  - Linux: Solid background (no native blur support in Electron)
-  - Appearance settings accessible via Settings > Appearance (requires app restart)
+  - **Glass Effect** toggle enables/disables transparency (requires app restart)
+    - macOS: Uses vibrancy (`fullscreen-ui`) with hidden inset title bar
+    - Windows 11: Uses acrylic blur via `backgroundMaterial`
+    - Linux: Glass not supported (toggle disabled)
+  - **Visual Effect State** (macOS only, when glass enabled): Follow Window, Always Active (default), Always Inactive
+  - **Background Color** picker (when glass disabled or unsupported): Hex color selection, updates immediately without restart
+  - Default background color auto-detects system light/dark mode (#1e1e1e dark, #e0e0e0 light)
+  - Appearance settings accessible via Settings > Appearance
 
 ### Application Menu
 
@@ -261,9 +263,10 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
-│  IPC (minimal - 16 channels):                                          │
+│  IPC (minimal - 17 channels):                                          │
 │  ├── dialog:openFile         (native file picker)                      │
 │  ├── app:getServerPort       (get HTTP server port)                    │
+│  ├── app:getPlatformInfo     (platform, glass support, system theme)   │
 │  ├── app:prepareForClose     (signal renderer to fade out audio)       │
 │  ├── app:fadeOutComplete     (renderer signals fade complete)          │
 │  ├── app:setConfigurationMode (track settings view for close behavior) │
@@ -522,6 +525,14 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 |---------|---------|---------|-------------|
 | Video Quality | Low/Medium/High | Medium | CRF 28/23/18 |
 | Audio Bitrate | 128/192/256/320 kbps | 192 | Transcoding audio bitrate |
+
+#### Appearance Category
+
+| Setting | Options | Default | Description | Restart Required |
+|---------|---------|---------|-------------|------------------|
+| Glass Effect | On/Off | On | Enables window transparency with blur | Yes |
+| Visual Effect State | Follow Window/Always Active/Always Inactive | Always Active | macOS vibrancy state (shown when glass enabled on macOS) | Yes |
+| Background Color | Hex color picker | Auto-detected | Window background when glass disabled | No |
 
 ---
 

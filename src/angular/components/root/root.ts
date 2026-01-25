@@ -157,13 +157,28 @@ export class Root implements OnDestroy {
   // ============================================================================
 
   /**
-   * Sets up reactive effects for menu events.
+   * Sets up reactive effects for menu events and appearance.
    *
    * Effects react to:
    * - menuShowConfig: Opens the configuration view
    * - menuOpenFile: Opens file dialog and adds files to playlist
+   * - backgroundColor/glassEnabled: Updates CSS variable for background color
    */
   public constructor() {
+    // React to background color and glass settings changes
+    // Updates CSS variable dynamically (no restart required for background color)
+    effect((): void => {
+      const glassEnabled: boolean = this.settings.glassEnabled();
+      const backgroundColor: string = this.settings.backgroundColor();
+      const supportsGlass: boolean = this.electron.platformInfo().supportsGlass;
+
+      // Show background color when glass is disabled or platform doesn't support glass
+      const showBackgroundColor: boolean = !glassEnabled || !supportsGlass;
+      const cssColor: string = showBackgroundColor ? backgroundColor : 'transparent';
+
+      document.documentElement.style.setProperty('--app-background-color', cssColor);
+    });
+
     // React to "Show Config" menu event
     effect((): void => {
       const trigger: number = this.electron.menuShowConfig();

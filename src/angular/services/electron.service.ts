@@ -114,6 +114,13 @@ export class ElectronService implements OnDestroy {
   /** Current view mode: desktop, miniplayer, or fullscreen */
   public readonly viewMode: ReturnType<typeof signal<'desktop' | 'miniplayer' | 'fullscreen'>> = signal<'desktop' | 'miniplayer' | 'fullscreen'>('desktop');
 
+  /** Platform information including glass effect support */
+  public readonly platformInfo: ReturnType<typeof signal<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}>> = signal<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}>({
+    platform: 'unknown',
+    supportsGlass: false,
+    systemTheme: 'dark'
+  });
+
   /** Cleanup function for fullscreen change listener */
   private fullscreenCleanup: (() => void) | null = null;
 
@@ -228,6 +235,13 @@ export class ElectronService implements OnDestroy {
     this.serverPort = await this.api.getServerPort();
     this.serverUrl.set(`http://127.0.0.1:${this.serverPort}`);
     console.log(`Connected to media server at ${this.serverUrl()}`);
+
+    // Get platform info via IPC
+    const platformInfo = await this.api.getPlatformInfo();
+    this.ngZone.run((): void => {
+      this.platformInfo.set(platformInfo);
+    });
+    console.log(`Platform: ${platformInfo.platform}, Glass supported: ${platformInfo.supportsGlass}, Theme: ${platformInfo.systemTheme}`);
 
     // Connect to SSE for real-time updates
     this.connectSSE();
