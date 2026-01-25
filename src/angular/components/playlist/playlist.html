@@ -8,7 +8,10 @@
 >
   <div class="playlist-header">
     <span class="playlist-title">Playlist</span>
-    <span class="playlist-count">{{ count() }} items</span>
+    <button class="playlist-count-btn" (click)="clearPlaylist()" (mouseup)="$any($event.currentTarget).blur()">
+      <span class="count-text">{{ count() }} items</span>
+      <span class="clear-text">Clear <i class="fa-solid fa-xmark"></i></span>
+    </button>
   </div>
 
   <div class="playlist-items">
