@@ -1997,7 +1997,7 @@ export class UnifiedMediaServer {
     this.stopTimeTracking();
 
     // Select first item if playlist has items
-    if (this.playlist.count() > 0) {
+    if (this.playlist.getState().items.length > 0) {
       this.playlist.selectIndex(0);
     }
 
@@ -2670,7 +2670,7 @@ export class UnifiedMediaServer {
       this.playback.currentTime = 0;
 
       // Select first item if playlist has items
-      if (this.playlist.count() > 0) {
+      if (this.playlist.getState().items.length > 0) {
         this.playlist.selectIndex(0);
       }
 
