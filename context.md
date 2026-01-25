@@ -105,6 +105,10 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 ### Playlist & Controls
 
 - Server-managed playlist with shuffle (Fisher-Yates) and repeat modes
+- Current track highlighted with color-coded playback state:
+  - **Playing**: Green background with green play icon
+  - **Paused**: Orange background with orange pause icon
+  - **Stopped**: Red background with red stop icon
 - Play/pause, next/previous, seek, volume all responsive
 - Shift+click on previous/next buttons skips backward/forward by configurable duration
   - Works in both main controls and miniplayer controls
