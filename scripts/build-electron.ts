@@ -17,13 +17,16 @@ const COMMON_OPTIONS: esbuild.BuildOptions = {
   bundle: true,
   platform: 'node',
   target: 'node20', // Electron 39 uses Node 20
-  format: 'cjs', // CommonJS for electron-log compatibility
+  format: 'esm',
   minify: true,
   treeShaking: true,
   sourcemap: false,
-  // Mark Electron and Node.js built-ins as external (but bundle electron-log)
+  // Mark Electron, electron-log, and Node.js built-ins as external
+  // electron-log is CJS with dynamic requires, so it must be loaded separately
   external: [
     'electron',
+    'electron-log',
+    'electron-log/main',
     // Node.js built-ins that shouldn't be bundled
     'path',
     'fs',
@@ -56,29 +59,29 @@ async function build(): Promise<void> {
   mkdirSync(OUTPUT_DIR, { recursive: true });
 
   // Build main process (bundles unified-media-server, settings-manager, etc.)
-  // Use .cjs extension since project has "type": "module"
-  console.log('  Building main.cjs...');
+  // Use .js extension - project has "type": "module" so .js is ESM
+  console.log('  Building main.js...');
   const mainResult = await esbuild.build({
     ...COMMON_OPTIONS,
     entryPoints: ['src/electron/main.ts'],
-    outfile: 'src/electron/dist/main.cjs',
+    outfile: 'src/electron/dist/main.js',
     metafile: true,
   });
 
-  const mainSize = getOutputSize(mainResult.metafile, 'src/electron/dist/main.cjs');
-  console.log(`  ✓ main.cjs (${formatBytes(mainSize)})`);
+  const mainSize = getOutputSize(mainResult.metafile, 'src/electron/dist/main.js');
+  console.log(`  ✓ main.js (${formatBytes(mainSize)})`);
 
   // Build preload script (separate bundle, runs in renderer context)
-  console.log('  Building preload.cjs...');
+  console.log('  Building preload.js...');
   const preloadResult = await esbuild.build({
     ...COMMON_OPTIONS,
     entryPoints: ['src/electron/preload.ts'],
-    outfile: 'src/electron/dist/preload.cjs',
+    outfile: 'src/electron/dist/preload.js',
     metafile: true,
   });
 
-  const preloadSize = getOutputSize(preloadResult.metafile, 'src/electron/dist/preload.cjs');
-  console.log(`  ✓ preload.cjs (${formatBytes(preloadSize)})`);
+  const preloadSize = getOutputSize(preloadResult.metafile, 'src/electron/dist/preload.js');
+  console.log(`  ✓ preload.js (${formatBytes(preloadSize)})`);
 
   const totalSize = mainSize + preloadSize;
   console.log(`\n✅ Electron build complete. Total: ${formatBytes(totalSize)}`);
