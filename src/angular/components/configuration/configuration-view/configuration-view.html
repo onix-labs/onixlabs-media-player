@@ -491,47 +491,78 @@
 
             @case ('appearance') {
               <div class="setting-group">
+                <!-- Glass Effect Toggle -->
                 <div class="setting-row">
                   <div class="setting-label">
-                    <label for="macos-vibrancy">Vibrancy Effect (macOS)</label>
+                    <label for="glass-enabled">Glass Effect</label>
                     <p class="setting-description">
-                      Window transparency effect. Uses the macOS system blur for a modern look.
+                      @if (supportsGlass()) {
+                        Enables window transparency with blur effect.
+                      } @else {
+                        Glass effects are not supported on this platform.
+                      }
                     </p>
                   </div>
                   <div class="setting-control">
-                    <select
-                      id="macos-vibrancy"
-                      (change)="onMacOSVibrancyChange($event)"
-                    >
-                      @for (option of macOSVibrancyOptions; track option.value) {
-                        <option [value]="option.value" [selected]="option.value === currentMacOSVibrancy()">{{ option.label }}</option>
-                      }
-                    </select>
+                    <label class="toggle">
+                      <input
+                        type="checkbox"
+                        id="glass-enabled"
+                        [checked]="currentGlassEnabled()"
+                        [disabled]="!supportsGlass()"
+                        (change)="onGlassEnabledChange($event)"
+                      />
+                      <span class="toggle-slider"></span>
+                    </label>
                   </div>
                 </div>
 
-                <div class="setting-row">
-                  <div class="setting-label">
-                    <label for="macos-visual-effect-state">Visual Effect State (macOS)</label>
-                    <p class="setting-description">
-                      Controls when the vibrancy effect is active. "Always Active" keeps the effect even when the window is in the background.
-                    </p>
+                <!-- Visual Effect State (macOS only, when glass enabled) -->
+                @if (isMacOS() && currentGlassEnabled()) {
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label for="macos-visual-effect-state">Visual Effect State</label>
+                      <p class="setting-description">
+                        Controls when the glass effect is active. "Always Active" keeps the effect even when the window is in the background.
+                      </p>
+                    </div>
+                    <div class="setting-control">
+                      <select
+                        id="macos-visual-effect-state"
+                        (change)="onMacOSVisualEffectStateChange($event)"
+                      >
+                        @for (option of macOSVisualEffectStateOptions; track option.value) {
+                          <option [value]="option.value" [selected]="option.value === currentMacOSVisualEffectState()">{{ option.label }}</option>
+                        }
+                      </select>
+                    </div>
                   </div>
-                  <div class="setting-control">
-                    <select
-                      id="macos-visual-effect-state"
-                      (change)="onMacOSVisualEffectStateChange($event)"
-                    >
-                      @for (option of macOSVisualEffectStateOptions; track option.value) {
-                        <option [value]="option.value" [selected]="option.value === currentMacOSVisualEffectState()">{{ option.label }}</option>
-                      }
-                    </select>
+                }
+
+                <!-- Background Color (when glass disabled or unsupported) -->
+                @if (!currentGlassEnabled() || !supportsGlass()) {
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label for="background-color">Background Color</label>
+                      <p class="setting-description">
+                        Window background color when glass effect is disabled.
+                      </p>
+                    </div>
+                    <div class="setting-control color-control">
+                      <input
+                        type="color"
+                        id="background-color"
+                        [value]="currentBackgroundColor()"
+                        (change)="onBackgroundColorChange($event)"
+                      />
+                      <span class="color-value">{{ currentBackgroundColor() }}</span>
+                    </div>
                   </div>
-                </div>
+                }
 
                 <div class="restart-notice">
                   <i class="fa-solid fa-info-circle"></i>
-                  <span>Appearance settings require an application restart to take effect.</span>
+                  <span>Glass effect setting requires an application restart to take effect.</span>
                 </div>
               </div>
             }

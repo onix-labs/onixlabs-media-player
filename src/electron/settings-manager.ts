@@ -95,17 +95,6 @@ export type AudioBitrate = 128 | 192 | 256 | 320;
 export type VideoAspectMode = 'default' | '4:3' | '16:9' | 'fit';
 
 /**
- * macOS vibrancy effect types.
- * - none: No vibrancy (solid background)
- * - fullscreen-ui: Appropriate for fullscreen UI elements
- * - sidebar: Appropriate for sidebars
- * - header: Appropriate for headers
- * - under-window: Under window material
- * - under-page: Under page material
- */
-export type MacOSVibrancy = 'none' | 'fullscreen-ui' | 'sidebar' | 'header' | 'under-window' | 'under-page';
-
-/**
  * macOS visual effect state.
  * - followWindow: Effect follows window active state
  * - active: Always active (even when window is inactive)
@@ -167,14 +156,16 @@ export interface TranscodingSettings {
 }
 
 /**
- * Appearance settings (platform-specific).
- * Currently supports macOS vibrancy settings.
+ * Appearance settings (cross-platform).
+ * Supports glass effects (vibrancy on macOS, acrylic on Windows) and background color.
  */
 export interface AppearanceSettings {
-  /** macOS vibrancy effect (none, fullscreen-ui, sidebar, header, under-window, under-page, default fullscreen-ui) */
-  readonly macOSVibrancy: MacOSVibrancy;
-  /** macOS visual effect state (followWindow, active, inactive, default active) */
+  /** Whether glass effect (transparency/blur) is enabled (default true on supported platforms) */
+  readonly glassEnabled: boolean;
+  /** macOS visual effect state (followWindow, active, inactive, default active) - only used on macOS when glassEnabled */
   readonly macOSVisualEffectState: MacOSVisualEffectState;
+  /** Background color when glass is disabled or unsupported (hex format, e.g., '#1e1e1e') */
+  readonly backgroundColor: string;
 }
 
 /**
@@ -263,8 +254,9 @@ export interface TranscodingSettingsUpdate {
  * Partial appearance settings for updates.
  */
 export interface AppearanceSettingsUpdate {
-  readonly macOSVibrancy?: MacOSVibrancy;
+  readonly glassEnabled?: boolean;
   readonly macOSVisualEffectState?: MacOSVisualEffectState;
+  readonly backgroundColor?: string;
 }
 
 // ============================================================================
@@ -302,9 +294,6 @@ const VALID_AUDIO_BITRATES: readonly AudioBitrate[] = [128, 192, 256, 320];
 /** Valid video aspect mode values */
 const VALID_VIDEO_ASPECT_MODES: readonly VideoAspectMode[] = ['default', '4:3', '16:9', 'fit'];
 
-/** Valid macOS vibrancy values */
-const VALID_MACOS_VIBRANCY: readonly MacOSVibrancy[] = ['none', 'fullscreen-ui', 'sidebar', 'header', 'under-window', 'under-page'];
-
 /** Valid macOS visual effect state values */
 const VALID_MACOS_VISUAL_EFFECT_STATE: readonly MacOSVisualEffectState[] = ['followWindow', 'active', 'inactive'];
 
@@ -333,8 +322,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     audioBitrate: 192,  // 192 kbps
   },
   appearance: {
-    macOSVibrancy: 'fullscreen-ui',  // default macOS vibrancy effect
+    glassEnabled: true,  // glass effect enabled by default (vibrancy on macOS, acrylic on Windows)
     macOSVisualEffectState: 'active',  // always active (even when window inactive)
+    backgroundColor: '#1e1e1e',  // dark background when glass disabled (will be overridden by system theme detection at runtime)
   },
   windowState: {
     miniplayerBounds: null,  // no saved position initially
@@ -626,10 +616,10 @@ export class SettingsManager {
    * @returns The updated complete settings object
    */
   public updateAppearanceSettings(update: AppearanceSettingsUpdate): AppSettings {
-    // Validate macOSVibrancy if provided
-    if (update.macOSVibrancy !== undefined) {
-      if (!this.isValidMacOSVibrancy(update.macOSVibrancy)) {
-        console.warn(`[SettingsManager] Invalid macOS vibrancy: ${update.macOSVibrancy}, ignoring`);
+    // Validate glassEnabled if provided
+    if (update.glassEnabled !== undefined) {
+      if (typeof update.glassEnabled !== 'boolean') {
+        console.warn(`[SettingsManager] Invalid glassEnabled: ${update.glassEnabled}, ignoring`);
         return this.settings;
       }
     }
@@ -642,13 +632,22 @@ export class SettingsManager {
       }
     }
 
+    // Validate backgroundColor if provided
+    if (update.backgroundColor !== undefined) {
+      if (!this.isValidHexColor(update.backgroundColor)) {
+        console.warn(`[SettingsManager] Invalid background color: ${update.backgroundColor}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
       appearance: {
         ...this.settings.appearance,
-        macOSVibrancy: update.macOSVibrancy ?? this.settings.appearance.macOSVibrancy,
+        glassEnabled: update.glassEnabled ?? this.settings.appearance.glassEnabled,
         macOSVisualEffectState: update.macOSVisualEffectState ?? this.settings.appearance.macOSVisualEffectState,
+        backgroundColor: update.backgroundColor ?? this.settings.appearance.backgroundColor,
       },
     };
 
@@ -1036,6 +1035,7 @@ export class SettingsManager {
 
   /**
    * Validates appearance settings object.
+   * Includes migration from old macOSVibrancy format to new glassEnabled format.
    *
    * @param appearance - The appearance settings to validate (unknown type)
    * @returns Valid appearance settings with defaults for invalid values
@@ -1046,16 +1046,28 @@ export class SettingsManager {
     }
 
     const appearanceObj: Record<string, unknown> = appearance as Record<string, unknown>;
-    const macOSVibrancy: unknown = appearanceObj['macOSVibrancy'];
+
+    // Migration: Convert old macOSVibrancy to new glassEnabled format
+    let glassEnabled: boolean = DEFAULT_SETTINGS.appearance.glassEnabled;
+    if (typeof appearanceObj['glassEnabled'] === 'boolean') {
+      // New format - use directly
+      glassEnabled = appearanceObj['glassEnabled'];
+    } else if (typeof appearanceObj['macOSVibrancy'] === 'string') {
+      // Old format - migrate: 'none' means glass disabled, anything else means enabled
+      glassEnabled = appearanceObj['macOSVibrancy'] !== 'none';
+    }
+
     const macOSVisualEffectState: unknown = appearanceObj['macOSVisualEffectState'];
+    const backgroundColor: unknown = appearanceObj['backgroundColor'];
 
     return {
-      macOSVibrancy: this.isValidMacOSVibrancy(macOSVibrancy)
-        ? macOSVibrancy
-        : DEFAULT_SETTINGS.appearance.macOSVibrancy,
+      glassEnabled,
       macOSVisualEffectState: this.isValidMacOSVisualEffectState(macOSVisualEffectState)
         ? macOSVisualEffectState
         : DEFAULT_SETTINGS.appearance.macOSVisualEffectState,
+      backgroundColor: this.isValidHexColor(backgroundColor)
+        ? backgroundColor
+        : DEFAULT_SETTINGS.appearance.backgroundColor,
     };
   }
 
@@ -1322,15 +1334,15 @@ export class SettingsManager {
   }
 
   /**
-   * Type guard to check if a value is a valid macOS vibrancy.
+   * Type guard to check if a value is a valid hex color.
    *
-   * Valid values are 'none', 'fullscreen-ui', 'sidebar', 'header', 'under-window', 'under-page'.
+   * Valid values are strings matching #RRGGBB format.
    *
    * @param value - The value to check
-   * @returns True if the value is a valid macOS vibrancy
+   * @returns True if the value is a valid hex color
    */
-  private isValidMacOSVibrancy(value: unknown): value is MacOSVibrancy {
-    return typeof value === 'string' && VALID_MACOS_VIBRANCY.includes(value as MacOSVibrancy);
+  private isValidHexColor(value: unknown): value is string {
+    return typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value);
   }
 
   /**

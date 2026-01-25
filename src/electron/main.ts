@@ -14,12 +14,12 @@
  * @module electron/main
  */
 
-import {app, BrowserWindow, dialog, ipcMain, net, protocol, screen} from "electron";
+import {app, BrowserWindow, dialog, ipcMain, nativeTheme, net, protocol, screen} from "electron";
 import * as path from "path";
 import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.js';
 import {createApplicationMenu, updateMenuState} from './application-menu.js';
-import type {WindowBounds, MacOSVibrancy, MacOSVisualEffectState} from './settings-manager.js';
+import type {WindowBounds, MacOSVisualEffectState} from './settings-manager.js';
 
 // Set app name (shows in dock/menu bar during development)
 app.setName('ONIXPlayer');
@@ -129,6 +129,20 @@ class Program {
 
   /** Whether the application is currently in configuration mode (settings view) */
   private isInConfigurationMode: boolean = false;
+
+  /**
+   * Gets the default background color based on system theme.
+   * Used when glass is disabled or on platforms without glass support.
+   *
+   * @returns Dark gray (#1e1e1e) for dark mode, light gray (#e0e0e0) for light mode
+   */
+  private getDefaultBackgroundColor(): string {
+    try {
+      return nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#e0e0e0';
+    } catch {
+      return '#1e1e1e'; // Fallback to dark
+    }
+  }
 
   /**
    * Private constructor - use Program.run() to start the application.
@@ -264,29 +278,32 @@ class Program {
     // Platform-specific transparency and window chrome options
     let platformOptions: Electron.BrowserWindowConstructorOptions = {};
 
+    // Get appearance settings
+    const appearanceSettings = this.mediaServer?.getSettingsManager().getSettings().appearance;
+    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? true;
+    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
+    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
+
     if (process.platform === 'darwin') {
       // macOS: native vibrancy with hidden title bar
-      const appearanceSettings = this.mediaServer?.getSettingsManager().getSettings().appearance;
-      const vibrancy: MacOSVibrancy = appearanceSettings?.macOSVibrancy ?? 'fullscreen-ui';
-      const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
-
       platformOptions = {
         titleBarStyle: 'hiddenInset',
         trafficLightPosition: {x: 12, y: 13},
-        // Only apply vibrancy if not 'none'
-        ...(vibrancy !== 'none' && {
-          vibrancy: vibrancy,
-          visualEffectState: visualEffectState
-        })
+        // Apply vibrancy if glass enabled, otherwise use background color
+        ...(glassEnabled
+          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
+          : { backgroundColor }
+        )
       };
     } else if (process.platform === 'win32') {
-      // Windows 11: acrylic blur effect
-      platformOptions = {
-        transparent: true,
-        backgroundMaterial: 'acrylic'
-      };
+      // Windows 11: acrylic blur effect when glass enabled
+      platformOptions = glassEnabled
+        ? { transparent: true, backgroundMaterial: 'acrylic' as const }
+        : { backgroundColor };
+    } else {
+      // Linux: no native blur support, always use background color
+      platformOptions = { backgroundColor };
     }
-    // Linux: no native blur support (empty platformOptions)
 
     const window: BrowserWindow = new BrowserWindow({
       ...baseOptions,
@@ -341,6 +358,15 @@ class Program {
     // Get server port - needed for renderer to connect to HTTP API
     ipcMain.handle("app:getServerPort", (): number => {
       return this.mediaServer?.getPort() || 0;
+    });
+
+    // Get platform info - needed for renderer to show platform-specific settings
+    ipcMain.handle("app:getPlatformInfo", (): {platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'} => {
+      return {
+        platform: process.platform,
+        supportsGlass: process.platform === 'darwin' || process.platform === 'win32',
+        systemTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+      };
     });
 
     // Fullscreen control

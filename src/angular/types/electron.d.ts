@@ -293,6 +293,20 @@ export interface MediaPlayerAPI {
   getServerPort: () => Promise<number>;
 
   /**
+   * Gets platform information including glass effect support.
+   * Used by the settings UI to show/hide platform-specific options.
+   * @returns Promise resolving to platform info object
+   */
+  getPlatformInfo: () => Promise<{
+    /** Platform identifier: 'darwin', 'win32', or 'linux' */
+    platform: string;
+    /** Whether the platform supports glass effects (vibrancy/acrylic) */
+    supportsGlass: boolean;
+    /** System color scheme: 'dark' or 'light' */
+    systemTheme: 'dark' | 'light';
+  }>;
+
+  /**
    * Enters native fullscreen mode.
    * @returns Promise that resolves when transition completes
    */

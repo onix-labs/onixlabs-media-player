@@ -78,6 +78,21 @@ export interface MediaPlayerAPI {
   readonly getServerPort: () => Promise<number>;
 
   /**
+   * Gets platform information including glass effect support.
+   * Used by the settings UI to show/hide platform-specific options.
+   *
+   * @returns Promise resolving to platform info object
+   */
+  readonly getPlatformInfo: () => Promise<{
+    /** Platform identifier: 'darwin', 'win32', or 'linux' */
+    platform: string;
+    /** Whether the platform supports glass effects (vibrancy/acrylic) */
+    supportsGlass: boolean;
+    /** System color scheme: 'dark' or 'light' */
+    systemTheme: 'dark' | 'light';
+  }>;
+
+  /**
    * Enters fullscreen mode.
    * Uses native Electron fullscreen (not HTML5 fullscreen API).
    *
@@ -241,6 +256,7 @@ const api: MediaPlayerAPI = {
   openFileDialog: (options: Readonly<OpenDialogOptions>): Promise<string[]> => ipcRenderer.invoke('dialog:openFile', options),
   getPathForFile: (file: Readonly<File>): string => webUtils.getPathForFile(file),
   getServerPort: (): Promise<number> => ipcRenderer.invoke('app:getServerPort'),
+  getPlatformInfo: (): Promise<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}> => ipcRenderer.invoke('app:getPlatformInfo'),
   enterFullscreen: (): Promise<void> => ipcRenderer.invoke('window:enterFullscreen'),
   exitFullscreen: (): Promise<void> => ipcRenderer.invoke('window:exitFullscreen'),
   isFullscreen: (): Promise<boolean> => ipcRenderer.invoke('window:isFullscreen'),
