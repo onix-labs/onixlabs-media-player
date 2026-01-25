@@ -40,7 +40,7 @@
           }
         </div>
         <span class="item-duration">{{ formatDuration(item.duration) }}</span>
-        <button class="remove-btn" (click)="removeItem($event, item)">
+        <button tabindex="-1" class="remove-btn" (click)="removeItem($event, item)">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
