@@ -187,9 +187,9 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
       {type: 'separator'},
       {
         label: 'Visualizations',
-        submenu: VISUALIZATION_CATEGORIES.map((cat): MenuItemConstructorOptions => ({
+        submenu: VISUALIZATION_CATEGORIES.map((cat: {category: string; items: ReadonlyArray<{id: string; name: string}>}): MenuItemConstructorOptions => ({
           label: cat.category,
-          submenu: cat.items.map((viz): MenuItemConstructorOptions => ({
+          submenu: cat.items.map((viz: {id: string; name: string}): MenuItemConstructorOptions => ({
             label: viz.name,
             click: (): void => callbacks.onSelectVisualization(viz.id)
           }))

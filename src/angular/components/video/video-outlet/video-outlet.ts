@@ -19,7 +19,7 @@
  * @module app/components/video/video-outlet
  */
 
-import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, output, ChangeDetectionStrategy} from '@angular/core';
+import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, output, ChangeDetectionStrategy, OutputEmitterRef} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
@@ -91,7 +91,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
   // ============================================================================
 
   /** Emits the current aspect mode display name when it changes */
-  public readonly aspectModeChange = output<string>();
+  public readonly aspectModeChange: OutputEmitterRef<string> = output<string>();
 
   // ============================================================================
   // Reactive State
@@ -111,7 +111,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Display name for the current aspect mode */
   public readonly aspectModeName: ReturnType<typeof computed<string>> = computed((): string => {
     const mode: VideoAspectMode = this.aspectMode();
-    const option = VIDEO_ASPECT_OPTIONS.find(opt => opt.value === mode);
+    const option: {value: VideoAspectMode; label: string} | undefined = VIDEO_ASPECT_OPTIONS.find((opt: {value: VideoAspectMode; label: string}): boolean => opt.value === mode);
     return option?.label ?? 'Default';
   });
 
@@ -312,7 +312,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
    * Order: default -> 4:3 -> 16:9 -> fit -> default
    */
   public nextAspectMode(): void {
-    const modes: readonly VideoAspectMode[] = VIDEO_ASPECT_OPTIONS.map(o => o.value);
+    const modes: readonly VideoAspectMode[] = VIDEO_ASPECT_OPTIONS.map((o: {value: VideoAspectMode; label: string}): VideoAspectMode => o.value);
     const currentIndex: number = modes.indexOf(this.aspectMode());
     const nextIndex: number = (currentIndex + 1) % modes.length;
     void this.settings.setVideoAspectMode(modes[nextIndex]);
@@ -323,7 +323,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
    * Order: default -> fit -> 16:9 -> 4:3 -> default
    */
   public previousAspectMode(): void {
-    const modes: readonly VideoAspectMode[] = VIDEO_ASPECT_OPTIONS.map(o => o.value);
+    const modes: readonly VideoAspectMode[] = VIDEO_ASPECT_OPTIONS.map((o: {value: VideoAspectMode; label: string}): VideoAspectMode => o.value);
     const currentIndex: number = modes.indexOf(this.aspectMode());
     const previousIndex: number = (currentIndex - 1 + modes.length) % modes.length;
     void this.settings.setVideoAspectMode(modes[previousIndex]);

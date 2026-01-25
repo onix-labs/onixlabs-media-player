@@ -19,7 +19,7 @@ import * as path from "path";
 import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.js';
 import {createApplicationMenu, updateMenuState} from './application-menu.js';
-import type {WindowBounds, MacOSVisualEffectState} from './settings-manager.js';
+import type {WindowBounds, MacOSVisualEffectState, AppearanceSettings} from './settings-manager.js';
 import {initializeLogger, mainLogger, ipcLogger, windowLogger, getLogFilePath} from './logger.js';
 
 // Set app name (shows in dock/menu bar during development)
@@ -225,7 +225,7 @@ class Program {
       mainLogger.info(`Loading development server: ${Program.DEVELOPMENT_SERVER_URL}`);
       void this.window.loadURL(Program.DEVELOPMENT_SERVER_URL);
     } else {
-      const prodUrl = `http://127.0.0.1:${this.serverPort}/`;
+      const prodUrl: string = `http://127.0.0.1:${this.serverPort}/`;
       mainLogger.info(`Loading production build: ${prodUrl}`);
       void this.window.loadURL(prodUrl);
     }
@@ -301,7 +301,7 @@ class Program {
     let platformOptions: Electron.BrowserWindowConstructorOptions = {};
 
     // Get appearance settings
-    const appearanceSettings = this.mediaServer?.getSettingsManager().getSettings().appearance;
+    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
     const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? true;
     const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
     const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
@@ -386,7 +386,7 @@ class Program {
 
     // Get server port - needed for renderer to connect to HTTP API
     ipcMain.handle("app:getServerPort", (): number => {
-      const port = this.mediaServer?.getPort() || 0;
+      const port: number = this.mediaServer?.getPort() || 0;
       ipcLogger.debug(`app:getServerPort - returning ${port}`);
       return port;
     });
@@ -394,7 +394,7 @@ class Program {
     // Get platform info - needed for renderer to show platform-specific settings
     ipcMain.handle("app:getPlatformInfo", (): {platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'} => {
       const systemTheme: 'dark' | 'light' = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-      const info = {
+      const info: {platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'} = {
         platform: process.platform as string,
         supportsGlass: process.platform === 'darwin' || process.platform === 'win32',
         systemTheme
@@ -405,7 +405,7 @@ class Program {
 
     // Get log file path - for debugging/support
     ipcMain.handle("app:getLogFilePath", (): string => {
-      const logPath = getLogFilePath();
+      const logPath: string = getLogFilePath();
       ipcLogger.debug(`app:getLogFilePath - ${logPath}`);
       return logPath;
     });
@@ -422,7 +422,7 @@ class Program {
     });
 
     ipcMain.handle("window:isFullscreen", (): boolean => {
-      const isFullscreen = this.window?.isFullScreen() || false;
+      const isFullscreen: boolean = this.window?.isFullScreen() || false;
       windowLogger.debug(`isFullscreen query: ${isFullscreen}`);
       return isFullscreen;
     });
@@ -516,7 +516,7 @@ class Program {
     });
 
     ipcMain.handle("window:getViewMode", (): string => {
-      const mode = this.window?.isFullScreen() ? 'fullscreen' : this.isInMiniPlayerMode ? 'miniplayer' : 'desktop';
+      const mode: string = this.window?.isFullScreen() ? 'fullscreen' : this.isInMiniPlayerMode ? 'miniplayer' : 'desktop';
       windowLogger.debug(`getViewMode: ${mode}`);
       return mode;
     });

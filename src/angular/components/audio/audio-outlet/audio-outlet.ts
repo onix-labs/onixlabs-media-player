@@ -29,7 +29,7 @@
 import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, HostBinding, ChangeDetectionStrategy, Output, EventEmitter} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
-import {SettingsService} from '../../../services/settings.service';
+import {SettingsService, PerVisualizationSettings} from '../../../services/settings.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import type {PlaylistItem} from '../../../types/electron';
 import {Visualization, createVisualization, VISUALIZATION_TYPES, VISUALIZATION_METADATA} from './visualizations';
@@ -308,7 +308,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     // React to per-visualization settings changes
     effect((): void => {
       // Watch the per-visualization settings and current visualization type
-      const _perViz = this.settings.perVisualizationSettings();
+      const _perViz: PerVisualizationSettings = this.settings.perVisualizationSettings();
       const vizType: string = this.visualizationType();
 
       if (this.visualization) {
@@ -637,7 +637,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     }
 
     // Always update name signals from metadata (even before analyser is ready)
-    const metadata = VISUALIZATION_METADATA[type];
+    const metadata: {name: string; category: string} = VISUALIZATION_METADATA[type];
     this.visualizationNameSignal.set(metadata.name);
     this.visualizationCategorySignal.set(metadata.category);
     this.visualizationChange.emit(`${metadata.category} : ${metadata.name}`);

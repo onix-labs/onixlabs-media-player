@@ -66,7 +66,7 @@ export function initializeLogger(options: {spyRendererConsole?: boolean} = {}): 
     return;
   }
 
-  const {spyRendererConsole = true} = options;
+  const {spyRendererConsole = true}: {spyRendererConsole?: boolean} = options;
 
   // Configure file transport
   const userDataPath: string = app.getPath('userData');
@@ -91,7 +91,7 @@ export function initializeLogger(options: {spyRendererConsole?: boolean} = {}): 
   // Catch unhandled errors and rejections
   log.errorHandler.startCatching({
     showDialog: false,
-    onError: ({error}): void => {
+    onError: ({error}: {error: Error}): void => {
       log.error('[Uncaught]', error);
     },
   });
@@ -99,7 +99,7 @@ export function initializeLogger(options: {spyRendererConsole?: boolean} = {}): 
   isInitialized = true;
 
   // Log initialization
-  const mainLog = log.scope('Main');
+  const mainLog: ScopedLogger = log.scope('Main');
   mainLog.info('Logger initialized');
   mainLog.info(`Log file: ${logFilePath}`);
   mainLog.info(`Environment: ${isDevelopment ? 'development' : 'production'}`);
@@ -122,64 +122,64 @@ export function getLogFilePath(): string {
 /**
  * Logger for main process application lifecycle events.
  */
-export const mainLogger = log.scope('Main');
+export const mainLogger: ScopedLogger = log.scope('Main');
 
 /**
  * Logger for IPC communication between main and renderer.
  */
-export const ipcLogger = log.scope('IPC');
+export const ipcLogger: ScopedLogger = log.scope('IPC');
 
 /**
  * Logger for the unified media server (HTTP API, SSE).
  */
-export const serverLogger = log.scope('Server');
+export const serverLogger: ScopedLogger = log.scope('Server');
 
 /**
  * Logger for playlist management operations.
  */
-export const playlistLogger = log.scope('Playlist');
+export const playlistLogger: ScopedLogger = log.scope('Playlist');
 
 /**
  * Logger for media playback state and control.
  */
-export const playbackLogger = log.scope('Playback');
+export const playbackLogger: ScopedLogger = log.scope('Playback');
 
 /**
  * Logger for settings management and persistence.
  */
-export const settingsLogger = log.scope('Settings');
+export const settingsLogger: ScopedLogger = log.scope('Settings');
 
 /**
  * Logger for FFmpeg child process operations.
  */
-export const ffmpegLogger = log.scope('FFmpeg');
+export const ffmpegLogger: ScopedLogger = log.scope('FFmpeg');
 
 /**
  * Logger for FluidSynth/MIDI operations.
  */
-export const midiLogger = log.scope('MIDI');
+export const midiLogger: ScopedLogger = log.scope('MIDI');
 
 /**
  * Logger for file system operations.
  */
-export const fsLogger = log.scope('FS');
+export const fsLogger: ScopedLogger = log.scope('FS');
 
 /**
  * Logger for window management (fullscreen, miniplayer, etc.).
  */
-export const windowLogger = log.scope('Window');
+export const windowLogger: ScopedLogger = log.scope('Window');
 
 /**
  * Logger for application menu events.
  */
-export const menuLogger = log.scope('Menu');
+export const menuLogger: ScopedLogger = log.scope('Menu');
 
 /**
  * Logger for renderer process events (via IPC).
  * Note: This is primarily used when manually logging from renderer via IPC.
  * Console.log captures are automatically scoped as 'renderer'.
  */
-export const rendererLogger = log.scope('Renderer');
+export const rendererLogger: ScopedLogger = log.scope('Renderer');
 
 // ============================================================================
 // Helper Functions
@@ -211,7 +211,7 @@ export function createScopedLogger(scope: string): ScopedLogger {
  * @param durationMs - Request duration in milliseconds
  */
 export function logHttpRequest(method: string, path: string, statusCode: number, durationMs: number): void {
-  const level = statusCode >= 400 ? 'warn' : 'debug';
+  const level: 'warn' | 'debug' = statusCode >= 400 ? 'warn' : 'debug';
   serverLogger[level](`${method} ${path} ${statusCode} ${durationMs}ms`);
 }
 
@@ -239,7 +239,7 @@ export function logProcessSpawn(logger: ScopedLogger, command: string, args: rea
  */
 export function logProcessOutput(logger: ScopedLogger, stream: 'stdout' | 'stderr', data: string): void {
   // Split multi-line output and log each line
-  const lines: string[] = data.trim().split('\n').filter((line: string) => line.trim());
+  const lines: string[] = data.trim().split('\n').filter((line: string): boolean => Boolean(line.trim()));
   for (const line of lines) {
     // Use debug for stdout, warn for stderr (but FFmpeg uses stderr for info)
     logger.debug(`[${stream}] ${line}`);

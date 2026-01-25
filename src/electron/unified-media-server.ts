@@ -20,7 +20,7 @@
  */
 
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
-import { createReadStream, statSync, existsSync, readFileSync } from 'fs';
+import { createReadStream, statSync, existsSync, readFileSync, Stats } from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { SettingsManager } from './settings-manager.js';
@@ -375,7 +375,7 @@ function parseMidiDuration(filePath: string): number {
     }
 
     // Convert ticks to seconds using tempo changes
-    tempoChanges.sort((a, b): number => a.tick - b.tick);
+    tempoChanges.sort((a: {tick: number; tempo: number}, b: {tick: number; tempo: number}): number => a.tick - b.tick);
 
     let totalSeconds: number = 0;
     let lastTick: number = 0;
@@ -1140,7 +1140,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleRequest(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const startTime = Date.now();
+    const startTime: number = Date.now();
     const url: URL = new URL(req.url || '/', `http://127.0.0.1:${this.port}`);
     const method: string = req.method || 'GET';
     const pathname: string = url.pathname;
@@ -1159,7 +1159,7 @@ export class UnifiedMediaServer {
 
     // Log request completion
     res.on('finish', (): void => {
-      const duration = Date.now() - startTime;
+      const duration: number = Date.now() - startTime;
       // Skip logging for /events (SSE) and /media/stream (noisy)
       if (pathname !== '/events' && pathname !== '/media/stream') {
         logHttpRequest(method, pathname, res.statusCode ?? 200, duration);
@@ -1319,7 +1319,7 @@ export class UnifiedMediaServer {
 
     // Verify it's a regular file (not directory, symlink to sensitive location, etc.)
     try {
-      const stats = statSync(filePath);
+      const stats: Stats = statSync(filePath);
       if (!stats.isFile()) {
         return { valid: false, error: 'Path is not a regular file' };
       }
@@ -1458,7 +1458,7 @@ export class UnifiedMediaServer {
     }
 
     try {
-      const stat = statSync(filePath);
+      const stat: Stats = statSync(filePath);
       if (!stat.isFile()) {
         res.writeHead(404);
         res.end(JSON.stringify({ error: 'Not found' }));
@@ -1662,7 +1662,7 @@ export class UnifiedMediaServer {
       return;
     }
 
-    const fluidsynthArgs = [
+    const fluidsynthArgs: string[] = [
       '-ni',           // Non-interactive mode
       '-T', 'raw',     // Output format: raw PCM
       '-F', '-',       // Output to stdout
@@ -1675,7 +1675,7 @@ export class UnifiedMediaServer {
     const fluidsynth: ChildProcess = spawn(FLUIDSYNTH_PATH, fluidsynthArgs);
 
     // Pipe FluidSynth output through FFmpeg to encode as MP3
-    const ffmpegMidiArgs = [
+    const ffmpegMidiArgs: string[] = [
       '-hide_banner',
       '-loglevel', 'warning',
       '-f', 's16le',        // Input: signed 16-bit little-endian PCM
