@@ -25,24 +25,24 @@
   @if (!isFullscreen() && !isMiniplayer()) {
     <div class="media-bar">
       @if (isAudio()) {
-        <button tabindex="-1" (click)="previousVisualization()" title="Previous visualization">
+        <button tabindex="-1" (click)="previousVisualization()" (mouseup)="$any($event.currentTarget).blur()" title="Previous visualization">
           <i class="fa-solid fa-caret-left"></i>
         </button>
-        <button tabindex="-1" (click)="nextVisualization()" title="Next visualization">
+        <button tabindex="-1" (click)="nextVisualization()" (mouseup)="$any($event.currentTarget).blur()" title="Next visualization">
           <i class="fa-solid fa-caret-right"></i>
         </button>
         <span class="visualization-name">{{ visualizationDisplayName() }}</span>
       } @else if (isVideo()) {
-        <button tabindex="-1" (click)="previousAspectMode()" title="Previous aspect ratio">
+        <button tabindex="-1" (click)="previousAspectMode()" (mouseup)="$any($event.currentTarget).blur()" title="Previous aspect ratio">
           <i class="fa-solid fa-caret-left"></i>
         </button>
-        <button tabindex="-1" (click)="nextAspectMode()" title="Next aspect ratio">
+        <button tabindex="-1" (click)="nextAspectMode()" (mouseup)="$any($event.currentTarget).blur()" title="Next aspect ratio">
           <i class="fa-solid fa-caret-right"></i>
         </button>
         <span class="visualization-name">{{ aspectModeDisplayName() }}</span>
       }
       <div class="spacer"></div>
-      <button tabindex="-1" class="playlist-toggle" (click)="togglePlaylist()" title="Toggle playlist">
+      <button tabindex="-1" class="playlist-toggle" (click)="togglePlaylist()" (mouseup)="$any($event.currentTarget).blur()" title="Toggle playlist">
         <i class="fa-solid fa-list"></i>
       </button>
     </div>

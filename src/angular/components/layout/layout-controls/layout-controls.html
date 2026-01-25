@@ -9,29 +9,29 @@
   </div>
   <div class="control-group center">
     <div class="button-group left">
-      <button tabindex="-1" (click)="onEject()" title="">
+      <button tabindex="-1" (click)="onEject()" (mouseup)="$any($event.currentTarget).blur()" title="">
         <i class="fa-solid fa-eject"></i>
       </button>
-      <button tabindex="-1" (click)="onShuffle()" [disabled]="!hasTrack()" [class.active]="isShuffleEnabled()" title="Shuffle">
+      <button tabindex="-1" (click)="onShuffle()" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack()" [class.active]="isShuffleEnabled()" title="Shuffle">
         <i class="fa-solid fa-shuffle"></i>
       </button>
-      <button tabindex="-1" (click)="onRepeat()" [disabled]="!hasTrack()" [class.active]="isRepeatEnabled()" title="Repeat">
+      <button tabindex="-1" (click)="onRepeat()" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack()" [class.active]="isRepeatEnabled()" title="Repeat">
         <i class="fa-solid fa-repeat"></i>
       </button>
     </div>
     <div class="button-group center">
-      <button tabindex="-1" (click)="onBackward($event)" [disabled]="!hasTrack() || !canSkipBackward()" title="Previous (Shift: skip back)">
+      <button tabindex="-1" (click)="onBackward($event)" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack() || !canSkipBackward()" title="Previous (Shift: skip back)">
         <i [class]="backwardIcon()"></i>
       </button>
-      <button tabindex="-1" (click)="onPlayPause($event)" [disabled]="!hasTrack()" title="Play/Pause (Shift: Stop)">
+      <button tabindex="-1" (click)="onPlayPause($event)" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack()" title="Play/Pause (Shift: Stop)">
         <i [class]="playPauseIcon()"></i>
       </button>
-      <button tabindex="-1" (click)="onForward($event)" [disabled]="!hasTrack() || !canSkipForward()" title="Next (Shift: skip forward)">
+      <button tabindex="-1" (click)="onForward($event)" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack() || !canSkipForward()" title="Next (Shift: skip forward)">
         <i [class]="forwardIcon()"></i>
       </button>
     </div>
     <div class="button-group right">
-      <button tabindex="-1" (click)="onMuteToggle()" [class.muted]="isMuted()" title="Mute/Unmute">
+      <button tabindex="-1" (click)="onMuteToggle()" (mouseup)="$any($event.currentTarget).blur()" [class.muted]="isMuted()" title="Mute/Unmute">
         <i [class]="isMuted()
       ? 'fa-solid fa-volume-xmark'
       : (volume() < 50 ? 'fa-solid fa-volume-low'
@@ -50,10 +50,10 @@
   </div>
   <div class="control-group right">
     <div class="button-group left">
-      <button tabindex="-1" (click)="onToggleFullscreen()" [disabled]="!hasTrack()" [title]="isFullscreen() ? 'Exit fullscreen' : 'Enter fullscreen'">
+      <button tabindex="-1" (click)="onToggleFullscreen()" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack()" [title]="isFullscreen() ? 'Exit fullscreen' : 'Enter fullscreen'">
         <i [class]="isFullscreen() ? 'fa-solid fa-compress' : 'fa-solid fa-expand'"></i>
       </button>
-      <button tabindex="-1" (click)="onEnterMiniplayer()" [disabled]="!hasTrack()" title="Enter miniplayer">
+      <button tabindex="-1" (click)="onEnterMiniplayer()" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack()" title="Enter miniplayer">
         <i class="fa-solid fa-down-left-and-up-right-to-center"></i>
       </button>
     </div>

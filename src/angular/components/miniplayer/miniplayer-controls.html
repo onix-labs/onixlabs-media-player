@@ -1,14 +1,14 @@
 <div class="button-group">
-  <button tabindex="-1" (click)="onBackward($event)" [disabled]="!hasTrack() || !canSkipBackward()" title="Previous (Shift: skip back)">
+  <button tabindex="-1" (click)="onBackward($event)" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack() || !canSkipBackward()" title="Previous (Shift: skip back)">
     <i [class]="backwardIcon()"></i>
   </button>
-  <button tabindex="-1" (click)="onPlayPause($event)" [disabled]="!hasTrack()" title="Play/Pause (Shift: Stop)">
+  <button tabindex="-1" (click)="onPlayPause($event)" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack()" title="Play/Pause (Shift: Stop)">
     <i [class]="playPauseIcon()"></i>
   </button>
-  <button tabindex="-1" (click)="onForward($event)" [disabled]="!hasTrack() || !canSkipForward()" title="Next (Shift: skip forward)">
+  <button tabindex="-1" (click)="onForward($event)" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack() || !canSkipForward()" title="Next (Shift: skip forward)">
     <i [class]="forwardIcon()"></i>
   </button>
-  <button tabindex="-1" (click)="onExitMiniplayer()" title="Exit miniplayer">
+  <button tabindex="-1" (click)="onExitMiniplayer()" (mouseup)="$any($event.currentTarget).blur()" title="Exit miniplayer">
     <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
   </button>
 </div>
