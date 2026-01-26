@@ -211,6 +211,72 @@
                       </div>
                     </div>
                   }
+
+                  <!-- Bar Color Bottom (Analyzer only) -->
+                  @if (hasApplicableSetting(vizId, 'barColorBottom')) {
+                    <div class="setting-row">
+                      <div class="setting-label">
+                        <label>Bar Color (Bottom)</label>
+                        <p class="setting-description">
+                          The color at the bottom of the bars.
+                        </p>
+                      </div>
+                      <div class="setting-control color-control">
+                        <input
+                          type="color"
+                          [value]="getEffectiveSetting(vizId, 'barColorBottom')"
+                          (input)="onPerVizColorChange(vizId, 'barColorBottom', $event)"
+                        />
+                        <span class="color-value">
+                          {{ getEffectiveSetting(vizId, 'barColorBottom') }}
+                        </span>
+                      </div>
+                    </div>
+                  }
+
+                  <!-- Bar Color Middle (Analyzer only) -->
+                  @if (hasApplicableSetting(vizId, 'barColorMiddle')) {
+                    <div class="setting-row">
+                      <div class="setting-label">
+                        <label>Bar Color (Middle)</label>
+                        <p class="setting-description">
+                          The color at the middle of the bars.
+                        </p>
+                      </div>
+                      <div class="setting-control color-control">
+                        <input
+                          type="color"
+                          [value]="getEffectiveSetting(vizId, 'barColorMiddle')"
+                          (input)="onPerVizColorChange(vizId, 'barColorMiddle', $event)"
+                        />
+                        <span class="color-value">
+                          {{ getEffectiveSetting(vizId, 'barColorMiddle') }}
+                        </span>
+                      </div>
+                    </div>
+                  }
+
+                  <!-- Bar Color Top (Analyzer only) -->
+                  @if (hasApplicableSetting(vizId, 'barColorTop')) {
+                    <div class="setting-row">
+                      <div class="setting-label">
+                        <label>Bar Color (Top)</label>
+                        <p class="setting-description">
+                          The color at the top of the bars.
+                        </p>
+                      </div>
+                      <div class="setting-control color-control">
+                        <input
+                          type="color"
+                          [value]="getEffectiveSetting(vizId, 'barColorTop')"
+                          (input)="onPerVizColorChange(vizId, 'barColorTop', $event)"
+                        />
+                        <span class="color-value">
+                          {{ getEffectiveSetting(vizId, 'barColorTop') }}
+                        </span>
+                      </div>
+                    </div>
+                  }
                 </div>
               } @else {
                 <!-- Global Visualization Settings -->

@@ -341,6 +341,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const lineWidth: number = this.settings.getEffectiveSetting(vizId, 'lineWidth') ?? 2.0;
     const glowIntensity: number = this.settings.getEffectiveSetting(vizId, 'glowIntensity') ?? 0.5;
     const waveformSmoothing: number = this.settings.getEffectiveSetting(vizId, 'waveformSmoothing') ?? 0.5;
+    const barColorBottom: string = this.settings.getEffectiveSetting(vizId, 'barColorBottom') as string ?? '#00cc00';
+    const barColorMiddle: string = this.settings.getEffectiveSetting(vizId, 'barColorMiddle') as string ?? '#cccc00';
+    const barColorTop: string = this.settings.getEffectiveSetting(vizId, 'barColorTop') as string ?? '#cc0000';
 
     // Apply settings
     this.visualization.setSensitivity(sensitivity);
@@ -349,6 +352,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualization.setLineWidth(lineWidth);
     this.visualization.setGlowIntensity(glowIntensity);
     this.visualization.setWaveformSmoothing(waveformSmoothing);
+    this.visualization.setBarColorBottom(barColorBottom);
+    this.visualization.setBarColorMiddle(barColorMiddle);
+    this.visualization.setBarColorTop(barColorTop);
   }
 
   // ============================================================================

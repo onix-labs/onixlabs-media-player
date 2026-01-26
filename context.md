@@ -470,14 +470,14 @@ The `Canvas2DVisualization` base class provides:
 
 | Name | Category | Description | Optimizations |
 |------|----------|-------------|---------------|
-| **Analyzer** | Bars | Configurable frequency bars (48/96/144) with green-yellow-red gradient | — |
+| **Analyzer** | Bars | Configurable frequency bars (48/96/144) with configurable gradient colors (bottom/middle/top), default green-yellow-red | Cached gradient, regenerates on color change |
 | **Spectre** | Bars | Configurable frequency bars (48/96/144) with vertical mirroring, ONIXLabs brand color spectrum left-to-right (Orange→Green), dark center gradient, transparent background, smoke trail effect | Pre-calculated bar heights and positions, threshold-based ghost clearing |
 | **Classic** | Waves | Oscilloscope-style waveform with green glow effect, LCD ghosting trail | Threshold-based ghost clearing |
 | **Modern** | Waves | Oscilloscope-style waveform with ONIXLabs brand color spectrum gradient (Orange→Green), multi-pass gradient glow effect, LCD ghosting trail | Threshold-based ghost clearing, cached gradients |
 | **Plasma** | Waves | Dual horizontal waveforms at 45% and 55% positions, colors cycle through spectrum, trails expand from center with zoom effect, additive blending | Fixed 128 points, separate trail canvases, pre-allocated point arrays, cached color values |
 | **Infinity** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum, additive blending for overlapping trails | Cached color values with hue threshold, separate trail canvases with lighter compositing |
 | **Neon** | Waves | Two counter-rotating crosses: one rotates clockwise, the other counter-clockwise, cyan/magenta colors randomly swap on intersection (every 45°), both sized to 8/9 of shorter screen dimension, additive blending where crosses overlap, trails expand outward with zoom effect | Pre-allocated point arrays (4 total), separate trail canvases per cross, point-based rotation, intersection zone tracking |
-| **Onix** | Waves | Pulsating gradient circle with ONIXLabs brand colors via conic gradient stroke, rotating trail effect with zoom, inner white circle pulsates to bass/kick drums (no trail effect), power curve for more aggressive fade at low trail intensity | Pre-computed trig lookup tables, conic gradient for single-pass colored stroke, reuses trail/temp canvases |
+| **Onix** | Waves | Pulsating gradient circle with ONIXLabs brand colors via conic gradient stroke, rotating trail effect with zoom, inner white circle pulsates to bass/kick drums (no trail effect), power curve for more aggressive fade at low trail intensity, cross-fade blending eliminates waveform seam at circle closure | Pre-computed trig lookup tables, conic gradient for single-pass colored stroke, reuses trail/temp canvases |
 | **Pulsar** | Waves | Pulsing concentric rings with curved waveforms | Reuses trail/temp canvases, pre-allocated point arrays, cached HSL→RGB colors |
 | **Water** | Waves | Water ripple effect with rotating waveforms, bass-reactive rotation | Reuses canvases, caches background gradient, pre-allocated arrays |
 
@@ -519,6 +519,9 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 | Line Width | 1-5px | 2px | Classic, Modern, Plasma, Infinity, Neon, Onix, Pulsar, Water |
 | Glow Intensity | 0-100% | 50% | Classic, Modern, Plasma, Infinity, Neon, Onix, Pulsar, Water |
 | Waveform Smoothing | 0-100% | 50% | Classic, Modern, Plasma, Infinity, Neon, Onix, Pulsar, Water |
+| Bar Color (Bottom) | Hex color | #00ff00 | Analyzer |
+| Bar Color (Middle) | Hex color | #ffff00 | Analyzer |
+| Bar Color (Top) | Hex color | #ff0000 | Analyzer |
 
 #### Application Category
 
@@ -684,6 +687,8 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | Visualizations Fade to Black | visualization.ts | `applyFadeOverlay()` drew a black rectangle overlay. Changed to use `destination-out` composite operation to fade existing content to transparent instead. |
 | Waveform Ghosting Artifacts | waveform, modern, spectre visualizations | `destination-out` fade is asymptotic and never reaches zero alpha. Added periodic threshold-based pixel clearing via `getImageData`/`putImageData` to force low-alpha pixels to fully transparent. |
 | Waveforms Don't Reach Canvas Edge | waveform, modern visualizations | Point calculation used `i * sliceWidth` which could accumulate floating-point errors. Changed to `(i / numPoints) * width` for exact edge coverage, added bounds check on data array index. |
+| Analyzer Bar Colors Not Configurable | analyzer-visualization.ts, settings-manager.ts, settings.service.ts, configuration-view | Added `barColorBottom`, `barColorMiddle`, `barColorTop` settings with hex color validation, color picker UI, and gradient regeneration on color change. |
+| Onix Waveform Seam Visible | onix-visualization.ts | Circular waveform had visible amplitude discontinuity where first and last points met. Added cross-fade blending for last 15% of points that interpolates toward the first sample's amplitude. |
 
 ### Code Duplication Eliminated
 

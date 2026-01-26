@@ -52,6 +52,9 @@ export interface VisualizationLocalSettings {
   readonly lineWidth?: number;
   readonly glowIntensity?: number;
   readonly waveformSmoothing?: number;
+  readonly barColorBottom?: string;
+  readonly barColorMiddle?: string;
+  readonly barColorTop?: string;
 }
 
 /**
@@ -208,6 +211,9 @@ export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> 
   lineWidth: 2.0,
   glowIntensity: 0.5,
   waveformSmoothing: 0.5,
+  barColorBottom: '#00cc00',
+  barColorMiddle: '#cccc00',
+  barColorTop: '#cc0000',
 };
 
 /**
@@ -215,7 +221,7 @@ export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> 
  */
 export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   // Bars category
-  {id: 'bars', name: 'Analyzer', category: 'Bars', applicableSettings: ['sensitivity', 'barDensity']},
+  {id: 'bars', name: 'Analyzer', category: 'Bars', applicableSettings: ['sensitivity', 'barDensity', 'barColorBottom', 'barColorMiddle', 'barColorTop']},
   {id: 'tether', name: 'Spectre', category: 'Bars', applicableSettings: ['sensitivity', 'barDensity']},
   // Waves category
   {id: 'waveform', name: 'Classic', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},

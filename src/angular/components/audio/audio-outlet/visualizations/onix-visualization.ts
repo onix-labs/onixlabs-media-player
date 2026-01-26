@@ -233,10 +233,24 @@ export class OnixVisualization extends Canvas2DVisualization {
     const cosTable: Float32Array = this.cosTable;
     const sinTable: Float32Array = this.sinTable;
 
+    // Calculate the first sample for cross-fade blending at the seam
+    const firstDataIndex: number = 0;
+    const firstSample: number = ((dataArray[firstDataIndex] - 128) / 128) * sensitivityFactor;
+
+    // Cross-fade zone: last 15% of points blend toward the first sample
+    const crossFadeStart: number = Math.floor(numPoints * 0.85);
+
     // Calculate points (reuse pre-allocated array)
     for (let i: number = 0; i < numPoints; i++) {
       const dataIndex: number = ((i * sampleStep) | 0) % dataLength;
-      const sample: number = ((dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
+      let sample: number = ((dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
+
+      // Cross-fade the last portion toward the first sample to eliminate seam
+      if (i >= crossFadeStart) {
+        const t: number = (i - crossFadeStart) / (numPoints - crossFadeStart);
+        sample = sample * (1 - t) + firstSample * t;
+      }
+
       const radius: number = baseRadius + sample * amplitudeScale;
 
       this.centerPoints[i].x = centerX + radius * cosTable[i];

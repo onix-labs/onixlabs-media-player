@@ -150,6 +150,24 @@ export abstract class Visualization {
   protected waveformSmoothing: number = DEFAULT_WAVEFORM_SMOOTHING;
 
   /**
+   * Bar gradient bottom color (hex format).
+   * Only affects Analyzer visualization.
+   */
+  protected barColorBottom: string = '#00cc00';
+
+  /**
+   * Bar gradient middle color (hex format).
+   * Only affects Analyzer visualization.
+   */
+  protected barColorMiddle: string = '#cccc00';
+
+  /**
+   * Bar gradient top color (hex format).
+   * Only affects Analyzer visualization.
+   */
+  protected barColorTop: string = '#cc0000';
+
+  /**
    * Current fade alpha level (0 = fully visible, 1 = fully transparent).
    * Used for smooth fade transitions when pausing/stopping.
    */
@@ -382,6 +400,70 @@ export abstract class Visualization {
    */
   public getWaveformSmoothing(): number {
     return this.waveformSmoothing;
+  }
+
+  /**
+   * Sets the bar gradient bottom color.
+   *
+   * @param color - Hex color string (e.g., '#00cc00')
+   */
+  public setBarColorBottom(color: string): void {
+    this.barColorBottom = color;
+    this.onBarColorsChanged();
+  }
+
+  /**
+   * Gets the current bar gradient bottom color.
+   *
+   * @returns Current bar color bottom (hex format)
+   */
+  public getBarColorBottom(): string {
+    return this.barColorBottom;
+  }
+
+  /**
+   * Sets the bar gradient middle color.
+   *
+   * @param color - Hex color string (e.g., '#cccc00')
+   */
+  public setBarColorMiddle(color: string): void {
+    this.barColorMiddle = color;
+    this.onBarColorsChanged();
+  }
+
+  /**
+   * Gets the current bar gradient middle color.
+   *
+   * @returns Current bar color middle (hex format)
+   */
+  public getBarColorMiddle(): string {
+    return this.barColorMiddle;
+  }
+
+  /**
+   * Sets the bar gradient top color.
+   *
+   * @param color - Hex color string (e.g., '#cc0000')
+   */
+  public setBarColorTop(color: string): void {
+    this.barColorTop = color;
+    this.onBarColorsChanged();
+  }
+
+  /**
+   * Gets the current bar gradient top color.
+   *
+   * @returns Current bar color top (hex format)
+   */
+  public getBarColorTop(): string {
+    return this.barColorTop;
+  }
+
+  /**
+   * Called when bar colors change. Override in subclasses to regenerate gradients.
+   */
+  protected onBarColorsChanged(): void {
+    // Override in subclasses that use bar colors
   }
 
   /**

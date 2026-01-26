@@ -330,6 +330,52 @@
         }
       }
 
+      // Color picker control styles
+      &.color-control {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        min-width: 180px;
+
+        input[type="color"] {
+          width: 40px;
+          height: 28px;
+          padding: 0;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-radius: 4px;
+          background: transparent;
+          cursor: pointer;
+          transition: border-color 0.15s ease;
+
+          &::-webkit-color-swatch-wrapper {
+            padding: 2px;
+          }
+
+          &::-webkit-color-swatch {
+            border: none;
+            border-radius: 2px;
+          }
+
+          &:hover {
+            border-color: rgba(255, 255, 255, 0.6);
+          }
+
+          &:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.8);
+          }
+        }
+
+        .color-value {
+          min-width: 4.5rem;
+          text-align: left;
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 0.875rem;
+          font-family: monospace;
+          text-transform: uppercase;
+        }
+      }
+
       // Toggle switch styles
       .toggle {
         position: relative;
