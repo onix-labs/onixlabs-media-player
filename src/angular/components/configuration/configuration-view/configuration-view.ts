@@ -604,6 +604,18 @@ export class ConfigurationView {
   }
 
   /**
+   * Handles per-visualization color setting change.
+   *
+   * @param vizId - The visualization ID
+   * @param setting - The color setting key
+   * @param event - The input event from the color picker
+   */
+  public async onPerVizColorChange(vizId: string, setting: LocalSettingKey, event: Event): Promise<void> {
+    const color: string = getInputValue(event);
+    await this.settingsService.setVisualizationSetting(vizId, setting, color);
+  }
+
+  /**
    * Resets a per-visualization setting to its default.
    *
    * @param vizId - The visualization ID

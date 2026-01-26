@@ -64,12 +64,17 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
       return;
     }
 
-    // Create gradient spanning full canvas height: green (bottom) -> yellow (middle) -> red (top)
+    // Create gradient spanning full canvas height using configurable colors
     this.barGradient = this.ctx.createLinearGradient(0, this.height, 0, 0);
-    this.barGradient.addColorStop(0, 'rgb(0, 204, 0)');
-    this.barGradient.addColorStop(0.5, 'rgb(204, 204, 0)');
-    this.barGradient.addColorStop(1, 'rgb(204, 0, 0)');
+    this.barGradient.addColorStop(0, this.barColorBottom);
+    this.barGradient.addColorStop(0.5, this.barColorMiddle);
+    this.barGradient.addColorStop(1, this.barColorTop);
     this.gradientHeight = this.height;
+  }
+
+  protected override onBarColorsChanged(): void {
+    // Regenerate gradient when colors change
+    this.createGradient();
   }
 
   protected override onResize(): void {

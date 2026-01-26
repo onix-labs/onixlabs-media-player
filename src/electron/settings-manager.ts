@@ -53,6 +53,12 @@ export interface VisualizationLocalSettings {
   readonly glowIntensity?: number;
   /** Waveform smoothing for curves (0.0 - 1.0) - only for waveform, tunnel, infinity, neon, onix, pulsar, water */
   readonly waveformSmoothing?: number;
+  /** Bar gradient bottom color (hex format, e.g., '#00cc00') - only for bars */
+  readonly barColorBottom?: string;
+  /** Bar gradient middle color (hex format, e.g., '#cccc00') - only for bars */
+  readonly barColorMiddle?: string;
+  /** Bar gradient top color (hex format, e.g., '#cc0000') - only for bars */
+  readonly barColorTop?: string;
 }
 
 /**
@@ -278,6 +284,9 @@ export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> 
   lineWidth: 2.0,
   glowIntensity: 0.5,
   waveformSmoothing: 0.5,
+  barColorBottom: '#00cc00',
+  barColorMiddle: '#cccc00',
+  barColorTop: '#cc0000',
 };
 
 /** Valid FFT size values */
@@ -919,6 +928,15 @@ export class SettingsManager {
         ...(this.isValidWaveformSmoothing(vizSettingsObj['waveformSmoothing'])
           ? {waveformSmoothing: vizSettingsObj['waveformSmoothing'] as number}
           : {}),
+        ...(this.isValidHexColor(vizSettingsObj['barColorBottom'])
+          ? {barColorBottom: vizSettingsObj['barColorBottom'] as string}
+          : {}),
+        ...(this.isValidHexColor(vizSettingsObj['barColorMiddle'])
+          ? {barColorMiddle: vizSettingsObj['barColorMiddle'] as string}
+          : {}),
+        ...(this.isValidHexColor(vizSettingsObj['barColorTop'])
+          ? {barColorTop: vizSettingsObj['barColorTop'] as string}
+          : {}),
       };
 
       // Only add if there are any valid settings
@@ -1275,6 +1293,18 @@ export class SettingsManager {
    */
   private isValidWaveformSmoothing(value: unknown): value is number {
     return typeof value === 'number' && value >= 0 && value <= 1;
+  }
+
+  /**
+   * Type guard to check if a value is a valid hex color.
+   *
+   * Valid values are strings matching #RRGGBB format.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid hex color
+   */
+  private isValidHexColor(value: unknown): value is string {
+    return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
   }
 
   /**
