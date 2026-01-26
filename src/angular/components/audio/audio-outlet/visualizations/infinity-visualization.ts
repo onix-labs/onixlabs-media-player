@@ -102,25 +102,26 @@ export class InfinityVisualization extends Canvas2DVisualization {
     // Set to base radius plus half the line width so circles are separated by the stroke width
     this.orbitRadius = this.baseRadius + this.lineWidth;
 
-    // Create/resize trail canvases
+    // Create trail canvases if needed
     if (!this.leftTrailCanvas) {
       this.leftTrailCanvas = document.createElement('canvas');
       this.leftTrailCtx = this.leftTrailCanvas.getContext('2d', {alpha: true})!;
     }
-    this.leftTrailCanvas.width = width;
-    this.leftTrailCanvas.height = height;
 
     if (!this.rightTrailCanvas) {
       this.rightTrailCanvas = document.createElement('canvas');
       this.rightTrailCtx = this.rightTrailCanvas.getContext('2d', {alpha: true})!;
     }
-    this.rightTrailCanvas.width = width;
-    this.rightTrailCanvas.height = height;
 
     if (!this.tempCanvas) {
       this.tempCanvas = document.createElement('canvas');
       this.tempCtx = this.tempCanvas.getContext('2d', {alpha: true})!;
     }
+
+    // Resize canvases while preserving trail content
+    this.resizeCanvasPreserving(this.leftTrailCanvas, this.leftTrailCtx!, width, height);
+    this.resizeCanvasPreserving(this.rightTrailCanvas, this.rightTrailCtx!, width, height);
+    // Temp canvas doesn't need content preserved (it's just working space)
     this.tempCanvas.width = width;
     this.tempCanvas.height = height;
 

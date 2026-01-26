@@ -125,19 +125,21 @@ export class OnixVisualization extends Canvas2DVisualization {
     this.centerY = this.height * 0.5;
     this.baseCircleRadius = Math.min(this.width, this.height) * 0.30;
 
-    // Create/resize trail canvas (reused each frame - KEY OPTIMIZATION)
+    // Create trail canvas if needed
     if (!this.trailCanvas) {
       this.trailCanvas = document.createElement('canvas');
       this.trailCtx = this.trailCanvas.getContext('2d', {alpha: true})!;
     }
-    this.trailCanvas.width = this.width;
-    this.trailCanvas.height = this.height;
 
-    // Create/resize temp canvas (reused each frame - KEY OPTIMIZATION)
+    // Create temp canvas if needed
     if (!this.tempCanvas) {
       this.tempCanvas = document.createElement('canvas');
       this.tempCtx = this.tempCanvas.getContext('2d', {alpha: true})!;
     }
+
+    // Resize trail canvas while preserving content
+    this.resizeCanvasPreserving(this.trailCanvas, this.trailCtx!, this.width, this.height);
+    // Temp canvas doesn't need content preserved (it's just working space)
     this.tempCanvas.width = this.width;
     this.tempCanvas.height = this.height;
 

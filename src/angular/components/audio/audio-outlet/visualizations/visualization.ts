@@ -435,6 +435,58 @@ export abstract class Visualization {
   }
 
   /**
+   * Resizes a canvas while preserving its existing content.
+   *
+   * When a canvas is resized by setting width/height, its content is cleared.
+   * This method captures the existing content, resizes the canvas, then
+   * draws the content back scaled to fit the new dimensions.
+   *
+   * @param canvas - The canvas to resize
+   * @param ctx - The 2D rendering context for the canvas
+   * @param newWidth - The new width in pixels
+   * @param newHeight - The new height in pixels
+   * @param preserveContent - Whether to preserve existing content (default: true)
+   */
+  protected resizeCanvasPreserving(
+    canvas: HTMLCanvasElement,
+    ctx: CanvasRenderingContext2D,
+    newWidth: number,
+    newHeight: number,
+    preserveContent: boolean = true
+  ): void {
+    const oldWidth: number = canvas.width;
+    const oldHeight: number = canvas.height;
+
+    // If dimensions unchanged, nothing to do
+    if (oldWidth === newWidth && oldHeight === newHeight) {
+      return;
+    }
+
+    // If no content to preserve or canvas was empty, just resize
+    if (!preserveContent || oldWidth === 0 || oldHeight === 0) {
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+      return;
+    }
+
+    // Capture existing content to a temporary canvas
+    const tempCanvas: HTMLCanvasElement = document.createElement('canvas');
+    tempCanvas.width = oldWidth;
+    tempCanvas.height = oldHeight;
+    const tempCtx: CanvasRenderingContext2D = tempCanvas.getContext('2d', {alpha: true})!;
+    tempCtx.drawImage(canvas, 0, 0);
+
+    // Resize the canvas (clears content)
+    canvas.width = newWidth;
+    canvas.height = newHeight;
+
+    // Draw the preserved content scaled to fit new dimensions
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(tempCanvas, 0, 0, oldWidth, oldHeight, 0, 0, newWidth, newHeight);
+  }
+
+  /**
    * Updates the fade alpha based on playback state.
    *
    * Call this at the start of draw() to update fade transitions.

@@ -136,27 +136,30 @@ export class WaterVisualization extends Canvas2DVisualization {
     this.baseCircleRadius = this.halfWidth * 0.12;
     this.maxRadius = this.halfWidth;
 
-    // Create/resize circle canvas (reused, re-rendered only when hue changes)
+    // Create circle canvas if needed (re-rendered only when hue changes)
     if (!this.circleCanvas) {
       this.circleCanvas = document.createElement('canvas');
       this.circleCtx = this.circleCanvas.getContext('2d')!;
     }
+    // Circle canvas is fully re-rendered each hue change, no need to preserve
     this.circleCanvas.width = this.width;
     this.circleCanvas.height = this.height;
 
-    // Create/resize trail canvas (reused each frame)
+    // Create trail canvas if needed
     if (!this.trailCanvas) {
       this.trailCanvas = document.createElement('canvas');
       this.trailCtx = this.trailCanvas.getContext('2d', {alpha: true})!;
     }
-    this.trailCanvas.width = this.width;
-    this.trailCanvas.height = this.height;
 
-    // Create/resize temp canvas (reused each frame)
+    // Create temp canvas if needed
     if (!this.tempCanvas) {
       this.tempCanvas = document.createElement('canvas');
       this.tempCtx = this.tempCanvas.getContext('2d', {alpha: true})!;
     }
+
+    // Resize trail canvas while preserving content
+    this.resizeCanvasPreserving(this.trailCanvas, this.trailCtx!, this.width, this.height);
+    // Temp canvas doesn't need content preserved (it's just working space)
     this.tempCanvas.width = this.width;
     this.tempCanvas.height = this.height;
 

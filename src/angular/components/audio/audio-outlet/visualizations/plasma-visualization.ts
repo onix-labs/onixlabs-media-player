@@ -101,25 +101,26 @@ export class PlasmaVisualization extends Canvas2DVisualization {
     // Width per point
     this.sliceWidth = width / this.WAVEFORM_POINTS;
 
-    // Create/resize trail canvases
+    // Create trail canvases if needed
     if (!this.topTrailCanvas) {
       this.topTrailCanvas = document.createElement('canvas');
       this.topTrailCtx = this.topTrailCanvas.getContext('2d', {alpha: true})!;
     }
-    this.topTrailCanvas.width = width;
-    this.topTrailCanvas.height = height;
 
     if (!this.bottomTrailCanvas) {
       this.bottomTrailCanvas = document.createElement('canvas');
       this.bottomTrailCtx = this.bottomTrailCanvas.getContext('2d', {alpha: true})!;
     }
-    this.bottomTrailCanvas.width = width;
-    this.bottomTrailCanvas.height = height;
 
     if (!this.tempCanvas) {
       this.tempCanvas = document.createElement('canvas');
       this.tempCtx = this.tempCanvas.getContext('2d', {alpha: true})!;
     }
+
+    // Resize canvases while preserving trail content
+    this.resizeCanvasPreserving(this.topTrailCanvas, this.topTrailCtx!, width, height);
+    this.resizeCanvasPreserving(this.bottomTrailCanvas, this.bottomTrailCtx!, width, height);
+    // Temp canvas doesn't need content preserved (it's just working space)
     this.tempCanvas.width = width;
     this.tempCanvas.height = height;
 

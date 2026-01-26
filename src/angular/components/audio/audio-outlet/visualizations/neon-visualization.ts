@@ -118,25 +118,26 @@ export class NeonVisualization extends Canvas2DVisualization {
     this.horizontalStartX = (width - this.waveformLength) / 2;
     this.verticalStartY = (height - this.waveformLength) / 2;
 
-    // Create/resize trail canvases for each cross
+    // Create trail canvases if needed
     if (!this.cyanTrailCanvas) {
       this.cyanTrailCanvas = document.createElement('canvas');
       this.cyanTrailCtx = this.cyanTrailCanvas.getContext('2d', {alpha: true})!;
     }
-    this.cyanTrailCanvas.width = width;
-    this.cyanTrailCanvas.height = height;
 
     if (!this.magentaTrailCanvas) {
       this.magentaTrailCanvas = document.createElement('canvas');
       this.magentaTrailCtx = this.magentaTrailCanvas.getContext('2d', {alpha: true})!;
     }
-    this.magentaTrailCanvas.width = width;
-    this.magentaTrailCanvas.height = height;
 
     if (!this.tempCanvas) {
       this.tempCanvas = document.createElement('canvas');
       this.tempCtx = this.tempCanvas.getContext('2d', {alpha: true})!;
     }
+
+    // Resize canvases while preserving trail content
+    this.resizeCanvasPreserving(this.cyanTrailCanvas, this.cyanTrailCtx!, width, height);
+    this.resizeCanvasPreserving(this.magentaTrailCanvas, this.magentaTrailCtx!, width, height);
+    // Temp canvas doesn't need content preserved (it's just working space)
     this.tempCanvas.width = width;
     this.tempCanvas.height = height;
 
