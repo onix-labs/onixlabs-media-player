@@ -343,6 +343,7 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'water',
   'infinity',
   'onix',
+  'modern',
 ];
 
 // ============================================================================

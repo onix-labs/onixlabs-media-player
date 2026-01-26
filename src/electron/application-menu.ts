@@ -29,6 +29,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     category: 'Waves',
     items: [
       {id: 'waveform', name: 'Classic'},
+      {id: 'modern', name: 'Modern'},
       {id: 'tunnel', name: 'Plasma'},
       {id: 'infinity', name: 'Infinity'},
       {id: 'neon', name: 'Neon'},

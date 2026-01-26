@@ -150,7 +150,7 @@ export abstract class Visualization {
   protected waveformSmoothing: number = DEFAULT_WAVEFORM_SMOOTHING;
 
   /**
-   * Current fade alpha level (0 = fully visible, 1 = fully black).
+   * Current fade alpha level (0 = fully visible, 1 = fully transparent).
    * Used for smooth fade transitions when pausing/stopping.
    */
   protected fadeAlpha: number = 1;
@@ -161,7 +161,7 @@ export abstract class Visualization {
   /** Timestamp of the last frame (for delta time calculation) */
   protected lastFrameTime: number = 0;
 
-  /** Duration of fade-to-black transition in milliseconds */
+  /** Duration of fade-to-transparent transition in milliseconds */
   protected readonly FADE_DURATION_MS: number = 5000;
 
   /**
@@ -398,7 +398,7 @@ export abstract class Visualization {
    * Sets the playback state for fade transitions.
    *
    * When playback starts, the visualization fades in.
-   * When playback stops, the visualization fades to black.
+   * When playback stops, the visualization fades to transparent.
    *
    * @param playing - Whether audio is playing
    */
@@ -559,16 +559,20 @@ export abstract class Canvas2DVisualization extends Visualization {
   }
 
   /**
-   * Applies a semi-transparent black overlay for fade effect.
+   * Applies a fade-to-transparent overlay effect.
    *
    * Call this at the end of draw() to apply the fade transition.
-   * When fadeAlpha is 0, nothing is drawn. When 1, fully black.
+   * When fadeAlpha is 0, nothing is drawn. When 1, fully transparent.
+   * Uses destination-out composite to fade existing content to transparent.
    */
   protected applyFadeOverlay(): void {
     if (this.fadeAlpha <= 0) return;
 
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'destination-out';
     this.ctx.fillStyle = `rgba(0, 0, 0, ${this.fadeAlpha})`;
     this.ctx.fillRect(0, 0, this.width, this.height);
+    this.ctx.restore();
   }
 
   /**
