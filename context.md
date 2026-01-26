@@ -689,6 +689,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | Waveforms Don't Reach Canvas Edge | waveform, modern visualizations | Point calculation used `i * sliceWidth` which could accumulate floating-point errors. Changed to `(i / numPoints) * width` for exact edge coverage, added bounds check on data array index. |
 | Analyzer Bar Colors Not Configurable | analyzer-visualization.ts, settings-manager.ts, settings.service.ts, configuration-view | Added `barColorBottom`, `barColorMiddle`, `barColorTop` settings with hex color validation, color picker UI, and gradient regeneration on color change. |
 | Onix Waveform Seam Visible | onix-visualization.ts | Circular waveform had visible amplitude discontinuity where first and last points met. Added cross-fade blending for last 15% of points that interpolates toward the first sample's amplitude. |
+| Forced Video Aspect Ratios Not Working | video-outlet.scss | 4:3 and 16:9 forced aspect modes stretched vertically instead of letterboxing/pillarboxing. Original CSS used `height: 100%` with `aspect-ratio` and `max-width: 100%`, which broke aspect ratio when width-constrained. Changed to use CSS container query units (`cqw`/`cqh`) with `min()` to calculate exact dimensions: `width: min(100cqw, calc(100cqh * 4 / 3))` ensures the video always maintains the target aspect ratio and fills the container as large as possible. |
 
 ### Code Duplication Eliminated
 
