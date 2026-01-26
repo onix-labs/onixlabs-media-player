@@ -219,6 +219,7 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'tether', name: 'Spectre', category: 'Bars', applicableSettings: ['sensitivity', 'barDensity']},
   // Waves category
   {id: 'waveform', name: 'Classic', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
+  {id: 'modern', name: 'Modern', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
   {id: 'tunnel', name: 'Plasma', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
   {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
   {id: 'pulsar', name: 'Pulsar', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
@@ -268,13 +269,14 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'bars', label: 'Bars : Analyzer', description: 'Configurable frequency bars with gradient'},
   {value: 'tether', label: 'Bars : Spectre', description: 'Mirrored frequency bars with smoke effect'},
   // Waves category
+  {value: 'waveform', label: 'Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
+  {value: 'modern', label: 'Waves : Modern', description: 'Frequency spectrum with gradient glow'},
   {value: 'tunnel', label: 'Waves : Plasma', description: 'Dual waveforms with plasma zoom effect'},
   {value: 'infinity', label: 'Waves : Infinity', description: 'Dual orbiting circles with spectrum cycling'},
   {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'onix', label: 'Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
   {value: 'pulsar', label: 'Waves : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
   {value: 'water', label: 'Waves : Water', description: 'Water ripple effect with rotating waveforms'},
-  {value: 'waveform', label: 'Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
 ];
 
 /**

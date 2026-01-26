@@ -60,9 +60,9 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 
 - Native `<audio>` element with HTTP streaming
 - Frequency visualizations via Web Audio API (`createMediaElementSource()`)
-- 9 visualization modes sorted by category:
+- 10 visualization modes sorted by category:
   - **Bars**: Analyzer, Spectre
-  - **Waves**: Classic, Plasma, Infinity, Neon, Onix, Pulsar, Water
+  - **Waves**: Classic, Modern, Plasma, Infinity, Neon, Onix, Pulsar, Water
 - Visualization names display with category prefix (e.g., "Waves : Plasma")
 - Volume-independent visualizations with configurable settings:
   - **Global settings**: Default visualization, max frame rate cap, FFT size
@@ -74,7 +74,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
     - Glow intensity (default 50%) - glow effect strength (waveform visualizations)
     - Waveform smoothing (default 50%) - curve interpolation (waveform visualizations)
 - Transparent canvas backgrounds (CSS gradient shows through)
-- Fade-to-black effect (~5 seconds) when playback paused/stopped
+- Fade-to-transparent effect (~5 seconds) when playback paused/stopped
 - Instant volume control via GainNode (no latency, doesn't affect visualizations)
 - Seek support via HTTP range requests (native) or stream reload (transcoded)
 
@@ -455,7 +455,7 @@ AudioContext.destination (speakers)
 The `Canvas2DVisualization` base class provides:
 
 - `name`, `category`, `sensitivity` properties
-- Fade-to-black support (paused/stopped state)
+- Fade-to-transparent support (paused/stopped state)
 - Trail intensity via `setTrailIntensity()` and `getFadeMultiplier()`
 - FFT size via `setFftSize()`, `getFftSize()`, `onFftSizeChanged()`
 - Bar density via `setBarDensity()`, `getBarDensity()`, `onBarDensityChanged()`
@@ -471,8 +471,9 @@ The `Canvas2DVisualization` base class provides:
 | Name | Category | Description | Optimizations |
 |------|----------|-------------|---------------|
 | **Analyzer** | Bars | Configurable frequency bars (48/96/144) with green-yellow-red gradient | — |
-| **Spectre** | Bars | Configurable frequency bars (48/96/144) with vertical mirroring, ONIXLabs brand color spectrum left-to-right (Orange→Green), dark center gradient, black background, smoke trail effect | Pre-calculated bar heights and positions |
-| **Classic** | Waves | Oscilloscope-style waveform with glow effect | — |
+| **Spectre** | Bars | Configurable frequency bars (48/96/144) with vertical mirroring, ONIXLabs brand color spectrum left-to-right (Orange→Green), dark center gradient, transparent background, smoke trail effect | Pre-calculated bar heights and positions, threshold-based ghost clearing |
+| **Classic** | Waves | Oscilloscope-style waveform with green glow effect, LCD ghosting trail | Threshold-based ghost clearing |
+| **Modern** | Waves | Oscilloscope-style waveform with ONIXLabs brand color spectrum gradient (Orange→Green), multi-pass gradient glow effect, LCD ghosting trail | Threshold-based ghost clearing, cached gradients |
 | **Plasma** | Waves | Dual horizontal waveforms at 45% and 55% positions, colors cycle through spectrum, trails expand from center with zoom effect, additive blending | Fixed 128 points, separate trail canvases, pre-allocated point arrays, cached color values |
 | **Infinity** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum, additive blending for overlapping trails | Cached color values with hue threshold, separate trail canvases with lighter compositing |
 | **Neon** | Waves | Two counter-rotating crosses: one rotates clockwise, the other counter-clockwise, cyan/magenta colors randomly swap on intersection (every 45°), both sized to 8/9 of shorter screen dimension, additive blending where crosses overlap, trails expand outward with zoom effect | Pre-allocated point arrays (4 total), separate trail canvases per cross, point-based rotation, intersection zone tracking |
@@ -514,10 +515,10 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 |---------|-------|---------|------------|
 | Sensitivity | 0-100% | 50% | All visualizations |
 | Bar Density | Low/Medium/High | Medium | Analyzer, Spectre |
-| Trail Intensity | 0-100% | 50% | Classic, Plasma, Infinity, Neon, Onix, Pulsar, Water |
-| Line Width | 1-5px | 2px | Classic, Plasma, Infinity, Neon, Onix, Pulsar, Water |
-| Glow Intensity | 0-100% | 50% | Classic, Plasma, Infinity, Neon, Onix, Pulsar, Water |
-| Waveform Smoothing | 0-100% | 50% | Classic, Plasma, Infinity, Neon, Onix, Pulsar, Water |
+| Trail Intensity | 0-100% | 50% | Classic, Modern, Plasma, Infinity, Neon, Onix, Pulsar, Water |
+| Line Width | 1-5px | 2px | Classic, Modern, Plasma, Infinity, Neon, Onix, Pulsar, Water |
+| Glow Intensity | 0-100% | 50% | Classic, Modern, Plasma, Infinity, Neon, Onix, Pulsar, Water |
+| Waveform Smoothing | 0-100% | 50% | Classic, Modern, Plasma, Infinity, Neon, Onix, Pulsar, Water |
 
 #### Application Category
 
@@ -678,6 +679,11 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | UHD/4K MKV Playback Choppy or Failing | unified-media-server.ts | Multiple fixes: (1) Changed `-level 4.1` to `-level 5.1` to support 4K macroblock limits, (2) Added `-preset ultrafast` for real-time 4K encoding, (3) Added `-threads 0` to use all CPU cores, (4) Added `-maxrate 20M -bufsize 8M` for VBV buffering, (5) Increased file read buffer from 64KB to 2MB via `highWaterMark` for NAS/network latency tolerance. |
 | Per-Visualization Settings Not Applied | onix, pulsar, water visualizations | Onix, Pulsar, and Water visualizations had hardcoded values for `lineWidth` (2/5) and `glowIntensity` (shadowBlur=12) instead of using settings. Fixed all three to use `this.lineWidth` and `this.getScaledGlowBlur()`. Onix additionally refactored from segment-by-segment drawing to conic gradient for proper waveform smoothing support. |
 | Space Key Double-Triggering Playback | All button components | Buttons retained focus after click, causing Space key to trigger both menu accelerator AND focused button (e.g., Space triggered Play/Pause AND Eject). Fixed by adding `(mouseup)="blur()"` handlers to all buttons so they lose focus immediately after click. Combined with existing `tabindex="-1"` to fully prevent keyboard focus issues. |
+| Modern Visualization Not Wired to Config | settings-manager.ts | `'modern'` was missing from `VALID_VISUALIZATION_TYPES` array, causing server to reject settings updates. Added to the array. |
+| Per-Viz Settings Not Reactive in UI | configuration-view.ts | Slider values and percentages didn't update when settings changed via SSE. Added `currentVizSettings` computed signal to establish reactive dependency, updated helper methods to read from it. |
+| Visualizations Fade to Black | visualization.ts | `applyFadeOverlay()` drew a black rectangle overlay. Changed to use `destination-out` composite operation to fade existing content to transparent instead. |
+| Waveform Ghosting Artifacts | waveform, modern, spectre visualizations | `destination-out` fade is asymptotic and never reaches zero alpha. Added periodic threshold-based pixel clearing via `getImageData`/`putImageData` to force low-alpha pixels to fully transparent. |
+| Waveforms Don't Reach Canvas Edge | waveform, modern visualizations | Point calculation used `i * sliceWidth` which could accumulate floating-point errors. Changed to `(i / numPoints) * width` for exact edge coverage, added bounds check on data array index. |
 
 ### Code Duplication Eliminated
 

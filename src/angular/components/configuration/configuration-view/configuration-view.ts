@@ -14,7 +14,7 @@
 
 import {Component, signal, computed, inject, ChangeDetectionStrategy} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, MacOSVisualEffectState} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, MacOSVisualEffectState, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 
 /**
@@ -149,6 +149,20 @@ export class ConfigurationView {
 
   /** Currently selected visualization ID (null = global settings) */
   public readonly selectedVisualization: ReturnType<typeof signal<string | null>> = signal<string | null>(null);
+
+  /**
+   * Per-visualization settings for the currently selected visualization.
+   * This computed signal ensures Angular tracks changes from SSE updates.
+   */
+  public readonly currentVizSettings: ReturnType<typeof computed<Record<string, number | string | undefined>>> = computed(
+    (): Record<string, number | string | undefined> => {
+      const vizId: string | null = this.selectedVisualization();
+      if (!vizId) return {};
+      // Reading from perVisualizationSettings() creates a reactive dependency
+      const allSettings: PerVisualizationSettings = this.settingsService.perVisualizationSettings();
+      return (allSettings[vizId] ?? {}) as Record<string, number | string | undefined>;
+    }
+  );
 
   // ============================================================================
   // Computed Values
@@ -508,46 +522,59 @@ export class ConfigurationView {
 
   /**
    * Checks if a visualization has a custom value for a setting.
+   * Uses currentVizSettings to ensure reactive updates.
    *
    * @param vizId - The visualization ID
    * @param setting - The setting key
    * @returns True if the setting has a custom value
    */
   public hasCustomSetting(vizId: string, setting: LocalSettingKey): boolean {
-    return this.settingsService.hasCustomSetting(vizId, setting);
+    // Read from currentVizSettings() to establish reactive dependency
+    const vizSettings: Record<string, number | string | undefined> = this.currentVizSettings();
+    return vizSettings[setting] !== undefined;
   }
 
   /**
    * Gets the effective value for a per-visualization setting.
+   * Uses currentVizSettings computed to ensure reactive updates.
    *
    * @param vizId - The visualization ID
    * @param setting - The setting key
    * @returns The effective value (custom or default)
    */
   public getEffectiveSetting<K extends LocalSettingKey>(vizId: string, setting: K): number | BarDensity {
-    return this.settingsService.getEffectiveSetting(vizId, setting) as number | BarDensity;
+    // Read from currentVizSettings() to establish reactive dependency
+    const vizSettings: Record<string, number | string | undefined> = this.currentVizSettings();
+    const customValue: number | string | undefined = vizSettings[setting];
+    if (customValue !== undefined) {
+      return customValue as number | BarDensity;
+    }
+    // Fall back to default value
+    return VISUALIZATION_LOCAL_DEFAULTS[setting] as number | BarDensity;
   }
 
   /**
    * Formats a numeric setting value as a percentage string.
+   * Uses getEffectiveSetting to ensure reactive updates.
    *
    * @param vizId - The visualization ID
    * @param setting - The setting key
    * @returns The value as a percentage (e.g., "50%")
    */
   public formatPercentSetting(vizId: string, setting: LocalSettingKey): string {
-    const value: number = this.settingsService.getEffectiveSetting(vizId, setting) as number;
+    const value: number = this.getEffectiveSetting(vizId, setting) as number;
     return `${Math.round(value * 100)}%`;
   }
 
   /**
    * Formats the line width setting with units.
+   * Uses getEffectiveSetting to ensure reactive updates.
    *
    * @param vizId - The visualization ID
    * @returns The line width with px units (e.g., "2.0px")
    */
   public formatLineWidth(vizId: string): string {
-    const value: number = this.settingsService.getEffectiveSetting(vizId, 'lineWidth') as number;
+    const value: number = this.getEffectiveSetting(vizId, 'lineWidth') as number;
     return `${value.toFixed(1)}px`;
   }
 

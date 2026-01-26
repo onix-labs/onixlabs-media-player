@@ -31,6 +31,7 @@ export {PulsarVisualization} from './pulsar-visualization';
 export {WaterVisualization} from './water-visualization';
 export {InfinityVisualization} from './infinity-visualization';
 export {OnixVisualization} from './onix-visualization';
+export {ModernVisualization} from './modern-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
@@ -42,6 +43,7 @@ import {PulsarVisualization} from './pulsar-visualization';
 import {WaterVisualization} from './water-visualization';
 import {InfinityVisualization} from './infinity-visualization';
 import {OnixVisualization} from './onix-visualization';
+import {ModernVisualization} from './modern-visualization';
 
 /**
  * Map of visualization types to their constructor classes.
@@ -57,6 +59,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   water: WaterVisualization,
   infinity: InfinityVisualization,
   onix: OnixVisualization,
+  modern: ModernVisualization,
 };
 
 /**
@@ -73,6 +76,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   water: {name: 'Water', category: 'Waves'},
   infinity: {name: 'Infinity', category: 'Waves'},
   onix: {name: 'Onix', category: 'Waves'},
+  modern: {name: 'Modern', category: 'Waves'},
 };
 
 /**
@@ -114,5 +118,5 @@ export const VISUALIZATION_TYPES: string[] = [
   // Bars
   'bars', 'tether',
   // Waves
-  'tunnel', 'infinity', 'neon', 'onix', 'pulsar', 'water', 'waveform',
+  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'pulsar', 'water',
 ];

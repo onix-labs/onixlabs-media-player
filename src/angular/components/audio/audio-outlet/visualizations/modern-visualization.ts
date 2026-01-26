@@ -1,30 +1,51 @@
 /**
- * @fileoverview Oscilloscope-style waveform visualization.
+ * @fileoverview Modern waveform visualization with gradient colors.
  *
- * Displays the audio waveform in the style of a classic oscilloscope with
- * an LCD ghosting/persistence effect. The green glow and trail effect
- * creates a retro electronic display aesthetic.
+ * Displays the audio waveform in the style of Classic but with
+ * the ONIXLabs brand color spectrum instead of a solid green.
+ * Features an LCD ghosting/persistence effect.
  *
  * Technical details:
  * - Uses getByteTimeDomainData() for waveform data
- * - Higher FFT size (2048) for smoother waveform
  * - Persistence effect via slow fade and transparent background
  * - Multi-layer rendering: glow, main line, highlight
+ * - ONIXLabs brand color gradient from Orange to Green
  * - Sensitivity scales the waveform amplitude
  *
- * @module app/components/audio/audio-outlet/visualizations/waveform-visualization
+ * @module app/components/audio/audio-outlet/visualizations/modern-visualization
  */
 
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 /**
- * Oscilloscope waveform visualization with persistence effect.
- *
- * Renders the audio waveform as a glowing green line with an LCD-style
- * ghosting effect that creates visual trails.
+ * Number of colors in the ONIXLabs brand palette.
  */
-export class WaveformVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Classic';
+const NUM_COLORS: number = 8;
+
+/**
+ * Pre-parsed RGB values for the ONIXLabs brand colors (flat array for cache efficiency).
+ * Format: [r0, g0, b0, r1, g1, b1, ...]
+ */
+const ONIX_COLORS_FLAT: Uint8Array = new Uint8Array([
+  247, 149, 51,   // #F79533 Orange
+  243, 112, 85,   // #F37055 Coral
+  239, 78, 123,   // #EF4E7B Pink
+  161, 102, 171,  // #A166AB Purple
+  80, 115, 184,   // #5073B8 Blue
+  16, 152, 173,   // #1098AD Teal
+  7, 179, 155,    // #07B39B Cyan
+  111, 186, 130,  // #6FBA82 Green
+]);
+
+/**
+ * Modern waveform visualization with gradient colors.
+ *
+ * Renders the audio waveform as a glowing gradient line with an LCD-style
+ * ghosting effect that creates visual trails. Same rendering as Classic
+ * but with ONIXLabs brand colors instead of solid green.
+ */
+export class ModernVisualization extends Canvas2DVisualization {
+  public readonly name: string = 'Modern';
   public readonly category: string = 'Waves';
 
   private readonly FADE_RATE: number = 0.03; // Very slow fade for LCD ghosting effect
@@ -40,6 +61,10 @@ export class WaveformVisualization extends Canvas2DVisualization {
 
   /** Tracks whether this visualization has drawn at least once */
   private hasDrawn: boolean = false;
+
+  /** Cached gradient for performance */
+  private cachedGradient: CanvasGradient | null = null;
+  private cachedGradientWidth: number = 0;
 
   public constructor(config: VisualizationConfig) {
     super(config);
@@ -109,6 +134,53 @@ export class WaveformVisualization extends Canvas2DVisualization {
       this.canvas.width = width;
       this.canvas.height = height;
     }
+
+    // Invalidate gradient cache on resize
+    this.cachedGradient = null;
+  }
+
+  /**
+   * Creates or returns cached horizontal gradient using ONIXLabs brand colors.
+   */
+  private getGradient(): CanvasGradient {
+    if (this.cachedGradient && this.cachedGradientWidth === this.width) {
+      return this.cachedGradient;
+    }
+
+    const gradient: CanvasGradient = this.ctx.createLinearGradient(0, 0, this.width, 0);
+
+    // Add color stops for each brand color
+    for (let i: number = 0; i < NUM_COLORS; i++) {
+      const idx: number = i * 3;
+      const r: number = ONIX_COLORS_FLAT[idx];
+      const g: number = ONIX_COLORS_FLAT[idx + 1];
+      const b: number = ONIX_COLORS_FLAT[idx + 2];
+      const stop: number = i / (NUM_COLORS - 1);
+      gradient.addColorStop(stop, `rgb(${r}, ${g}, ${b})`);
+    }
+
+    this.cachedGradient = gradient;
+    this.cachedGradientWidth = this.width;
+    return gradient;
+  }
+
+  /**
+   * Creates a glow gradient with reduced opacity.
+   */
+  private getGlowGradient(): CanvasGradient {
+    const gradient: CanvasGradient = this.ctx.createLinearGradient(0, 0, this.width, 0);
+
+    // Add color stops for each brand color with reduced opacity
+    for (let i: number = 0; i < NUM_COLORS; i++) {
+      const idx: number = i * 3;
+      const r: number = ONIX_COLORS_FLAT[idx];
+      const g: number = ONIX_COLORS_FLAT[idx + 1];
+      const b: number = ONIX_COLORS_FLAT[idx + 2];
+      const stop: number = i / (NUM_COLORS - 1);
+      gradient.addColorStop(stop, `rgba(${r}, ${g}, ${b}, 0.8)`);
+    }
+
+    return gradient;
   }
 
   public draw(): void {
@@ -117,7 +189,8 @@ export class WaveformVisualization extends Canvas2DVisualization {
     const ctx: CanvasRenderingContext2D = this.ctx;
     const width: number = this.width;
     const height: number = this.height;
-    const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
+
+    if (width <= 0 || height <= 0) return;
 
     // Slow fade effect - creates the LCD ghosting/persistence (transparent background)
     // Apply trail intensity multiplier to fade rate
@@ -136,36 +209,61 @@ export class WaveformVisualization extends Canvas2DVisualization {
     }
 
     // Get time domain data (waveform)
-    this.analyser.getByteTimeDomainData(dataArray);
+    this.analyser.getByteTimeDomainData(this.dataArray);
 
     const centerY: number = height / 2;
     const numPoints: number = this.WAVEFORM_POINTS;
     const amplitudeScale: number = height * 0.4;
     const sensitivityFactor: number = this.sensitivity * 2;
-    const dataLength: number = dataArray.length;
+    const dataLength: number = this.dataArray.length;
 
     // Calculate waveform points - use ratio to ensure full width coverage
     for (let i: number = 0; i <= numPoints; i++) {
       const t: number = i / numPoints;
       const dataIndex: number = Math.min(Math.floor(t * dataLength), dataLength - 1);
-      const amplitude: number = ((dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
+      const amplitude: number = ((this.dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
       this.points[i].x = t * width;
       this.points[i].y = centerY + amplitude * amplitudeScale;
     }
-
-    // Green color theme
-    const colorMain: string = 'rgb(0, 255, 100)';
-    const colorGlow: string = 'rgba(0, 255, 100, 0.8)';
-    const colorHighlight: string = 'rgba(150, 255, 180, 0.6)';
 
     // Build path using the base class smooth path helper
     const buildPath: () => void = (): void => {
       this.buildSmoothPath(ctx, this.points, numPoints);
     };
 
-    this.drawPathWithLayers(buildPath, colorMain, colorGlow, colorHighlight, {
-      baseGlowBlur: this.BASE_GLOW_BLUR
-    });
+    // Get gradients for drawing
+    const mainGradient: CanvasGradient = this.getGradient();
+    const glowGradient: CanvasGradient = this.getGlowGradient();
+
+    // Draw glow layer (multiple passes for soft glow effect)
+    // Canvas shadowColor only supports single colors, so we use layered strokes
+    const glowBlur: number = this.getScaledGlowBlur(this.BASE_GLOW_BLUR);
+    const glowPasses: number = 3;
+    for (let i: number = glowPasses; i >= 1; i--) {
+      ctx.save();
+      ctx.globalAlpha = 0.3 / i;
+      ctx.strokeStyle = glowGradient;
+      ctx.lineWidth = this.lineWidth + glowBlur * (i / glowPasses);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      buildPath();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Draw main line with gradient
+    ctx.strokeStyle = mainGradient;
+    ctx.lineWidth = this.lineWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    buildPath();
+    ctx.stroke();
+
+    // Draw highlight
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    buildPath();
+    ctx.stroke();
 
     this.applyFadeOverlay();
 
