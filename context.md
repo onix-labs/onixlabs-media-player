@@ -464,6 +464,7 @@ The `Canvas2DVisualization` base class provides:
 - Glow intensity via `setGlowIntensity()`, `getGlowIntensity()`
 - Color conversion utilities: `hslToRgb()`
 - Three-layer drawing helpers: `drawPathWithLayers()`, `drawPointsWithLayers()` (glow, main, highlight)
+- Seamless resize support via `resizeCanvasPreserving()` helper for trail-based visualizations
 
 ### Available Visualizations
 
@@ -836,6 +837,38 @@ trailCtx.translate(-floorCenterX, -floorCenterY);
 | `highWaterMark` | 64KB | 2MB | Absorbs NAS/network latency spikes |
 
 **Result**: Butter-smooth UHD/4K MKV playback from NAS over network.
+
+### Seamless Visualization Resize
+
+**Issue**: When the canvas was resized (window resize, fullscreen toggle, miniplayer mode), trail-based visualizations appeared to "restart" because setting `canvas.width` or `canvas.height` automatically clears all pixel data - this is fundamental browser behavior.
+
+**Root Cause**: Trail canvases that accumulate visual history (zoom effects, rotation trails, LCD ghosting) were losing all content when dimensions changed.
+
+**Fix Applied**:
+
+1. **Base class helper**: Added `resizeCanvasPreserving()` to the `Visualization` base class that captures canvas content before resize and draws it back scaled to the new dimensions.
+
+2. **Trail-based visualizations** (Infinity, Plasma, Neon, Onix, Pulsar, Water): Updated `onResize()` to use the helper for trail canvases while leaving temp/working canvases to clear normally.
+
+3. **Classic visualization**: Special handling required because it draws directly to the main canvas with a fade effect. Overrides `resize()` with a `hasDrawn` flag to:
+   - Clear canvas when switching visualizations (removes previous visualization's content)
+   - Preserve content during actual resize events
+
+```typescript
+// Base class helper for trail canvases
+protected resizeCanvasPreserving(
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  newWidth: number,
+  newHeight: number
+): void {
+  // Capture existing content to temp canvas
+  // Resize canvas (clears content)
+  // Draw preserved content scaled to new dimensions
+}
+```
+
+**Result**: Visualizations now seamlessly scale their trail effects during window resize, fullscreen toggle, and miniplayer transitions.
 
 ---
 
