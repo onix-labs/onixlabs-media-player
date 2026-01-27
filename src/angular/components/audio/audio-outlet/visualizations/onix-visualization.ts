@@ -21,7 +21,7 @@
  * @module app/components/audio/audio-outlet/visualizations/onix-visualization
  */
 
-import {Canvas2DVisualization, VisualizationConfig} from './visualization';
+import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from './visualization';
 import {ONIX_COLORS_FLAT, ONIX_COLOR_COUNT, TWO_PI} from './visualization-constants';
 
 /**
@@ -107,12 +107,16 @@ export class OnixVisualization extends Canvas2DVisualization {
 
     // Create trail canvas if needed
     if (!this.trailCanvas) {
-      ({canvas: this.trailCanvas, ctx: this.trailCtx} = this.createOffscreenCanvas());
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.trailCanvas = offscreen.canvas;
+      this.trailCtx = offscreen.ctx;
     }
 
     // Create temp canvas if needed
     if (!this.tempCanvas) {
-      ({canvas: this.tempCanvas, ctx: this.tempCtx} = this.createOffscreenCanvas());
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.tempCanvas = offscreen.canvas;
+      this.tempCtx = offscreen.ctx;
     }
 
     // Resize trail canvas while preserving content

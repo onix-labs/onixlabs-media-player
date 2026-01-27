@@ -49,6 +49,14 @@ import {
 } from './visualization-constants';
 
 /**
+ * Return type for createOffscreenCanvas().
+ */
+export interface OffscreenCanvasPair {
+  readonly canvas: HTMLCanvasElement;
+  readonly ctx: CanvasRenderingContext2D;
+}
+
+/**
  * Configuration required to create a visualization.
  */
 export interface VisualizationConfig {
@@ -584,7 +592,7 @@ export abstract class Visualization {
    *
    * @returns A canvas/context pair sized to the current width/height
    */
-  protected createOffscreenCanvas(): {canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D} {
+  protected createOffscreenCanvas(): OffscreenCanvasPair {
     const canvas: HTMLCanvasElement = document.createElement('canvas');
     canvas.width = this.width;
     canvas.height = this.height;

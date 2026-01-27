@@ -14,7 +14,7 @@
  * @module app/components/audio/audio-outlet/visualizations/neon-visualization
  */
 
-import {Canvas2DVisualization, VisualizationConfig} from './visualization';
+import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from './visualization';
 
 /**
  * Neon visualization with two counter-rotating crosses.
@@ -120,15 +120,21 @@ export class NeonVisualization extends Canvas2DVisualization {
 
     // Create trail canvases if needed
     if (!this.cyanTrailCanvas) {
-      ({canvas: this.cyanTrailCanvas, ctx: this.cyanTrailCtx} = this.createOffscreenCanvas());
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.cyanTrailCanvas = offscreen.canvas;
+      this.cyanTrailCtx = offscreen.ctx;
     }
 
     if (!this.magentaTrailCanvas) {
-      ({canvas: this.magentaTrailCanvas, ctx: this.magentaTrailCtx} = this.createOffscreenCanvas());
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.magentaTrailCanvas = offscreen.canvas;
+      this.magentaTrailCtx = offscreen.ctx;
     }
 
     if (!this.tempCanvas) {
-      ({canvas: this.tempCanvas, ctx: this.tempCtx} = this.createOffscreenCanvas());
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.tempCanvas = offscreen.canvas;
+      this.tempCtx = offscreen.ctx;
     }
 
     // Resize canvases while preserving trail content
