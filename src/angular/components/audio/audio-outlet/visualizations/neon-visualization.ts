@@ -265,7 +265,7 @@ export class NeonVisualization extends Canvas2DVisualization {
     const startX: number = this.horizontalStartX;
     const centerY: number = this.screenCenterY;
     const amplitude: number = this.waveformAmplitude;
-    const sensitivityFactor: number = this.sensitivity * 2;
+    const sensitivityFactor: number = this.sensitivityFactor;
 
     for (let i: number = 0; i <= numPoints; i++) {
       // Map point to data index with offset for variation between waveforms
@@ -287,7 +287,7 @@ export class NeonVisualization extends Canvas2DVisualization {
     const centerX: number = this.screenCenterX;
     const startY: number = this.verticalStartY;
     const amplitude: number = this.waveformAmplitude;
-    const sensitivityFactor: number = this.sensitivity * 2;
+    const sensitivityFactor: number = this.sensitivityFactor;
 
     for (let i: number = 0; i <= numPoints; i++) {
       // Map point to data index with offset for variation between waveforms

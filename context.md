@@ -783,6 +783,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | Duplicate `isValidHexColor()` | Removed second identical method (lines 1370-1380); kept canonical copy at line 1306 | ~12 |
 | Dead `isValidHueShift()` | Removed unused validator method (defined but never called) | ~12 |
 | `ONIX_COLORS_FLAT` / `NUM_COLORS` / `TWO_PI` | Replaced local redeclarations in spectre, modern, onix with imports from `visualization-constants.ts`; renamed `NUM_COLORS` → `ONIX_COLOR_COUNT` | ~54 |
+| `this.sensitivity * 2` | Added `sensitivityFactor` getter to `Canvas2DVisualization` base class; replaced 13 occurrences across all 10 visualizations | ~13 |
 
 ### Security Hardening
 

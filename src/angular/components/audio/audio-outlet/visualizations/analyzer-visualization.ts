@@ -120,7 +120,7 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
       }
       const value: number = sum / count;
 
-      const barHeight: number = (value / 255) * height * 0.85 * (this.sensitivity * 2);
+      const barHeight: number = (value / 255) * height * 0.85 * this.sensitivityFactor;
       const x: number = i * (barWidth + this.BAR_GAP);
       const y: number = height - barHeight;
 

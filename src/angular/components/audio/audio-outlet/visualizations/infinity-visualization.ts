@@ -242,7 +242,7 @@ export class InfinityVisualization extends Canvas2DVisualization {
 
       // Map point to data index with offset for variation between circles
       const dataIndex: number = Math.floor(((i + dataOffset) % numPoints) / numPoints * dataLength);
-      const sample: number = ((this.dataArray[dataIndex] - 128) / 128) * (this.sensitivity * 2);
+      const sample: number = ((this.dataArray[dataIndex] - 128) / 128) * this.sensitivityFactor;
 
       const radius: number = this.baseRadius + sample * amplitudeScale;
 

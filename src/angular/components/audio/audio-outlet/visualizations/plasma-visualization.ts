@@ -222,7 +222,7 @@ export class PlasmaVisualization extends Canvas2DVisualization {
     const dataLength: number = this.dataArray.length;
     const sliceWidth: number = this.sliceWidth;
     const amplitude: number = this.waveformAmplitude;
-    const sensitivityFactor: number = this.sensitivity * 2;
+    const sensitivityFactor: number = this.sensitivityFactor;
 
     for (let i: number = 0; i <= numPoints; i++) {
       // Map point to data index with offset for variation between waveforms
