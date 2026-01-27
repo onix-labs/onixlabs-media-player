@@ -1,0 +1,61 @@
+// =============================================================================
+// Shared SCSS Variables
+// =============================================================================
+
+// White overlay opacity scale
+$white-2: rgba(255, 255, 255, 0.02);
+$white-3: rgba(255, 255, 255, 0.03);
+$white-5: rgba(255, 255, 255, 0.05);
+$white-6: rgba(255, 255, 255, 0.06);
+$white-8: rgba(255, 255, 255, 0.08);
+$white-10: rgba(255, 255, 255, 0.1);
+$white-12: rgba(255, 255, 255, 0.12);
+$white-15: rgba(255, 255, 255, 0.15);
+$white-20: rgba(255, 255, 255, 0.2);
+$white-25: rgba(255, 255, 255, 0.25);
+$white-30: rgba(255, 255, 255, 0.3);
+$white-40: rgba(255, 255, 255, 0.4);
+$white-50: rgba(255, 255, 255, 0.5);
+$white-60: rgba(255, 255, 255, 0.6);
+$white-70: rgba(255, 255, 255, 0.7);
+$white-75: rgba(255, 255, 255, 0.75);
+$white-80: rgba(255, 255, 255, 0.8);
+$white-90: rgba(255, 255, 255, 0.9);
+
+// Black overlay opacity scale
+$black-20: rgba(0, 0, 0, 0.2);
+$black-30: rgba(0, 0, 0, 0.3);
+$black-50: rgba(0, 0, 0, 0.5);
+$black-70: rgba(0, 0, 0, 0.7);
+$black-75: rgba(0, 0, 0, 0.75);
+$black-90: rgba(0, 0, 0, 0.9);
+
+// Primary blue
+$color-primary-light: #6db3f2;
+$color-primary-dark: #1e69de;
+
+// Status colors
+$color-success: #4ade80;
+$color-warning: #fb923c;
+$color-danger: #ef4444;
+$color-danger-dark: #dc2626;
+$color-danger-light: #ff6b6b;
+
+// Accent
+$color-accent-glow: rgba(0, 200, 255, 0.6);
+
+// Button glass gradients (shared between layout-controls and miniplayer-controls)
+$btn-glass: linear-gradient(to bottom,
+  rgba(242, 246, 248, 0.25) 0%,
+  rgba(216, 225, 231, 0.25) 50%,
+  rgba(181, 198, 208, 0.25) 51%,
+  rgba(224, 239, 249, 0.25) 100%);
+
+$btn-glass-hover: linear-gradient(to bottom,
+  rgba(242, 246, 248, 0.4) 0%,
+  rgba(216, 225, 231, 0.4) 50%,
+  rgba(181, 198, 208, 0.4) 51%,
+  rgba(224, 239, 249, 0.4) 100%);
+
+// Primary gradient (seek bar, volume thumb)
+$gradient-primary: linear-gradient(to bottom, $color-primary-light 0%, $color-primary-dark 100%);

@@ -1,3 +1,5 @@
+@use 'variables' as *;
+
 :host {
   display: flex;
   flex-direction: column;
@@ -27,7 +29,7 @@
       left: 0;
       right: 0;
       z-index: 100;
-      background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.5) 60%, transparent 100%);
+      background: linear-gradient(to top, $black-90 0%, $black-50 60%, transparent 100%);
       padding-top: 2rem;
       animation: fadeIn 0.3s ease;
     }

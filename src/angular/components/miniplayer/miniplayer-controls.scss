@@ -1,3 +1,5 @@
+@use 'variables' as *;
+
 :host {
   display: flex;
   justify-content: center;
@@ -8,8 +10,8 @@
     display: inherit;
     align-items: center;
     border-radius: 0.25rem;
-    border: 0.0625rem solid rgba(0, 0, 0, 0.5);
-    outline: 0.0625rem solid rgba(255, 255, 255, 0.15);
+    border: 0.0625rem solid $black-50;
+    outline: 0.0625rem solid $white-15;
     backdrop-filter: blur(16px);
   }
 
@@ -18,15 +20,11 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    color: rgba(255, 255, 255, 0.75);
-    background: linear-gradient(to bottom,
-      rgba(242, 246, 248, 0.25) 0%,
-      rgba(216, 225, 231, 0.25) 50%,
-      rgba(181, 198, 208, 0.25) 51%,
-      rgba(224, 239, 249, 0.25) 100%);
+    color: $white-75;
+    background: $btn-glass;
     border: none;
-    border-left: 0.0625rem solid rgba(255, 255, 255, 0.15);
-    border-right: 0.0625rem solid rgba(0, 0, 0, 0.3);
+    border-left: 0.0625rem solid $white-15;
+    border-right: 0.0625rem solid $black-30;
     outline: none;
     font-size: 0.75rem;
     padding: 0.5rem;
@@ -45,15 +43,11 @@
 
     &:hover:not(:disabled) {
       color: white;
-      background: linear-gradient(to bottom,
-        rgba(242, 246, 248, 0.4) 0%,
-        rgba(216, 225, 231, 0.4) 50%,
-        rgba(181, 198, 208, 0.4) 51%,
-        rgba(224, 239, 249, 0.4) 100%);
+      background: $btn-glass-hover;
     }
 
     &.active {
-      color: #6db3f2;
+      color: $color-primary-light;
       background: linear-gradient(to bottom,
         rgba(109, 179, 242, 0.3) 0%,
         rgba(84, 163, 238, 0.3) 50%,
@@ -62,7 +56,7 @@
     }
 
     &:disabled {
-      color: rgba(255, 255, 255, 0.3);
+      color: $white-30;
       cursor: not-allowed;
     }
   }
