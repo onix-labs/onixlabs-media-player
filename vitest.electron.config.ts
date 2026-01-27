@@ -10,6 +10,14 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/electron/**/*.ts'],
       exclude: ['src/electron/**/*.spec.ts', 'src/electron/dist/**'],
+      thresholds: {
+        // Global thresholds (conservative — main.ts, preload.ts, and
+        // unified-media-server.ts are hard to unit test without Electron runtime)
+        statements: 20,
+        branches: 35,
+        functions: 20,
+        lines: 20,
+      },
     },
   },
 });
