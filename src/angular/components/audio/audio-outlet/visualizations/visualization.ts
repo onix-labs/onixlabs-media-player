@@ -635,6 +635,9 @@ export abstract class Canvas2DVisualization extends Visualization {
   /** The 2D rendering context */
   protected ctx: CanvasRenderingContext2D;
 
+  /** Pixels with alpha below this threshold are cleared to fully transparent. */
+  protected readonly ALPHA_THRESHOLD: number = 30;
+
   /**
    * Creates a new 2D canvas visualization.
    *
@@ -663,6 +666,32 @@ export abstract class Canvas2DVisualization extends Visualization {
     this.ctx.fillStyle = `rgba(0, 0, 0, ${this.fadeAlpha})`;
     this.ctx.fillRect(0, 0, this.width, this.height);
     this.ctx.restore();
+  }
+
+  /**
+   * Clears pixels with alpha below threshold to fully transparent.
+   * This prevents ghosting artifacts from the asymptotic fade effect
+   * (destination-out compositing never reaches zero alpha).
+   *
+   * @param ctx - The rendering context to clear low-alpha pixels on (defaults to this.ctx)
+   */
+  protected clearLowAlphaPixels(ctx: CanvasRenderingContext2D = this.ctx): void {
+    const width: number = this.width;
+    const height: number = this.height;
+    if (width <= 0 || height <= 0) return;
+
+    const imageData: ImageData = ctx.getImageData(0, 0, width, height);
+    const data: Uint8ClampedArray = imageData.data;
+    const threshold: number = this.ALPHA_THRESHOLD;
+
+    // Alpha is at index 3, 7, 11, ... (every 4th byte starting at 3)
+    for (let i: number = 3; i < data.length; i += 4) {
+      if (data[i] > 0 && data[i] < threshold) {
+        data[i] = 0;
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
   }
 
   /**
