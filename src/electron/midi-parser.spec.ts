@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readFileSync, statSync } from 'fs';
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
 
 vi.mock('./logger.js', () => ({
@@ -12,9 +12,11 @@ vi.mock('./logger.js', () => ({
 
 vi.mock('fs', () => ({
   readFileSync: vi.fn(),
+  statSync: vi.fn(),
 }));
 
 const mockedReadFileSync = vi.mocked(readFileSync);
+const mockedStatSync = vi.mocked(statSync);
 
 /**
  * Creates a minimal valid MIDI file buffer in memory.
@@ -150,8 +152,13 @@ describe('MIDI_FORMATS', () => {
 });
 
 describe('parseMidiDuration', () => {
+  beforeEach(() => {
+    // Default: file size under the 10 MB limit
+    mockedStatSync.mockReturnValue({ size: 1024 } as ReturnType<typeof statSync>);
+  });
+
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('valid MIDI files', () => {
@@ -331,6 +338,28 @@ describe('parseMidiDuration', () => {
       const duration = parseMidiDuration('/fake/truncated.mid');
 
       expect(duration).toBe(0);
+    });
+  });
+
+  describe('file size limit', () => {
+    it('should return 0 for files exceeding the 10 MB limit', () => {
+      mockedStatSync.mockReturnValue({ size: 10 * 1024 * 1024 + 1 } as ReturnType<typeof statSync>);
+
+      const duration = parseMidiDuration('/fake/huge.mid');
+
+      expect(duration).toBe(0);
+      expect(mockedReadFileSync).not.toHaveBeenCalled();
+    });
+
+    it('should parse files at exactly the 10 MB limit', () => {
+      mockedStatSync.mockReturnValue({ size: 10 * 1024 * 1024 } as ReturnType<typeof statSync>);
+      const buffer = createMidiBuffer({ ticksPerBeat: 480, tempo: 500000, maxTick: 960 });
+      mockedReadFileSync.mockReturnValue(buffer);
+
+      const duration = parseMidiDuration('/fake/at-limit.mid');
+
+      expect(duration).toBeCloseTo(1.0, 5);
+      expect(mockedReadFileSync).toHaveBeenCalled();
     });
   });
 

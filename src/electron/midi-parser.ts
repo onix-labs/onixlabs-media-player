@@ -1,10 +1,19 @@
-import { readFileSync } from 'fs';
+import { readFileSync, statSync } from 'fs';
 import { midiLogger } from './logger.js';
 
 export const MIDI_FORMATS: Set<string> = new Set(['.mid', '.midi']);
 
+/** Maximum MIDI file size (10 MB) to prevent excessive memory allocation. */
+const MAX_MIDI_FILE_SIZE: number = 10 * 1024 * 1024;
+
 export function parseMidiDuration(filePath: string): number {
   try {
+    const fileSize: number = statSync(filePath).size;
+    if (fileSize > MAX_MIDI_FILE_SIZE) {
+      midiLogger.warn(`MIDI file too large (${fileSize} bytes), skipping parse`);
+      return 0;
+    }
+
     const buffer: Buffer = readFileSync(filePath);
     let offset: number = 0;
 
