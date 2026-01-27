@@ -1,3 +1,16 @@
+/**
+ * @fileoverview MIDI file parser for extracting duration from Standard MIDI Files.
+ *
+ * Parses the binary structure defined by the MIDI 1.0 specification to calculate
+ * total playback duration in seconds. Handles multi-track files (format 0 and 1),
+ * variable-length delta times, and tempo change meta events.
+ *
+ * @see {@link https://www.midi.org/specifications/file-format-specifications/standard-midi-files Standard MIDI Files Specification}
+ * @see {@link https://www.midi.org/specifications/midi1-specifications MIDI 1.0 Detailed Specification}
+ *
+ * @module electron/midi-parser
+ */
+
 import { readFileSync, statSync } from 'fs';
 import { midiLogger } from './logger.js';
 
@@ -6,6 +19,19 @@ export const MIDI_FORMATS: Set<string> = new Set(['.mid', '.midi']);
 /** Maximum MIDI file size (10 MB) to prevent excessive memory allocation. */
 const MAX_MIDI_FILE_SIZE: number = 10 * 1024 * 1024;
 
+/**
+ * Parses a Standard MIDI File and calculates total playback duration.
+ *
+ * Reads the MThd header to extract timing division (ticks per beat),
+ * then iterates all MTrk track chunks to find the maximum tick and
+ * any tempo change meta events (0xFF 0x51). Converts the tick count
+ * to seconds using the accumulated tempo map.
+ *
+ * SMPTE-based timing division is not supported and returns 0.
+ *
+ * @param filePath - Absolute path to the MIDI file
+ * @returns Duration in seconds, or 0 if the file cannot be parsed
+ */
 export function parseMidiDuration(filePath: string): number {
   try {
     const fileSize: number = statSync(filePath).size;
