@@ -22,27 +22,7 @@
  */
 
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
-
-/**
- * Pre-computed constants for performance.
- */
-const TWO_PI: number = Math.PI * 2;
-const NUM_COLORS: number = 8;
-
-/**
- * Pre-parsed RGB values for the brand colors (flat array for cache efficiency).
- * Format: [r0, g0, b0, r1, g1, b1, ...]
- */
-const ONIX_COLORS_FLAT: Uint8Array = new Uint8Array([
-  247, 149, 51,   // #F79533 Orange
-  243, 112, 85,   // #F37055 Coral
-  239, 78, 123,   // #EF4E7B Pink
-  161, 102, 171,  // #A166AB Purple
-  80, 115, 184,   // #5073B8 Blue
-  16, 152, 173,   // #1098AD Teal
-  7, 179, 155,    // #07B39B Cyan
-  111, 186, 130,  // #6FBA82 Green
-]);
+import {ONIX_COLORS_FLAT, ONIX_COLOR_COUNT, TWO_PI} from './visualization-constants';
 
 /**
  * Onix visualization with pulsating gradient circle.
@@ -268,12 +248,12 @@ export class OnixVisualization extends Canvas2DVisualization {
     const glowGradient: CanvasGradient = ctx.createConicGradient(0, centerX, centerY);
 
     // Add color stops for each brand color
-    for (let i: number = 0; i < NUM_COLORS; i++) {
+    for (let i: number = 0; i < ONIX_COLOR_COUNT; i++) {
       const idx: number = i * 3;
       const r: number = colors[idx];
       const g: number = colors[idx + 1];
       const b: number = colors[idx + 2];
-      const stop: number = i / NUM_COLORS;
+      const stop: number = i / ONIX_COLOR_COUNT;
 
       gradient.addColorStop(stop, `rgb(${r}, ${g}, ${b})`);
       glowGradient.addColorStop(stop, `rgba(${r}, ${g}, ${b}, 0.6)`);

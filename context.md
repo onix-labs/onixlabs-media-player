@@ -781,6 +781,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | Settings Service HTTP Pattern | Added generic `updateSetting<T>()` helper and `clamp()` utility | ~400 |
 | Duplicate `isValidHexColor()` | Removed second identical method (lines 1370-1380); kept canonical copy at line 1306 | ~12 |
 | Dead `isValidHueShift()` | Removed unused validator method (defined but never called) | ~12 |
+| `ONIX_COLORS_FLAT` / `NUM_COLORS` / `TWO_PI` | Replaced local redeclarations in spectre, modern, onix with imports from `visualization-constants.ts`; renamed `NUM_COLORS` → `ONIX_COLOR_COUNT` | ~54 |
 
 ### Security Hardening
 

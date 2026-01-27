@@ -16,26 +16,7 @@
  */
 
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
-
-/**
- * Number of colors in the ONIXLabs brand palette.
- */
-const NUM_COLORS: number = 8;
-
-/**
- * Pre-parsed RGB values for the ONIXLabs brand colors (flat array for cache efficiency).
- * Format: [r0, g0, b0, r1, g1, b1, ...]
- */
-const ONIX_COLORS_FLAT: Uint8Array = new Uint8Array([
-  247, 149, 51,   // #F79533 Orange
-  243, 112, 85,   // #F37055 Coral
-  239, 78, 123,   // #EF4E7B Pink
-  161, 102, 171,  // #A166AB Purple
-  80, 115, 184,   // #5073B8 Blue
-  16, 152, 173,   // #1098AD Teal
-  7, 179, 155,    // #07B39B Cyan
-  111, 186, 130,  // #6FBA82 Green
-]);
+import {ONIX_COLORS_FLAT, ONIX_COLOR_COUNT} from './visualization-constants';
 
 /**
  * Modern waveform visualization with gradient colors.
@@ -150,12 +131,12 @@ export class ModernVisualization extends Canvas2DVisualization {
     const gradient: CanvasGradient = this.ctx.createLinearGradient(0, 0, this.width, 0);
 
     // Add color stops for each brand color
-    for (let i: number = 0; i < NUM_COLORS; i++) {
+    for (let i: number = 0; i < ONIX_COLOR_COUNT; i++) {
       const idx: number = i * 3;
       const r: number = ONIX_COLORS_FLAT[idx];
       const g: number = ONIX_COLORS_FLAT[idx + 1];
       const b: number = ONIX_COLORS_FLAT[idx + 2];
-      const stop: number = i / (NUM_COLORS - 1);
+      const stop: number = i / (ONIX_COLOR_COUNT - 1);
       gradient.addColorStop(stop, `rgb(${r}, ${g}, ${b})`);
     }
 
@@ -171,12 +152,12 @@ export class ModernVisualization extends Canvas2DVisualization {
     const gradient: CanvasGradient = this.ctx.createLinearGradient(0, 0, this.width, 0);
 
     // Add color stops for each brand color with reduced opacity
-    for (let i: number = 0; i < NUM_COLORS; i++) {
+    for (let i: number = 0; i < ONIX_COLOR_COUNT; i++) {
       const idx: number = i * 3;
       const r: number = ONIX_COLORS_FLAT[idx];
       const g: number = ONIX_COLORS_FLAT[idx + 1];
       const b: number = ONIX_COLORS_FLAT[idx + 2];
-      const stop: number = i / (NUM_COLORS - 1);
+      const stop: number = i / (ONIX_COLOR_COUNT - 1);
       gradient.addColorStop(stop, `rgba(${r}, ${g}, ${b}, 0.8)`);
     }
 
