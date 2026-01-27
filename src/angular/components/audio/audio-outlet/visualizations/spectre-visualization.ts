@@ -15,26 +15,7 @@
  */
 
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
-
-/**
- * Number of colors in the ONIXLabs brand palette.
- */
-const NUM_COLORS: number = 8;
-
-/**
- * Pre-parsed RGB values for the ONIXLabs brand colors (flat array for cache efficiency).
- * Format: [r0, g0, b0, r1, g1, b1, ...]
- */
-const ONIX_COLORS_FLAT: Uint8Array = new Uint8Array([
-  247, 149, 51,   // #F79533 Orange
-  243, 112, 85,   // #F37055 Coral
-  239, 78, 123,   // #EF4E7B Pink
-  161, 102, 171,  // #A166AB Purple
-  80, 115, 184,   // #5073B8 Blue
-  16, 152, 173,   // #1098AD Teal
-  7, 179, 155,    // #07B39B Cyan
-  111, 186, 130,  // #6FBA82 Green
-]);
+import {ONIX_COLORS_FLAT, ONIX_COLOR_COUNT} from './visualization-constants';
 
 /**
  * Spectre visualization with symmetrical frequency bars and smoke trail.
@@ -102,10 +83,10 @@ export class SpectreVisualization extends Canvas2DVisualization {
    * Spectrum spans from first to last color without wrapping.
    */
   private getBarColor(barIndex: number, totalBars: number): {r: number; g: number; b: number} {
-    // Map bar index to position in color spectrum (0 to NUM_COLORS - 1, no wrap)
+    // Map bar index to position in color spectrum (0 to ONIX_COLOR_COUNT - 1, no wrap)
     const maxIndex: number = Math.max(1, totalBars - 1);
-    const colorPosition: number = (barIndex / maxIndex) * (NUM_COLORS - 1);
-    const colorIndex: number = Math.min(Math.floor(colorPosition), NUM_COLORS - 2);
+    const colorPosition: number = (barIndex / maxIndex) * (ONIX_COLOR_COUNT - 1);
+    const colorIndex: number = Math.min(Math.floor(colorPosition), ONIX_COLOR_COUNT - 2);
     const t: number = colorPosition - colorIndex;
 
     // Get current and next color indices (clamped, no wrap-around)
