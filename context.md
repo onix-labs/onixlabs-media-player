@@ -1050,6 +1050,21 @@ npm run package:linux # Lint + Build + Obfuscate + Package for Linux (.AppImage,
 
 **Note**: ESLint runs automatically before every build. The build will fail if there are any linting errors, ensuring code quality is enforced consistently.
 
+### CI/CD Pipeline
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main` and every PR:
+
+| Job | Depends On | What |
+|-----|-----------|------|
+| Lint | — | `npm run lint` |
+| Build | — | `npm run build` + `npm run build:electron` |
+| Angular Tests | Lint, Build | `npm run test:angular` |
+| Electron Tests | Lint, Build | `npm run test:electron` |
+
+- **Lint and Build run in parallel** (no dependency between them)
+- **`node_modules` cached** via `actions/cache@v4` keyed on `package-lock.json` hash; `npm ci` skipped on cache hit
+- Tests gate on both lint and build passing
+
 ### Production Code Protection
 
 Production builds include code protection via bundling, minification, tree shaking, and obfuscation:
