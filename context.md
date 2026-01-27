@@ -788,6 +788,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | `applyDirectionalZoom()` | Moved identical method from plasma, neon, infinity into `Canvas2DVisualization` base class; accepts `fadeRate` and `zoomScale` parameters to handle per-visualization differences | ~72 |
 | Trail canvas `drawWaveform()` | Added optional `ctx` parameter to `drawPathWithLayers()` and `drawPointsWithLayers()`; removed private `drawWaveform()` from plasma and neon, `drawCircleWaveform()` from infinity | ~120 |
 | `getCachedColor()` / `getColorFromHue()` | Moved identical dual-hue color cache methods and state from plasma and infinity into `Canvas2DVisualization` base class | ~60 |
+| LCD ghosting `resize()` | Added `preserveContentOnResize` flag and content-preserving `resize()` to `Canvas2DVisualization`; removed identical `resize()` overrides and `hasDrawn` from waveform and modern | ~90 |
 
 ### Security Hardening
 

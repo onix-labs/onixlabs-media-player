@@ -638,6 +638,16 @@ export abstract class Canvas2DVisualization extends Visualization {
   /** Pixels with alpha below this threshold are cleared to fully transparent. */
   protected readonly ALPHA_THRESHOLD: number = 30;
 
+  /**
+   * When true, resize() preserves main canvas content (for LCD ghosting/persistence
+   * visualizations that draw directly to the main canvas with a fade effect).
+   * Set this in the constructor of subclasses that use this behavior.
+   */
+  protected preserveContentOnResize: boolean = false;
+
+  /** Whether the visualization has drawn at least one frame. Used with preserveContentOnResize. */
+  protected hasDrawn: boolean = false;
+
   /** Cached color values for dual-hue cycling visualizations. */
   private cachedColor1: {main: string; glow: string} | null = null;
   private cachedColor2: {main: string; glow: string} | null = null;
@@ -655,6 +665,62 @@ export abstract class Canvas2DVisualization extends Visualization {
     const ctx: CanvasRenderingContext2D | null = this.canvas.getContext('2d');
     if (!ctx) throw new Error('Failed to get 2D context');
     this.ctx = ctx;
+  }
+
+  /**
+   * Handles canvas resize with optional content preservation.
+   *
+   * When preserveContentOnResize is true, preserves main canvas content
+   * during resize to maintain LCD ghosting/persistence trails. Otherwise
+   * delegates to the default resize behavior.
+   */
+  public override resize(width: number, height: number): void {
+    if (!this.preserveContentOnResize) {
+      super.resize(width, height);
+      return;
+    }
+
+    const oldWidth: number = this.canvas.width;
+    const oldHeight: number = this.canvas.height;
+    const dimensionsChanged: boolean = oldWidth !== width || oldHeight !== height;
+
+    // Same dimensions + already drawn: nothing to do
+    if (!dimensionsChanged && this.hasDrawn) {
+      return;
+    }
+
+    // Same dimensions + not drawn yet: clear canvas (removes previous visualization content)
+    if (!dimensionsChanged && !this.hasDrawn) {
+      this.width = width;
+      this.height = height;
+      this.ctx.clearRect(0, 0, width, height);
+      return;
+    }
+
+    // Dimensions changed: preserve content if we've drawn at least once
+    if (this.hasDrawn && oldWidth > 0 && oldHeight > 0) {
+      const tempCanvas: HTMLCanvasElement = document.createElement('canvas');
+      tempCanvas.width = oldWidth;
+      tempCanvas.height = oldHeight;
+      const tempCtx: CanvasRenderingContext2D = tempCanvas.getContext('2d', {alpha: true})!;
+      tempCtx.drawImage(this.canvas, 0, 0);
+
+      this.width = width;
+      this.height = height;
+      this.canvas.width = width;
+      this.canvas.height = height;
+
+      this.ctx.imageSmoothingEnabled = true;
+      this.ctx.imageSmoothingQuality = 'high';
+      this.ctx.drawImage(tempCanvas, 0, 0, oldWidth, oldHeight, 0, 0, width, height);
+    } else {
+      this.width = width;
+      this.height = height;
+      this.canvas.width = width;
+      this.canvas.height = height;
+    }
+
+    this.onResize();
   }
 
   /**
