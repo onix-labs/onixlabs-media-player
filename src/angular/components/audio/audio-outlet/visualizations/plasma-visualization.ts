@@ -35,12 +35,6 @@ export class PlasmaVisualization extends Canvas2DVisualization {
   private hue1: number = 240;  // Start at blue
   private hue2: number = 120;  // Start at green (180 degrees apart)
 
-  /** Cached color values to avoid recalculation every frame */
-  private cachedColor1: {main: string; glow: string} | null = null;
-  private cachedColor2: {main: string; glow: string} | null = null;
-  private cachedHue1: number = -1;
-  private cachedHue2: number = -1;
-
   private dataArray: Uint8Array<ArrayBuffer>;
 
   /** Trail canvases for each waveform */
@@ -209,45 +203,6 @@ export class PlasmaVisualization extends Canvas2DVisualization {
       points[i].x = i * sliceWidth;
       points[i].y = centerY + sample * amplitude;
     }
-  }
-
-  /**
-   * Gets color strings for a given hue, with caching.
-   * Invalidates cache when hue changes by more than 1 degree.
-   */
-  private getCachedColor(colorIndex: 1 | 2, hue: number): {main: string; glow: string} {
-    const cachedHue: number = colorIndex === 1 ? this.cachedHue1 : this.cachedHue2;
-    const cachedColor: {main: string; glow: string} | null = colorIndex === 1 ? this.cachedColor1 : this.cachedColor2;
-
-    // Check if cache is valid (hue within 1 degree)
-    if (cachedColor && Math.abs(hue - cachedHue) < 1) {
-      return cachedColor;
-    }
-
-    // Calculate new color
-    const newColor: {main: string; glow: string} = this.getColorFromHue(hue);
-
-    // Update cache
-    if (colorIndex === 1) {
-      this.cachedColor1 = newColor;
-      this.cachedHue1 = hue;
-    } else {
-      this.cachedColor2 = newColor;
-      this.cachedHue2 = hue;
-    }
-
-    return newColor;
-  }
-
-  /**
-   * Gets color strings for a given hue.
-   */
-  private getColorFromHue(hue: number): {main: string; glow: string} {
-    const rgb: {r: number; g: number; b: number} = this.hslToRgb(hue, 100, 50);
-    return {
-      main: `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`,
-      glow: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.8)`
-    };
   }
 
   public override destroy(): void {
