@@ -638,6 +638,12 @@ export abstract class Canvas2DVisualization extends Visualization {
   /** Pixels with alpha below this threshold are cleared to fully transparent. */
   protected readonly ALPHA_THRESHOLD: number = 30;
 
+  /** Cached color values for dual-hue cycling visualizations. */
+  private cachedColor1: {main: string; glow: string} | null = null;
+  private cachedColor2: {main: string; glow: string} | null = null;
+  private cachedHue1: number = -1;
+  private cachedHue2: number = -1;
+
   /**
    * Creates a new 2D canvas visualization.
    *
@@ -742,6 +748,57 @@ export abstract class Canvas2DVisualization extends Visualization {
     trailCtx.translate(-centerX, -centerY);
     trailCtx.drawImage(tempCanvas, 0, 0);
     trailCtx.restore();
+  }
+
+  /**
+   * Gets color strings (main and glow) for a given hue.
+   *
+   * Converts a hue value to fully saturated RGB color strings suitable
+   * for use with drawPathWithLayers().
+   *
+   * @param hue - Hue value (0-360 degrees)
+   * @returns Object with main (rgb) and glow (rgba) color strings
+   */
+  protected getColorFromHue(hue: number): {main: string; glow: string} {
+    const rgb: {r: number; g: number; b: number} = this.hslToRgb(hue, PERCENT_100, PERCENT_100 / MULTIPLIER_DOUBLE);
+    return {
+      main: `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`,
+      glow: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.8)`
+    };
+  }
+
+  /**
+   * Gets cached color strings for a given hue, avoiding recalculation every frame.
+   *
+   * Supports two independent color slots (1 and 2) for dual-hue cycling
+   * visualizations. Cache is invalidated when hue changes by more than 1 degree.
+   *
+   * @param colorIndex - Which cache slot to use (1 or 2)
+   * @param hue - Current hue value (0-360 degrees)
+   * @returns Object with main (rgb) and glow (rgba) color strings
+   */
+  protected getCachedColor(colorIndex: 1 | 2, hue: number): {main: string; glow: string} {
+    const cachedHue: number = colorIndex === 1 ? this.cachedHue1 : this.cachedHue2;
+    const cachedColor: {main: string; glow: string} | null = colorIndex === 1 ? this.cachedColor1 : this.cachedColor2;
+
+    // Check if cache is valid (hue within 1 degree)
+    if (cachedColor && Math.abs(hue - cachedHue) < 1) {
+      return cachedColor;
+    }
+
+    // Calculate new color
+    const newColor: {main: string; glow: string} = this.getColorFromHue(hue);
+
+    // Update cache
+    if (colorIndex === 1) {
+      this.cachedColor1 = newColor;
+      this.cachedHue1 = hue;
+    } else {
+      this.cachedColor2 = newColor;
+      this.cachedHue2 = hue;
+    }
+
+    return newColor;
   }
 
   /**
