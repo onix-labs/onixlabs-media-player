@@ -1218,10 +1218,11 @@ npm run dev
 
 ### Testing Coverage
 
-- Only 4 `.spec.ts` files exist with minimal coverage
-- No integration tests for HTTP endpoints
-- No e2e tests for Electron window management
-- Visualization logic untested
+- **188 Electron tests** across 5 spec files (settings-manager, settings-validators, midi-parser, dependency-manager, application-menu)
+- **Coverage thresholds** enforced via `vitest.electron.config.ts` (statements: 20%, branches: 35%, functions: 20%, lines: 20%)
+- CI runs `test:electron:coverage` which fails if thresholds are not met
+- Well-tested modules: settings-manager (97%), application-menu (96%), midi-parser (79%)
+- Untested Electron runtime files (main.ts, preload.ts, unified-media-server.ts) require Electron process to test
 
 ### Remaining Low-Priority Duplication
 
