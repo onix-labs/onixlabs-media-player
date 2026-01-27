@@ -172,7 +172,11 @@ export class InfinityVisualization extends Canvas2DVisualization {
       this.FADE_RATE, this.ZOOM_SCALE
     );
     this.calculateCirclePoints(this.leftPoints, circle1X, circle1Y, amplitudeScale, 0);
-    this.drawCircleWaveform(this.leftTrailCtx!, this.leftPoints, color1.main, color1.glow);
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.leftTrailCtx!, this.leftPoints, this.CIRCLE_POINTS); },
+      color1.main, color1.glow, 'rgba(255, 255, 255, 0.5)',
+      {ctx: this.leftTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR, closePath: true}
+    );
 
     // Process second circle (trails expand outward from center)
     this.applyDirectionalZoom(
@@ -182,7 +186,11 @@ export class InfinityVisualization extends Canvas2DVisualization {
       this.FADE_RATE, this.ZOOM_SCALE
     );
     this.calculateCirclePoints(this.rightPoints, circle2X, circle2Y, amplitudeScale, this.CIRCLE_POINTS / 2);
-    this.drawCircleWaveform(this.rightTrailCtx!, this.rightPoints, color2.main, color2.glow);
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.rightTrailCtx!, this.rightPoints, this.CIRCLE_POINTS); },
+      color2.main, color2.glow, 'rgba(255, 255, 255, 0.5)',
+      {ctx: this.rightTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR, closePath: true}
+    );
 
     // Composite both trail canvases to main canvas with additive blending
     // This makes overlapping trails mix together rather than one covering the other
@@ -217,57 +225,6 @@ export class InfinityVisualization extends Canvas2DVisualization {
       points[i].x = centerX + radius * Math.cos(angle);
       points[i].y = centerY + radius * Math.sin(angle);
     }
-  }
-
-  private drawCircleWaveform(
-    ctx: CanvasRenderingContext2D,
-    points: Array<{x: number; y: number}>,
-    color: string,
-    glowColor: string
-  ): void {
-    // Use the base class helper with the pre-calculated points
-    // Note: We need to use the passed ctx, not this.ctx, since this draws to trail canvases
-    const numPoints: number = this.CIRCLE_POINTS;
-
-    // Build path using the base class smooth path helper
-    const buildPath: () => void = (): void => {
-      this.buildSmoothPath(ctx, points, numPoints);
-    };
-
-    // Reduce glow color opacity for the stroke
-    const glowStrokeColor: string = glowColor.replace(/[\d.]+\)$/, (match: string): string => {
-      const opacity: number = parseFloat(match) * 0.375;
-      return opacity.toFixed(2) + ')';
-    });
-
-    // Glow layer
-    ctx.save();
-    ctx.shadowBlur = this.getScaledGlowBlur(this.BASE_GLOW_BLUR);
-    ctx.shadowColor = glowColor;
-    ctx.strokeStyle = glowStrokeColor;
-    ctx.lineWidth = this.lineWidth + 4;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
-    ctx.closePath();
-    ctx.stroke();
-    ctx.restore();
-
-    // Main line
-    ctx.strokeStyle = color;
-    ctx.lineWidth = this.lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
-    ctx.closePath();
-    ctx.stroke();
-
-    // Highlight
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.lineWidth = 1;
-    buildPath();
-    ctx.closePath();
-    ctx.stroke();
   }
 
   /**
