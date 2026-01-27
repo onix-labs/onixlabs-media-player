@@ -782,6 +782,10 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | Duplicate `isValidHexColor()` | Removed second identical method (lines 1370-1380); kept canonical copy at line 1306 | ~12 |
 | Dead `isValidHueShift()` | Removed unused validator method (defined but never called) | ~12 |
 
+### Security Hardening
+
+- `openExternal()` in preload.ts validates URL protocol (whitelist `https:` and `http:` only) before calling `shell.openExternal()`, preventing `file://`, `javascript:`, and other dangerous protocol schemes
+
 ### Type Safety Improvements
 
 - All SSE event handlers use `safeParseJSON<T>()` with appropriate defaults

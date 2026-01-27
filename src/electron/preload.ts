@@ -292,7 +292,13 @@ const api: MediaPlayerAPI = {
     ipcRenderer.on('window:viewModeChanged', listener);
     return (): void => { ipcRenderer.removeListener('window:viewModeChanged', listener); };
   },
-  openExternal: (url: string): Promise<void> => shell.openExternal(url),
+  openExternal: (url: string): Promise<void> => {
+    const parsed: URL = new URL(url);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return Promise.reject(new Error(`Blocked openExternal with disallowed protocol: ${parsed.protocol}`));
+    }
+    return shell.openExternal(url);
+  },
   getVersionInfo: (): {electron: string; node: string; chrome: string; v8: string} => ({
     electron: process.versions.electron,
     node: process.versions.node,
