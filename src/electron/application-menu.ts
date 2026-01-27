@@ -48,6 +48,7 @@ export interface MenuCallbacks {
   onShowAbout: () => void;
   onOpenFile: () => void;
   onCloseMedia: () => void;
+  onCloseAll: () => void;
   onToggleFullscreen: () => void;
   onTogglePlayPause: () => void;
   onStop: () => void;
@@ -64,13 +65,14 @@ export interface MenuState {
   repeatEnabled: boolean;
   hasMedia: boolean;
   isPlaying: boolean;
+  openEnabled: boolean;
 }
 
 /** Stored callbacks for menu recreation */
 let storedCallbacks: MenuCallbacks | null = null;
 
 /** Current menu state */
-let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false, hasMedia: false, isPlaying: false};
+let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false, hasMedia: false, isPlaying: false, openEnabled: true};
 
 /**
  * Updates the menu state and rebuilds the menu.
@@ -124,6 +126,7 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
       {
         label: 'Open',
         accelerator: 'CmdOrCtrl+O',
+        enabled: state.openEnabled,
         click: callbacks.onOpenFile
       },
       {
@@ -135,7 +138,14 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
       {
         label: 'Close',
         accelerator: 'CmdOrCtrl+W',
+        enabled: state.hasMedia,
         click: callbacks.onCloseMedia
+      },
+      {
+        label: 'Close All',
+        accelerator: 'CmdOrCtrl+Shift+W',
+        enabled: state.hasMedia,
+        click: callbacks.onCloseAll
       },
       {type: 'separator'},
       {
@@ -180,6 +190,7 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
       {
         label: 'Full Screen',
         accelerator: isMac ? 'Ctrl+Cmd+F' : 'F11',
+        enabled: state.hasMedia,
         click: callbacks.onToggleFullscreen
       },
       {

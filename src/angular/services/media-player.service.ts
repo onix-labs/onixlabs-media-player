@@ -20,6 +20,8 @@
 import {Injectable, computed, inject, effect, OnDestroy, EffectRef} from '@angular/core';
 import {ElectronService, MediaInfo, PlaylistItem} from './electron.service';
 import {SettingsService} from './settings.service';
+import {DependencyService} from './dependency.service';
+import {buildFileDialogFilters} from '../constants/media.constants';
 
 /**
  * Possible playback states.
@@ -63,6 +65,9 @@ export type PlaybackState = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped
 export class MediaPlayerService implements OnDestroy {
   /** Reference to the underlying Electron service */
   private readonly electron: ElectronService = inject(ElectronService);
+
+  /** Dependency service for checking installed dependencies */
+  private readonly deps: DependencyService = inject(DependencyService);
 
   /** Reference to settings service for configurable behaviors */
   private readonly settings: SettingsService = inject(SettingsService);
@@ -230,7 +235,13 @@ export class MediaPlayerService implements OnDestroy {
    * await player.eject();
    */
   public async eject(): Promise<void> {
-    const files: string[] = await this.electron.openFileDialog(true);
+    if (this.deps.noDependenciesInstalled()) return;
+
+    const filters: {name: string; extensions: string[]}[] = buildFileDialogFilters(
+      this.deps.ffmpegInstalled(),
+      this.deps.fluidsynthInstalled()
+    );
+    const files: string[] = await this.electron.openFileDialog(true, filters);
     if (files.length === 0) return;
 
     // Check if playlist was empty before adding

@@ -13,6 +13,7 @@
 
 import {Injectable, signal, computed, inject, effect, OnDestroy, EffectRef} from '@angular/core';
 import {ElectronService} from './electron.service';
+import {MEDIA_EXTENSIONS, FFMPEG_EXTENSIONS, MIDI_EXTENSIONS} from '../constants/media.constants';
 
 // ============================================================================
 // Types
@@ -151,6 +152,28 @@ export class DependencyService implements OnDestroy {
   /** Active SoundFont path */
   public readonly activeSoundFont: ReturnType<typeof computed<string | null>> = computed(
     (): string | null => this.dependencyState()?.activeSoundFont ?? null
+  );
+
+  /** Whether at least one dependency is installed */
+  public readonly anyDependencyInstalled: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.ffmpegInstalled() || this.fluidsynthInstalled()
+  );
+
+  /** Whether zero dependencies are installed (only true after state is loaded) */
+  public readonly noDependenciesInstalled: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.isLoaded() && !this.anyDependencyInstalled()
+  );
+
+  /** Dynamic set of allowed file extensions based on installed dependencies */
+  public readonly allowedExtensions: ReturnType<typeof computed<ReadonlySet<string>>> = computed(
+    (): ReadonlySet<string> => {
+      const ffmpeg: boolean = this.ffmpegInstalled();
+      const fluidsynth: boolean = this.fluidsynthInstalled();
+      if (ffmpeg && fluidsynth) return MEDIA_EXTENSIONS;
+      if (ffmpeg) return FFMPEG_EXTENSIONS;
+      if (fluidsynth) return MIDI_EXTENSIONS;
+      return new Set();
+    }
   );
 
   /** Whether an install/uninstall operation is in progress */

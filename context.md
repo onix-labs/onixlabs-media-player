@@ -134,7 +134,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 
 ### Fullscreen Mode
 
-- Fullscreen button in playback controls bar (or macOS green traffic light)
+- Fullscreen button in playback controls bar (or macOS green traffic light, disabled when no media loaded)
 - Double-click visualization or video to toggle fullscreen
 - Escape key exits fullscreen
 - Audio fullscreen: only visualization visible (no controls or toggles)
@@ -189,8 +189,12 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 ### Application Menu
 
 - Native menu bar for macOS (app menu), Windows/Linux (File menu)
-- **File menu**: Open (Cmd+O), Close (Cmd+W), with placeholders for URL, playlists, Save As
+- **File menu**: Open (Cmd+O), Close (Cmd+W), Close All (Cmd+Shift+W), with placeholders for URL, playlists, Save As
+  - Open disabled when no dependencies installed (at least FFmpeg or FluidSynth required)
+  - Close and Close All disabled when no media loaded
+  - Close All stops playback and clears the entire playlist (same as playlist Clear button)
 - **View menu**: Full Screen toggle, Visualizations submenu (organized by category: Bars, Waves), Options (settings)
+  - Full Screen disabled when no media loaded
 - **Playback menu**: Play/Pause (Space) with dynamic label, Stop (Shift+Space), Shuffle/Repeat toggles
 - **Help menu**: About ONIXPlayer (opens About view), placeholders for Help Topics
 - Menu callbacks communicated via IPC to renderer for UI updates
@@ -198,6 +202,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Shuffle/Repeat menu checkboxes sync with actual state via callback mechanism
 - Play/Pause label dynamically updates: shows "Pause" when playing, "Play" otherwise
 - Play/Pause, Shuffle, Repeat disabled when no media loaded (matches UI button states)
+- macOS green traffic light (fullscreen) disabled when no media loaded via `setFullScreenable(false)`
 
 ### About View
 
@@ -229,6 +234,14 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
   - Each missing dependency gets its own single-line banner: warning icon, bold name + "missing", description, solid red "Open Settings" button
   - Banners are overlaid without displacing the centered idle content (logo, text)
   - "Open Settings" opens the Dependencies configuration panel directly
+- **Dependency-gated file loading**: All file loading paths are restricted based on installed dependencies
+  - When zero dependencies installed: Open menu, eject button, and drag-and-drop are all disabled
+  - When only FFmpeg installed: File dialog and drag-and-drop restricted to audio/video formats (no MIDI)
+  - When only FluidSynth installed: File dialog and drag-and-drop restricted to MIDI formats only
+  - When both installed: All supported media formats available
+  - Extension sets: `FFMPEG_EXTENSIONS` (MP3, MP4, FLAC, etc.), `MIDI_EXTENSIONS` (.mid, .midi), `MEDIA_EXTENSIONS` (union)
+  - File dialog filters dynamically built via `buildFileDialogFilters()` utility
+  - Drag-and-drop filtering uses `DependencyService.allowedExtensions()` computed signal
 - Cross-platform binary search paths:
   - macOS: `/opt/homebrew/bin/`, `/usr/local/bin/`, `/usr/bin/`
   - Linux: `/usr/bin/`, `/usr/local/bin/`, `/snap/bin/`
@@ -241,6 +254,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Missing dependency warning banners overlaid at top of idle state (absolutely positioned, does not displace centered content)
 - File > Open adds files and immediately starts playback
 - File > Close stops current track and removes it from playlist
+- File > Close All stops playback and clears the entire playlist
 
 ---
 
@@ -410,7 +424,7 @@ AudioContext.destination (speakers)
 
 | File | Purpose |
 |------|---------|
-| `src/angular/constants/media.constants.ts` | Shared `MEDIA_EXTENSIONS` constant for file type filtering |
+| `src/angular/constants/media.constants.ts` | Extension sets (`FFMPEG_EXTENSIONS`, `MIDI_EXTENSIONS`, `MEDIA_EXTENSIONS`), `buildFileDialogFilters()` utility |
 | `src/angular/types/electron.d.ts` | Type definitions with detailed interface docs |
 
 ---

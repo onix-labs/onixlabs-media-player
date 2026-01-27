@@ -25,6 +25,7 @@
 import {Component, inject, computed, signal, HostListener, ChangeDetectionStrategy} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
+import {DependencyService} from '../../../services/dependency.service';
 import type {PlaylistItem} from '../../../types/electron';
 
 /**
@@ -69,9 +70,15 @@ export class LayoutControls {
   /** Electron service for fullscreen control */
   private readonly electron: ElectronService = inject(ElectronService);
 
+  /** Dependency service for checking installed dependencies */
+  private readonly deps: DependencyService = inject(DependencyService);
+
   // ============================================================================
   // Reactive State Signals
   // ============================================================================
+
+  /** Whether file opening is possible (at least one dependency installed) */
+  public readonly canOpenFiles: ReturnType<typeof computed<boolean>> = computed((): boolean => !this.deps.noDependenciesInstalled());
 
   /** Whether playback is currently active (affects play/pause button icon) */
   public readonly isPlaying: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.isPlaying());

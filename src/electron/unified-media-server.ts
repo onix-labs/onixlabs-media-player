@@ -947,6 +947,9 @@ export class UnifiedMediaServer {
   /** Callback for playback state changes (for menu state) */
   private onPlaybackStateChangeCallback: ((isPlaying: boolean) => void) | null = null;
 
+  /** Callback for dependency state changes (for menu open enabled state) */
+  private onDependencyStateChangeCallback: ((ffmpegInstalled: boolean, fluidsynthInstalled: boolean) => void) | null = null;
+
   /**
    * Creates a new unified media server.
    * Call start() to begin listening for connections.
@@ -981,6 +984,24 @@ export class UnifiedMediaServer {
    */
   public onPlaybackStateChange(callback: (isPlaying: boolean) => void): void {
     this.onPlaybackStateChangeCallback = callback;
+  }
+
+  /**
+   * Registers a callback for dependency state changes.
+   *
+   * @param callback - Function called when dependency install state changes
+   */
+  public onDependencyStateChange(callback: (ffmpegInstalled: boolean, fluidsynthInstalled: boolean) => void): void {
+    this.onDependencyStateChangeCallback = callback;
+  }
+
+  /**
+   * Broadcasts dependency state via SSE and notifies the callback.
+   */
+  private broadcastDependencyState(): void {
+    const state: DependencyState = this.deps.getState();
+    this.sse.broadcast('dependencies:state', state);
+    this.onDependencyStateChangeCallback?.(state.ffmpeg.installed, state.fluidsynth.installed);
   }
 
   /**
@@ -2582,7 +2603,7 @@ export class UnifiedMediaServer {
       this.sse.broadcast('dependencies:progress', progress);
     });
 
-    this.sse.broadcast('dependencies:state', this.deps.getState());
+    this.broadcastDependencyState();
   }
 
   /**
@@ -2606,7 +2627,7 @@ export class UnifiedMediaServer {
       this.sse.broadcast('dependencies:progress', progress);
     });
 
-    this.sse.broadcast('dependencies:state', this.deps.getState());
+    this.broadcastDependencyState();
   }
 
   /**
@@ -2624,7 +2645,7 @@ export class UnifiedMediaServer {
 
     try {
       const info: SoundFontInfo = this.deps.installSoundFont(sourcePath);
-      this.sse.broadcast('dependencies:state', this.deps.getState());
+      this.broadcastDependencyState();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, soundfont: info }));
     } catch (err) {
@@ -2648,7 +2669,7 @@ export class UnifiedMediaServer {
 
     const removed: boolean = this.deps.removeSoundFont(fileName);
     if (removed) {
-      this.sse.broadcast('dependencies:state', this.deps.getState());
+      this.broadcastDependencyState();
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -2660,9 +2681,9 @@ export class UnifiedMediaServer {
    */
   private handleDependenciesRefresh(res: Readonly<ServerResponse>): void {
     this.deps.detectBinaries();
-    const state: DependencyState = this.deps.getState();
-    this.sse.broadcast('dependencies:state', state);
+    this.broadcastDependencyState();
 
+    const state: DependencyState = this.deps.getState();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(state));
   }

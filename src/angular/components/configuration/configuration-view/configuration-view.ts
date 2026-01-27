@@ -77,12 +77,6 @@ interface SettingsCategory {
  */
 const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
-    id: 'dependencies',
-    name: 'Dependencies',
-    icon: 'fa-solid fa-puzzle-piece',
-    description: 'Manage required external dependencies for media playback.',
-  },
-  {
     id: 'application',
     name: 'Application',
     icon: 'fa-solid fa-gear',
@@ -93,6 +87,12 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     name: 'Appearance',
     icon: 'fa-solid fa-palette',
     description: 'Configure window transparency and background.',
+  },
+  {
+    id: 'dependencies',
+    name: 'Dependencies',
+    icon: 'fa-solid fa-puzzle-piece',
+    description: 'Manage required external dependencies for media playback.',
   },
   {
     id: 'playback',

@@ -92,8 +92,8 @@ const depsLogger: ReturnType<typeof createScopedLogger> = createScopedLogger('De
 
 /** Descriptions for each dependency */
 const DEPENDENCY_DESCRIPTIONS: Readonly<Record<DependencyId, string>> = {
-  ffmpeg: 'Required for audio and video playback (MP3, FLAC, MP4, MKV, etc.)',
-  fluidsynth: 'Required for MIDI playback (.mid, .midi files)',
+  ffmpeg: 'Required for audio and video playback',
+  fluidsynth: 'Required for MIDI playback',
 };
 
 /** Manual download URLs */

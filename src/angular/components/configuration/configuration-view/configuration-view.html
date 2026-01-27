@@ -138,11 +138,6 @@
                         <pre class="install-output">{{ progress.output }}</pre>
                       }
                     </div>
-                  } @else if (progress.status === 'success') {
-                    <div class="install-progress success">
-                      <i class="fa-solid fa-circle-check"></i>
-                      <span>{{ progress.message }}</span>
-                    </div>
                   } @else if (progress.status === 'error') {
                     <div class="install-progress error">
                       <i class="fa-solid fa-circle-xmark"></i>
@@ -178,7 +173,7 @@
                       <p class="soundfont-empty">No SoundFonts installed. Install a .sf2 file for MIDI playback.</p>
                     }
                     <button class="dependency-button install soundfont-install" (click)="onInstallSoundFont()" (mouseup)="$any($event.currentTarget).blur()">
-                      <i class="fa-solid fa-plus"></i> Install SoundFont
+                      Install SoundFont
                     </button>
                   </div>
                 }

@@ -20,6 +20,7 @@ import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.js';
 import {createApplicationMenu, updateMenuState} from './application-menu.js';
 import type {WindowBounds, MacOSVisualEffectState, AppearanceSettings} from './settings-manager.js';
+import type {DependencyState} from './dependency-manager.js';
 import {initializeLogger, mainLogger, ipcLogger, windowLogger, getLogFilePath} from './logger.js';
 
 // Set app name (shows in dock/menu bar during development)
@@ -204,7 +205,12 @@ class Program {
     // Register callback to update menu when playlist count changes (enables/disables shuffle/repeat)
     this.mediaServer.onPlaylistCountChange((count: number): void => {
       mainLogger.debug(`Playlist count changed: ${count}`);
-      updateMenuState({hasMedia: count > 0});
+      const hasMedia: boolean = count > 0;
+      updateMenuState({hasMedia});
+      // On macOS, disable the green traffic light button when no media is loaded
+      if (process.platform === 'darwin' && this.window) {
+        this.window.setFullScreenable(hasMedia);
+      }
     });
 
     // Register callback to update menu when playback state changes (Play/Pause label)
@@ -212,6 +218,16 @@ class Program {
       mainLogger.debug(`Playback state changed: ${isPlaying ? 'playing' : 'paused'}`);
       updateMenuState({isPlaying});
     });
+
+    // Register callback to update menu when dependency state changes (enables/disables Open)
+    this.mediaServer.onDependencyStateChange((ffmpeg: boolean, fluidsynth: boolean): void => {
+      mainLogger.debug(`Dependency state changed: ffmpeg=${ffmpeg}, fluidsynth=${fluidsynth}`);
+      updateMenuState({openEnabled: ffmpeg || fluidsynth});
+    });
+
+    // Set initial openEnabled state based on current dependency detection
+    const depState: DependencyState = this.mediaServer.getDependencyManager().getState();
+    updateMenuState({openEnabled: depState.ffmpeg.installed || depState.fluidsynth.installed});
 
     mainLogger.debug('Creating browser window');
     this.window = this.createBrowserWindow();
@@ -308,9 +324,11 @@ class Program {
 
     if (process.platform === 'darwin') {
       // macOS: native vibrancy with hidden title bar
+      // fullscreenable starts false — enabled when media is loaded (via onPlaylistCountChange)
       platformOptions = {
         titleBarStyle: 'hiddenInset',
         trafficLightPosition: {x: 12, y: 13},
+        fullscreenable: false,
         // Apply vibrancy if glass enabled, otherwise use background color
         ...(glassEnabled
           ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
@@ -699,6 +717,9 @@ class Program {
       },
       onCloseMedia: (): void => {
         this.window?.webContents.send('menu:closeMedia');
+      },
+      onCloseAll: (): void => {
+        this.window?.webContents.send('menu:closeAll');
       },
       onToggleFullscreen: (): void => {
         if (this.window) {

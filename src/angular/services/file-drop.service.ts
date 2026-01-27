@@ -12,7 +12,7 @@
 
 import {Injectable, inject} from '@angular/core';
 import {ElectronService} from './electron.service';
-import {MEDIA_EXTENSIONS} from '../constants/media.constants';
+import {DependencyService} from './dependency.service';
 
 /**
  * Service for processing drag-and-drop file events.
@@ -39,6 +39,9 @@ export class FileDropService {
   /** Electron service for file path resolution */
   private readonly electron: ElectronService = inject(ElectronService);
 
+  /** Dependency service for allowed extension filtering */
+  private readonly deps: DependencyService = inject(DependencyService);
+
   /**
    * Extracts valid media file paths from a drag-and-drop event.
    *
@@ -62,7 +65,7 @@ export class FileDropService {
       const file: File = files[i];
       const ext: string = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
 
-      if (MEDIA_EXTENSIONS.has(ext)) {
+      if (this.deps.allowedExtensions().has(ext)) {
         try {
           const filePath: string = this.electron.getPathForFile(file);
           if (filePath) {
