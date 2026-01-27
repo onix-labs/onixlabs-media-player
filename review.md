@@ -478,7 +478,7 @@ This would reduce the visualization codebase by approximately **700 lines** (fro
 
 23. [DONE] **Remove duplicate `.color-control`** in `configuration-view.scss`.
 
-24. **Write visualization base class tests** for `setSensitivity`, `setTrailIntensity`, `setFftSize`, `resize`, fade logic.
+24. [DONE] **Write visualization base class tests** for `setSensitivity`, `setTrailIntensity`, `setFftSize`, `resize`, fade logic.
 
 ### Low (Improve When Convenient)
 
