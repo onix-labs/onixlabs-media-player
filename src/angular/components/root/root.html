@@ -1,5 +1,5 @@
 @if (isConfigurationMode()) {
-  <app-configuration-view/>
+  <app-configuration-view [initialCategory]="configInitialCategory()"/>
 }
 @if (isAboutMode()) {
   <app-about-view (close)="exitAboutMode()"/>
@@ -9,7 +9,7 @@
        [class.hidden]="isConfigurationMode() || isAboutMode()"
        (mouseenter)="onMiniplayerMouseEnter()"
        (mouseleave)="onMiniplayerMouseLeave()">
-    <app-layout-outlet class="miniplayer-content"/>
+    <app-layout-outlet class="miniplayer-content" (openDependencySettings)="enterConfigurationMode('dependencies')"/>
     <app-miniplayer-controls class="miniplayer-overlay" [class.controls-visible]="showControls()"/>
   </div>
 } @else {
@@ -17,7 +17,7 @@
     @if (!isFullscreen()) {
       <app-layout-header/>
     }
-    <app-layout-outlet/>
+    <app-layout-outlet (openDependencySettings)="enterConfigurationMode('dependencies')"/>
     @if (!isFullscreen() || showControls()) {
       <app-layout-controls [class.fullscreen-overlay]="isFullscreen()"/>
     }

@@ -279,6 +279,12 @@ export interface MediaPlayerAPI {
   openFileDialog: (options: OpenDialogOptions) => Promise<string[]>;
 
   /**
+   * Opens the native file picker dialog scoped to SoundFont (.sf2) files.
+   * @returns Promise resolving to selected file paths, or empty array if cancelled
+   */
+  openSoundFontDialog: () => Promise<string[]>;
+
+  /**
    * Gets the absolute file path for a File object from drag-and-drop.
    * @param file - File object from DataTransfer
    * @returns The absolute file system path
