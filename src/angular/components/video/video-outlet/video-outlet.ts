@@ -139,6 +139,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
   private videoCanPlayHandler: (() => void) | null = null;
   private videoLoadedMetadataHandler: (() => void) | null = null;
 
+  /** Fade-out interval handle (stored for cleanup) */
+  private fadeInterval: ReturnType<typeof setInterval> | null = null;
+
   // ============================================================================
   // Constructor - Reactive Effects
   // ============================================================================
@@ -250,17 +253,25 @@ export class VideoOutlet implements OnInit, OnDestroy {
       const fadeDuration: number = this.electron.fadeOutRequested();
       const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
       if (fadeDuration > 0 && video && video.volume > 0) {
+        // Clear any existing fade interval to prevent leaks
+        if (this.fadeInterval !== null) {
+          clearInterval(this.fadeInterval);
+        }
+
         // Perform gradual volume fade using interval
         const steps: number = 10;
         const stepDuration: number = fadeDuration / steps;
         const volumeStep: number = video.volume / steps;
         let currentStep: number = 0;
 
-        const fadeInterval: ReturnType<typeof setInterval> = setInterval((): void => {
+        this.fadeInterval = setInterval((): void => {
           currentStep++;
           video.volume = Math.max(0, video.volume - volumeStep);
           if (currentStep >= steps) {
-            clearInterval(fadeInterval);
+            if (this.fadeInterval !== null) {
+              clearInterval(this.fadeInterval);
+              this.fadeInterval = null;
+            }
             video.volume = 0;
           }
         }, stepDuration);
@@ -290,6 +301,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
    * Stops playback and clears the video source.
    */
   public ngOnDestroy(): void {
+    // Clear any in-progress fade interval
+    if (this.fadeInterval !== null) {
+      clearInterval(this.fadeInterval);
+      this.fadeInterval = null;
+    }
+
     const video: HTMLVideoElement = this.videoRef.nativeElement;
     video.pause();
     video.src = '';
