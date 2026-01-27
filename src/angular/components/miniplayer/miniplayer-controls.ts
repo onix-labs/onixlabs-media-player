@@ -10,9 +10,8 @@
  * @module app/components/miniplayer/miniplayer-controls
  */
 
-import {Component, computed, inject, signal, HostListener, ChangeDetectionStrategy} from '@angular/core';
-import {MediaPlayerService} from '../../services/media-player.service';
-import {ElectronService} from '../../services/electron.service';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {TransportControlsBase} from '../shared/transport-controls-base';
 
 /**
  * Miniplayer controls component.
@@ -23,8 +22,8 @@ import {ElectronService} from '../../services/electron.service';
  * - Next track button
  * - Exit miniplayer button (return to desktop mode)
  *
- * The component uses the same MediaPlayerService as the main controls,
- * ensuring consistent playback behavior.
+ * Extends TransportControlsBase for shared transport logic (icons, Shift key,
+ * skip/forward/backward handlers).
  */
 @Component({
   selector: 'app-miniplayer-controls',
@@ -34,130 +33,7 @@ import {ElectronService} from '../../services/electron.service';
   styleUrl: './miniplayer-controls.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class MiniplayerControls {
-  /** Media player service for playback control */
-  private readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
-
-  /** Electron service for window control */
-  private readonly electron: ElectronService = inject(ElectronService);
-
-  /** Whether playback is currently active */
-  public readonly isPlaying: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.isPlaying());
-
-  /** Whether any track is loaded */
-  public readonly hasTrack: ReturnType<typeof computed<boolean>> = computed((): boolean => !!this.mediaPlayer.currentTrack());
-
-  /** Whether the Shift key is currently pressed */
-  private readonly isShiftPressed: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-
-  /**
-   * Whether backward button should be enabled.
-   * Always enabled when a track is loaded (restart track, or go to previous if multiple).
-   */
-  public readonly canSkipBackward: ReturnType<typeof computed<boolean>> = computed((): boolean =>
-    this.mediaPlayer.playlistCount() >= 1
-  );
-
-  /**
-   * Whether forward button should be enabled.
-   * Enabled when: Shift pressed (can skip by time) OR can advance to next track.
-   */
-  public readonly canSkipForward: ReturnType<typeof computed<boolean>> = computed((): boolean => {
-    if (this.isShiftPressed()) return true;
-    const count: number = this.mediaPlayer.playlistCount();
-    if (count <= 1) return false;
-    if (this.mediaPlayer.isRepeatEnabled()) return true;
-    const currentIndex: number = this.electron.playlist().currentIndex;
-    return currentIndex < count - 1;
-  });
-
-  /** Icon class for the backward button (changes with Shift key) */
-  public readonly backwardIcon: ReturnType<typeof computed<string>> = computed((): string => {
-    if (this.hasTrack() && this.isShiftPressed()) {
-      return 'fa-solid fa-backward';
-    }
-    return 'fa-solid fa-backward-step';
-  });
-
-  /** Icon class for the forward button (changes with Shift key) */
-  public readonly forwardIcon: ReturnType<typeof computed<string>> = computed((): string => {
-    if (this.hasTrack() && this.isShiftPressed()) {
-      return 'fa-solid fa-forward';
-    }
-    return 'fa-solid fa-forward-step';
-  });
-
-  /** Icon class for the play/pause button (changes to stop with Shift key) */
-  public readonly playPauseIcon: ReturnType<typeof computed<string>> = computed((): string => {
-    if (this.hasTrack() && this.isShiftPressed()) {
-      return 'fa-solid fa-stop';
-    }
-    return this.isPlaying() ? 'fa-solid fa-pause' : 'fa-solid fa-play';
-  });
-
-  /**
-   * Tracks Shift key press state for button icon changes.
-   */
-  @HostListener('document:keydown', ['$event'])
-  public onKeyDown(event: KeyboardEvent): void {
-    if (event.key === 'Shift') {
-      this.isShiftPressed.set(true);
-    }
-  }
-
-  /**
-   * Tracks Shift key release state for button icon changes.
-   */
-  @HostListener('document:keyup', ['$event'])
-  public onKeyUp(event: KeyboardEvent): void {
-    if (event.key === 'Shift') {
-      this.isShiftPressed.set(false);
-    }
-  }
-
-  /**
-   * Goes to previous track, or skips backward if Shift is pressed.
-   * Without Shift: previous track (or restart if past threshold)
-   * With Shift: skip backward by configured duration
-   *
-   * @param event - Mouse event to check for Shift modifier
-   */
-  public async onBackward(event: MouseEvent): Promise<void> {
-    if (event.shiftKey) {
-      await this.mediaPlayer.skipBackward();
-    } else {
-      await this.mediaPlayer.previous();
-    }
-  }
-
-  /**
-   * Handles play/pause button click, or stops if Shift is pressed.
-   *
-   * @param event - Mouse event to check for Shift modifier
-   */
-  public async onPlayPause(event: MouseEvent): Promise<void> {
-    if (event.shiftKey) {
-      await this.mediaPlayer.stop();
-    } else {
-      await this.mediaPlayer.togglePlayPause();
-    }
-  }
-
-  /**
-   * Advances to next track, or skips forward if Shift is pressed.
-   * Without Shift: next track
-   * With Shift: skip forward by configured duration
-   *
-   * @param event - Mouse event to check for Shift modifier
-   */
-  public async onForward(event: MouseEvent): Promise<void> {
-    if (event.shiftKey) {
-      await this.mediaPlayer.skipForward();
-    } else {
-      await this.mediaPlayer.next();
-    }
-  }
-
+export class MiniplayerControls extends TransportControlsBase {
   /**
    * Handles exit miniplayer button click.
    * Returns to desktop mode, restoring previous window size and position.

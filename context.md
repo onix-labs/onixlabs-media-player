@@ -791,6 +791,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | LCD ghosting `resize()` | Added `preserveContentOnResize` flag and content-preserving `resize()` to `Canvas2DVisualization`; removed identical `resize()` overrides and `hasDrawn` from waveform and modern | ~90 |
 | Duplicate `.color-control` | Removed second duplicate `&.color-control` block in `configuration-view.scss` (identical parent selector); kept first definition with hover/focus states | ~31 |
 | Trail canvas creation boilerplate | Added `createOffscreenCanvas()` helper to `Canvas2DVisualization` base class; replaced 15 manual `createElement`/`getContext` blocks across 6 trail visualizations | ~15 |
+| Transport control duplication | Extracted `TransportControlsBase` directive with shared Shift key state, 7 computed signals, and 3 transport handlers; both `LayoutControls` and `MiniplayerControls` extend it | ~120 |
 
 ### Security Hardening
 
