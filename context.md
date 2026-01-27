@@ -786,6 +786,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 ### Security Hardening
 
 - `openExternal()` in preload.ts validates URL protocol (whitelist `https:` and `http:` only) before calling `shell.openExternal()`, preventing `file://`, `javascript:`, and other dangerous protocol schemes
+- `parseMidiDuration()` enforces 10 MB file size limit via `statSync` before `readFileSync` to prevent excessive memory allocation from maliciously large MIDI files
 
 ### Type Safety Improvements
 
