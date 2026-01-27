@@ -155,7 +155,9 @@ export class PlasmaVisualization extends Canvas2DVisualization {
     // Process top waveform (trails expand outward from center)
     this.applyDirectionalZoom(
       this.topTrailCanvas!, this.topTrailCtx!,
-      this.screenCenterX, this.screenCenterY
+      this.tempCanvas!, this.tempCtx!,
+      this.screenCenterX, this.screenCenterY,
+      this.FADE_RATE, this.ZOOM_SCALE
     );
     this.calculateWaveformPoints(this.topPoints, this.topCenterY, 0);
     this.drawWaveform(this.topTrailCtx!, this.topPoints, color1.main, color1.glow);
@@ -163,7 +165,9 @@ export class PlasmaVisualization extends Canvas2DVisualization {
     // Process bottom waveform (trails expand outward from center)
     this.applyDirectionalZoom(
       this.bottomTrailCanvas!, this.bottomTrailCtx!,
-      this.screenCenterX, this.screenCenterY
+      this.tempCanvas!, this.tempCtx!,
+      this.screenCenterX, this.screenCenterY,
+      this.FADE_RATE, this.ZOOM_SCALE
     );
     this.calculateWaveformPoints(this.bottomPoints, this.bottomCenterY, this.WAVEFORM_POINTS / 2);
     this.drawWaveform(this.bottomTrailCtx!, this.bottomPoints, color2.main, color2.glow);
@@ -176,41 +180,6 @@ export class PlasmaVisualization extends Canvas2DVisualization {
     ctx.globalCompositeOperation = 'source-over';
 
     this.applyFadeOverlay();
-  }
-
-  private applyDirectionalZoom(
-    trailCanvas: HTMLCanvasElement,
-    trailCtx: CanvasRenderingContext2D,
-    zoomCenterX: number,
-    zoomCenterY: number
-  ): void {
-    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
-    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
-    const width: number = this.width;
-    const height: number = this.height;
-
-    // Copy current trails to temp canvas
-    tempCtx.clearRect(0, 0, width, height);
-    tempCtx.drawImage(trailCanvas, 0, 0);
-
-    // Clear trail canvas
-    trailCtx.clearRect(0, 0, width, height);
-
-    // Draw back scaled from the specified zoom center with fade
-    const effectiveFadeRate: number = this.FADE_RATE * this.getFadeMultiplier();
-    trailCtx.save();
-    // Use high-quality image smoothing to reduce artifacts from repeated scaling
-    trailCtx.imageSmoothingEnabled = true;
-    trailCtx.imageSmoothingQuality = 'high';
-    trailCtx.globalAlpha = 1 - effectiveFadeRate;
-    // Use floor to avoid sub-pixel center point which causes quadrant artifacts
-    const centerX: number = Math.floor(zoomCenterX);
-    const centerY: number = Math.floor(zoomCenterY);
-    trailCtx.translate(centerX, centerY);
-    trailCtx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
-    trailCtx.translate(-centerX, -centerY);
-    trailCtx.drawImage(tempCanvas, 0, 0);
-    trailCtx.restore();
   }
 
   private calculateWaveformPoints(
