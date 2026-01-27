@@ -141,7 +141,7 @@ export class WaveformVisualization extends Canvas2DVisualization {
     const centerY: number = height / 2;
     const numPoints: number = this.WAVEFORM_POINTS;
     const amplitudeScale: number = height * 0.4;
-    const sensitivityFactor: number = this.sensitivity * 2;
+    const sensitivityFactor: number = this.sensitivityFactor;
     const dataLength: number = dataArray.length;
 
     // Calculate waveform points - use ratio to ensure full width coverage

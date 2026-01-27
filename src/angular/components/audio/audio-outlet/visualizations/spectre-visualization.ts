@@ -150,7 +150,7 @@ export class SpectreVisualization extends Canvas2DVisualization {
     const maxBarHeight: number = height * 0.45; // Max height from center
 
     // Pre-calculate bar values and heights for all bars
-    const sensitivityFactor: number = this.sensitivity * 2;
+    const sensitivityFactor: number = this.sensitivityFactor;
     const barHeights: number[] = [];
     const barXPositions: number[] = [];
     const barColors: Array<{r: number; g: number; b: number}> = [];

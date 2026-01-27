@@ -227,7 +227,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const centerY: number = this.centerY;
     const halfWidth: number = this.halfWidth;
     const minArcRadius: number = this.minArcRadius;
-    const sensitivityFactor: number = this.sensitivity * 2;
+    const sensitivityFactor: number = this.sensitivityFactor;
     const amplitudeScale: number = height * 0.3;
     const bendStrength: number = 1.2;
     const numSamples: number = this.WAVEFORM_SAMPLES;
@@ -287,7 +287,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const centerY: number = this.centerY;
     const baseRadius: number = this.baseCircleRadius;
     const numPoints: number = this.CENTER_CIRCLE_POINTS;
-    const sensitivityFactor: number = this.sensitivity * 2;
+    const sensitivityFactor: number = this.sensitivityFactor;
     const amplitudeScale: number = height * 0.08;
     const sampleStep: number = (dataLength * 0.25) / numPoints;
 

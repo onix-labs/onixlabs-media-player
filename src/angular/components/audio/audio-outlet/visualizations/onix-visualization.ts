@@ -207,7 +207,7 @@ export class OnixVisualization extends Canvas2DVisualization {
     const centerY: number = this.centerY;
     const baseRadius: number = this.baseCircleRadius;
     const numPoints: number = this.CENTER_CIRCLE_POINTS;
-    const sensitivityFactor: number = this.sensitivity * 2;
+    const sensitivityFactor: number = this.sensitivityFactor;
     const amplitudeScale: number = height * 0.08;
     const sampleStep: number = (dataLength * 0.25) / numPoints;
     const cosTable: Float32Array = this.cosTable;

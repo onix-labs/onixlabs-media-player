@@ -111,6 +111,14 @@ export abstract class Visualization {
   protected sensitivity: number = DEFAULT_SENSITIVITY;
 
   /**
+   * Pre-computed sensitivity scaling factor (sensitivity * 2).
+   * Used by all visualizations to scale audio data amplitude.
+   */
+  protected get sensitivityFactor(): number {
+    return this.sensitivity * 2;
+  }
+
+  /**
    * Trail intensity controls how long visual trails persist (0-1, default 0.5).
    * 0 = fast fade (minimal trails), 1 = slow fade (long trails).
    * Only affects visualizations with trail effects (Tunnel, Pulsar, Water, Infinity).

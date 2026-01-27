@@ -309,7 +309,7 @@ export class WaterVisualization extends Canvas2DVisualization {
     const minArcRadius: number = this.minArcRadius;
     const samplesPerHalf: number = this.WAVEFORM_SAMPLES;
     const bendStrength: number = 1.2;
-    const sensitivityFactor: number = this.sensitivity * 2;
+    const sensitivityFactor: number = this.sensitivityFactor;
     const amplitudeScale: number = height * 0.3;
 
     // Calculate downsampling step
@@ -391,7 +391,7 @@ export class WaterVisualization extends Canvas2DVisualization {
     const dataLength: number = dataArray.length;
     const height: number = this.height;
     const numPoints: number = this.CENTER_CIRCLE_POINTS;
-    const sensitivityFactor: number = this.sensitivity * 2;
+    const sensitivityFactor: number = this.sensitivityFactor;
     const amplitudeScale: number = height * 0.08;
     const sampleStep: number = (dataLength * 0.25) / numPoints;
 
