@@ -33,7 +33,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 
 ### Quality Score Breakdown
 
-Based on independent review (`review.md`) with all 31 action items resolved:
+Based on independent review with all 31 action items resolved:
 
 | Category | Pre-Fix | Post-Fix | Weight | Weighted |
 |----------|---------|----------|--------|----------|
@@ -402,7 +402,11 @@ AudioContext.destination (speakers)
 |------|---------|
 | `src/electron/main.ts` | App initialization, IPC handlers, fullscreen window events, menu setup |
 | `src/electron/preload.ts` | IPC bridge (file dialog, SoundFont dialog, server port, fullscreen control, menu events, openExternal, version info, log path) |
-| `src/electron/unified-media-server.ts` | HTTP API, SSE, playlist management, MIDI parsing |
+| `src/electron/unified-media-server.ts` | HTTP API, media streaming, playback state, transcoding |
+| `src/electron/playlist-manager.ts` | Server-side playlist with shuffle (Fisher-Yates) and repeat |
+| `src/electron/sse-manager.ts` | Server-Sent Events broadcast and client management |
+| `src/electron/midi-parser.ts` | MIDI binary duration parsing (tempo changes, tick positions) |
+| `src/electron/media-types.ts` | Shared TypeScript interfaces (PlaylistItem, PlaylistState, etc.) |
 | `src/electron/settings-manager.ts` | Persistent settings storage (JSON file in userData) |
 | `src/electron/application-menu.ts` | Native application menu for macOS/Windows/Linux |
 | `src/electron/dependency-manager.ts` | Cross-platform binary detection, install/uninstall, SoundFont management |
@@ -433,12 +437,26 @@ AudioContext.destination (speakers)
 | `src/angular/components/configuration/configuration-view/` | Settings UI with accordion sidebar, per-visualization settings; close button returns to player |
 | `src/angular/components/about/about-view/` | About dialog with version info and links |
 
+### Shared Components & Directives
+
+| File | Purpose |
+|------|---------|
+| `src/angular/components/shared/transport-controls-base.ts` | Base directive with shared Shift key state, computed signals, and transport handlers for LayoutControls and MiniplayerControls |
+| `src/angular/components/audio/audio-outlet/visualizations/visualization-constants.ts` | Shared visualization constants (ONIX_COLORS_FLAT, ONIX_COLOR_COUNT, TWO_PI) |
+
 ### Shared Constants
 
 | File | Purpose |
 |------|---------|
 | `src/angular/constants/media.constants.ts` | Extension sets (`FFMPEG_EXTENSIONS`, `MIDI_EXTENSIONS`, `MEDIA_EXTENSIONS`), `buildFileDialogFilters()` utility |
 | `src/angular/types/electron.d.ts` | Type definitions with detailed interface docs |
+
+### SCSS Partials
+
+| File | Purpose |
+|------|---------|
+| `src/styles/_variables.scss` | Shared SCSS variables (colors, spacing, dimensions) |
+| `src/styles/_mixins.scss` | Shared SCSS mixins (layout patterns, responsive helpers) |
 
 ---
 
@@ -1066,14 +1084,19 @@ protected resizeCanvasPreserving(
 ### NPM Scripts
 
 ```bash
-npm run lint         # Run ESLint on all TypeScript files
-npm run dev          # Lint + Development mode with hot reload
-npm run build:all    # Lint + Build Angular + Electron (with tree shaking)
-npm run obfuscate    # Obfuscate production code (Angular only)
-npm run package      # Lint + Build + Obfuscate + Package with electron-builder
-npm run package:mac  # Lint + Build + Obfuscate + Package for macOS (.app, .dmg, .zip)
-npm run package:win  # Lint + Build + Obfuscate + Package for Windows (.exe, portable)
-npm run package:linux # Lint + Build + Obfuscate + Package for Linux (.AppImage, .deb)
+npm run lint                 # Run ESLint on all TypeScript files
+npm run dev                  # Lint + Development mode with hot reload
+npm run build:all            # Lint + Build Angular + Electron (with tree shaking)
+npm run obfuscate            # Obfuscate production code (Angular only)
+npm run package              # Lint + Build + Obfuscate + Package with electron-builder
+npm run package:mac          # Lint + Build + Obfuscate + Package for macOS (.app, .dmg, .zip)
+npm run package:win          # Lint + Build + Obfuscate + Package for Windows (.exe, portable)
+npm run package:linux        # Lint + Build + Obfuscate + Package for Linux (.AppImage, .deb)
+npm run test                 # Run all tests (Angular + Electron)
+npm run test:angular         # Run Angular tests only (ng test)
+npm run test:electron        # Run Electron tests only (vitest)
+npm run test:electron:coverage # Run Electron tests with coverage thresholds
+npm run test:electron:watch  # Run Electron tests in watch mode
 ```
 
 **Note**: ESLint runs automatically before every build. The build will fail if there are any linting errors, ensuring code quality is enforced consistently.
@@ -1287,10 +1310,8 @@ npm run dev
 
 | Pattern | Files | Lines |
 |---------|-------|-------|
-| Skip forward/backward button logic | layout-controls.ts, miniplayer-controls.ts | ~30 |
 | Canvas trail initialization | pulsar, water, infinity visualizations | ~60 |
 | Event handler patterns (onDragOver/Leave) | 4 components | ~80 |
-| Transport control methods | layout-controls.ts, miniplayer-controls.ts | ~40 |
 
 ### Potential Enhancements
 

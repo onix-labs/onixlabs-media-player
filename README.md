@@ -16,18 +16,23 @@ A beautiful, feature-rich media player for macOS, Windows, and Linux.
 
 Play your music with stunning real-time visualizations. ONIXPlayer supports MP3, FLAC, WAV, OGG, M4A, AAC, and WMA formats out of the box.
 
-**9 Unique Visualizations:**
-- **Analyzer** — Classic frequency spectrum bars
-- **Spectre** — Mirrored bars with smoke trail effects
-- **Pulsar** — Radial waveform with white emissions
-- **Record** — Water ripple effect with rotating waveforms
-- **Onix** — The ONIXLabs logo brought to life
-- **Classic** — Oscilloscope-style waveform
-- **Plasma** — Dual waveforms with plasma effect
-- **Flux** — Orbiting circles with rainbow spectrum
-- **Neon** — Rotating waveforms with a neon glow
+**10 Unique Visualizations:**
 
-All visualizations respond to your music in real-time and can be customized with sensitivity, color shifting, trail effects, and more.
+**Bars:**
+- **Analyzer** — Configurable frequency spectrum bars with gradient colors
+- **Spectre** — Mirrored bars with ONIXLabs brand color spectrum and smoke trail effects
+
+**Waves:**
+- **Classic** — Oscilloscope-style waveform with green glow and LCD ghosting
+- **Modern** — Oscilloscope-style waveform with ONIXLabs brand color gradient
+- **Plasma** — Dual waveforms with spectrum color cycling and zoom trails
+- **Infinity** — Dual circular waveforms orbiting like binary black holes
+- **Neon** — Counter-rotating crosses with cyan/magenta color swapping
+- **Onix** — The ONIXLabs logo brought to life with pulsating conic gradient
+- **Pulsar** — Pulsing concentric rings with curved waveforms
+- **Water** — Water ripple effect with bass-reactive rotating waveforms
+
+All visualizations respond to your music in real-time and can be customized with sensitivity, trail effects, line width, glow intensity, and more.
 
 ### MIDI Playback
 
