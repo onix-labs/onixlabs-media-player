@@ -203,16 +203,32 @@ export class NeonVisualization extends Canvas2DVisualization {
     this.calculateVerticalWaveformPoints(this.cyanVerticalPoints, 0);
     this.rotatePoints(this.cyanHorizontalPoints, this.rotationAngle);
     this.rotatePoints(this.cyanVerticalPoints, this.rotationAngle);
-    this.drawWaveform(this.cyanTrailCtx!, this.cyanHorizontalPoints, color1.main, color1.glow);
-    this.drawWaveform(this.cyanTrailCtx!, this.cyanVerticalPoints, color1.main, color1.glow);
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.cyanTrailCtx!, this.cyanHorizontalPoints, this.WAVEFORM_POINTS); },
+      color1.main, color1.glow, 'rgba(255, 255, 255, 0.5)',
+      {ctx: this.cyanTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR}
+    );
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.cyanTrailCtx!, this.cyanVerticalPoints, this.WAVEFORM_POINTS); },
+      color1.main, color1.glow, 'rgba(255, 255, 255, 0.5)',
+      {ctx: this.cyanTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR}
+    );
 
     // Cross 2 (rotates counter-clockwise)
     this.calculateHorizontalWaveformPoints(this.magentaHorizontalPoints, this.WAVEFORM_POINTS / 2);
     this.calculateVerticalWaveformPoints(this.magentaVerticalPoints, this.WAVEFORM_POINTS / 2);
     this.rotatePoints(this.magentaHorizontalPoints, -this.rotationAngle);
     this.rotatePoints(this.magentaVerticalPoints, -this.rotationAngle);
-    this.drawWaveform(this.magentaTrailCtx!, this.magentaHorizontalPoints, color2.main, color2.glow);
-    this.drawWaveform(this.magentaTrailCtx!, this.magentaVerticalPoints, color2.main, color2.glow);
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.magentaTrailCtx!, this.magentaHorizontalPoints, this.WAVEFORM_POINTS); },
+      color2.main, color2.glow, 'rgba(255, 255, 255, 0.5)',
+      {ctx: this.magentaTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR}
+    );
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.magentaTrailCtx!, this.magentaVerticalPoints, this.WAVEFORM_POINTS); },
+      color2.main, color2.glow, 'rgba(255, 255, 255, 0.5)',
+      {ctx: this.magentaTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR}
+    );
 
     // Composite both trail canvases to main canvas with additive blending
     ctx.clearRect(0, 0, width, height);
@@ -283,52 +299,6 @@ export class NeonVisualization extends Canvas2DVisualization {
       points[i].x = centerX + dx * cos - dy * sin;
       points[i].y = centerY + dx * sin + dy * cos;
     }
-  }
-
-  private drawWaveform(
-    ctx: CanvasRenderingContext2D,
-    points: Array<{x: number; y: number}>,
-    color: string,
-    glowColor: string
-  ): void {
-    const numPoints: number = this.WAVEFORM_POINTS;
-
-    // Build path using the base class smooth path helper
-    const buildPath: () => void = (): void => {
-      this.buildSmoothPath(ctx, points, numPoints);
-    };
-
-    // Reduce glow color opacity for the stroke
-    const glowStrokeColor: string = glowColor.replace(/[\d.]+\)$/, (match: string): string => {
-      const opacity: number = parseFloat(match) * 0.375;
-      return opacity.toFixed(2) + ')';
-    });
-
-    // Glow layer
-    ctx.save();
-    ctx.shadowBlur = this.getScaledGlowBlur(this.BASE_GLOW_BLUR);
-    ctx.shadowColor = glowColor;
-    ctx.strokeStyle = glowStrokeColor;
-    ctx.lineWidth = this.lineWidth + 4;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
-    ctx.stroke();
-    ctx.restore();
-
-    // Main line
-    ctx.strokeStyle = color;
-    ctx.lineWidth = this.lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
-    ctx.stroke();
-
-    // Highlight
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.lineWidth = 1;
-    buildPath();
-    ctx.stroke();
   }
 
   public override destroy(): void {

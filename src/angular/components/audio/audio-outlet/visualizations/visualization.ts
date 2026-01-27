@@ -765,6 +765,7 @@ export abstract class Canvas2DVisualization extends Visualization {
     glowColor: string,
     highlightColor?: string,
     options: {
+      ctx?: CanvasRenderingContext2D;
       baseGlowBlur?: number;
       closePath?: boolean;
       fill?: boolean;
@@ -772,7 +773,7 @@ export abstract class Canvas2DVisualization extends Visualization {
       highlightLineWidth?: number;
     } = {}
   ): void {
-    const ctx: CanvasRenderingContext2D = this.ctx;
+    const ctx: CanvasRenderingContext2D = options.ctx ?? this.ctx;
     const {
       baseGlowBlur = GLOW_BLUR_RADIUS,
       closePath = false,
@@ -858,6 +859,7 @@ export abstract class Canvas2DVisualization extends Visualization {
     glowColor: string,
     highlightColor?: string,
     options: {
+      ctx?: CanvasRenderingContext2D;
       baseGlowBlur?: number;
       closePath?: boolean;
       fill?: boolean;
@@ -872,11 +874,12 @@ export abstract class Canvas2DVisualization extends Visualization {
 
     if (end - start < 2) return;
 
+    const renderCtx: CanvasRenderingContext2D = options.ctx ?? this.ctx;
     const buildPath: () => void = (): void => {
-      this.ctx.beginPath();
-      this.ctx.moveTo(points[start].x, points[start].y);
+      renderCtx.beginPath();
+      renderCtx.moveTo(points[start].x, points[start].y);
       for (let i: number = start + 1; i < end; i++) {
-        this.ctx.lineTo(points[i].x, points[i].y);
+        renderCtx.lineTo(points[i].x, points[i].y);
       }
     };
 

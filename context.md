@@ -786,6 +786,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | `this.sensitivity * 2` | Added `sensitivityFactor` getter to `Canvas2DVisualization` base class; replaced 13 occurrences across all 10 visualizations | ~13 |
 | `clearLowAlphaPixels()` | Moved identical method from waveform, spectre, modern into `Canvas2DVisualization` base class with optional `ctx` parameter; also moved `ALPHA_THRESHOLD` constant | ~54 |
 | `applyDirectionalZoom()` | Moved identical method from plasma, neon, infinity into `Canvas2DVisualization` base class; accepts `fadeRate` and `zoomScale` parameters to handle per-visualization differences | ~72 |
+| Trail canvas `drawWaveform()` | Added optional `ctx` parameter to `drawPathWithLayers()` and `drawPointsWithLayers()`; removed private `drawWaveform()` from plasma and neon, `drawCircleWaveform()` from infinity | ~120 |
 
 ### Security Hardening
 

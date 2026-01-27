@@ -160,7 +160,11 @@ export class PlasmaVisualization extends Canvas2DVisualization {
       this.FADE_RATE, this.ZOOM_SCALE
     );
     this.calculateWaveformPoints(this.topPoints, this.topCenterY, 0);
-    this.drawWaveform(this.topTrailCtx!, this.topPoints, color1.main, color1.glow);
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.topTrailCtx!, this.topPoints, this.WAVEFORM_POINTS); },
+      color1.main, color1.glow, 'rgba(255, 255, 255, 0.5)',
+      {ctx: this.topTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR}
+    );
 
     // Process bottom waveform (trails expand outward from center)
     this.applyDirectionalZoom(
@@ -170,7 +174,11 @@ export class PlasmaVisualization extends Canvas2DVisualization {
       this.FADE_RATE, this.ZOOM_SCALE
     );
     this.calculateWaveformPoints(this.bottomPoints, this.bottomCenterY, this.WAVEFORM_POINTS / 2);
-    this.drawWaveform(this.bottomTrailCtx!, this.bottomPoints, color2.main, color2.glow);
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.bottomTrailCtx!, this.bottomPoints, this.WAVEFORM_POINTS); },
+      color2.main, color2.glow, 'rgba(255, 255, 255, 0.5)',
+      {ctx: this.bottomTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR}
+    );
 
     // Composite both trail canvases to main canvas with additive blending
     ctx.clearRect(0, 0, width, height);
@@ -201,52 +209,6 @@ export class PlasmaVisualization extends Canvas2DVisualization {
       points[i].x = i * sliceWidth;
       points[i].y = centerY + sample * amplitude;
     }
-  }
-
-  private drawWaveform(
-    ctx: CanvasRenderingContext2D,
-    points: Array<{x: number; y: number}>,
-    color: string,
-    glowColor: string
-  ): void {
-    const numPoints: number = this.WAVEFORM_POINTS;
-
-    // Build path using the base class smooth path helper
-    const buildPath: () => void = (): void => {
-      this.buildSmoothPath(ctx, points, numPoints);
-    };
-
-    // Reduce glow color opacity for the stroke
-    const glowStrokeColor: string = glowColor.replace(/[\d.]+\)$/, (match: string): string => {
-      const opacity: number = parseFloat(match) * 0.375;
-      return opacity.toFixed(2) + ')';
-    });
-
-    // Glow layer
-    ctx.save();
-    ctx.shadowBlur = this.getScaledGlowBlur(this.BASE_GLOW_BLUR);
-    ctx.shadowColor = glowColor;
-    ctx.strokeStyle = glowStrokeColor;
-    ctx.lineWidth = this.lineWidth + 4;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
-    ctx.stroke();
-    ctx.restore();
-
-    // Main line
-    ctx.strokeStyle = color;
-    ctx.lineWidth = this.lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
-    ctx.stroke();
-
-    // Highlight
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.lineWidth = 1;
-    buildPath();
-    ctx.stroke();
   }
 
   /**
