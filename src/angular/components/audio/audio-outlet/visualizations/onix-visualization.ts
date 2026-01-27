@@ -107,14 +107,12 @@ export class OnixVisualization extends Canvas2DVisualization {
 
     // Create trail canvas if needed
     if (!this.trailCanvas) {
-      this.trailCanvas = document.createElement('canvas');
-      this.trailCtx = this.trailCanvas.getContext('2d', {alpha: true})!;
+      ({canvas: this.trailCanvas, ctx: this.trailCtx} = this.createOffscreenCanvas());
     }
 
     // Create temp canvas if needed
     if (!this.tempCanvas) {
-      this.tempCanvas = document.createElement('canvas');
-      this.tempCtx = this.tempCanvas.getContext('2d', {alpha: true})!;
+      ({canvas: this.tempCanvas, ctx: this.tempCtx} = this.createOffscreenCanvas());
     }
 
     // Resize trail canvas while preserving content
