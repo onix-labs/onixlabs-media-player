@@ -1,3 +1,5 @@
+@use 'variables' as *;
+
 :host {
   display: flex;
   flex-direction: column;
@@ -38,10 +40,10 @@
   flex-direction: column;
   padding: 1rem;
   gap: 1rem;
-  background: rgba(0, 0, 0, 0.5);
+  background: $black-50;
   border: 0.0625rem solid black;
   border-radius: 6px;
-  outline: 0.0625rem solid rgba(255, 255, 255, 0.25);
+  outline: 0.0625rem solid $white-25;
 
   .category-list {
     display: flex;
@@ -57,19 +59,19 @@
     background: none;
     border: none;
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.7);
+    color: $white-70;
     font-size: 0.875rem;
     cursor: pointer;
     transition: background 0.2s ease, color 0.2s ease;
     text-align: left;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.08);
+      background: $white-8;
       color: white;
     }
 
     &.active {
-      background: rgba(255, 255, 255, 0.1);
+      background: $white-10;
       color: white;
     }
 
@@ -93,7 +95,7 @@
     background: none;
     border: none;
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.4);
+    color: $white-40;
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease, transform 0.2s ease;
 
@@ -103,8 +105,8 @@
     }
 
     &:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: rgba(255, 255, 255, 0.8);
+      background: $white-10;
+      color: $white-80;
     }
 
     &.expanded i {
@@ -126,19 +128,19 @@
     background: none;
     border: none;
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.5);
+    color: $white-50;
     font-size: 0.8125rem;
     cursor: pointer;
     text-align: left;
     transition: background 0.15s ease, color 0.15s ease;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.05);
-      color: rgba(255, 255, 255, 0.8);
+      background: $white-5;
+      color: $white-80;
     }
 
     &.active {
-      background: rgba(255, 255, 255, 0.08);
+      background: $white-8;
       color: white;
     }
   }
@@ -166,7 +168,7 @@
     .panel-description {
       margin: 0;
       font-size: 0.875rem;
-      color: rgba(255, 255, 255, 0.5);
+      color: $white-50;
     }
   }
 
@@ -188,14 +190,14 @@
     align-items: center;
     gap: 2rem;
     padding: 1rem;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: $white-3;
+    border: 1px solid $white-8;
     border-radius: 8px;
     transition: background 0.2s ease, border-color 0.2s ease;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.05);
-      border-color: rgba(255, 255, 255, 0.12);
+      background: $white-5;
+      border-color: $white-12;
     }
 
     .setting-label {
@@ -212,7 +214,7 @@
       .setting-description {
         margin: 0;
         font-size: 0.8125rem;
-        color: rgba(255, 255, 255, 0.5);
+        color: $white-50;
         line-height: 1.4;
       }
     }
@@ -226,8 +228,8 @@
       select {
         min-width: 180px;
         padding: 0.5rem 2rem 0.5rem 0.75rem;
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: $white-8;
+        border: 1px solid $white-15;
         border-radius: 6px;
         color: white;
         font-size: 0.875rem;
@@ -239,12 +241,12 @@
         transition: border-color 0.2s ease, background 0.2s ease;
 
         &:hover {
-          border-color: rgba(255, 255, 255, 0.25);
+          border-color: $white-25;
         }
 
         &:focus {
           outline: none;
-          border-color: rgba(255, 255, 255, 0.5);
+          border-color: $white-50;
         }
 
         option {
@@ -255,10 +257,10 @@
 
       > .reset-button {
         padding: 0.5rem;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: $white-5;
+        border: 1px solid $white-10;
         border-radius: 4px;
-        color: rgba(255, 255, 255, 0.4);
+        color: $white-40;
         cursor: pointer;
         transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 
@@ -267,9 +269,9 @@
         }
 
         &:hover {
-          color: rgba(255, 255, 255, 0.8);
-          background: rgba(255, 255, 255, 0.1);
-          border-color: rgba(255, 255, 255, 0.2);
+          color: $white-80;
+          background: $white-10;
+          border-color: $white-20;
         }
       }
 
@@ -283,7 +285,7 @@
         input[type="range"] {
           flex: 1;
           height: 4px;
-          background: rgba(255, 255, 255, 0.15);
+          background: $white-15;
           border-radius: 2px;
           appearance: none;
           cursor: pointer;
@@ -299,7 +301,7 @@
 
             &:hover {
               transform: scale(1.1);
-              box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+              box-shadow: 0 0 8px $white-40;
             }
           }
 
@@ -316,7 +318,7 @@
             outline: none;
 
             &::-webkit-slider-thumb {
-              box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
+              box-shadow: 0 0 0 3px $white-30;
             }
           }
         }
@@ -324,7 +326,7 @@
         .slider-value {
           min-width: 3rem;
           text-align: right;
-          color: rgba(255, 255, 255, 0.7);
+          color: $white-70;
           font-size: 0.875rem;
           font-variant-numeric: tabular-nums;
         }
@@ -341,7 +343,7 @@
           width: 40px;
           height: 28px;
           padding: 0;
-          border: 2px solid rgba(255, 255, 255, 0.3);
+          border: 2px solid $white-30;
           border-radius: 4px;
           background: transparent;
           cursor: pointer;
@@ -357,19 +359,19 @@
           }
 
           &:hover {
-            border-color: rgba(255, 255, 255, 0.6);
+            border-color: $white-60;
           }
 
           &:focus {
             outline: none;
-            border-color: rgba(255, 255, 255, 0.8);
+            border-color: $white-80;
           }
         }
 
         .color-value {
           min-width: 4.5rem;
           text-align: left;
-          color: rgba(255, 255, 255, 0.7);
+          color: $white-70;
           font-size: 0.875rem;
           font-family: monospace;
           text-transform: uppercase;
@@ -409,7 +411,7 @@
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(255, 255, 255, 0.15);
+          background: $white-15;
           border-radius: 24px;
           transition: background 0.2s ease;
 
@@ -436,8 +438,8 @@
         input[type="number"] {
           width: 100px;
           padding: 0.5rem 0.75rem;
-          background: rgba(255, 255, 255, 0.08);
-          border: 1px solid rgba(255, 255, 255, 0.15);
+          background: $white-8;
+          border: 1px solid $white-15;
           border-radius: 6px;
           color: white;
           font-size: 0.875rem;
@@ -445,16 +447,16 @@
           transition: border-color 0.2s ease, background 0.2s ease;
 
           &::placeholder {
-            color: rgba(255, 255, 255, 0.4);
+            color: $white-40;
           }
 
           &:hover {
-            border-color: rgba(255, 255, 255, 0.25);
+            border-color: $white-25;
           }
 
           &:focus {
             outline: none;
-            border-color: rgba(255, 255, 255, 0.5);
+            border-color: $white-50;
           }
 
           // Hide spinner buttons
@@ -468,17 +470,17 @@
 
         .reset-button {
           padding: 0.5rem;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: $white-5;
+          border: 1px solid $white-10;
           border-radius: 4px;
-          color: rgba(255, 255, 255, 0.5);
+          color: $white-50;
           cursor: pointer;
           transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 
           &:hover {
-            color: rgba(255, 255, 255, 0.8);
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.2);
+            color: $white-80;
+            background: $white-10;
+            border-color: $white-20;
           }
         }
       }
@@ -521,7 +523,7 @@
 
   // Expandable section for per-visualization settings
   .expandable-section {
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid $white-8;
     border-radius: 8px;
     overflow: hidden;
 
@@ -531,25 +533,25 @@
       gap: 0.75rem;
       width: 100%;
       padding: 1rem;
-      background: rgba(255, 255, 255, 0.02);
+      background: $white-2;
       border: none;
-      color: rgba(255, 255, 255, 0.8);
+      color: $white-80;
       font-size: 0.9375rem;
       font-weight: 500;
       cursor: pointer;
       transition: background 0.2s ease;
 
       &:hover {
-        background: rgba(255, 255, 255, 0.05);
+        background: $white-5;
       }
 
       &.expanded {
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        border-bottom: 1px solid $white-8;
       }
 
       i {
         font-size: 0.75rem;
-        color: rgba(255, 255, 255, 0.5);
+        color: $white-50;
         transition: transform 0.2s ease;
       }
 
@@ -557,13 +559,13 @@
         margin-left: auto;
         font-size: 0.8125rem;
         font-weight: 400;
-        color: rgba(255, 255, 255, 0.4);
+        color: $white-40;
       }
     }
 
     .expandable-content {
       padding: 0.5rem;
-      background: rgba(0, 0, 0, 0.2);
+      background: $black-20;
     }
   }
 
@@ -577,7 +579,7 @@
     transition: background 0.15s ease;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.03);
+      background: $white-3;
     }
 
     .per-viz-label {
@@ -587,7 +589,7 @@
       min-width: 140px;
 
       .per-viz-name {
-        color: rgba(255, 255, 255, 0.7);
+        color: $white-70;
         font-size: 0.8125rem;
       }
 
@@ -595,15 +597,15 @@
         padding: 0.25rem;
         background: none;
         border: none;
-        color: rgba(255, 255, 255, 0.3);
+        color: $white-30;
         font-size: 0.6875rem;
         cursor: pointer;
         border-radius: 3px;
         transition: color 0.15s ease, background 0.15s ease;
 
         &:hover {
-          color: rgba(255, 255, 255, 0.7);
-          background: rgba(255, 255, 255, 0.1);
+          color: $white-70;
+          background: $white-10;
         }
       }
     }
@@ -617,7 +619,7 @@
       input[type="range"] {
         flex: 1;
         height: 3px;
-        background: rgba(255, 255, 255, 0.12);
+        background: $white-12;
         border-radius: 2px;
         appearance: none;
         cursor: pointer;
@@ -649,7 +651,7 @@
       .slider-value {
         min-width: 2.5rem;
         text-align: right;
-        color: rgba(255, 255, 255, 0.5);
+        color: $white-50;
         font-size: 0.75rem;
         font-variant-numeric: tabular-nums;
 
@@ -669,8 +671,8 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: $white-2;
+    border: 1px solid $white-8;
     border-radius: 6px;
 
     .dependency-indicator {
@@ -678,11 +680,11 @@
       flex-shrink: 0;
 
       &.installed {
-        color: #4ade80;
+        color: $color-success;
       }
 
       &.missing {
-        color: #ef4444;
+        color: $color-danger;
       }
     }
 
@@ -696,17 +698,17 @@
       .dependency-name {
         font-size: 0.875rem;
         font-weight: 600;
-        color: rgba(255, 255, 255, 0.9);
+        color: $white-90;
       }
 
       .dependency-description {
         font-size: 0.75rem;
-        color: rgba(255, 255, 255, 0.5);
+        color: $white-50;
       }
 
       .dependency-path {
         font-size: 0.6875rem;
-        color: rgba(255, 255, 255, 0.3);
+        color: $white-30;
         font-family: monospace;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -734,7 +736,7 @@
     &.install {
       background: rgba(74, 222, 128, 0.15);
       border-color: rgba(74, 222, 128, 0.3);
-      color: #4ade80;
+      color: $color-success;
 
       &:hover:not(:disabled) {
         background: rgba(74, 222, 128, 0.25);
@@ -744,7 +746,7 @@
     &.uninstall {
       background: rgba(239, 68, 68, 0.15);
       border-color: rgba(239, 68, 68, 0.3);
-      color: #ef4444;
+      color: $color-danger;
 
       &:hover:not(:disabled) {
         background: rgba(239, 68, 68, 0.25);
@@ -763,17 +765,17 @@
     justify-content: center;
     width: 1.75rem;
     height: 1.75rem;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: $white-5;
+    border: 1px solid $white-10;
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.4);
+    color: $white-40;
     font-size: 0.75rem;
     cursor: pointer;
     transition: background 0.2s ease, color 0.2s ease;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: rgba(255, 255, 255, 0.7);
+      background: $white-10;
+      color: $white-70;
     }
   }
 
@@ -812,11 +814,11 @@
   .install-output {
     margin: 0;
     padding: 0.5rem;
-    background: rgba(0, 0, 0, 0.3);
+    background: $black-30;
     border-radius: 4px;
     font-size: 0.6875rem;
     font-family: monospace;
-    color: rgba(255, 255, 255, 0.6);
+    color: $white-60;
     max-height: 12rem;
     overflow-y: auto;
     white-space: pre-wrap;
@@ -828,7 +830,7 @@
     flex-direction: column;
     gap: 0.75rem;
     padding-top: 0.5rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid $white-8;
     margin-top: 0.5rem;
 
     .soundfont-header {
@@ -840,12 +842,12 @@
     .soundfont-title {
       font-size: 0.875rem;
       font-weight: 600;
-      color: rgba(255, 255, 255, 0.8);
+      color: $white-80;
     }
 
     .soundfont-subtitle {
       font-size: 0.75rem;
-      color: rgba(255, 255, 255, 0.4);
+      color: $white-40;
     }
 
     .soundfont-list {
@@ -859,19 +861,19 @@
       align-items: center;
       gap: 0.5rem;
       padding: 0.5rem 0.75rem;
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: $white-2;
+      border: 1px solid $white-8;
       border-radius: 4px;
 
       > i {
-        color: rgba(255, 255, 255, 0.3);
+        color: $white-30;
         font-size: 0.75rem;
       }
 
       .soundfont-name {
         flex: 1;
         font-size: 0.8125rem;
-        color: rgba(255, 255, 255, 0.7);
+        color: $white-70;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -879,7 +881,7 @@
 
       .soundfont-size {
         font-size: 0.6875rem;
-        color: rgba(255, 255, 255, 0.3);
+        color: $white-30;
         font-variant-numeric: tabular-nums;
       }
 
@@ -891,14 +893,14 @@
         height: 1.5rem;
         background: none;
         border: none;
-        color: rgba(255, 255, 255, 0.3);
+        color: $white-30;
         font-size: 0.6875rem;
         cursor: pointer;
         border-radius: 3px;
         transition: color 0.2s ease, background 0.2s ease;
 
         &:hover {
-          color: #ef4444;
+          color: $color-danger;
           background: rgba(239, 68, 68, 0.1);
         }
       }
@@ -906,7 +908,7 @@
 
     .soundfont-empty {
       font-size: 0.75rem;
-      color: rgba(255, 255, 255, 0.3);
+      color: $white-30;
       margin: 0;
       padding: 0.5rem 0;
     }

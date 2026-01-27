@@ -420,9 +420,9 @@ This would reduce the visualization codebase by approximately **700 lines** (fro
 
 ### Critical (Fix Now)
 
-1. **Remove duplicate `isValidHexColor()`** in `settings-manager.ts` (lines 1378-1380). Delete the second copy.
+1. [DONE] **Remove duplicate `isValidHexColor()`** in `settings-manager.ts` (lines 1378-1380). Delete the second copy.
 
-2. **Validate URL protocol in `openExternal()`** in `preload.ts` (line 295). Whitelist `https://` and `http://` only:
+2. [DONE] **Validate URL protocol in `openExternal()`** in `preload.ts` (line 295). Whitelist `https://` and `http://` only:
    ```typescript
    openExternal: (url: string): Promise<void> => {
      if (url.startsWith('https://') || url.startsWith('http://')) {
@@ -432,62 +432,62 @@ This would reduce the visualization codebase by approximately **700 lines** (fro
    }
    ```
 
-3. **Add test coverage thresholds** to `vitest.electron.config.ts` and Angular test config.
+3. [DONE] **Add test coverage thresholds** to `vitest.electron.config.ts` and Angular test config.
 
-4. **Add CI build caching** - use `actions/cache` or shared artifacts to avoid 4x `npm ci`.
+4. [DONE] **Add CI build caching** - use `actions/cache` or shared artifacts to avoid 4x `npm ci`.
 
 ### High (Fix Soon)
 
-5. **Add optional `ctx` parameter to `drawPathWithLayers()`** — This single change (base class `visualization.ts:688`) unblocks 5 visualizations (plasma, neon, infinity, pulsar, water) from using the base class method instead of duplicating 3-layer draw logic. Eliminates ~200 lines. (See §11.2 D3)
+5. [DONE] **Add optional `ctx` parameter to `drawPathWithLayers()`** — This single change (base class `visualization.ts:688`) unblocks 5 visualizations (plasma, neon, infinity, pulsar, water) from using the base class method instead of duplicating 3-layer draw logic. Eliminates ~200 lines. (See §11.2 D3)
 
-6. **Move `clearLowAlphaPixels()` to `Canvas2DVisualization`** — Identical 18-line method + frame-counting logic in waveform, spectre, modern. Add configurable threshold and interval to the base class. Eliminates ~70 lines. (See §11.2 D1)
+6. [DONE] **Move `clearLowAlphaPixels()` to `Canvas2DVisualization`** — Identical 18-line method + frame-counting logic in waveform, spectre, modern. Add configurable threshold and interval to the base class. Eliminates ~70 lines. (See §11.2 D1)
 
-7. **Move `applyDirectionalZoom()` to `Canvas2DVisualization`** — Identical ~30-line method in plasma, neon, infinity. Accept trail/temp canvas, center point, fade rate, and zoom scale as parameters. Eliminates ~90 lines. (See §11.2 D2)
+7. [DONE] **Move `applyDirectionalZoom()` to `Canvas2DVisualization`** — Identical ~30-line method in plasma, neon, infinity. Accept trail/temp canvas, center point, fade rate, and zoom scale as parameters. Eliminates ~90 lines. (See §11.2 D2)
 
-8. **Import `ONIX_COLORS_FLAT` and `NUM_COLORS` from constants** — Delete local redeclarations in spectre, onix, modern. Also import `TWO_PI` in onix. (See §11.3)
+8. [DONE] **Import `ONIX_COLORS_FLAT` and `NUM_COLORS` from constants** — Delete local redeclarations in spectre, onix, modern. Also import `TWO_PI` in onix. (See §11.3)
 
 9. **Write `unified-media-server.spec.ts`** — HTTP API integration tests for the most critical backend file.
 
-10. **Extract SCSS variables** — Create `src/styles/_variables.scss` with colors, borders, and spacing.
+10. [DONE] **Extract SCSS variables** — Create `src/styles/_variables.scss` with colors, borders, and spacing.
 
-11. **Add MIDI file size limit** in `midi-parser.ts` before `readFileSync()`.
+11. [DONE] **Add MIDI file size limit** in `midi-parser.ts` before `readFileSync()`.
 
-12. **Fix video outlet fade interval leak** — Store `fadeInterval` as component property, clear in `ngOnDestroy`.
+12. [DONE] **Fix video outlet fade interval leak** — Store `fadeInterval` as component property, clear in `ngOnDestroy`.
 
 ### Medium (Fix Next Sprint)
 
-13. **Create `TrailingVisualization` intermediate class** — Manages trail canvas lifecycle (create/resize/destroy) for 6 visualizations. Eliminates ~180 lines of duplicated canvas management + 6 identical `destroy()` overrides. (See §11.2 D7)
+13. [DONE] **Add `createOffscreenCanvas()` helper to base class** — Manages trail canvas lifecycle (create/resize/destroy) for 6 visualizations. Eliminates ~180 lines of duplicated canvas management + 6 identical `destroy()` overrides. (See §11.2 D7)
 
-14. **Extract `getCachedColor()` to base class** — Identical dual-color caching in plasma and infinity. Eliminates ~70 lines. (See §11.2 D5)
+14. [DONE] **Extract `getCachedColor()` to base class** — Identical dual-color caching in plasma and infinity. Eliminates ~70 lines. (See §11.2 D5)
 
-15. **Extract LCD ghosting resize helper** — Near-identical `resize()` override in waveform and modern (~45 lines each). (See §11.2 D6)
+15. [DONE] **Extract LCD ghosting resize helper** — Near-identical `resize()` override in waveform and modern (~45 lines each). (See §11.2 D6)
 
-16. **Add `sensitivityFactor` getter to base class** — `this.sensitivity * 2` repeated in 9 visualizations. (See §11.4)
+16. [DONE] **Add `sensitivityFactor` getter to base class** — `this.sensitivity * 2` repeated in 9 visualizations. (See §11.4)
 
-17. **Add `midiRenderCache` size limit** with LRU eviction.
+17. [DONE] **Add `midiRenderCache` size limit** with FIFO eviction.
 
-18. **Parallelize playlist file probing** using `Promise.all()` in `unified-media-server.ts`.
+18. [DONE] **Parallelize playlist file probing** using `Promise.allSettled()` in `unified-media-server.ts`.
 
-19. **Add CI job timeouts** and coverage reporting.
+19. [DONE] **Add CI job timeouts** to all CI jobs.
 
-20. **Validate `media://` protocol handler** path in `main.ts`.
+20. [DONE] **Validate `media://` protocol handler** path in `main.ts`.
 
-21. **Refactor SoundFont path validation** to validate before constructing file path.
+21. [DONE] **Refactor SoundFont path validation** to validate before constructing file path.
 
-22. **Extract shared transport control logic** from `layout-controls.ts` and `miniplayer-controls.ts`.
+22. [DONE] **Extract shared transport control logic** into `TransportControlsBase` directive.
 
-23. **Remove duplicate `.color-control`** in `configuration-view.scss`.
+23. [DONE] **Remove duplicate `.color-control`** in `configuration-view.scss`.
 
 24. **Write visualization base class tests** for `setSensitivity`, `setTrailIntensity`, `setFftSize`, `resize`, fade logic.
 
 ### Low (Improve When Convenient)
 
-25. Remove dead `isValidHueShift()` method.
+25. [DONE] Remove dead `isValidHueShift()` method.
 26. Add MIDI spec reference to `midi-parser.ts` TSDoc.
 27. Update `context.md` test coverage section.
 28. Extract SCSS slider mixin for webkit/moz styling.
-29. Add `engines` field to `package.json`.
-30. Debounce miniplayer resize `saveMiniplayerBounds`.
+29. [DONE] Add `engines` field to `package.json`.
+30. [DONE] Debounce miniplayer resize `saveMiniplayerBounds`.
 31. Consider extracting SSEManager and PlaylistManager from `unified-media-server.ts` into separate files.
 
 ---

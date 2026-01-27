@@ -1,3 +1,5 @@
+@use 'variables' as *;
+
 :host {
   display: flex;
   flex: 1;
@@ -17,7 +19,7 @@
   container-type: size; // Enable container query units (cqw/cqh)
 
   &.drag-over {
-    box-shadow: inset 0 0 0 2px rgba(0, 200, 255, 0.6);
+    box-shadow: inset 0 0 0 2px $color-accent-glow;
   }
 
   // Default: preserve video's native aspect ratio

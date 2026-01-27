@@ -1,3 +1,5 @@
+@use 'variables' as *;
+
 :host {
   display: flex;
   flex-direction: column;
@@ -11,7 +13,7 @@
 
     span {
       font-size: 0.75rem;
-      color: rgba(255, 255, 255, 0.5);
+      color: $white-50;
       min-width: 2.5rem;
       font-variant-numeric: tabular-nums;
 
@@ -30,17 +32,17 @@
       appearance: none;
       -webkit-appearance: none;
       border-radius: 0.25rem;
-      border: 0.0625rem solid rgba(0, 0, 0, 0.75);
-      outline: 0.0625rem solid rgba(255, 255, 255, 0.15);
+      border: 0.0625rem solid $black-75;
+      outline: 0.0625rem solid $white-15;
       cursor: pointer;
 
       &::-webkit-progress-bar {
-        background-color: rgba(0, 0, 0, 0.5);
+        background-color: $black-50;
         border-radius: 10px;
       }
 
       &::-webkit-progress-value {
-        background: linear-gradient(to bottom, #6db3f2 0%, #1e69de 100%);
+        background: $gradient-primary;
         border-radius: 0.25rem;
       }
     }
@@ -80,7 +82,7 @@
     text-align: left;
     padding-right: 1.5rem;
     font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.75);
+    color: $white-75;
     user-select: none;
   }
 
@@ -88,8 +90,8 @@
     display: inherit;
     align-items: center;
     border-radius: 0.25rem;
-    border: 0.0625rem solid rgba(0, 0, 0, 0.5);
-    outline: 0.0625rem solid rgba(255, 255, 255, 0.15);
+    border: 0.0625rem solid $black-50;
+    outline: 0.0625rem solid $white-15;
     backdrop-filter: blur(16px);
 
     &.left button, &.right button {
@@ -118,15 +120,11 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    color: rgba(255, 255, 255, 0.75);
-    background: linear-gradient(to bottom,
-      rgba(242, 246, 248, 0.25) 0%,
-      rgba(216, 225, 231, 0.25) 50%,
-      rgba(181, 198, 208, 0.25) 51%,
-      rgba(224, 239, 249, 0.25) 100%);
+    color: $white-75;
+    background: $btn-glass;
     border: none;
-    border-left: 0.0625rem solid rgba(255, 255, 255, 0.15);
-    border-right: 0.0625rem solid rgba(0, 0, 0, 0.3);
+    border-left: 0.0625rem solid $white-15;
+    border-right: 0.0625rem solid $black-30;
     outline: none;
     font-size: 1rem;
 
@@ -144,11 +142,7 @@
 
     &:hover:not(:disabled) {
       color: white;
-      background: linear-gradient(to bottom,
-        rgba(242, 246, 248, 0.4) 0%,
-        rgba(216, 225, 231, 0.4) 50%,
-        rgba(181, 198, 208, 0.4) 51%,
-        rgba(224, 239, 249, 0.4) 100%);
+      background: $btn-glass-hover;
     }
 
     &.active {
@@ -170,7 +164,7 @@
     }
 
     &:disabled {
-      color: rgba(255, 255, 255, 0.3);
+      color: $white-30;
       cursor: not-allowed;
     }
   }
@@ -178,11 +172,7 @@
   .volume-container {
     display: inherit;
     justify-content: center;
-    background: linear-gradient(to bottom,
-      rgba(242, 246, 248, 0.25) 0%,
-      rgba(216, 225, 231, 0.25) 50%,
-      rgba(181, 198, 208, 0.25) 51%,
-      rgba(224, 239, 249, 0.25) 100%);
+    background: $btn-glass;
     width: 4rem;
     border-top-right-radius: 0.175rem;
     border-bottom-right-radius: 0.175rem;
@@ -194,10 +184,10 @@
 
       &::-webkit-slider-runnable-track {
         height: 0.5rem;
-        background-color: rgba(0, 0, 0, 0.5);
+        background-color: $black-50;
         border-radius: 0.25rem;
-        border: 0.0625rem solid rgba(0, 0, 0, 0.5);
-        outline: 0.0625rem solid rgba(255, 255, 255, 0.15);
+        border: 0.0625rem solid $black-50;
+        outline: 0.0625rem solid $white-15;
       }
 
       &::-webkit-slider-thumb {
@@ -206,8 +196,8 @@
         height: 0.8rem;
         margin-top: -0.2rem;
         border-radius: 50%;
-        background: linear-gradient(to bottom, #6db3f2 0%, #1e69de 100%);
-        border: 0.1rem solid #6db3f2;
+        background: $gradient-primary;
+        border: 0.1rem solid $color-primary-light;
         outline: 0.0625rem solid black;
         cursor: pointer;
       }
