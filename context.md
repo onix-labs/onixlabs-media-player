@@ -1242,11 +1242,41 @@ npm run dev
 
 ### Testing Coverage
 
-- **188 Electron tests** across 5 spec files (settings-manager, settings-validators, midi-parser, dependency-manager, application-menu)
-- **Coverage thresholds** enforced via `vitest.electron.config.ts` (statements: 20%, branches: 35%, functions: 20%, lines: 20%)
+**734 tests** across 19 spec files — all passing, enforced by CI on every push/PR.
+
+**Electron tests** (253 tests, 6 spec files — Vitest with Node environment):
+
+| Spec File | Tests | What's Covered |
+|-----------|-------|----------------|
+| `settings-manager.spec.ts` | 67 | Validation, persistence, migration, atomic writes |
+| `unified-media-server.spec.ts` | 65 | HTTP API integration (all endpoints), SSE, CORS, security |
+| `application-menu.spec.ts` | 51 | Menu structure, callbacks, state sync |
+| `dependency-manager.spec.ts` | 28 | Binary detection, SoundFont management, path traversal |
+| `midi-parser.spec.ts` | 21 | MIDI binary parsing, tempo changes, edge cases |
+| `logger.spec.ts` | 21 | Log formatting, scoped loggers, helper functions |
+
+**Angular tests** (481 tests, 13 spec files — Angular CLI with Vitest):
+
+| Spec File | Tests | What's Covered |
+|-----------|-------|----------------|
+| `electron.service.spec.ts` | 91 | SSE events, HTTP methods, IPC delegation, JSON parsing |
+| `visualization.spec.ts` | 79 | Base class: sensitivity, fade, resize, hslToRgb, caching |
+| `root.spec.ts` | 57 | Routes, view modes, fullscreen, keyboard shortcuts |
+| `media-player.service.spec.ts` | 53 | Computed signals, transport controls, format helpers |
+| `layout-controls.spec.ts` | 43 | Transport buttons, volume, seek, Shift+click |
+| `settings.service.spec.ts` | 38 | Derived signals, update methods, per-viz settings |
+| `miniplayer-controls.spec.ts` | 27 | Overlay controls, Shift+click, auto-hide |
+| `dependency.service.spec.ts` | 26 | Computed signals, allowed extensions, install/uninstall |
+| `playlist.spec.ts` | 25 | Items, selection, clear, drag-and-drop, empty state |
+| `layout-outlet.spec.ts` | 23 | Audio/video switching, media bar, idle state |
+| `about-view.spec.ts` | 12 | Version info, formats, links |
+| `file-drop.service.spec.ts` | 6 | Path extraction, filtering, error handling |
+| `layout-header.spec.ts` | 1 | Component creation |
+
+**CI enforcement**:
+- Coverage thresholds enforced via `vitest.electron.config.ts` (statements: 20%, branches: 35%, functions: 20%, lines: 20%)
 - CI runs `test:electron:coverage` which fails if thresholds are not met
-- Well-tested modules: settings-manager (97%), application-menu (96%), midi-parser (79%)
-- Untested Electron runtime files (main.ts, preload.ts, unified-media-server.ts) require Electron process to test
+- Angular and Electron tests run as separate CI jobs, both must pass
 
 ### Remaining Low-Priority Duplication
 

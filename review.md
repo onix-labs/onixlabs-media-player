@@ -484,7 +484,7 @@ This would reduce the visualization codebase by approximately **700 lines** (fro
 
 25. [DONE] Remove dead `isValidHueShift()` method.
 26. [DONE] Add MIDI spec reference to `midi-parser.ts` TSDoc.
-27. Update `context.md` test coverage section.
+27. [DONE] Update `context.md` test coverage section.
 28. Extract SCSS slider mixin for webkit/moz styling.
 29. [DONE] Add `engines` field to `package.json`.
 30. [DONE] Debounce miniplayer resize `saveMiniplayerBounds`.
