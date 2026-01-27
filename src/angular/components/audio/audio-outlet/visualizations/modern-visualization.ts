@@ -39,9 +39,6 @@ export class ModernVisualization extends Canvas2DVisualization {
   /** Pre-allocated point array for waveform */
   private readonly points: Array<{x: number; y: number}>;
 
-  /** Tracks whether this visualization has drawn at least once */
-  private hasDrawn: boolean = false;
-
   /** Cached gradient for performance */
   private cachedGradient: CanvasGradient | null = null;
   private cachedGradientWidth: number = 0;
@@ -50,6 +47,7 @@ export class ModernVisualization extends Canvas2DVisualization {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.sensitivity = 0.4;
+    this.preserveContentOnResize = true;
 
     // Pre-allocate point array
     this.points = [];
@@ -62,60 +60,7 @@ export class ModernVisualization extends Canvas2DVisualization {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
 
-  /**
-   * Override resize to preserve the main canvas content.
-   *
-   * This visualization draws directly to the main canvas with a fade effect
-   * (LCD ghosting), so we need to preserve its content during resize rather
-   * than letting it get cleared.
-   */
-  public override resize(width: number, height: number): void {
-    const oldWidth: number = this.canvas.width;
-    const oldHeight: number = this.canvas.height;
-    const dimensionsChanged: boolean = oldWidth !== width || oldHeight !== height;
-
-    // If dimensions unchanged AND we've already drawn, nothing to do
-    if (!dimensionsChanged && this.hasDrawn) {
-      return;
-    }
-
-    // If dimensions unchanged but we haven't drawn yet, clear the canvas
-    // (removes content from previous visualization)
-    if (!dimensionsChanged && !this.hasDrawn) {
-      this.width = width;
-      this.height = height;
-      this.ctx.clearRect(0, 0, width, height);
-      return;
-    }
-
-    // Dimensions changed - preserve content only if we've drawn at least once
-    if (this.hasDrawn && oldWidth > 0 && oldHeight > 0) {
-      // Capture existing content
-      const tempCanvas: HTMLCanvasElement = document.createElement('canvas');
-      tempCanvas.width = oldWidth;
-      tempCanvas.height = oldHeight;
-      const tempCtx: CanvasRenderingContext2D = tempCanvas.getContext('2d', {alpha: true})!;
-      tempCtx.drawImage(this.canvas, 0, 0);
-
-      // Update dimensions (clears canvas)
-      this.width = width;
-      this.height = height;
-      this.canvas.width = width;
-      this.canvas.height = height;
-
-      // Draw preserved content scaled to new dimensions
-      this.ctx.imageSmoothingEnabled = true;
-      this.ctx.imageSmoothingQuality = 'high';
-      this.ctx.drawImage(tempCanvas, 0, 0, oldWidth, oldHeight, 0, 0, width, height);
-    } else {
-      // First resize or no content to preserve, just set dimensions (clears canvas)
-      this.width = width;
-      this.height = height;
-      this.canvas.width = width;
-      this.canvas.height = height;
-    }
-
-    // Invalidate gradient cache on resize
+  protected override onResize(): void {
     this.cachedGradient = null;
   }
 
