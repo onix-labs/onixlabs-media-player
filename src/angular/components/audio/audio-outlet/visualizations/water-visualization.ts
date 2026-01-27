@@ -22,7 +22,7 @@
  * @module app/components/audio/audio-outlet/visualizations/water-visualization
  */
 
-import {Canvas2DVisualization, VisualizationConfig} from './visualization';
+import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from './visualization';
 
 /**
  * Water visualization with bass-reactive rotation.
@@ -147,12 +147,16 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     // Create trail canvas if needed
     if (!this.trailCanvas) {
-      ({canvas: this.trailCanvas, ctx: this.trailCtx} = this.createOffscreenCanvas());
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.trailCanvas = offscreen.canvas;
+      this.trailCtx = offscreen.ctx;
     }
 
     // Create temp canvas if needed
     if (!this.tempCanvas) {
-      ({canvas: this.tempCanvas, ctx: this.tempCtx} = this.createOffscreenCanvas());
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.tempCanvas = offscreen.canvas;
+      this.tempCtx = offscreen.ctx;
     }
 
     // Resize trail canvas while preserving content

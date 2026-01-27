@@ -16,7 +16,7 @@
  */
 
 import {Canvas2DVisualization, Visualization, WebGLVisualization} from './visualization';
-import type {VisualizationConfig} from './visualization';
+import type {OffscreenCanvasPair, VisualizationConfig} from './visualization';
 
 // ============================================================================
 // Mocks
@@ -128,7 +128,7 @@ class TestCanvas2DVisualization extends Canvas2DVisualization {
   public testGetScaledGlowBlur(base: number): number { return this.getScaledGlowBlur(base); }
   public testGetColorFromHue(hue: number): {main: string; glow: string} { return this.getColorFromHue(hue); }
   public testGetCachedColor(index: 1 | 2, hue: number): {main: string; glow: string} { return this.getCachedColor(index, hue); }
-  public testCreateOffscreenCanvas(): {canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D} { return this.createOffscreenCanvas(); }
+  public testCreateOffscreenCanvas(): OffscreenCanvasPair { return this.createOffscreenCanvas(); }
   public testResizeCanvasPreserving(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, w: number, h: number, preserve?: boolean): void {
     this.resizeCanvasPreserving(canvas, ctx, w, h, preserve);
   }

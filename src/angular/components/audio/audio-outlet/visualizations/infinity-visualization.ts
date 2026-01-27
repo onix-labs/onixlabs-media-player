@@ -15,7 +15,7 @@
  * @module app/components/audio/audio-outlet/visualizations/infinity-visualization
  */
 
-import {Canvas2DVisualization, VisualizationConfig} from './visualization';
+import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from './visualization';
 
 /**
  * Infinity visualization with dual circular waveforms fading in opposite directions.
@@ -98,15 +98,21 @@ export class InfinityVisualization extends Canvas2DVisualization {
 
     // Create trail canvases if needed
     if (!this.leftTrailCanvas) {
-      ({canvas: this.leftTrailCanvas, ctx: this.leftTrailCtx} = this.createOffscreenCanvas());
+      const leftTrail: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.leftTrailCanvas = leftTrail.canvas;
+      this.leftTrailCtx = leftTrail.ctx;
     }
 
     if (!this.rightTrailCanvas) {
-      ({canvas: this.rightTrailCanvas, ctx: this.rightTrailCtx} = this.createOffscreenCanvas());
+      const rightTrail: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.rightTrailCanvas = rightTrail.canvas;
+      this.rightTrailCtx = rightTrail.ctx;
     }
 
     if (!this.tempCanvas) {
-      ({canvas: this.tempCanvas, ctx: this.tempCtx} = this.createOffscreenCanvas());
+      const temp: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.tempCanvas = temp.canvas;
+      this.tempCtx = temp.ctx;
     }
 
     // Resize canvases while preserving trail content

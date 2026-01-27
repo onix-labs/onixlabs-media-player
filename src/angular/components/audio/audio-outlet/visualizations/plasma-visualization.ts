@@ -13,7 +13,7 @@
  * @module app/components/audio/audio-outlet/visualizations/plasma-visualization
  */
 
-import {Canvas2DVisualization, VisualizationConfig} from './visualization';
+import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from './visualization';
 
 /**
  * Plasma visualization with dual horizontal waveforms.
@@ -97,15 +97,21 @@ export class PlasmaVisualization extends Canvas2DVisualization {
 
     // Create trail canvases if needed
     if (!this.topTrailCanvas) {
-      ({canvas: this.topTrailCanvas, ctx: this.topTrailCtx} = this.createOffscreenCanvas());
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.topTrailCanvas = offscreen.canvas;
+      this.topTrailCtx = offscreen.ctx;
     }
 
     if (!this.bottomTrailCanvas) {
-      ({canvas: this.bottomTrailCanvas, ctx: this.bottomTrailCtx} = this.createOffscreenCanvas());
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.bottomTrailCanvas = offscreen.canvas;
+      this.bottomTrailCtx = offscreen.ctx;
     }
 
     if (!this.tempCanvas) {
-      ({canvas: this.tempCanvas, ctx: this.tempCtx} = this.createOffscreenCanvas());
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.tempCanvas = offscreen.canvas;
+      this.tempCtx = offscreen.ctx;
     }
 
     // Resize canvases while preserving trail content
