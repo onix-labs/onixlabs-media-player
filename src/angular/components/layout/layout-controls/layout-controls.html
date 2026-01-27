@@ -9,7 +9,7 @@
   </div>
   <div class="control-group center">
     <div class="button-group left">
-      <button tabindex="-1" (click)="onEject()" (mouseup)="$any($event.currentTarget).blur()" title="">
+      <button tabindex="-1" (click)="onEject()" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!canOpenFiles()" title="">
         <i class="fa-solid fa-eject"></i>
       </button>
       <button tabindex="-1" (click)="onShuffle()" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack()" [class.active]="isShuffleEnabled()" title="Shuffle">

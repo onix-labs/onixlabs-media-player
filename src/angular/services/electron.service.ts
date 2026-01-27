@@ -441,6 +441,15 @@ export class ElectronService implements OnDestroy {
         });
       })
     );
+
+    // Close all (stop playback and clear playlist)
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('closeAll', (): void => {
+        this.ngZone.run((): void => {
+          void this.stop().then((): Promise<void> => this.clearPlaylist());
+        });
+      })
+    );
   }
 
   /**
@@ -735,15 +744,17 @@ export class ElectronService implements OnDestroy {
    *   await electron.addToPlaylist(files);
    * }
    */
-  public async openFileDialog(multiSelect: boolean = true): Promise<string[]> {
+  public async openFileDialog(multiSelect: boolean = true, filters?: readonly {name: string; extensions: string[]}[]): Promise<string[]> {
     if (!this.isElectron || !this.api) return [];
 
+    const defaultFilters: {name: string; extensions: string[]}[] = [
+      {name: 'Media Files', extensions: ['mp3', 'mp4', 'm4v', 'flac', 'mkv', 'avi', 'wav', 'ogg', 'webm', 'm4a', 'aac', 'wma', 'mov', 'mid', 'midi']},
+      {name: 'Audio', extensions: ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'wma', 'mid', 'midi']},
+      {name: 'Video', extensions: ['mp4', 'm4v', 'mkv', 'avi', 'webm', 'mov']},
+    ];
+
     return this.api.openFileDialog({
-      filters: [
-        {name: 'Media Files', extensions: ['mp3', 'mp4', 'flac', 'mkv', 'avi', 'wav', 'ogg', 'webm', 'm4a', 'aac', 'wma', 'mov', 'mid', 'midi']},
-        {name: 'Audio', extensions: ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'wma', 'mid', 'midi']},
-        {name: 'Video', extensions: ['mp4', 'mkv', 'avi', 'webm', 'mov']}
-      ],
+      filters: (filters ?? defaultFilters) as {name: string; extensions: string[]}[],
       multiSelections: multiSelect
     });
   }

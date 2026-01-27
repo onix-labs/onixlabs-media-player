@@ -33,6 +33,8 @@ import {MiniplayerControls} from '../miniplayer/miniplayer-controls';
 import {ElectronService} from '../../services/electron.service';
 import {MediaPlayerService} from '../../services/media-player.service';
 import {SettingsService} from '../../services/settings.service';
+import {DependencyService} from '../../services/dependency.service';
+import {buildFileDialogFilters} from '../../constants/media.constants';
 
 /**
  * Root application component - the main shell of the media player.
@@ -75,6 +77,9 @@ export class Root implements OnDestroy {
 
   /** Service for settings (auto-hide delay) */
   private readonly settings: SettingsService = inject(SettingsService);
+
+  /** Service for dependency state */
+  private readonly deps: DependencyService = inject(DependencyService);
 
   // ============================================================================
   // Reactive State
@@ -242,7 +247,13 @@ export class Root implements OnDestroy {
    * - Multiple files + existing playlist: appends without interrupting
    */
   private async openFilesFromMenu(): Promise<void> {
-    const files: string[] = await this.electron.openFileDialog();
+    if (this.deps.noDependenciesInstalled()) return;
+
+    const filters: {name: string; extensions: string[]}[] = buildFileDialogFilters(
+      this.deps.ffmpegInstalled(),
+      this.deps.fluidsynthInstalled()
+    );
+    const files: string[] = await this.electron.openFileDialog(true, filters);
     if (files.length === 0) return;
 
     await this.electron.addFilesWithAutoPlay(files);
