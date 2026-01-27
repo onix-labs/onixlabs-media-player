@@ -154,9 +154,18 @@ export class VideoOutlet implements OnInit, OnDestroy {
    * - Mute changes: toggles video element muted state
    */
   public constructor() {
-    // React to track changes - load new video source
+    // React to track changes - load new video source.
+    // Also depends on playbackState to detect same-track re-selection:
+    // when the server enters 'loading', currentFilePath is always cleared
+    // so the same file gets reloaded on re-selection.
     effect((): void => {
       const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
+      const state: string = this.mediaPlayer.playbackState();
+
+      if (state === 'loading') {
+        this.currentFilePath = null;
+      }
+
       if (track?.type === 'video' && track.filePath !== this.currentFilePath) {
         void this.loadVideo(track.filePath);
       }
@@ -181,10 +190,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
     });
 
     // React to seek events (time updates from server)
+    // The `video.seeking` guard prevents re-triggering seeks while a seek is
+    // in progress, which would create a seek loop and stall playback.
     effect((): void => {
       const time: number = this.mediaPlayer.currentTime();
       const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
-      if (!video || !video.src) return;
+      if (!video || !video.src || video.seeking) return;
 
       if (this.isTranscoded) {
         // For transcoded files, account for seek offset

@@ -180,6 +180,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Bound gesture handler for cleanup (stored so it can be removed if component destroys before gesture) */
   private gestureHandler: (() => void) | null = null;
 
+  /** Timeout ID for pending crossfade callback (used to cancel stale pause/stop actions) */
+  private fadeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
   // ============================================================================
   // Constructor - Reactive Effects
   // ============================================================================
@@ -195,9 +198,18 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * - Mute changes: sets gain to 0 or restores volume
    */
   public constructor() {
-    // React to track changes - load new audio source
+    // React to track changes - load new audio source.
+    // Also depends on playbackState to detect same-track re-selection:
+    // when the server enters 'loading', currentFilePath is always cleared
+    // so the same file gets reloaded on re-selection.
     effect((): void => {
       const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
+      const state: string = this.mediaPlayer.playbackState();
+
+      if (state === 'loading') {
+        this.currentFilePath = null;
+      }
+
       if (track?.type === 'audio' && track.filePath !== this.currentFilePath) {
         void this.loadAudioSource(track.filePath);
       }
@@ -218,8 +230,11 @@ export class AudioOutlet implements OnInit, OnDestroy {
         if (!this.visualization && this.analyser) {
           this.initVisualization();
         }
-        if (audio.src && audio.paused) {
+        if (audio.src) {
           // Fade in when starting playback
+          // Always call play() regardless of audio.paused — a pending crossfade
+          // callback may be about to pause the element, so we must cancel it
+          // (fadeToVolume handles cancellation) and ensure playback continues.
           this.fadeToVolume(this.mediaPlayer.muted() ? 0 : this.mediaPlayer.volume());
           audio.play().catch(console.error);
         }
@@ -237,13 +252,17 @@ export class AudioOutlet implements OnInit, OnDestroy {
       }
     });
 
-    // React to seek events
+    // React to seek events - synchronize audio element position with server time.
+    // All formats (including pre-rendered MIDI) support range requests, so
+    // native audio.currentTime seeking works universally.
+    // The `audio.seeking` guard prevents re-triggering seeks while a seek is
+    // in progress (audio.currentTime hasn't updated yet, causing drift detection
+    // to fire repeatedly and create a seek loop).
     effect((): void => {
       const time: number = this.mediaPlayer.currentTime();
       const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
-      if (!audio || !audio.src) return;
+      if (!audio || !audio.src || audio.seeking) return;
 
-      // Only sync if significantly different (avoid feedback loop)
       if (Math.abs(audio.currentTime - time) > 1) {
         audio.currentTime = time;
       }
@@ -381,6 +400,10 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * Stops animation loop, destroys visualization, and closes audio context.
    */
   public ngOnDestroy(): void {
+    if (this.fadeTimeoutId !== null) {
+      clearTimeout(this.fadeTimeoutId);
+      this.fadeTimeoutId = null;
+    }
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
     }
@@ -452,6 +475,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
    *
    * Initializes the audio context if needed (after user gesture),
    * sets the audio element source, and triggers loading.
+   * All formats (including MIDI, which is pre-rendered server-side)
+   * are served with HTTP range request support for native seeking.
    *
    * @param filePath - Absolute path to the audio file
    */
@@ -476,6 +501,15 @@ export class AudioOutlet implements OnInit, OnDestroy {
     audio.load();
 
     console.log(`Audio source loaded: ${filePath}`);
+
+    // If the server is already in 'playing' state (e.g. cached MIDI where the
+    // loading→playing transition happened before the source was set), start
+    // playback immediately so the play effect doesn't miss it.
+    if (this.mediaPlayer.isPlaying()) {
+      this.resumeAudioContext();
+      this.fadeToVolume(this.mediaPlayer.muted() ? 0 : this.mediaPlayer.volume());
+      audio.play().catch(console.error);
+    }
   }
 
   // ============================================================================
@@ -568,9 +602,20 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, currentTime);
     this.gainNode.gain.linearRampToValueAtTime(targetVolume, currentTime + fadeTime);
 
-    // Execute callback after fade completes
+    // Execute callback after fade completes.
+    // Cancel any previously pending callback first — this prevents a stale
+    // pause/stop from firing after a rapid state transition (e.g. paused→playing
+    // within the crossfade window).
+    if (this.fadeTimeoutId !== null) {
+      clearTimeout(this.fadeTimeoutId);
+      this.fadeTimeoutId = null;
+    }
+
     if (callback) {
-      setTimeout(callback, crossfadeDuration);
+      this.fadeTimeoutId = setTimeout((): void => {
+        this.fadeTimeoutId = null;
+        callback();
+      }, crossfadeDuration);
     }
   }
 

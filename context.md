@@ -81,11 +81,19 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 ### MIDI Playback
 
 - Server-side synthesis via FluidSynth with SoundFont support
-- Conversion pipeline: FluidSynth (raw audio) → FFmpeg (MP3 encoding) → HTTP streaming
+- Conversion pipeline: FluidSynth (raw audio) → FFmpeg (MP3 encoding) → temp file → HTTP streaming
 - Full visualization support (converted audio flows through Web Audio API pipeline)
 - MIDI duration parsing from binary file (reads tempo changes, calculates from tick positions)
 - Automatic SoundFont detection from common paths
 - Supported formats: `.mid`, `.midi`
+- **Persistent render cache**: Content-hash filenames (`midi-{sha256}.mp3`) survive app restarts
+  - SHA-256 hash of file content + soundfont path ensures cache invalidation on soundfont change
+  - Renders stored in OS temp directory (`onixplayer-midi/`)
+  - 5-step cache hierarchy: in-memory → deduplication (in-progress promise) → content-hash → disk cache → full render
+- **Accurate playlist durations**: MIDI items initially show approximate duration from binary parsing, then update to accurate duration after render completes
+  - `playlist:items:duration` SSE event broadcasts corrected durations to the client
+  - `probeMedia` checks in-memory render cache first for instant accurate duration on subsequent plays
+- **Robust error handling**: Failed renders clean up partial temp files, corrupt disk cache entries are deleted and re-rendered, FluidSynth errors are logged (not silently swallowed)
 
 ### Video Playback
 
@@ -488,11 +496,12 @@ AudioContext.destination (speakers)
 
 | Endpoint | Events |
 |----------|--------|
-| GET `/events` | `playback:state`, `playback:time`, `playback:loaded`, `playback:ended`, `playback:volume`, `playlist:updated`, `playlist:items:added`, `playlist:items:removed`, `playlist:cleared`, `playlist:selection`, `playlist:mode`, `settings:updated`, `dependencies:state`, `dependencies:progress`, `heartbeat` |
+| GET `/events` | `playback:state`, `playback:time`, `playback:loaded`, `playback:ended`, `playback:volume`, `playlist:updated`, `playlist:items:added`, `playlist:items:removed`, `playlist:items:duration`, `playlist:cleared`, `playlist:selection`, `playlist:mode`, `settings:updated`, `dependencies:state`, `dependencies:progress`, `heartbeat` |
 
 **Delta Events (efficient playlist updates):**
 - `playlist:items:added` - Only sends added items with `{ items, startIndex, currentIndex }`
 - `playlist:items:removed` - Only sends removed item ID with `{ id, removedIndex, currentIndex }`
+- `playlist:items:duration` - Sends corrected duration for MIDI items after render `{ filePath, duration }`
 - `playlist:cleared` - Simple notification with empty payload
 - `playlist:updated` - Full state sent only on initial SSE connection for sync
 
@@ -731,6 +740,8 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 |-------|----------|-------------|
 | Video Seek Race Condition | video-outlet.ts:173-183 | Added file path validation after async operation. |
 | Window Recreation Race | main.ts:499-500 | Added full re-initialization in onActivate. |
+| Crossfade Race Condition | audio-outlet.ts | When stepping between tracks, the server transitions `paused→playing` within ~3ms. The pause crossfade's deferred `setTimeout(audio.pause)` hadn't fired yet, so `audio.paused` was still `false` when the play effect ran — causing it to skip `audio.play()`. The stale timeout then fired and paused audio with nothing to restart it. **Fix**: (1) Added `fadeTimeoutId` field to track pending crossfade callbacks, (2) `fadeToVolume()` cancels any stale pending callback before scheduling a new one, (3) Removed `audio.paused` guard in play effect so `audio.play()` is always called when state is `playing`, (4) Added auto-play in `loadAudioSource()` when server is already in `playing` state (handles cached MIDI where loading→playing transition completes before source is set). |
+| Same-Track Re-Selection Not Reloading | audio-outlet.ts, video-outlet.ts | Re-selecting the same track didn't reload the audio/video source because `currentFilePath` was never cleared between selection cycles. **Fix**: Track change effects now always clear `currentFilePath` when server enters `loading` state, ensuring the same file gets reloaded on re-selection. |
 
 #### Other Issues
 
@@ -753,6 +764,11 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | Waveforms Don't Reach Canvas Edge | waveform, modern visualizations | Point calculation used `i * sliceWidth` which could accumulate floating-point errors. Changed to `(i / numPoints) * width` for exact edge coverage, added bounds check on data array index. |
 | Analyzer Bar Colors Not Configurable | analyzer-visualization.ts, settings-manager.ts, settings.service.ts, configuration-view | Added `barColorBottom`, `barColorMiddle`, `barColorTop` settings with hex color validation, color picker UI, and gradient regeneration on color change. |
 | Onix Waveform Seam Visible | onix-visualization.ts | Circular waveform had visible amplitude discontinuity where first and last points met. Added cross-fade blending for last 15% of points that interpolates toward the first sample's amplitude. |
+| MIDI Playlist Durations Inaccurate | unified-media-server.ts, electron.service.ts | `PlaylistItem.duration` was set once from `parseMidiDuration()` (binary MIDI tick/tempo parser, often inaccurate). The accurate duration from probing the rendered MP3 only updated the seekbar, never the playlist. **Fix**: Added `PlaylistManager.updateItemDurations()` method + `playlist:items:duration` SSE event. Render completion now broadcasts corrected durations. Client handler updates playlist signals for reactive UI refresh. |
+| MIDI Renders Not Persisting Across Restarts | unified-media-server.ts | Temp files used `midi-{timestamp}-{random}.mp3`, generating new filenames on every run. The in-memory `midiRenderCache` was lost on restart. **Fix**: Content-hash filenames (`midi-{sha256}.mp3`) using SHA-256 of file content + soundfont path. Disk cache checked before rendering; existing files are probed and served directly (~40ms vs full render). |
+| MIDI `probeMedia` Ignored Cached Renders | unified-media-server.ts | Every time playback started, `probeMedia()` always called `parseMidiDuration()` even when `midiRenderCache` already had the accurate duration. **Fix**: MIDI branch in `probeMedia` now checks in-memory cache first and returns accurate duration immediately. Background render uses `.catch()` for error logging instead of `void` (fire-and-forget that silently swallowed errors). |
+| MIDI Silent Playback (Corrupt Disk Cache) | unified-media-server.ts | Failed FluidSynth/FFmpeg renders left partial/empty temp files. With hash-based filenames, these corrupt files became persistent disk cache entries served as valid audio. **Fix**: (1) `unlinkSync(tempFile)` cleanup in three error paths (FFmpeg failure, FluidSynth error, FFmpeg error), (2) File size validation on disk cache hit (0 bytes → delete), (3) Probe failure recovery (delete corrupt file, re-render fresh). |
+| FluidSynth Stderr Filter Too Aggressive | unified-media-server.ts | Filter `!msg.includes('FluidSynth')` suppressed ALL FluidSynth messages including critical warnings (e.g., "No preset found"). **Fix**: Changed to `!msg.includes('FluidSynth runtime version')` to only suppress the startup version banner. |
 | Forced Video Aspect Ratios Not Working | video-outlet.scss | 4:3 and 16:9 forced aspect modes stretched vertically instead of letterboxing/pillarboxing. Original CSS used `height: 100%` with `aspect-ratio` and `max-width: 100%`, which broke aspect ratio when width-constrained. Changed to use CSS container query units (`cqw`/`cqh`) with `min()` to calculate exact dimensions: `width: min(100cqw, calc(100cqh * 4 / 3))` ensures the video always maintains the target aspect ratio and fills the container as large as possible. |
 
 ### Code Duplication Eliminated
@@ -857,6 +873,7 @@ private async readBody(request: IncomingMessage): Promise<string> {
 **Fix**: Implemented delta updates with new SSE event types:
 - `playlist:items:added` - Sends only the added items
 - `playlist:items:removed` - Sends only the removed item ID
+- `playlist:items:duration` - Sends corrected duration for MIDI items after render
 - `playlist:cleared` - Simple notification, no payload
 
 Full `playlist:updated` is now only sent on initial SSE connection.
@@ -913,6 +930,59 @@ trailCtx.translate(-floorCenterX, -floorCenterY);
 | `highWaterMark` | 64KB | 2MB | Absorbs NAS/network latency spikes |
 
 **Result**: Butter-smooth UHD/4K MKV playback from NAS over network.
+
+### MIDI Render Cache System
+
+**Issue**: MIDI files required full FluidSynth → FFmpeg rendering on every play, even for previously rendered files. Renders were lost on app restart due to random temp filenames. Playlist durations were inaccurate (binary MIDI parser vs actual rendered duration).
+
+**Root Causes**:
+1. Temp files used `midi-{timestamp}-{random}.mp3` — non-deterministic, lost on restart
+2. `probeMedia()` always called `parseMidiDuration()`, never checked render cache
+3. Accurate duration from rendered MP3 only updated the seekbar, never playlist items
+4. Failed renders silently left corrupt temp files that became persistent cache entries
+
+**Solution — 5-Step Cache Hierarchy**:
+
+```
+1. In-memory cache hit     → return cached tempFile immediately
+2. Dedup (in-progress)     → return existing render promise
+3. Content-hash filename   → compute midi-{sha256}.mp3
+4. Disk cache hit          → probe existing file, populate in-memory cache
+5. Full render             → FluidSynth → FFmpeg → write tempFile
+```
+
+**Key Design Decisions**:
+
+| Decision | Rationale |
+|----------|-----------|
+| SHA-256 of content + soundfont path | Cache invalidates when either file content or soundfont changes |
+| Hash truncated to 16 chars | Sufficient uniqueness, readable filenames |
+| Dedicated temp subdirectory (`onixplayer-midi/`) | Easy to identify and clean up |
+| `updateItemDurations()` + SSE delta event | Corrects playlist without full re-broadcast; Angular signal change detection re-renders durations |
+| Probe on disk cache hit (not just serve) | Populates in-memory cache with accurate duration for subsequent `probeMedia` calls |
+| `unlinkSync` on render failure | Prevents corrupt files from becoming permanent cache entries |
+| File size validation (0 bytes → delete) | Catches partial writes from process kills |
+| Probe failure → delete + re-render | Self-healing for corrupted but non-empty files |
+
+**Result**: First play renders normally; subsequent plays (including after restart) skip rendering entirely. Playlist durations correct within ~40ms of disk cache probe. Failed renders self-heal on next play.
+
+### Crossfade Timing Safety
+
+**Issue**: When stepping between tracks rapidly (e.g., clicking next in a MIDI playlist), audio would intermittently fail to play. The seekbar moved but no sound was produced.
+
+**Root Cause**: The server transitions `paused→loading→playing` within ~3ms for cached MIDI files. The `fadeToVolume(0, () => audio.pause())` crossfade scheduled via `setTimeout` hadn't fired yet when the `playing` state arrived. The play effect checked `audio.paused` (still `false`), skipped `audio.play()`, and then the stale timeout fired `audio.pause()` — killing playback with nothing to restart it.
+
+**Fix Applied**:
+
+| Change | Purpose |
+|--------|---------|
+| `fadeTimeoutId` field | Tracks the pending crossfade callback timeout ID |
+| Cancel stale callbacks in `fadeToVolume()` | `clearTimeout(fadeTimeoutId)` before scheduling new callback; prevents stale pause from firing after state changes to playing |
+| Remove `audio.paused` guard | Always call `audio.play()` when state is `playing` and source is set; browsers handle redundant play() calls gracefully |
+| Auto-play in `loadAudioSource()` | Starts playback if server is already in `playing` state when source finishes loading (handles cached MIDI fast transitions) |
+| Cleanup on destroy | Cancels pending fade timeout when component is destroyed |
+
+**Result**: Track stepping is now reliable regardless of crossfade duration or state transition speed.
 
 ### Seamless Visualization Resize
 
@@ -1018,11 +1088,12 @@ ffmpeg -threads 0 -ss <time> -i <file> \
   -f mp4 pipe:1
 ```
 
-**MIDI to MP3 (via FluidSynth):**
+**MIDI to MP3 (via FluidSynth, rendered to temp file):**
 ```bash
+# Rendered to midi-{sha256}.mp3 in OS temp directory (cached across restarts)
 fluidsynth -ni -g 1.0 -r 44100 <soundfont.sf2> <file.mid> -F - -O raw \
   | ffmpeg -f s16le -ar 44100 -ac 2 -i - \
-    -c:a libmp3lame -b:a <bitrate>k -f mp3 pipe:1
+    -c:a libmp3lame -b:a <bitrate>k <tempfile>.mp3
 ```
 
 **Metadata Extraction:**

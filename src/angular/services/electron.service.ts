@@ -685,6 +685,21 @@ export class ElectronService implements OnDestroy {
       });
     });
 
+    this.eventSource.addEventListener('playlist:items:duration', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
+        const data: {filePath: string; duration: number} = this.safeParseJSON<{filePath: string; duration: number}>(
+          e.data, {filePath: '', duration: 0}
+        );
+        if (!data.filePath) return;
+        this.playlist.update((p: PlaylistState): PlaylistState => ({
+          ...p,
+          items: p.items.map((item: PlaylistItem): PlaylistItem =>
+            item.filePath === data.filePath ? {...item, duration: data.duration} : item
+          ),
+        }));
+      });
+    });
+
     this.eventSource.addEventListener('playlist:cleared', (): void => {
       this.ngZone.run((): void => {
         this.playlist.update((p: PlaylistState): PlaylistState => ({
