@@ -97,18 +97,15 @@ export class PlasmaVisualization extends Canvas2DVisualization {
 
     // Create trail canvases if needed
     if (!this.topTrailCanvas) {
-      this.topTrailCanvas = document.createElement('canvas');
-      this.topTrailCtx = this.topTrailCanvas.getContext('2d', {alpha: true})!;
+      ({canvas: this.topTrailCanvas, ctx: this.topTrailCtx} = this.createOffscreenCanvas());
     }
 
     if (!this.bottomTrailCanvas) {
-      this.bottomTrailCanvas = document.createElement('canvas');
-      this.bottomTrailCtx = this.bottomTrailCanvas.getContext('2d', {alpha: true})!;
+      ({canvas: this.bottomTrailCanvas, ctx: this.bottomTrailCtx} = this.createOffscreenCanvas());
     }
 
     if (!this.tempCanvas) {
-      this.tempCanvas = document.createElement('canvas');
-      this.tempCtx = this.tempCanvas.getContext('2d', {alpha: true})!;
+      ({canvas: this.tempCanvas, ctx: this.tempCtx} = this.createOffscreenCanvas());
     }
 
     // Resize canvases while preserving trail content

@@ -120,18 +120,15 @@ export class NeonVisualization extends Canvas2DVisualization {
 
     // Create trail canvases if needed
     if (!this.cyanTrailCanvas) {
-      this.cyanTrailCanvas = document.createElement('canvas');
-      this.cyanTrailCtx = this.cyanTrailCanvas.getContext('2d', {alpha: true})!;
+      ({canvas: this.cyanTrailCanvas, ctx: this.cyanTrailCtx} = this.createOffscreenCanvas());
     }
 
     if (!this.magentaTrailCanvas) {
-      this.magentaTrailCanvas = document.createElement('canvas');
-      this.magentaTrailCtx = this.magentaTrailCanvas.getContext('2d', {alpha: true})!;
+      ({canvas: this.magentaTrailCanvas, ctx: this.magentaTrailCtx} = this.createOffscreenCanvas());
     }
 
     if (!this.tempCanvas) {
-      this.tempCanvas = document.createElement('canvas');
-      this.tempCtx = this.tempCanvas.getContext('2d', {alpha: true})!;
+      ({canvas: this.tempCanvas, ctx: this.tempCtx} = this.createOffscreenCanvas());
     }
 
     // Resize canvases while preserving trail content

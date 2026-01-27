@@ -790,6 +790,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | `getCachedColor()` / `getColorFromHue()` | Moved identical dual-hue color cache methods and state from plasma and infinity into `Canvas2DVisualization` base class | ~60 |
 | LCD ghosting `resize()` | Added `preserveContentOnResize` flag and content-preserving `resize()` to `Canvas2DVisualization`; removed identical `resize()` overrides and `hasDrawn` from waveform and modern | ~90 |
 | Duplicate `.color-control` | Removed second duplicate `&.color-control` block in `configuration-view.scss` (identical parent selector); kept first definition with hover/focus states | ~31 |
+| Trail canvas creation boilerplate | Added `createOffscreenCanvas()` helper to `Canvas2DVisualization` base class; replaced 15 manual `createElement`/`getContext` blocks across 6 trail visualizations | ~15 |
 
 ### Security Hardening
 

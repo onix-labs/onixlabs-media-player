@@ -98,18 +98,15 @@ export class InfinityVisualization extends Canvas2DVisualization {
 
     // Create trail canvases if needed
     if (!this.leftTrailCanvas) {
-      this.leftTrailCanvas = document.createElement('canvas');
-      this.leftTrailCtx = this.leftTrailCanvas.getContext('2d', {alpha: true})!;
+      ({canvas: this.leftTrailCanvas, ctx: this.leftTrailCtx} = this.createOffscreenCanvas());
     }
 
     if (!this.rightTrailCanvas) {
-      this.rightTrailCanvas = document.createElement('canvas');
-      this.rightTrailCtx = this.rightTrailCanvas.getContext('2d', {alpha: true})!;
+      ({canvas: this.rightTrailCanvas, ctx: this.rightTrailCtx} = this.createOffscreenCanvas());
     }
 
     if (!this.tempCanvas) {
-      this.tempCanvas = document.createElement('canvas');
-      this.tempCtx = this.tempCanvas.getContext('2d', {alpha: true})!;
+      ({canvas: this.tempCanvas, ctx: this.tempCtx} = this.createOffscreenCanvas());
     }
 
     // Resize canvases while preserving trail content

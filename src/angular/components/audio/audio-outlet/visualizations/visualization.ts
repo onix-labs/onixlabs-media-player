@@ -577,6 +577,22 @@ export abstract class Visualization {
   }
 
   /**
+   * Creates an offscreen canvas at the current visualization dimensions
+   * with an alpha-enabled 2D context.
+   *
+   * Used by trail-based visualizations to create trail and temp canvases.
+   *
+   * @returns A canvas/context pair sized to the current width/height
+   */
+  protected createOffscreenCanvas(): {canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D} {
+    const canvas: HTMLCanvasElement = document.createElement('canvas');
+    canvas.width = this.width;
+    canvas.height = this.height;
+    const ctx: CanvasRenderingContext2D = canvas.getContext('2d', {alpha: true})!;
+    return {canvas, ctx};
+  }
+
+  /**
    * Updates the fade alpha based on playback state.
    *
    * Call this at the start of draw() to update fade transitions.
