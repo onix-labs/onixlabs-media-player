@@ -25,51 +25,9 @@ import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { SettingsManager } from './settings-manager.js';
 import { serverLogger, playlistLogger, playbackLogger, ffmpegLogger, midiLogger, logHttpRequest, logProcessSpawn, logProcessOutput, logProcessExit } from './logger.js';
-
-// ============================================================================
-// Binary Path Resolution
-// ============================================================================
-
-/**
- * Common installation paths for ffmpeg/ffprobe on macOS.
- * Checked in order - first existing path is used.
- */
-const FFMPEG_SEARCH_PATHS: string[] = [
-  '/opt/homebrew/bin/ffmpeg',      // Homebrew Apple Silicon
-  '/usr/local/bin/ffmpeg',         // Homebrew Intel
-  '/usr/bin/ffmpeg',               // System
-];
-
-const FFPROBE_SEARCH_PATHS: string[] = [
-  '/opt/homebrew/bin/ffprobe',     // Homebrew Apple Silicon
-  '/usr/local/bin/ffprobe',        // Homebrew Intel
-  '/usr/bin/ffprobe',              // System
-];
-
-const FLUIDSYNTH_SEARCH_PATHS: string[] = [
-  '/opt/homebrew/bin/fluidsynth',  // Homebrew Apple Silicon
-  '/usr/local/bin/fluidsynth',     // Homebrew Intel
-  '/usr/bin/fluidsynth',           // System
-];
-
-/**
- * Finds the first existing binary from a list of paths.
- */
-function findBinary(searchPaths: string[]): string | null {
-  for (const p of searchPaths) {
-    if (existsSync(p)) return p;
-  }
-  return null;
-}
-
-/** Resolved path to ffmpeg binary */
-const FFMPEG_PATH: string | null = findBinary(FFMPEG_SEARCH_PATHS);
-
-/** Resolved path to ffprobe binary */
-const FFPROBE_PATH: string | null = findBinary(FFPROBE_SEARCH_PATHS);
-
-/** Resolved path to fluidsynth binary */
-const FLUIDSYNTH_PATH: string | null = findBinary(FLUIDSYNTH_SEARCH_PATHS);
+import { app } from 'electron';
+import { DependencyManager } from './dependency-manager.js';
+import type { DependencyId, DependencyState, InstallProgress, SoundFontInfo } from './dependency-manager.js';
 import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate } from './settings-manager.js';
 
 // ============================================================================
@@ -185,8 +143,10 @@ type SSEEventType =
   | 'playlist:cleared'       // Delta: playlist was cleared
   | 'playlist:selection'  // Current track selection changed
   | 'playlist:mode'       // Shuffle or repeat mode changed
-  | 'settings:updated'    // Application settings changed
-  | 'heartbeat';          // Keep-alive ping
+  | 'settings:updated'       // Application settings changed
+  | 'dependencies:state'    // Dependency state changed
+  | 'dependencies:progress' // Dependency install/uninstall progress
+  | 'heartbeat';            // Keep-alive ping
 
 // ============================================================================
 // Constants
@@ -208,17 +168,6 @@ const NATIVE_AUDIO_FORMATS: Set<string> = new Set(['.mp3', '.wav', '.ogg', '.fla
  * MIDI file extensions that require FluidSynth synthesis.
  */
 const MIDI_FORMATS: Set<string> = new Set(['.mid', '.midi']);
-
-/**
- * Paths to search for SoundFont files (in order of preference).
- * The first existing file will be used for MIDI synthesis.
- */
-const SOUNDFONT_SEARCH_PATHS: string[] = [
-  '/usr/local/Cellar/fluid-synth/2.5.1/share/fluid-synth/sf2/VintageDreamsWaves-v2.sf2',
-  '/usr/share/sounds/sf2/FluidR3_GM.sf2',
-  '/usr/share/soundfonts/FluidR3_GM.sf2',
-  '/usr/local/share/soundfonts/default.sf2',
-];
 
 /**
  * MIME types for supported media formats.
@@ -960,6 +909,9 @@ export class UnifiedMediaServer {
   /** Settings manager for persistent user preferences */
   private readonly settings: SettingsManager = new SettingsManager();
 
+  /** Dependency manager for external binary detection and installation */
+  private readonly deps: DependencyManager = new DependencyManager(process.platform, app.getPath('userData'));
+
   /** Playlist manager instance */
   private readonly playlist: PlaylistManager;
 
@@ -1216,6 +1168,18 @@ export class UnifiedMediaServer {
         await this.handleSettingsTranscoding(req, res);
       } else if (pathname === '/settings/appearance' && method === 'PUT') {
         await this.handleSettingsAppearance(req, res);
+      } else if (pathname === '/dependencies' && method === 'GET') {
+        this.handleDependenciesGet(res);
+      } else if (pathname === '/dependencies/install' && method === 'POST') {
+        await this.handleDependenciesInstall(req, res);
+      } else if (pathname === '/dependencies/uninstall' && method === 'POST') {
+        await this.handleDependenciesUninstall(req, res);
+      } else if (pathname === '/dependencies/soundfont/install' && method === 'POST') {
+        await this.handleSoundFontInstall(req, res);
+      } else if (pathname === '/dependencies/soundfont/remove' && method === 'POST') {
+        await this.handleSoundFontRemove(req, res);
+      } else if (pathname === '/dependencies/refresh' && method === 'POST') {
+        this.handleDependenciesRefresh(res);
       } else if (this.staticPath) {
         // Serve static files for Angular app in production
         this.serveStaticFile(req, res, pathname);
@@ -1267,6 +1231,7 @@ export class UnifiedMediaServer {
     res.write(`event: playback:volume\ndata: ${JSON.stringify({ volume: this.playback.volume, muted: this.playback.muted })}\n\n`);
     res.write(`event: playlist:updated\ndata: ${JSON.stringify(this.playlist.getState())}\n\n`);
     res.write(`event: settings:updated\ndata: ${JSON.stringify(this.settings.getSettings())}\n\n`);
+    res.write(`event: dependencies:state\ndata: ${JSON.stringify(this.deps.getState())}\n\n`);
 
     if (this.playback.currentMedia) {
       res.write(`event: playback:loaded\ndata: ${JSON.stringify(this.playback.currentMedia)}\n\n`);
@@ -1588,14 +1553,15 @@ export class UnifiedMediaServer {
       });
     }
 
-    if (!FFMPEG_PATH) {
+    const ffmpegBin: string | null = this.deps.getFfmpegPath();
+    if (!ffmpegBin) {
       ffmpegLogger.error('ffmpeg binary not found');
       res.writeHead(500);
       res.end(JSON.stringify({ error: 'ffmpeg not found' }));
       return;
     }
     logProcessSpawn(ffmpegLogger, 'ffmpeg', ffmpegArgs);
-    const ffmpeg: ChildProcess = spawn(FFMPEG_PATH, ffmpegArgs);
+    const ffmpeg: ChildProcess = spawn(ffmpegBin, ffmpegArgs);
     ffmpeg.stdout?.pipe(res);
 
     ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
@@ -1655,7 +1621,9 @@ export class UnifiedMediaServer {
     midiLogger.info(`Converting MIDI: ${path.basename(filePath)} (using SoundFont: ${path.basename(soundfont)})`);
 
     // FluidSynth converts MIDI to raw PCM and outputs to stdout
-    if (!FLUIDSYNTH_PATH || !FFMPEG_PATH) {
+    const fluidsynthBin: string | null = this.deps.getFluidsynthPath();
+    const ffmpegBinMidi: string | null = this.deps.getFfmpegPath();
+    if (!fluidsynthBin || !ffmpegBinMidi) {
       midiLogger.error('fluidsynth or ffmpeg binary not found');
       res.writeHead(500);
       res.end(JSON.stringify({ error: 'fluidsynth or ffmpeg not found' }));
@@ -1672,7 +1640,7 @@ export class UnifiedMediaServer {
     ];
 
     logProcessSpawn(midiLogger, 'fluidsynth', fluidsynthArgs);
-    const fluidsynth: ChildProcess = spawn(FLUIDSYNTH_PATH, fluidsynthArgs);
+    const fluidsynth: ChildProcess = spawn(fluidsynthBin, fluidsynthArgs);
 
     // Pipe FluidSynth output through FFmpeg to encode as MP3
     const ffmpegMidiArgs: string[] = [
@@ -1689,7 +1657,7 @@ export class UnifiedMediaServer {
     ];
 
     logProcessSpawn(ffmpegLogger, 'ffmpeg (MIDI)', ffmpegMidiArgs);
-    const ffmpeg: ChildProcess = spawn(FFMPEG_PATH, ffmpegMidiArgs);
+    const ffmpeg: ChildProcess = spawn(ffmpegBinMidi, ffmpegMidiArgs);
 
     res.writeHead(200, {
       'Content-Type': 'audio/mpeg',
@@ -1754,17 +1722,13 @@ export class UnifiedMediaServer {
   }
 
   /**
-   * Finds the first available SoundFont file from the search paths.
+   * Finds the first available SoundFont file.
+   * Delegates to DependencyManager which checks user-installed and system paths.
    *
    * @returns Path to SoundFont file, or undefined if none found
    */
   private findSoundFont(): string | undefined {
-    for (const sfPath of SOUNDFONT_SEARCH_PATHS) {
-      if (existsSync(sfPath)) {
-        return sfPath;
-      }
-    }
-    return undefined;
+    return this.deps.findSoundFont();
   }
 
   // ============================================================================
@@ -1833,13 +1797,14 @@ export class UnifiedMediaServer {
     }
 
     return new Promise((resolve: (value: Readonly<MediaInfo>) => void, reject: (reason: Readonly<Error>) => void): void => {
-      if (!FFPROBE_PATH) {
+      const ffprobeBin: string | null = this.deps.getFfprobePath();
+      if (!ffprobeBin) {
         ffmpegLogger.error('ffprobe binary not found');
         reject(new Error('ffprobe not found'));
         return;
       }
       ffmpegLogger.debug(`Probing: ${path.basename(filePath)}`);
-      const ffprobe: ChildProcess = spawn(FFPROBE_PATH, [
+      const ffprobe: ChildProcess = spawn(ffprobeBin, [
         '-v', 'quiet',
         '-print_format', 'json',
         '-show_format',
@@ -2574,6 +2539,132 @@ export class UnifiedMediaServer {
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+  }
+
+  // ============================================================================
+  // Dependencies
+  // ============================================================================
+
+  /**
+   * Returns the DependencyManager instance.
+   * Used by main.ts for IPC handler access.
+   */
+  public getDependencyManager(): DependencyManager {
+    return this.deps;
+  }
+
+  /**
+   * Returns the current dependency state.
+   */
+  private handleDependenciesGet(res: Readonly<ServerResponse>): void {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(this.deps.getState()));
+  }
+
+  /**
+   * Installs a dependency asynchronously, streaming progress via SSE.
+   * Returns 202 Accepted immediately, then broadcasts progress events.
+   */
+  private async handleDependenciesInstall(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
+
+    if (id !== 'ffmpeg' && id !== 'fluidsynth') {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Invalid dependency id' }));
+      return;
+    }
+
+    res.writeHead(202, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ accepted: true }));
+
+    await this.deps.installDependency(id, (progress: InstallProgress): void => {
+      this.sse.broadcast('dependencies:progress', progress);
+    });
+
+    this.sse.broadcast('dependencies:state', this.deps.getState());
+  }
+
+  /**
+   * Uninstalls a dependency asynchronously, streaming progress via SSE.
+   * Returns 202 Accepted immediately, then broadcasts progress events.
+   */
+  private async handleDependenciesUninstall(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
+
+    if (id !== 'ffmpeg' && id !== 'fluidsynth') {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Invalid dependency id' }));
+      return;
+    }
+
+    res.writeHead(202, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ accepted: true }));
+
+    await this.deps.uninstallDependency(id, (progress: InstallProgress): void => {
+      this.sse.broadcast('dependencies:progress', progress);
+    });
+
+    this.sse.broadcast('dependencies:state', this.deps.getState());
+  }
+
+  /**
+   * Installs a SoundFont file by copying it to the app data directory.
+   */
+  private async handleSoundFontInstall(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const { sourcePath }: { sourcePath: string } = JSON.parse(body) as { sourcePath: string };
+
+    if (!sourcePath) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Missing sourcePath' }));
+      return;
+    }
+
+    try {
+      const info: SoundFontInfo = this.deps.installSoundFont(sourcePath);
+      this.sse.broadcast('dependencies:state', this.deps.getState());
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, soundfont: info }));
+    } catch (err) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+  }
+
+  /**
+   * Removes a SoundFont file from the app data directory.
+   */
+  private async handleSoundFontRemove(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const { fileName }: { fileName: string } = JSON.parse(body) as { fileName: string };
+
+    if (!fileName) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Missing fileName' }));
+      return;
+    }
+
+    const removed: boolean = this.deps.removeSoundFont(fileName);
+    if (removed) {
+      this.sse.broadcast('dependencies:state', this.deps.getState());
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: removed }));
+  }
+
+  /**
+   * Re-detects all binaries and broadcasts the updated state.
+   */
+  private handleDependenciesRefresh(res: Readonly<ServerResponse>): void {
+    this.deps.detectBinaries();
+    const state: DependencyState = this.deps.getState();
+    this.sse.broadcast('dependencies:state', state);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(state));
   }
 
   // ============================================================================

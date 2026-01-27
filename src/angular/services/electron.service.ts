@@ -142,6 +142,12 @@ export class ElectronService implements OnDestroy {
   /** Callback for settings updates (registered by SettingsService) */
   private settingsUpdateCallback: ((settings: AppSettings) => void) | null = null;
 
+  /** Callback for dependency state updates (registered by DependencyService) */
+  private dependencyStateCallback: ((state: unknown) => void) | null = null;
+
+  /** Callback for dependency install progress updates (registered by DependencyService) */
+  private dependencyProgressCallback: ((progress: unknown) => void) | null = null;
+
   /** Cleanup function for prepare-for-close listener */
   private prepareForCloseCleanup: (() => void) | null = null;
 
@@ -178,6 +184,22 @@ export class ElectronService implements OnDestroy {
    */
   public onSettingsUpdate(callback: (settings: AppSettings) => void): void {
     this.settingsUpdateCallback = callback;
+  }
+
+  /**
+   * Registers a callback to receive dependency state updates from SSE.
+   * Called by DependencyService to avoid circular dependency.
+   */
+  public onDependencyStateUpdate(callback: (state: unknown) => void): void {
+    this.dependencyStateCallback = callback;
+  }
+
+  /**
+   * Registers a callback to receive dependency install progress from SSE.
+   * Called by DependencyService to avoid circular dependency.
+   */
+  public onDependencyProgressUpdate(callback: (progress: unknown) => void): void {
+    this.dependencyProgressCallback = callback;
   }
 
   /**
@@ -673,6 +695,25 @@ export class ElectronService implements OnDestroy {
         }
       });
     });
+
+    // Dependency events
+    this.eventSource.addEventListener('dependencies:state', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
+        const data: unknown = this.safeParseJSON<unknown>(e.data, null);
+        if (data) {
+          this.dependencyStateCallback?.(data);
+        }
+      });
+    });
+
+    this.eventSource.addEventListener('dependencies:progress', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
+        const data: unknown = this.safeParseJSON<unknown>(e.data, null);
+        if (data) {
+          this.dependencyProgressCallback?.(data);
+        }
+      });
+    });
   }
 
   // ============================================================================
@@ -705,6 +746,16 @@ export class ElectronService implements OnDestroy {
       ],
       multiSelections: multiSelect
     });
+  }
+
+  /**
+   * Opens the native file picker dialog for selecting SoundFont (.sf2) files.
+   *
+   * @returns Promise resolving to array of selected file paths, empty if cancelled
+   */
+  public async openSoundFontDialog(): Promise<string[]> {
+    if (!this.isElectron || !this.api) return [];
+    return this.api.openSoundFontDialog();
   }
 
   /**

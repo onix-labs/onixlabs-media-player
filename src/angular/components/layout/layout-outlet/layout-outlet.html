@@ -11,6 +11,21 @@
              (dragover)="onDragOver($event)"
              (dragleave)="onDragLeave($event)"
              (drop)="onDrop($event)">
+          @if (hasMissingDependencies()) {
+            <div class="dependency-warnings">
+              @for (dep of missingDependencies(); track dep.id) {
+                <div class="dependency-warning">
+                  <i class="fa-solid fa-triangle-exclamation"></i>
+                  <span class="dependency-warning-text">
+                    <strong>{{ dep.name }} missing</strong> — {{ dep.description }}
+                  </span>
+                  <button class="dependency-settings-link" (click)="onOpenDependencySettings()" (mouseup)="$any($event.currentTarget).blur()">
+                    Open Settings
+                  </button>
+                </div>
+              }
+            </div>
+          }
           <img alt="ONIXPlayer" src="logo.png" draggable="false"/>
           <p>No media loaded</p>
           <p class="hint">Drag files here or click eject to add media</p>

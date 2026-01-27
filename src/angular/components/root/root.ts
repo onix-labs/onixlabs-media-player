@@ -106,6 +106,9 @@ export class Root implements OnDestroy {
   /** Whether the configuration view is displayed (settings mode) */
   public readonly isConfigurationMode: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
+  /** Initial category to select when entering configuration mode */
+  public readonly configInitialCategory: ReturnType<typeof signal<string>> = signal<string>('');
+
   /** Whether the about view is displayed (about mode) */
   public readonly isAboutMode: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
@@ -407,7 +410,9 @@ export class Root implements OnDestroy {
    * Uses untracked() to prevent signal reads from registering as effect
    * dependencies when called from an effect (e.g., menu event handler).
    */
-  public async enterConfigurationMode(): Promise<void> {
+  public async enterConfigurationMode(initialCategory?: string): Promise<void> {
+    // Set the initial category before entering configuration mode
+    this.configInitialCategory.set(initialCategory ?? '');
     // Exit fullscreen if active (untracked to avoid effect dependency)
     if (untracked((): boolean => this.isFullscreen())) {
       await this.electron.exitFullscreen();

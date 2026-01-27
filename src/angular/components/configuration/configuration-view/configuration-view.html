@@ -64,6 +64,127 @@
 
         <div class="settings-content">
           @switch (selectedCategory()) {
+            @case ('dependencies') {
+              <div class="setting-group">
+                <!-- FFmpeg -->
+                @if (ffmpegStatus(); as ffmpeg) {
+                  <div class="dependency-row">
+                    <div class="dependency-indicator" [class.installed]="ffmpeg.installed" [class.missing]="!ffmpeg.installed">
+                      <i [class]="ffmpeg.installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
+                    </div>
+                    <div class="dependency-info">
+                      <span class="dependency-name">{{ ffmpeg.name }}</span>
+                      <span class="dependency-description">{{ ffmpeg.description }}</span>
+                      @if (ffmpeg.installed && ffmpeg.path) {
+                        <span class="dependency-path">{{ ffmpeg.path }}</span>
+                      }
+                    </div>
+                    <div class="dependency-actions">
+                      @if (ffmpeg.installed) {
+                        <button class="dependency-button uninstall" [disabled]="isDepOperationInProgress()" (click)="onUninstallDependency('ffmpeg')" (mouseup)="$any($event.currentTarget).blur()">
+                          Uninstall
+                        </button>
+                      } @else {
+                        <button class="dependency-button install" [disabled]="isDepOperationInProgress()" (click)="onInstallDependency('ffmpeg')" (mouseup)="$any($event.currentTarget).blur()">
+                          Install
+                        </button>
+                      }
+                      <button class="dependency-link" (click)="onOpenManualDownload(ffmpeg.manualInstallUrl)" (mouseup)="$any($event.currentTarget).blur()" title="Manual download">
+                        <i class="fa-solid fa-external-link-alt"></i>
+                      </button>
+                    </div>
+                  </div>
+                }
+
+                <!-- FluidSynth -->
+                @if (fluidsynthStatus(); as fluidsynth) {
+                  <div class="dependency-row">
+                    <div class="dependency-indicator" [class.installed]="fluidsynth.installed" [class.missing]="!fluidsynth.installed">
+                      <i [class]="fluidsynth.installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
+                    </div>
+                    <div class="dependency-info">
+                      <span class="dependency-name">{{ fluidsynth.name }}</span>
+                      <span class="dependency-description">{{ fluidsynth.description }}</span>
+                      @if (fluidsynth.installed && fluidsynth.path) {
+                        <span class="dependency-path">{{ fluidsynth.path }}</span>
+                      }
+                    </div>
+                    <div class="dependency-actions">
+                      @if (fluidsynth.installed) {
+                        <button class="dependency-button uninstall" [disabled]="isDepOperationInProgress()" (click)="onUninstallDependency('fluidsynth')" (mouseup)="$any($event.currentTarget).blur()">
+                          Uninstall
+                        </button>
+                      } @else {
+                        <button class="dependency-button install" [disabled]="isDepOperationInProgress()" (click)="onInstallDependency('fluidsynth')" (mouseup)="$any($event.currentTarget).blur()">
+                          Install
+                        </button>
+                      }
+                      <button class="dependency-link" (click)="onOpenManualDownload(fluidsynth.manualInstallUrl)" (mouseup)="$any($event.currentTarget).blur()" title="Manual download">
+                        <i class="fa-solid fa-external-link-alt"></i>
+                      </button>
+                    </div>
+                  </div>
+                }
+
+                <!-- Install/Uninstall Progress -->
+                @if (depProgress(); as progress) {
+                  @if (progress.status === 'installing' || progress.status === 'uninstalling') {
+                    <div class="install-progress">
+                      <div class="install-progress-header">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <span>{{ progress.message }}</span>
+                      </div>
+                      @if (progress.output) {
+                        <pre class="install-output">{{ progress.output }}</pre>
+                      }
+                    </div>
+                  } @else if (progress.status === 'success') {
+                    <div class="install-progress success">
+                      <i class="fa-solid fa-circle-check"></i>
+                      <span>{{ progress.message }}</span>
+                    </div>
+                  } @else if (progress.status === 'error') {
+                    <div class="install-progress error">
+                      <i class="fa-solid fa-circle-xmark"></i>
+                      <span>{{ progress.message }}</span>
+                      @if (progress.output) {
+                        <pre class="install-output">{{ progress.output }}</pre>
+                      }
+                    </div>
+                  }
+                }
+
+                <!-- SoundFont Section -->
+                @if (fluidsynthInstalled()) {
+                  <div class="soundfont-section">
+                    <div class="soundfont-header">
+                      <span class="soundfont-title">SoundFonts</span>
+                      <span class="soundfont-subtitle">SoundFont files are required for MIDI playback synthesis.</span>
+                    </div>
+                    @if (soundFonts().length > 0) {
+                      <div class="soundfont-list">
+                        @for (sf of soundFonts(); track sf.fileName) {
+                          <div class="soundfont-item">
+                            <i class="fa-solid fa-music"></i>
+                            <span class="soundfont-name">{{ sf.fileName }}</span>
+                            <span class="soundfont-size">{{ formatFileSize(sf.sizeBytes) }}</span>
+                            <button class="soundfont-remove" (click)="onRemoveSoundFont(sf.fileName)" (mouseup)="$any($event.currentTarget).blur()" title="Remove SoundFont">
+                              <i class="fa-solid fa-trash"></i>
+                            </button>
+                          </div>
+                        }
+                      </div>
+                    } @else {
+                      <p class="soundfont-empty">No SoundFonts installed. Install a .sf2 file for MIDI playback.</p>
+                    }
+                    <button class="dependency-button install soundfont-install" (click)="onInstallSoundFont()" (mouseup)="$any($event.currentTarget).blur()">
+                      <i class="fa-solid fa-plus"></i> Install SoundFont
+                    </button>
+                  </div>
+                }
+              </div>
+            }
+
             @case ('visualisations') {
               @if (selectedVisualization(); as vizId) {
                 <!-- Per-Visualization Settings -->

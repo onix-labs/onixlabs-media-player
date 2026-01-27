@@ -16,13 +16,16 @@
  * @module app/components/layout/layout-outlet
  */
 
-import {Component, computed, inject, signal, ViewChild, HostBinding, ChangeDetectionStrategy} from '@angular/core';
+import {Component, computed, inject, signal, output, ViewChild, HostBinding, ChangeDetectionStrategy} from '@angular/core';
+import type {OutputEmitterRef} from '@angular/core';
 import {AudioOutlet} from '../../audio/audio-outlet/audio-outlet';
 import {VideoOutlet} from '../../video/video-outlet/video-outlet';
 import {Playlist} from '../../playlist/playlist';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
+import {DependencyService} from '../../../services/dependency.service';
+import type {DependencyStatus} from '../../../services/dependency.service';
 import type {PlaylistItem} from '../../../types/electron';
 
 /**
@@ -70,6 +73,12 @@ export class LayoutOutlet {
   /** File drop service for drag-and-drop handling */
   private readonly fileDrop: FileDropService = inject(FileDropService);
 
+  /** Dependency service for external binary status */
+  private readonly deps: DependencyService = inject(DependencyService);
+
+  /** Emitted when the user clicks to open dependency settings */
+  public readonly openDependencySettings: OutputEmitterRef<void> = output<void>();
+
   /** Signal for visualization display name (updated reactively from audioOutlet) */
   public readonly visualizationDisplayName: ReturnType<typeof signal<string>> = signal<string>('');
 
@@ -104,6 +113,12 @@ export class LayoutOutlet {
   /** Whether files are being dragged over this component */
   public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
+  /** Whether any required dependencies are missing */
+  public readonly hasMissingDependencies: ReturnType<typeof computed<boolean>> = computed((): boolean => this.deps.hasMissingDependencies());
+
+  /** List of missing dependencies */
+  public readonly missingDependencies: ReturnType<typeof computed<DependencyStatus[]>> = computed((): DependencyStatus[] => this.deps.missingDependencies());
+
   // ============================================================================
   // Host Bindings
   // ============================================================================
@@ -136,6 +151,13 @@ export class LayoutOutlet {
    */
   public togglePlaylist(): void {
     this.playlistComponent?.toggle();
+  }
+
+  /**
+   * Emits event to open dependency settings in configuration view.
+   */
+  public onOpenDependencySettings(): void {
+    this.openDependencySettings.emit();
   }
 
   /**

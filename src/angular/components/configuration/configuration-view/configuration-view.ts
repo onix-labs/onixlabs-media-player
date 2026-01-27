@@ -12,10 +12,13 @@
  * @module app/components/configuration/configuration-view
  */
 
-import {Component, signal, computed, inject, ChangeDetectionStrategy} from '@angular/core';
+import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
+import type {InputSignal, EffectRef} from '@angular/core';
 import {FormsModule} from '@angular/forms';
 import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, MacOSVisualEffectState, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
+import {DependencyService} from '../../../services/dependency.service';
+import type {DependencyId, DependencyState, DependencyStatus, SoundFontInfo, InstallProgress} from '../../../services/dependency.service';
 
 /**
  * macOS visual effect state options for the settings UI.
@@ -73,6 +76,12 @@ interface SettingsCategory {
  * Future categories (playback, audio) can be added here.
  */
 const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
+  {
+    id: 'dependencies',
+    name: 'Dependencies',
+    icon: 'fa-solid fa-puzzle-piece',
+    description: 'Manage required external dependencies for media playback.',
+  },
   {
     id: 'application',
     name: 'Application',
@@ -137,6 +146,16 @@ export class ConfigurationView {
   /** Electron service for platform information */
   private readonly electronService: ElectronService = inject(ElectronService);
 
+  /** Dependency service for external binary management */
+  private readonly dependencyService: DependencyService = inject(DependencyService);
+
+  // ============================================================================
+  // Inputs
+  // ============================================================================
+
+  /** Initial category to select when the view opens */
+  public readonly initialCategory: InputSignal<string> = input<string>('');
+
   // ============================================================================
   // Reactive State
   // ============================================================================
@@ -146,6 +165,14 @@ export class ConfigurationView {
 
   /** Whether the visualisations accordion is expanded */
   public readonly isVisualisationsExpanded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /** Effect to apply initialCategory input */
+  private readonly initialCategoryEffect: EffectRef = effect((): void => {
+    const category: string = this.initialCategory();
+    if (category) {
+      this.selectedCategory.set(category);
+    }
+  });
 
   /** Currently selected visualization ID (null = global settings) */
   public readonly selectedVisualization: ReturnType<typeof signal<string | null>> = signal<string | null>(null);
@@ -328,6 +355,45 @@ export class ConfigurationView {
   );
 
   // ============================================================================
+  // Dependency Computed Signals
+  // ============================================================================
+
+  /** Full dependency state */
+  public readonly depState: ReturnType<typeof computed<DependencyState | null>> = computed(
+    (): DependencyState | null => this.dependencyService.dependencyState()
+  );
+
+  /** FFmpeg dependency status */
+  public readonly ffmpegStatus: ReturnType<typeof computed<DependencyStatus | null>> = computed(
+    (): DependencyStatus | null => this.depState()?.ffmpeg ?? null
+  );
+
+  /** FluidSynth dependency status */
+  public readonly fluidsynthStatus: ReturnType<typeof computed<DependencyStatus | null>> = computed(
+    (): DependencyStatus | null => this.depState()?.fluidsynth ?? null
+  );
+
+  /** Installed SoundFont files */
+  public readonly soundFonts: ReturnType<typeof computed<SoundFontInfo[]>> = computed(
+    (): SoundFontInfo[] => this.dependencyService.soundFonts()
+  );
+
+  /** Whether FluidSynth is installed (for showing SoundFont section) */
+  public readonly fluidsynthInstalled: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.dependencyService.fluidsynthInstalled()
+  );
+
+  /** Current install/uninstall progress */
+  public readonly depProgress: ReturnType<typeof computed<InstallProgress | null>> = computed(
+    (): InstallProgress | null => this.dependencyService.installProgress()
+  );
+
+  /** Whether an install/uninstall operation is in progress */
+  public readonly isDepOperationInProgress: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.dependencyService.isOperationInProgress()
+  );
+
+  // ============================================================================
   // Event Handlers
   // ============================================================================
 
@@ -485,6 +551,53 @@ export class ConfigurationView {
     await this.settingsService.setMacOSVisualEffectState(state as MacOSVisualEffectState);
   }
 
+  // ============================================================================
+  // Dependency Event Handlers
+  // ============================================================================
+
+  /**
+   * Installs a dependency using the platform package manager.
+   */
+  public async onInstallDependency(id: DependencyId): Promise<void> {
+    await this.dependencyService.installDependency(id);
+  }
+
+  /**
+   * Uninstalls a dependency using the platform package manager.
+   */
+  public async onUninstallDependency(id: DependencyId): Promise<void> {
+    await this.dependencyService.uninstallDependency(id);
+  }
+
+  /**
+   * Opens the file dialog and installs a SoundFont file.
+   */
+  public async onInstallSoundFont(): Promise<void> {
+    await this.dependencyService.installSoundFont();
+  }
+
+  /**
+   * Removes a SoundFont file from the app data directory.
+   */
+  public async onRemoveSoundFont(fileName: string): Promise<void> {
+    await this.dependencyService.removeSoundFont(fileName);
+  }
+
+  /**
+   * Opens the manual download URL in the default browser.
+   */
+  public onOpenManualDownload(url: string): void {
+    window.open(url, '_blank');
+  }
+
+  /**
+   * Formats a file size in bytes to a human-readable string.
+   */
+  public formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
 
   /**
    * Formats the current default volume value as a percentage string.

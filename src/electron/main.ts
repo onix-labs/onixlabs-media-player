@@ -384,6 +384,24 @@ class Program {
       return result.filePaths;
     });
 
+    // Open SoundFont file dialog - scoped to .sf2 files
+    ipcMain.handle("dialog:openSoundFont", async (): Promise<string[]> => {
+      ipcLogger.debug('dialog:openSoundFont');
+      if (!this.window) {
+        ipcLogger.warn('dialog:openSoundFont - no window available');
+        return [];
+      }
+
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
+        title: 'Select SoundFont File',
+        properties: ['openFile'],
+        filters: [{name: 'SoundFont Files', extensions: ['sf2']}],
+      });
+
+      ipcLogger.info(`dialog:openSoundFont - selected ${result.filePaths.length} file(s)`);
+      return result.canceled ? [] : result.filePaths;
+    });
+
     // Get server port - needed for renderer to connect to HTTP API
     ipcMain.handle("app:getServerPort", (): number => {
       const port: number = this.mediaServer?.getPort() || 0;

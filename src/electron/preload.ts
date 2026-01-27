@@ -262,6 +262,7 @@ export interface MediaPlayerAPI {
  */
 const api: MediaPlayerAPI = {
   openFileDialog: (options: Readonly<OpenDialogOptions>): Promise<string[]> => ipcRenderer.invoke('dialog:openFile', options),
+  openSoundFontDialog: (): Promise<string[]> => ipcRenderer.invoke('dialog:openSoundFont'),
   getPathForFile: (file: Readonly<File>): string => webUtils.getPathForFile(file),
   getServerPort: (): Promise<number> => ipcRenderer.invoke('app:getServerPort'),
   getPlatformInfo: (): Promise<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}> => ipcRenderer.invoke('app:getPlatformInfo'),

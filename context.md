@@ -47,7 +47,7 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 ### Key Architectural Decisions
 
 1. **Unified HTTP Server** - All media streaming, playback control, and settings managed through a single HTTP server with SSE for real-time updates
-2. **Minimal IPC** - Only 17 IPC channels (vs typical 50+ in Electron apps) by routing most communication through HTTP
+2. **Minimal IPC** - Only 18 IPC channels (vs typical 50+ in Electron apps) by routing most communication through HTTP
 3. **Signal-Based State** - Angular signals throughout for reactive, predictable state flow
 4. **OnPush Change Detection** - All components use OnPush strategy for optimal performance
 5. **Type-Safe Event Handling** - Helper functions with instanceof checks for runtime safety
@@ -213,10 +213,32 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 - Close button returns to media player view
 - External links use Electron shell.openExternal() for proper OS browser launch
 
+### Dependency Management
+
+- Automatic detection of FFmpeg, FFprobe, and FluidSynth binaries across platform-specific search paths
+- Install/uninstall via platform package manager (Homebrew on macOS, apt/dnf/pacman on Linux, winget on Windows)
+- Real-time progress streaming via SSE during install/uninstall operations
+- SoundFont (.sf2) file management: install from file dialog, remove, auto-detect from common system paths
+- SoundFonts stored in app userData directory (`soundfonts/` subdirectory)
+- Dependencies configuration panel (first category in Settings) with:
+  - Per-dependency status row: green check (installed) / red X (missing), name, description, binary path
+  - Install/Uninstall buttons with progress indicator (spinner + terminal output)
+  - Manual download link button per dependency
+  - SoundFont section (visible when FluidSynth installed): list with file sizes, remove buttons, install button
+- Idle state warning banners: independent, stackable, absolutely-positioned banners at the top of the idle view
+  - Each missing dependency gets its own single-line banner: warning icon, bold name + "missing", description, solid red "Open Settings" button
+  - Banners are overlaid without displacing the centered idle content (logo, text)
+  - "Open Settings" opens the Dependencies configuration panel directly
+- Cross-platform binary search paths:
+  - macOS: `/opt/homebrew/bin/`, `/usr/local/bin/`, `/usr/bin/`
+  - Linux: `/usr/bin/`, `/usr/local/bin/`, `/snap/bin/`
+  - Windows: `C:\Program Files\FFmpeg\bin\`, `%LOCALAPPDATA%\Microsoft\WinGet\Links\`, PATH via `where.exe`
+
 ### Idle State
 
 - When playlist is empty, layout-outlet displays placeholder with ONIXPlayer logo
 - `hasPlaylistItems` computed signal gates audio/video outlet display
+- Missing dependency warning banners overlaid at top of idle state (absolutely positioned, does not displace centered content)
 - File > Open adds files and immediately starts playback
 - File > Close stops current track and removes it from playlist
 
@@ -278,8 +300,9 @@ ONIXPlayer is a cross-platform media player built with Electron and Angular, fea
 │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
-│  IPC (minimal - 17 channels):                                          │
+│  IPC (minimal - 18 channels):                                          │
 │  ├── dialog:openFile         (native file picker)                      │
+│  ├── dialog:openSoundFont    (SoundFont file picker)                   │
 │  ├── app:getServerPort       (get HTTP server port)                    │
 │  ├── app:getPlatformInfo     (platform, glass support, system theme)   │
 │  ├── app:prepareForClose     (signal renderer to fade out audio)       │
@@ -327,7 +350,7 @@ AudioContext.destination (speakers)
 ### Architecture Benefits
 
 1. **Unified playback** - Audio and video use same HTTP streaming approach
-2. **Minimal IPC** - Only 16 channels vs typical 50+ in Electron apps
+2. **Minimal IPC** - Only 18 channels vs typical 50+ in Electron apps
 3. **Server as source of truth** - Playlist and playback state managed centrally
 4. **Instant volume** - Client-side control via GainNode, no FFmpeg restart needed
 5. **Native browser decoding** - Leverages Chromium's optimized media stack
@@ -351,10 +374,11 @@ AudioContext.destination (speakers)
 | File | Purpose |
 |------|---------|
 | `src/electron/main.ts` | App initialization, IPC handlers, fullscreen window events, menu setup |
-| `src/electron/preload.ts` | IPC bridge (file dialog, server port, fullscreen control, menu events, openExternal, version info, log path) |
+| `src/electron/preload.ts` | IPC bridge (file dialog, SoundFont dialog, server port, fullscreen control, menu events, openExternal, version info, log path) |
 | `src/electron/unified-media-server.ts` | HTTP API, SSE, playlist management, MIDI parsing |
 | `src/electron/settings-manager.ts` | Persistent settings storage (JSON file in userData) |
 | `src/electron/application-menu.ts` | Native application menu for macOS/Windows/Linux |
+| `src/electron/dependency-manager.ts` | Cross-platform binary detection, install/uninstall, SoundFont management |
 | `src/electron/logger.ts` | Centralized logging with scoped loggers (electron-log) |
 
 ### Angular Services
@@ -364,6 +388,7 @@ AudioContext.destination (speakers)
 | `src/angular/services/electron.service.ts` | HTTP client + SSE connection + fullscreen state + validated JSON parsing |
 | `src/angular/services/media-player.service.ts` | Playback orchestration (delegates to HTTP) |
 | `src/angular/services/settings.service.ts` | Settings state management with SSE sync, generic `updateSetting<T>()` helper |
+| `src/angular/services/dependency.service.ts` | Dependency state management with SSE sync, install/uninstall commands |
 | `src/angular/services/file-drop.service.ts` | Centralized drag-and-drop file extraction with media type filtering |
 
 ### Angular Components
@@ -424,6 +449,17 @@ AudioContext.destination (speakers)
 | POST | `/playlist/shuffle` | Body: `{ enabled: boolean }` |
 | POST | `/playlist/repeat` | Body: `{ enabled: boolean }` |
 
+### Dependencies
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/dependencies` | Get full dependency state (binaries + SoundFonts) |
+| POST | `/dependencies/install` | Body: `{ id: 'ffmpeg' \| 'fluidsynth' }` — Install via package manager |
+| POST | `/dependencies/uninstall` | Body: `{ id: 'ffmpeg' \| 'fluidsynth' }` — Uninstall via package manager |
+| POST | `/dependencies/soundfont/install` | Body: `{ path: string }` — Copy .sf2 file to app data |
+| POST | `/dependencies/soundfont/remove` | Body: `{ fileName: string }` — Remove .sf2 from app data |
+| POST | `/dependencies/refresh` | Re-detect all binaries and broadcast state |
+
 ### Settings
 
 | Method | Endpoint | Description |
@@ -438,7 +474,7 @@ AudioContext.destination (speakers)
 
 | Endpoint | Events |
 |----------|--------|
-| GET `/events` | `playback:state`, `playback:time`, `playback:loaded`, `playback:ended`, `playback:volume`, `playlist:updated`, `playlist:items:added`, `playlist:items:removed`, `playlist:cleared`, `playlist:selection`, `playlist:mode`, `settings:updated`, `heartbeat` |
+| GET `/events` | `playback:state`, `playback:time`, `playback:loaded`, `playback:ended`, `playback:volume`, `playlist:updated`, `playlist:items:added`, `playlist:items:removed`, `playlist:cleared`, `playlist:selection`, `playlist:mode`, `settings:updated`, `dependencies:state`, `dependencies:progress`, `heartbeat` |
 
 **Delta Events (efficient playlist updates):**
 - `playlist:items:added` - Only sends added items with `{ items, startIndex, currentIndex }`
@@ -496,6 +532,20 @@ The `Canvas2DVisualization` base class provides:
 - **Close button behavior**: In settings view, the window close button (macOS red traffic light) returns to the media player instead of quitting the application
 
 ### Available Settings
+
+#### Dependencies Category
+
+The Dependencies panel shows the status of required external binaries and SoundFont files.
+
+| Component | Controls | Description |
+|-----------|----------|-------------|
+| FFmpeg | Install / Uninstall / Manual Download | Required for audio/video playback (MP3, MP4, MKV, etc.) |
+| FluidSynth | Install / Uninstall / Manual Download | Required for MIDI playback |
+| SoundFonts | Install (.sf2) / Remove | MIDI instrument sounds (shown when FluidSynth installed) |
+
+- Install/uninstall progress shown with spinner and terminal output
+- Success/error status displayed after operation completes
+- Binary paths displayed when installed
 
 #### Visualisations Category
 
