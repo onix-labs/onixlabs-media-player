@@ -789,11 +789,14 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | Trail canvas `drawWaveform()` | Added optional `ctx` parameter to `drawPathWithLayers()` and `drawPointsWithLayers()`; removed private `drawWaveform()` from plasma and neon, `drawCircleWaveform()` from infinity | ~120 |
 | `getCachedColor()` / `getColorFromHue()` | Moved identical dual-hue color cache methods and state from plasma and infinity into `Canvas2DVisualization` base class | ~60 |
 | LCD ghosting `resize()` | Added `preserveContentOnResize` flag and content-preserving `resize()` to `Canvas2DVisualization`; removed identical `resize()` overrides and `hasDrawn` from waveform and modern | ~90 |
+| Duplicate `.color-control` | Removed second duplicate `&.color-control` block in `configuration-view.scss` (identical parent selector); kept first definition with hover/focus states | ~31 |
 
 ### Security Hardening
 
 - `openExternal()` in preload.ts validates URL protocol (whitelist `https:` and `http:` only) before calling `shell.openExternal()`, preventing `file://`, `javascript:`, and other dangerous protocol schemes
 - `parseMidiDuration()` enforces 10 MB file size limit via `statSync` before `readFileSync` to prevent excessive memory allocation from maliciously large MIDI files
+- `media://` protocol handler in `main.ts` validates path against `..` traversal before converting to `file://` URL
+- `removeSoundFont()` in `dependency-manager.ts` validates path traversal before constructing file path (validate-first pattern)
 
 ### Type Safety Improvements
 
@@ -892,6 +895,24 @@ private async readBody(request: IncomingMessage): Promise<string> {
 - `playlist:cleared` - Simple notification, no payload
 
 Full `playlist:updated` is now only sent on initial SSE connection.
+
+### Playlist File Probing
+
+**Issue**: Files were probed sequentially in a `for` loop with `await`, blocking the response until all files were probed one by one.
+
+**Fix**: Switched to `Promise.allSettled()` for parallel probing of all files. Failed probes are logged individually without blocking successful ones.
+
+### Miniplayer Resize Debounce
+
+**Issue**: `saveMiniplayerBounds` was called on every `resized` event during drag-resize, causing excessive settings writes.
+
+**Fix**: Added 300ms debounce timeout so bounds are only saved after the user finishes resizing.
+
+### MIDI Render Cache Limit
+
+**Issue**: `midiRenderCache` Map had no size limit, growing unboundedly across sessions.
+
+**Fix**: Added FIFO eviction when cache exceeds 50 entries via `setMidiRenderCache()` helper method.
 
 ### Visualization-Specific Optimizations
 
@@ -1063,6 +1084,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main` and eve
 
 - **Lint and Build run in parallel** (no dependency between them)
 - **`node_modules` cached** via `actions/cache@v4` keyed on `package-lock.json` hash; `npm ci` skipped on cache hit
+- **Job timeouts**: Lint/Build 10 min, Tests 15 min (prevents runaway CI)
 - Tests gate on both lint and build passing
 
 ### Production Code Protection

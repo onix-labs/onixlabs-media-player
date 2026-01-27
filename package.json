@@ -37,6 +37,9 @@
       }
     ]
   },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "private": true,
   "packageManager": "npm@11.6.2",
   "dependencies": {

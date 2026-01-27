@@ -10,6 +10,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,6 +28,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,6 +47,7 @@ jobs:
   test-angular:
     name: Angular Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [lint, build]
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +66,7 @@ jobs:
   test-electron:
     name: Electron Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [lint, build]
     steps:
       - uses: actions/checkout@v4

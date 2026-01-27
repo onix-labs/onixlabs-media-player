@@ -800,6 +800,9 @@ export class UnifiedMediaServer {
   /** Callback for dependency state changes (for menu open enabled state) */
   private onDependencyStateChangeCallback: ((ffmpegInstalled: boolean, fluidsynthInstalled: boolean) => void) | null = null;
 
+  /** Maximum number of entries in the MIDI render cache (FIFO eviction when exceeded) */
+  private static readonly MAX_MIDI_CACHE_SIZE: number = 50;
+
   /** Cache of pre-rendered MIDI files (original path → temp MP3 path + accurate duration) */
   private readonly midiRenderCache: Map<string, {readonly tempFile: string; readonly duration: number}> = new Map();
 
@@ -1499,6 +1502,19 @@ export class UnifiedMediaServer {
    * @param filePath - Absolute path to the MIDI file
    * @returns Promise resolving to the temp MP3 file path
    */
+  /**
+   * Adds an entry to the MIDI render cache, evicting the oldest entry
+   * (FIFO) if the cache exceeds the maximum size.
+   */
+  private setMidiRenderCache(filePath: string, entry: {readonly tempFile: string; readonly duration: number}): void {
+    if (this.midiRenderCache.size >= UnifiedMediaServer.MAX_MIDI_CACHE_SIZE) {
+      const oldest: string = this.midiRenderCache.keys().next().value!;
+      this.midiRenderCache.delete(oldest);
+      midiLogger.info(`MIDI cache evicted oldest entry: ${path.basename(oldest)}`);
+    }
+    this.midiRenderCache.set(filePath, entry);
+  }
+
   private renderMidiToFile(filePath: string): Promise<string> {
     // 1. In-memory cache hit
     const cached: {readonly tempFile: string; readonly duration: number} | undefined = this.midiRenderCache.get(filePath);
@@ -1530,7 +1546,7 @@ export class UnifiedMediaServer {
       } else {
         midiLogger.info(`Disk cache hit: ${path.basename(tempFile)} (${fileSize} bytes)`);
         const diskPromise: Promise<string> = this.probeMedia(tempFile).then((info: MediaInfo): string => {
-          this.midiRenderCache.set(filePath, {tempFile, duration: info.duration});
+          this.setMidiRenderCache(filePath, {tempFile, duration: info.duration});
           this.playlist.updateItemDurations(filePath, info.duration);
           this.midiRenderInProgress.delete(filePath);
           midiLogger.info(`Disk cache loaded: ${path.basename(tempFile)} (${info.duration.toFixed(1)}s)`);
@@ -1622,12 +1638,12 @@ export class UnifiedMediaServer {
 
         if (code === 0 && existsSync(tempFile)) {
           this.probeMedia(tempFile).then((info: MediaInfo): void => {
-            this.midiRenderCache.set(filePath, {tempFile, duration: info.duration});
+            this.setMidiRenderCache(filePath, {tempFile, duration: info.duration});
             this.playlist.updateItemDurations(filePath, info.duration);
             midiLogger.info(`Pre-render complete: ${path.basename(tempFile)} (${info.duration.toFixed(1)}s)`);
             resolve(tempFile);
           }).catch((): void => {
-            this.midiRenderCache.set(filePath, {tempFile, duration: 0});
+            this.setMidiRenderCache(filePath, {tempFile, duration: 0});
             midiLogger.info(`Pre-render complete: ${path.basename(tempFile)} (duration unknown)`);
             resolve(tempFile);
           });
@@ -2092,11 +2108,16 @@ export class UnifiedMediaServer {
       return;
     }
 
-    // Probe each file for metadata
+    // Probe all files in parallel for metadata
+    const results: PromiseSettledResult<MediaInfo>[] = await Promise.allSettled(
+      (paths as string[]).map((filePath: string): Promise<MediaInfo> => this.probeMedia(filePath))
+    );
+
     const items: Omit<PlaylistItem, 'id'>[] = [];
-    for (const filePath of paths as string[]) {
-      try {
-        const info: MediaInfo = await this.probeMedia(filePath);
+    for (let i: number = 0; i < results.length; i++) {
+      const result: PromiseSettledResult<MediaInfo> = results[i];
+      if (result.status === 'fulfilled') {
+        const info: MediaInfo = result.value;
         items.push({
           filePath: info.filePath,
           title: info.title,
@@ -2107,8 +2128,8 @@ export class UnifiedMediaServer {
           width: info.width,
           height: info.height,
         });
-      } catch (err) {
-        playlistLogger.error(`Failed to probe ${filePath}: ${err}`);
+      } else {
+        playlistLogger.error(`Failed to probe ${(paths as string[])[i]}: ${result.reason}`);
       }
     }
 

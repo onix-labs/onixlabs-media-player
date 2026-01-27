@@ -384,13 +384,13 @@ export class DependencyManager {
    * @returns True if the file was removed
    */
   public removeSoundFont(fileName: string): boolean {
-    const filePath: string = path.join(this.soundFontDir, fileName);
-
-    // Prevent path traversal
+    // Prevent path traversal — validate before constructing file path
     if (fileName.includes('..') || fileName.includes(path.sep)) {
       depsLogger.warn(`Rejected SoundFont removal (path traversal): ${fileName}`);
       return false;
     }
+
+    const filePath: string = path.join(this.soundFontDir, fileName);
 
     if (!existsSync(filePath)) {
       depsLogger.warn(`SoundFont not found: ${fileName}`);

@@ -268,6 +268,12 @@ class Program {
     protocol.handle('media', (request: Readonly<Request>): Response | Promise<Response> => {
       // Convert media://path to file path
       const filePath: string = decodeURIComponent(request.url.replace('media://', ''));
+
+      // Validate path to prevent directory traversal
+      if (filePath.includes('..')) {
+        return new Response('Forbidden', {status: 403});
+      }
+
       return net.fetch('file://' + filePath);
     });
   }
@@ -688,15 +694,21 @@ class Program {
     });
 
     // Save mini-player bounds when window is resized (in mini-player mode)
+    // Debounce to avoid excessive settings writes during drag-resize
+    let miniplayerResizeTimeout: ReturnType<typeof setTimeout> | null = null;
     this.window.on('resized', (): void => {
       if (!this.isInMiniPlayerMode) return;
-      const bounds: Electron.Rectangle = this.window!.getBounds();
-      this.mediaServer?.getSettingsManager().setMiniplayerBounds({
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-      });
+      if (miniplayerResizeTimeout) clearTimeout(miniplayerResizeTimeout);
+      miniplayerResizeTimeout = setTimeout((): void => {
+        miniplayerResizeTimeout = null;
+        const bounds: Electron.Rectangle = this.window!.getBounds();
+        this.mediaServer?.getSettingsManager().setMiniplayerBounds({
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+        });
+      }, 300);
     });
   }
 
