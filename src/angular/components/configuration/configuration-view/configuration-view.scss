@@ -1,4 +1,5 @@
 @use 'variables' as *;
+@use 'mixins' as *;
 
 :host {
   display: flex;
@@ -289,38 +290,7 @@
           border-radius: 2px;
           appearance: none;
           cursor: pointer;
-
-          &::-webkit-slider-thumb {
-            appearance: none;
-            width: 16px;
-            height: 16px;
-            background: white;
-            border-radius: 50%;
-            cursor: pointer;
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
-
-            &:hover {
-              transform: scale(1.1);
-              box-shadow: 0 0 8px $white-40;
-            }
-          }
-
-          &::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
-            background: white;
-            border: none;
-            border-radius: 50%;
-            cursor: pointer;
-          }
-
-          &:focus {
-            outline: none;
-
-            &::-webkit-slider-thumb {
-              box-shadow: 0 0 0 3px $white-30;
-            }
-          }
+          @include slider-thumb(16px, 1.1, true);
         }
 
         .slider-value {
@@ -623,29 +593,7 @@
         border-radius: 2px;
         appearance: none;
         cursor: pointer;
-
-        &::-webkit-slider-thumb {
-          appearance: none;
-          width: 12px;
-          height: 12px;
-          background: white;
-          border-radius: 50%;
-          cursor: pointer;
-          transition: transform 0.15s ease;
-
-          &:hover {
-            transform: scale(1.15);
-          }
-        }
-
-        &::-moz-range-thumb {
-          width: 12px;
-          height: 12px;
-          background: white;
-          border: none;
-          border-radius: 50%;
-          cursor: pointer;
-        }
+        @include slider-thumb(12px, 1.15);
       }
 
       .slider-value {

@@ -1,0 +1,48 @@
+// =============================================================================
+// Shared SCSS Mixins
+// =============================================================================
+
+/// Generates cross-browser slider thumb styles (webkit + moz).
+/// The webkit thumb includes hover and optional focus-ring support.
+///
+/// @param {Length} $size - Thumb width and height
+/// @param {Number} $hover-scale - Scale factor on hover (e.g. 1.1)
+/// @param {Boolean} $focus-ring - Whether to add a focus box-shadow ring
+@mixin slider-thumb($size, $hover-scale: 1.1, $focus-ring: false) {
+  &::-webkit-slider-thumb {
+    appearance: none;
+    width: $size;
+    height: $size;
+    background: white;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+
+    &:hover {
+      transform: scale($hover-scale);
+
+      @if $focus-ring {
+        box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+      }
+    }
+  }
+
+  &::-moz-range-thumb {
+    width: $size;
+    height: $size;
+    background: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  @if $focus-ring {
+    &:focus {
+      outline: none;
+
+      &::-webkit-slider-thumb {
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
+      }
+    }
+  }
+}
