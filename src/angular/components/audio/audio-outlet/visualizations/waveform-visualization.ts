@@ -31,7 +31,6 @@ export class WaveformVisualization extends Canvas2DVisualization {
   private readonly BASE_GLOW_BLUR: number = 15;
   private readonly WAVEFORM_POINTS: number = 128;
   private readonly THRESHOLD_CLEAR_INTERVAL: number = 10; // Clear low-alpha pixels every N frames
-  private readonly ALPHA_THRESHOLD: number = 30; // Pixels with alpha below this become transparent
   private dataArray: Uint8Array<ArrayBuffer>;
   private frameCount: number = 0;
 
@@ -173,26 +172,4 @@ export class WaveformVisualization extends Canvas2DVisualization {
     this.hasDrawn = true;
   }
 
-  /**
-   * Clears pixels with alpha below threshold to fully transparent.
-   * This prevents ghosting artifacts from the asymptotic fade.
-   */
-  private clearLowAlphaPixels(): void {
-    const width: number = this.width;
-    const height: number = this.height;
-    if (width <= 0 || height <= 0) return;
-
-    const imageData: ImageData = this.ctx.getImageData(0, 0, width, height);
-    const data: Uint8ClampedArray = imageData.data;
-    const threshold: number = this.ALPHA_THRESHOLD;
-
-    // Alpha is at index 3, 7, 11, ... (every 4th byte starting at 3)
-    for (let i: number = 3; i < data.length; i += 4) {
-      if (data[i] > 0 && data[i] < threshold) {
-        data[i] = 0;
-      }
-    }
-
-    this.ctx.putImageData(imageData, 0, 0);
-  }
 }

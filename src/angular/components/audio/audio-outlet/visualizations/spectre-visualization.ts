@@ -49,9 +49,6 @@ export class SpectreVisualization extends Canvas2DVisualization {
   /** Clear low-alpha pixels every N frames */
   private readonly THRESHOLD_CLEAR_INTERVAL: number = 10;
 
-  /** Pixels with alpha below this become transparent */
-  private readonly ALPHA_THRESHOLD: number = 30;
-
   /** Array for frequency data */
   private dataArray: Uint8Array<ArrayBuffer>;
 
@@ -231,26 +228,4 @@ export class SpectreVisualization extends Canvas2DVisualization {
     ctx.fill();
   }
 
-  /**
-   * Clears pixels with alpha below threshold to fully transparent.
-   * This prevents ghosting artifacts from the asymptotic fade.
-   */
-  private clearLowAlphaPixels(): void {
-    const width: number = this.width;
-    const height: number = this.height;
-    if (width <= 0 || height <= 0) return;
-
-    const imageData: ImageData = this.ctx.getImageData(0, 0, width, height);
-    const data: Uint8ClampedArray = imageData.data;
-    const threshold: number = this.ALPHA_THRESHOLD;
-
-    // Alpha is at index 3, 7, 11, ... (every 4th byte starting at 3)
-    for (let i: number = 3; i < data.length; i += 4) {
-      if (data[i] > 0 && data[i] < threshold) {
-        data[i] = 0;
-      }
-    }
-
-    this.ctx.putImageData(imageData, 0, 0);
-  }
 }
