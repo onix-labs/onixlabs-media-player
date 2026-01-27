@@ -779,6 +779,8 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | MEDIA_EXTENSIONS Constant | Created shared constant in `media.constants.ts` | ~40 |
 | Waveform Drawing Pattern | Added `drawPathWithLayers()` and `drawPointsWithLayers()` to base class | ~450 |
 | Settings Service HTTP Pattern | Added generic `updateSetting<T>()` helper and `clamp()` utility | ~400 |
+| Duplicate `isValidHexColor()` | Removed second identical method (lines 1370-1380); kept canonical copy at line 1306 | ~12 |
+| Dead `isValidHueShift()` | Removed unused validator method (defined but never called) | ~12 |
 
 ### Type Safety Improvements
 
