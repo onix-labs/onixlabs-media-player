@@ -785,6 +785,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | `ONIX_COLORS_FLAT` / `NUM_COLORS` / `TWO_PI` | Replaced local redeclarations in spectre, modern, onix with imports from `visualization-constants.ts`; renamed `NUM_COLORS` → `ONIX_COLOR_COUNT` | ~54 |
 | `this.sensitivity * 2` | Added `sensitivityFactor` getter to `Canvas2DVisualization` base class; replaced 13 occurrences across all 10 visualizations | ~13 |
 | `clearLowAlphaPixels()` | Moved identical method from waveform, spectre, modern into `Canvas2DVisualization` base class with optional `ctx` parameter; also moved `ALPHA_THRESHOLD` constant | ~54 |
+| `applyDirectionalZoom()` | Moved identical method from plasma, neon, infinity into `Canvas2DVisualization` base class; accepts `fadeRate` and `zoomScale` parameters to handle per-visualization differences | ~72 |
 
 ### Security Hardening
 

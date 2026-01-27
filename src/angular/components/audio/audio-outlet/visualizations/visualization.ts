@@ -695,6 +695,56 @@ export abstract class Canvas2DVisualization extends Visualization {
   }
 
   /**
+   * Applies a directional zoom effect to a trail canvas.
+   * Copies the trail to a temp canvas, clears the trail, then draws back
+   * with scaling and fade to create a zoom-from-center tunnel effect.
+   *
+   * @param trailCanvas - The trail canvas to zoom
+   * @param trailCtx - The 2D context of the trail canvas
+   * @param tempCanvas - A temporary canvas for the copy operation
+   * @param tempCtx - The 2D context of the temp canvas
+   * @param zoomCenterX - The X coordinate of the zoom center
+   * @param zoomCenterY - The Y coordinate of the zoom center
+   * @param fadeRate - The per-frame fade rate (e.g., 0.025)
+   * @param zoomScale - The per-frame zoom scale (e.g., 1.03)
+   */
+  protected applyDirectionalZoom(
+    trailCanvas: HTMLCanvasElement,
+    trailCtx: CanvasRenderingContext2D,
+    tempCanvas: HTMLCanvasElement,
+    tempCtx: CanvasRenderingContext2D,
+    zoomCenterX: number,
+    zoomCenterY: number,
+    fadeRate: number,
+    zoomScale: number
+  ): void {
+    const width: number = this.width;
+    const height: number = this.height;
+
+    // Copy current trails to temp canvas
+    tempCtx.clearRect(0, 0, width, height);
+    tempCtx.drawImage(trailCanvas, 0, 0);
+
+    // Clear trail canvas
+    trailCtx.clearRect(0, 0, width, height);
+
+    // Draw back scaled from the specified zoom center with fade
+    const effectiveFadeRate: number = fadeRate * this.getFadeMultiplier();
+    trailCtx.save();
+    trailCtx.imageSmoothingEnabled = true;
+    trailCtx.imageSmoothingQuality = 'high';
+    trailCtx.globalAlpha = 1 - effectiveFadeRate;
+    // Use floor to avoid sub-pixel center point which causes quadrant artifacts
+    const centerX: number = Math.floor(zoomCenterX);
+    const centerY: number = Math.floor(zoomCenterY);
+    trailCtx.translate(centerX, centerY);
+    trailCtx.scale(zoomScale, zoomScale);
+    trailCtx.translate(-centerX, -centerY);
+    trailCtx.drawImage(tempCanvas, 0, 0);
+    trailCtx.restore();
+  }
+
+  /**
    * Draws a path with three layers: glow, main, and highlight.
    *
    * This helper method reduces duplication across visualizations that draw

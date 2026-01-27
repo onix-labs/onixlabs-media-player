@@ -167,7 +167,9 @@ export class InfinityVisualization extends Canvas2DVisualization {
     // Process first circle (trails expand outward from center)
     this.applyDirectionalZoom(
       this.leftTrailCanvas!, this.leftTrailCtx!,
-      this.screenCenterX, this.screenCenterY
+      this.tempCanvas!, this.tempCtx!,
+      this.screenCenterX, this.screenCenterY,
+      this.FADE_RATE, this.ZOOM_SCALE
     );
     this.calculateCirclePoints(this.leftPoints, circle1X, circle1Y, amplitudeScale, 0);
     this.drawCircleWaveform(this.leftTrailCtx!, this.leftPoints, color1.main, color1.glow);
@@ -175,7 +177,9 @@ export class InfinityVisualization extends Canvas2DVisualization {
     // Process second circle (trails expand outward from center)
     this.applyDirectionalZoom(
       this.rightTrailCanvas!, this.rightTrailCtx!,
-      this.screenCenterX, this.screenCenterY
+      this.tempCanvas!, this.tempCtx!,
+      this.screenCenterX, this.screenCenterY,
+      this.FADE_RATE, this.ZOOM_SCALE
     );
     this.calculateCirclePoints(this.rightPoints, circle2X, circle2Y, amplitudeScale, this.CIRCLE_POINTS / 2);
     this.drawCircleWaveform(this.rightTrailCtx!, this.rightPoints, color2.main, color2.glow);
@@ -189,42 +193,6 @@ export class InfinityVisualization extends Canvas2DVisualization {
     ctx.globalCompositeOperation = 'source-over';
 
     this.applyFadeOverlay();
-  }
-
-  private applyDirectionalZoom(
-    trailCanvas: HTMLCanvasElement,
-    trailCtx: CanvasRenderingContext2D,
-    zoomCenterX: number,
-    zoomCenterY: number
-  ): void {
-    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
-    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
-    const width: number = this.width;
-    const height: number = this.height;
-
-    // Copy current trails to temp canvas
-    tempCtx.clearRect(0, 0, width, height);
-    tempCtx.drawImage(trailCanvas, 0, 0);
-
-    // Clear trail canvas
-    trailCtx.clearRect(0, 0, width, height);
-
-    // Draw back scaled from the specified zoom center with fade
-    // Apply trail intensity multiplier to fade rate
-    const effectiveFadeRate: number = this.FADE_RATE * this.getFadeMultiplier();
-    trailCtx.save();
-    // Use high-quality image smoothing to reduce artifacts from repeated scaling
-    trailCtx.imageSmoothingEnabled = true;
-    trailCtx.imageSmoothingQuality = 'high';
-    trailCtx.globalAlpha = 1 - effectiveFadeRate;
-    // Use floor to avoid sub-pixel center point which causes quadrant artifacts
-    const centerX: number = Math.floor(zoomCenterX);
-    const centerY: number = Math.floor(zoomCenterY);
-    trailCtx.translate(centerX, centerY);
-    trailCtx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
-    trailCtx.translate(-centerX, -centerY);
-    trailCtx.drawImage(tempCanvas, 0, 0);
-    trailCtx.restore();
   }
 
   private calculateCirclePoints(
