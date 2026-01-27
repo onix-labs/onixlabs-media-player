@@ -1224,18 +1224,6 @@ export class SettingsManager {
   }
 
   /**
-   * Type guard to check if a value is a valid hue shift.
-   *
-   * Valid values are between 0 and 360 (degrees).
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid hue shift
-   */
-  private isValidHueShift(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 360;
-  }
-
-  /**
    * Type guard to check if a value is a valid FFT size.
    *
    * Valid values are powers of 2: 256, 512, 1024, 2048, 4096.
@@ -1365,18 +1353,6 @@ export class SettingsManager {
    */
   private isValidVideoAspectMode(value: unknown): value is VideoAspectMode {
     return typeof value === 'string' && VALID_VIDEO_ASPECT_MODES.includes(value as VideoAspectMode);
-  }
-
-  /**
-   * Type guard to check if a value is a valid hex color.
-   *
-   * Valid values are strings matching #RRGGBB format.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid hex color
-   */
-  private isValidHexColor(value: unknown): value is string {
-    return typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value);
   }
 
   /**
