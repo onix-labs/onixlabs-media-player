@@ -488,7 +488,7 @@ This would reduce the visualization codebase by approximately **700 lines** (fro
 28. [DONE] Extract SCSS slider mixin for webkit/moz styling.
 29. [DONE] Add `engines` field to `package.json`.
 30. [DONE] Debounce miniplayer resize `saveMiniplayerBounds`.
-31. Consider extracting SSEManager and PlaylistManager from `unified-media-server.ts` into separate files.
+31. [DONE] Consider extracting SSEManager and PlaylistManager from `unified-media-server.ts` into separate files.
 
 ---
 
