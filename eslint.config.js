@@ -105,6 +105,7 @@ export default [
 
   {
     files: ['src/angular/**/*.ts'],
+    ignores: ['src/angular/**/*.spec.ts'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
@@ -118,6 +119,43 @@ export default [
     rules: {
       ...commonRules,
       '@typescript-eslint/prefer-readonly-parameter-types': 'off',
+    },
+  },
+
+  // Relaxed rules for test files — allow magic numbers, inferred types, and
+  // missing return type annotations which are standard in test fixtures.
+  {
+    files: ['src/**/*.spec.ts'],
+    languageOptions: {
+      parser: tsparser,
+      parserOptions: {
+        sourceType: 'module',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': tseslint,
+    },
+    rules: {
+      ...commonRules,
+      '@typescript-eslint/no-magic-numbers': 'off',
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/typedef': [
+        'error',
+        {
+          arrayDestructuring: false,
+          objectDestructuring: false,
+          arrowParameter: false,
+          parameter: false,
+          propertyDeclaration: true,
+          memberVariableDeclaration: true,
+          variableDeclaration: false,
+          variableDeclarationIgnoreFunction: true,
+        },
+      ],
+      '@typescript-eslint/prefer-readonly-parameter-types': 'off',
+      '@typescript-eslint/prefer-readonly': 'off',
+      '@typescript-eslint/explicit-member-accessibility': 'off',
+      '@typescript-eslint/naming-convention': 'off',
     },
   },
 ];
