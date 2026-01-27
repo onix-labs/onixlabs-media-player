@@ -20,7 +20,8 @@
  */
 
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
-import { createReadStream, statSync, existsSync, readFileSync, Stats } from 'fs';
+import { createHash } from 'crypto';
+import { createReadStream, statSync, existsSync, readFileSync, mkdirSync, unlinkSync, Stats } from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { SettingsManager } from './settings-manager.js';
@@ -140,6 +141,7 @@ type SSEEventType =
   | 'playlist:updated'    // Full playlist state (initial sync)
   | 'playlist:items:added'   // Delta: items added to playlist
   | 'playlist:items:removed' // Delta: items removed from playlist
+  | 'playlist:items:duration' // Delta: item durations updated (MIDI render complete)
   | 'playlist:cleared'       // Delta: playlist was cleared
   | 'playlist:selection'  // Current track selection changed
   | 'playlist:mode'       // Shuffle or repeat mode changed
@@ -860,6 +862,22 @@ class PlaylistManager {
     });
   }
 
+  /** Updates duration for all playlist items matching a file path. */
+  public updateItemDurations(filePath: string, duration: number): void {
+    let updated: boolean = false;
+    this.items = this.items.map((item: PlaylistItem): PlaylistItem => {
+      if (item.filePath === filePath && Math.abs(item.duration - duration) > 1) {
+        updated = true;
+        return {...item, duration};
+      }
+      return item;
+    });
+
+    if (updated) {
+      this.sse.broadcast('playlist:items:duration', {filePath, duration});
+    }
+  }
+
   /** Broadcasts shuffle/repeat mode change to all clients */
   private broadcastModeChange(): void {
     this.sse.broadcast('playlist:mode', {
@@ -949,6 +967,12 @@ export class UnifiedMediaServer {
 
   /** Callback for dependency state changes (for menu open enabled state) */
   private onDependencyStateChangeCallback: ((ffmpegInstalled: boolean, fluidsynthInstalled: boolean) => void) | null = null;
+
+  /** Cache of pre-rendered MIDI files (original path → temp MP3 path + accurate duration) */
+  private readonly midiRenderCache: Map<string, {readonly tempFile: string; readonly duration: number}> = new Map();
+
+  /** In-progress MIDI renders for deduplication (original path → completion promise) */
+  private readonly midiRenderInProgress: Map<string, Promise<string>> = new Map<string, Promise<string>>();
 
   /**
    * Creates a new unified media server.
@@ -1613,133 +1637,245 @@ export class UnifiedMediaServer {
   }
 
   /**
-   * Serves a MIDI file by synthesizing it via FluidSynth.
+   * Computes a content-hash filename for a MIDI file.
+   * Includes the soundfont path in the hash for cache invalidation when
+   * the soundfont changes.
    *
-   * MIDI files contain musical instructions, not audio data.
-   * FluidSynth renders them to raw audio using a SoundFont.
-   * The raw audio is then encoded to MP3 via FFmpeg for streaming.
+   * @param filePath - Absolute path to the MIDI file
+   * @returns 16-character hex hash string
+   */
+  private hashMidiFile(filePath: string): string {
+    const content: Buffer = readFileSync(filePath);
+    const soundfont: string = this.findSoundFont() ?? '';
+    return createHash('sha256').update(soundfont).update(content).digest('hex').slice(0, 16);
+  }
+
+  /**
+   * Pre-renders a MIDI file to a temporary MP3 file for seekable playback.
    *
-   * Pipeline: MIDI → FluidSynth (raw PCM) → FFmpeg (MP3) → HTTP response
+   * MIDI files are synthesized via FluidSynth, which always renders from the
+   * beginning. Pre-rendering to a temp file allows the audio element to seek
+   * natively using HTTP range requests, eliminating the need for re-streaming
+   * on every seek operation.
+   *
+   * Results are cached so repeated plays of the same MIDI file are instant.
+   * Uses content-hash filenames so renders persist across app restarts.
+   * Concurrent renders of the same file are deduplicated.
+   *
+   * Pipeline: MIDI → FluidSynth (raw PCM) → FFmpeg (MP3) → temp file
+   *
+   * @param filePath - Absolute path to the MIDI file
+   * @returns Promise resolving to the temp MP3 file path
+   */
+  private renderMidiToFile(filePath: string): Promise<string> {
+    // 1. In-memory cache hit
+    const cached: {readonly tempFile: string; readonly duration: number} | undefined = this.midiRenderCache.get(filePath);
+    if (cached && existsSync(cached.tempFile)) {
+      midiLogger.info(`Using cached render: ${path.basename(cached.tempFile)}`);
+      return Promise.resolve(cached.tempFile);
+    }
+
+    // 2. Deduplicate concurrent renders of the same file
+    const inProgress: Promise<string> | undefined = this.midiRenderInProgress.get(filePath);
+    if (inProgress) {
+      midiLogger.info('Waiting for in-progress render...');
+      return inProgress;
+    }
+
+    // 3. Compute content-hash filename (deterministic across restarts)
+    const hash: string = this.hashMidiFile(filePath);
+    const tempDir: string = path.join(app.getPath('temp'), 'onixplayer-midi');
+    mkdirSync(tempDir, {recursive: true});
+    const tempFile: string = path.join(tempDir, `midi-${hash}.mp3`);
+
+    // 4. Disk cache hit — probe for duration, populate in-memory cache.
+    //    If the file is corrupt (probe fails or size is 0), delete and re-render.
+    if (existsSync(tempFile)) {
+      const fileSize: number = statSync(tempFile).size;
+      if (fileSize === 0) {
+        midiLogger.info(`Disk cache corrupt (empty file), deleting: ${path.basename(tempFile)}`);
+        try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
+      } else {
+        midiLogger.info(`Disk cache hit: ${path.basename(tempFile)} (${fileSize} bytes)`);
+        const diskPromise: Promise<string> = this.probeMedia(tempFile).then((info: MediaInfo): string => {
+          this.midiRenderCache.set(filePath, {tempFile, duration: info.duration});
+          this.playlist.updateItemDurations(filePath, info.duration);
+          this.midiRenderInProgress.delete(filePath);
+          midiLogger.info(`Disk cache loaded: ${path.basename(tempFile)} (${info.duration.toFixed(1)}s)`);
+          return tempFile;
+        }).catch((): Promise<string> => {
+          // Probe failed — file is likely corrupt. Delete and trigger a full re-render.
+          midiLogger.warn(`Disk cache corrupt (probe failed), deleting: ${path.basename(tempFile)}`);
+          try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
+          this.midiRenderInProgress.delete(filePath);
+          return this.renderMidiToFile(filePath);
+        });
+        this.midiRenderInProgress.set(filePath, diskPromise);
+        return diskPromise;
+      }
+    }
+
+    // 5. Full render: FluidSynth → FFmpeg → tempFile
+    const promise: Promise<string> = new Promise<string>((resolve: (value: string) => void, reject: (reason: Error) => void): void => {
+      // Validate dependencies
+      const soundfont: string | undefined = this.findSoundFont();
+      const fluidsynthBin: string | null = this.deps.getFluidsynthPath();
+      const ffmpegBin: string | null = this.deps.getFfmpegPath();
+
+      if (!soundfont || !fluidsynthBin || !ffmpegBin) {
+        reject(new Error('Missing dependencies for MIDI rendering'));
+        return;
+      }
+
+      const audioBitrate: number = this.settings.getSettings().transcoding.audioBitrate;
+
+      midiLogger.info(`Pre-rendering MIDI: ${path.basename(filePath)} → ${path.basename(tempFile)}`);
+
+      // Spawn FluidSynth: MIDI → raw PCM
+      const fluidsynthArgs: string[] = [
+        '-ni',           // Non-interactive mode
+        '-T', 'raw',     // Output format: raw PCM
+        '-F', '-',       // Output to stdout
+        '-r', '44100',   // Sample rate: 44.1kHz
+        soundfont,
+        filePath
+      ];
+
+      logProcessSpawn(midiLogger, 'fluidsynth (pre-render)', fluidsynthArgs);
+      const fluidsynth: ChildProcess = spawn(fluidsynthBin, fluidsynthArgs);
+
+      // Spawn FFmpeg: raw PCM → MP3 file
+      const ffmpegArgs: string[] = [
+        '-hide_banner',
+        '-loglevel', 'warning',
+        '-f', 's16le',        // Input: signed 16-bit little-endian PCM
+        '-ar', '44100',       // Input sample rate
+        '-ac', '2',           // Input channels: stereo
+        '-i', 'pipe:0',       // Read from stdin
+        '-c:a', 'libmp3lame', // Encode as MP3
+        '-b:a', `${audioBitrate}k`,
+        '-f', 'mp3',          // Output format
+        tempFile               // Write to temp file
+      ];
+
+      logProcessSpawn(ffmpegLogger, 'ffmpeg (pre-render)', ffmpegArgs);
+      const ffmpeg: ChildProcess = spawn(ffmpegBin, ffmpegArgs);
+
+      // Connect pipeline: FluidSynth stdout → FFmpeg stdin
+      fluidsynth.stdout?.pipe(ffmpeg.stdin!);
+
+      // Log stderr output (only suppress the version banner line, keep warnings/errors)
+      fluidsynth.stderr?.on('data', (data: Readonly<Buffer>): void => {
+        const msg: string = data.toString().trim();
+        if (msg && !msg.includes('FluidSynth runtime version')) {
+          logProcessOutput(midiLogger, 'stderr', msg);
+        }
+      });
+
+      ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
+        logProcessOutput(ffmpegLogger, 'stderr', data.toString());
+      });
+
+      // Close FFmpeg stdin when FluidSynth finishes
+      fluidsynth.on('close', (code: number | null): void => {
+        logProcessExit(midiLogger, 'fluidsynth (pre-render)', code, null);
+        ffmpeg.stdin?.end();
+      });
+
+      // Resolve when FFmpeg finishes writing the file.
+      // Probe the rendered MP3 for accurate duration.
+      ffmpeg.on('close', (code: number | null): void => {
+        logProcessExit(ffmpegLogger, 'ffmpeg (pre-render)', code, null);
+        this.midiRenderInProgress.delete(filePath);
+
+        if (code === 0 && existsSync(tempFile)) {
+          this.probeMedia(tempFile).then((info: MediaInfo): void => {
+            this.midiRenderCache.set(filePath, {tempFile, duration: info.duration});
+            this.playlist.updateItemDurations(filePath, info.duration);
+            midiLogger.info(`Pre-render complete: ${path.basename(tempFile)} (${info.duration.toFixed(1)}s)`);
+            resolve(tempFile);
+          }).catch((): void => {
+            this.midiRenderCache.set(filePath, {tempFile, duration: 0});
+            midiLogger.info(`Pre-render complete: ${path.basename(tempFile)} (duration unknown)`);
+            resolve(tempFile);
+          });
+        } else {
+          // Delete partial temp file to prevent corrupt disk cache hits
+          if (existsSync(tempFile)) {
+            try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
+          }
+          reject(new Error(`MIDI pre-render failed with exit code ${code}`));
+        }
+      });
+
+      // Handle spawn errors
+      fluidsynth.on('error', (err: Readonly<Error>): void => {
+        midiLogger.error(`FluidSynth pre-render error: ${err.message}`);
+        this.midiRenderInProgress.delete(filePath);
+        ffmpeg.kill();
+        if (existsSync(tempFile)) {
+          try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
+        }
+        reject(err);
+      });
+
+      ffmpeg.on('error', (err: Readonly<Error>): void => {
+        ffmpegLogger.error(`FFmpeg pre-render error: ${err.message}`);
+        this.midiRenderInProgress.delete(filePath);
+        if (existsSync(tempFile)) {
+          try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
+        }
+        reject(err);
+      });
+    });
+
+    this.midiRenderInProgress.set(filePath, promise);
+    return promise;
+  }
+
+  /**
+   * Serves a MIDI file, using the pre-rendered cache when available.
+   *
+   * If the MIDI file has been pre-rendered to a temp MP3 file (via
+   * renderMidiToFile), serves that file with HTTP range request support
+   * for native seeking. Falls back to live streaming pipeline otherwise.
    *
    * @param req - Incoming HTTP request
    * @param res - HTTP response to write to
    * @param filePath - Absolute path to the MIDI file
    */
   private serveMidiFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string): void {
-    // Get audio bitrate from settings
-    const audioBitrate: number = this.settings.getSettings().transcoding.audioBitrate;
-    const audioBitrateStr: string = `${audioBitrate}k`;
-
-    // Find available SoundFont
-    const soundfont: string | undefined = this.findSoundFont();
-    if (!soundfont) {
-      midiLogger.error('No SoundFont found for MIDI playback');
-      res.writeHead(500);
-      res.end(JSON.stringify({ error: 'No SoundFont available for MIDI playback' }));
+    // Serve pre-rendered file if available (supports range requests for seeking)
+    const cached: {readonly tempFile: string; readonly duration: number} | undefined = this.midiRenderCache.get(filePath);
+    if (cached && existsSync(cached.tempFile)) {
+      // Inline duration correction (safety net for edge case: render finished
+      // after probeMedia returned but before playback started)
+      if (cached.duration > 0 && Math.abs(cached.duration - this.playback.duration) > 1) {
+        this.playback.duration = cached.duration;
+        this.broadcastTime();
+      }
+      midiLogger.info(`Serving pre-rendered MIDI: ${path.basename(cached.tempFile)}`);
+      this.serveDirectFile(req, res, cached.tempFile, '.mp3');
       return;
     }
 
-    midiLogger.info(`Converting MIDI: ${path.basename(filePath)} (using SoundFont: ${path.basename(soundfont)})`);
-
-    // FluidSynth converts MIDI to raw PCM and outputs to stdout
-    const fluidsynthBin: string | null = this.deps.getFluidsynthPath();
-    const ffmpegBinMidi: string | null = this.deps.getFfmpegPath();
-    if (!fluidsynthBin || !ffmpegBinMidi) {
-      midiLogger.error('fluidsynth or ffmpeg binary not found');
-      res.writeHead(500);
-      res.end(JSON.stringify({ error: 'fluidsynth or ffmpeg not found' }));
-      return;
-    }
-
-    const fluidsynthArgs: string[] = [
-      '-ni',           // Non-interactive mode
-      '-T', 'raw',     // Output format: raw PCM
-      '-F', '-',       // Output to stdout
-      '-r', '44100',   // Sample rate: 44.1kHz
-      soundfont,
-      filePath
-    ];
-
-    logProcessSpawn(midiLogger, 'fluidsynth', fluidsynthArgs);
-    const fluidsynth: ChildProcess = spawn(fluidsynthBin, fluidsynthArgs);
-
-    // Pipe FluidSynth output through FFmpeg to encode as MP3
-    const ffmpegMidiArgs: string[] = [
-      '-hide_banner',
-      '-loglevel', 'warning',
-      '-f', 's16le',        // Input: signed 16-bit little-endian PCM
-      '-ar', '44100',       // Input sample rate
-      '-ac', '2',           // Input channels: stereo
-      '-i', 'pipe:0',       // Read from stdin
-      '-c:a', 'libmp3lame', // Encode as MP3
-      '-b:a', audioBitrateStr, // Bitrate from settings
-      '-f', 'mp3',          // Output format
-      'pipe:1'              // Output to stdout
-    ];
-
-    logProcessSpawn(ffmpegLogger, 'ffmpeg (MIDI)', ffmpegMidiArgs);
-    const ffmpeg: ChildProcess = spawn(ffmpegBinMidi, ffmpegMidiArgs);
-
-    res.writeHead(200, {
-      'Content-Type': 'audio/mpeg',
-      'Transfer-Encoding': 'chunked',
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'no-cache',
-    });
-
-    // Connect the pipeline: FluidSynth → FFmpeg → HTTP Response
-    fluidsynth.stdout?.pipe(ffmpeg.stdin!);
-    ffmpeg.stdout?.pipe(res);
-
-    fluidsynth.stderr?.on('data', (data: Readonly<Buffer>): void => {
-      const msg: string = data.toString().trim();
-      if (msg && !msg.includes('FluidSynth')) {
-        logProcessOutput(midiLogger, 'stderr', msg);
+    // Render to temp file on demand, then serve with range request support.
+    // The HTTP response is held open until the render completes.
+    midiLogger.info(`Rendering MIDI on demand: ${path.basename(filePath)}`);
+    this.renderMidiToFile(filePath).then((tempFile: string): void => {
+      const entry: {readonly tempFile: string; readonly duration: number} | undefined = this.midiRenderCache.get(filePath);
+      if (entry && entry.duration > 0 && Math.abs(entry.duration - this.playback.duration) > 1) {
+        this.playback.duration = entry.duration;
+        this.broadcastTime();
       }
-    });
-
-    ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
-      logProcessOutput(ffmpegLogger, 'stderr', data.toString());
-    });
-
-    fluidsynth.on('error', (err: Readonly<Error>): void => {
-      midiLogger.error(`FluidSynth spawn error: ${err.message}`);
+      this.serveDirectFile(req, res, tempFile, '.mp3');
+    }).catch((err: Error): void => {
+      midiLogger.error(`MIDI render failed: ${err.message}`);
       if (!res.headersSent) {
         (res as ServerResponse).writeHead(500);
       }
-      (res as ServerResponse).end();
+      (res as ServerResponse).end(JSON.stringify({error: `MIDI render failed: ${err.message}`}));
     });
-
-    ffmpeg.on('error', (err: Readonly<Error>): void => {
-      ffmpegLogger.error(`FFmpeg spawn error: ${err.message}`);
-      if (!res.headersSent) {
-        (res as ServerResponse).writeHead(500);
-      }
-      (res as ServerResponse).end();
-    });
-
-    fluidsynth.on('close', (code: number | null): void => {
-      logProcessExit(midiLogger, 'fluidsynth', code, null);
-      // Close FFmpeg stdin when FluidSynth is done
-      ffmpeg.stdin?.end();
-    });
-
-    ffmpeg.on('close', (code: number | null): void => {
-      logProcessExit(ffmpegLogger, 'ffmpeg (MIDI)', code, null);
-    });
-
-    // Clean up processes when client disconnects
-    const cleanup: () => void = (): void => {
-      if (fluidsynth.exitCode === null) {
-        fluidsynth.kill('SIGKILL');
-      }
-      if (ffmpeg.exitCode === null) {
-        ffmpeg.kill('SIGKILL');
-      }
-    };
-
-    req.on('close', cleanup);
-    res.on('close', cleanup);
   }
 
   /**
@@ -1805,13 +1941,31 @@ export class UnifiedMediaServer {
    * @throws Error if probing fails
    */
   private probeMedia(filePath: string): Promise<MediaInfo> {
-    // MIDI files cannot be probed by ffprobe - parse duration from MIDI data
+    // MIDI files cannot be probed by ffprobe - use cached render duration
+    // if available, otherwise fall back to parseMidiDuration and start
+    // a background render.
     const ext: string = path.extname(filePath).toLowerCase();
     if (MIDI_FORMATS.has(ext)) {
+      // Use cached render duration if available (accurate, avoids parseMidiDuration)
+      const cached: {readonly tempFile: string; readonly duration: number} | undefined =
+        this.midiRenderCache.get(filePath);
+      if (cached) {
+        return Promise.resolve({
+          duration: cached.duration,
+          type: 'audio' as const,
+          title: path.basename(filePath, ext),
+          filePath,
+        });
+      }
+
+      // Not cached yet — start background render and return approximate duration
+      this.renderMidiToFile(filePath).catch((err: Error): void => {
+        midiLogger.error(`Background MIDI render failed for ${path.basename(filePath)}: ${err.message}`);
+      });
       const duration: number = parseMidiDuration(filePath);
       return Promise.resolve({
         duration,
-        type: 'audio',
+        type: 'audio' as const,
         title: path.basename(filePath, ext),
         filePath,
       });
