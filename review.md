@@ -446,7 +446,7 @@ This would reduce the visualization codebase by approximately **700 lines** (fro
 
 8. [DONE] **Import `ONIX_COLORS_FLAT` and `NUM_COLORS` from constants** — Delete local redeclarations in spectre, onix, modern. Also import `TWO_PI` in onix. (See §11.3)
 
-9. **Write `unified-media-server.spec.ts`** — HTTP API integration tests for the most critical backend file.
+9. [DONE] **Write `unified-media-server.spec.ts`** — HTTP API integration tests for the most critical backend file.
 
 10. [DONE] **Extract SCSS variables** — Create `src/styles/_variables.scss` with colors, borders, and spacing.
 
