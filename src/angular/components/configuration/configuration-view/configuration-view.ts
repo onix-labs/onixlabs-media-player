@@ -36,6 +36,7 @@ export const SUBTITLE_FONT_FAMILY_OPTIONS: readonly {value: SubtitleFontFamily; 
   {value: 'sans-serif', label: 'Sans Serif'},
   {value: 'serif', label: 'Serif'},
   {value: 'monospace', label: 'Monospace'},
+  {value: 'Arial', label: 'Arial'},
 ];
 
 /**
@@ -184,6 +185,9 @@ export class ConfigurationView {
 
   /** Initial category to select when the view opens */
   public readonly initialCategory: InputSignal<string> = input<string>('');
+
+  /** Whether this is a standalone configuration window (not embedded in main window) */
+  public readonly isStandaloneWindow: InputSignal<boolean> = input<boolean>(false);
 
   // ============================================================================
   // Reactive State

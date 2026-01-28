@@ -275,10 +275,10 @@ export class OnixVisualization extends Canvas2DVisualization {
 
     const glowBlur: number = this.getScaledGlowBlur(15);
 
-    // Draw glow layer
+    // Draw glow layer - use white shadow so glow complements all spectrum colors
     ctx.save();
     ctx.shadowBlur = glowBlur;
-    ctx.shadowColor = `rgba(${r0}, ${g0}, ${b0}, 0.6)`;
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
     ctx.strokeStyle = glowGradient;
     ctx.lineWidth = this.lineWidth + 3;
     ctx.lineCap = 'round';

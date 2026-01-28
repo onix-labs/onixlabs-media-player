@@ -19,9 +19,20 @@
 
 // Header (drag region for traffic lights)
 .configuration-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   height: 2.5rem;
   min-height: 2.5rem;
   -webkit-app-region: drag;
+
+  .header-title {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: $white-70;
+    pointer-events: none;
+    user-select: none;
+  }
 }
 
 // Content area
@@ -45,6 +56,7 @@
   border: 0.0625rem solid black;
   border-radius: 6px;
   outline: 0.0625rem solid $white-25;
+  overflow-y: auto;
 
   .category-list {
     display: flex;
@@ -389,27 +401,14 @@
         }
       }
 
-      // Subtitle preview styles
-      &.subtitle-preview {
-        flex: 1;
-        min-height: 80px;
+      // Color value with optional monospace
+      .color-value {
+        color: $white-70;
+        font-size: 0.875rem;
 
-        .subtitle-preview-container {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 100%;
-          height: 80px;
-          background: linear-gradient(135deg, #333 0%, #555 50%, #333 100%);
-          border: 1px solid $white-15;
-          border-radius: 6px;
-          overflow: hidden;
-        }
-
-        .subtitle-preview-text {
-          padding: 0.25rem 0.5rem;
-          border-radius: 3px;
-          white-space: nowrap;
+        &.mono {
+          font-family: monospace;
+          text-transform: uppercase;
         }
       }
 
@@ -621,6 +620,20 @@
           color: rgba(74, 222, 128, 0.8);
         }
       }
+    }
+  }
+
+  // Standalone subtitle preview (simple, no container box)
+  .subtitle-preview-standalone {
+    display: flex;
+    justify-content: center;
+    padding: 1.5rem 1rem;
+    margin-top: 0.5rem;
+
+    .subtitle-preview-text {
+      padding: 0.25rem 0.5rem;
+      border-radius: 3px;
+      white-space: nowrap;
     }
   }
 

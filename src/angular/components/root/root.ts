@@ -79,6 +79,14 @@ export class Root implements OnDestroy {
   /** Service for settings (auto-hide delay) */
   private readonly settings: SettingsService = inject(SettingsService);
 
+  /**
+   * Whether this is the standalone configuration window.
+   *
+   * Checked once at startup by looking for ?window=configuration in the URL.
+   * When true, only the ConfigurationView is rendered (no header, outlet, controls).
+   */
+  public readonly isConfigurationWindow: boolean = new URLSearchParams(window.location.search).get('window') === 'configuration';
+
   /** Service for dependency state */
   private readonly deps: DependencyService = inject(DependencyService);
 
@@ -109,11 +117,6 @@ export class Root implements OnDestroy {
     return (this.isFullscreen() || this.isMiniplayer()) && !this.showControls();
   });
 
-  /** Whether the configuration view is displayed (settings mode) */
-  public readonly isConfigurationMode: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-
-  /** Initial category to select when entering configuration mode */
-  public readonly configInitialCategory: ReturnType<typeof signal<string>> = signal<string>('');
 
   /** Whether the about view is displayed (about mode) */
   public readonly isAboutMode: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
@@ -212,14 +215,6 @@ export class Root implements OnDestroy {
       }
     });
 
-    // React to "Show Config" menu event
-    effect((): void => {
-      const trigger: number = this.electron.menuShowConfig();
-      if (trigger > 0) {
-        void this.enterConfigurationMode();
-      }
-    });
-
     // React to "Open File" menu event
     effect((): void => {
       const trigger: number = this.electron.menuOpenFile();
@@ -277,13 +272,11 @@ export class Root implements OnDestroy {
       }
     });
 
-    // React to window close button pressed in configuration or about mode
+    // React to window close button pressed in about or help mode
     effect((): void => {
       const trigger: number = this.electron.exitConfigurationModeRequested();
       if (trigger > 0) {
-        if (untracked((): boolean => this.isConfigurationMode())) {
-          this.exitConfigurationMode();
-        } else if (untracked((): boolean => this.isAboutMode())) {
+        if (untracked((): boolean => this.isAboutMode())) {
           this.exitAboutMode();
         } else if (untracked((): boolean => this.isHelpMode())) {
           this.exitHelpMode();
@@ -387,7 +380,7 @@ export class Root implements OnDestroy {
 
       // Only toggle playlist in desktop mode (not fullscreen, not miniplayer)
       const isDesktopMode: boolean = !this.isFullscreen() && !this.isMiniplayer();
-      if (isDesktopMode && !this.isConfigurationMode() && !this.isAboutMode() && !this.isHelpMode()) {
+      if (isDesktopMode && !this.isAboutMode() && !this.isHelpMode()) {
         this.layoutOutlet?.togglePlaylist();
       }
     }
@@ -475,45 +468,6 @@ export class Root implements OnDestroy {
   }
 
   // ============================================================================
-  // Public Methods - Configuration Mode
-  // ============================================================================
-
-  /**
-   * Enters configuration mode, displaying the settings view.
-   * Called when the settings button in the header is clicked or via menu.
-   * Exits fullscreen/miniplayer mode first to ensure proper window display.
-   *
-   * Uses untracked() to prevent signal reads from registering as effect
-   * dependencies when called from an effect (e.g., menu event handler).
-   */
-  public async enterConfigurationMode(initialCategory?: string): Promise<void> {
-    // Set the initial category before entering configuration mode
-    this.configInitialCategory.set(initialCategory ?? '');
-    // Exit fullscreen if active (untracked to avoid effect dependency)
-    if (untracked((): boolean => this.isFullscreen())) {
-      await this.electron.exitFullscreen();
-    }
-    // Exit miniplayer if active (untracked to avoid effect dependency)
-    if (untracked((): boolean => this.isMiniplayer())) {
-      await this.electron.exitMiniplayer();
-    }
-    this.isConfigurationMode.set(true);
-    // Notify main process so close button returns to media player instead of quitting
-    await this.electron.setConfigurationMode(true);
-  }
-
-  /**
-   * Exits configuration mode, returning to the media player view.
-   * Called when the close button in the configuration view is clicked,
-   * or when the window close button is pressed in configuration mode.
-   */
-  public exitConfigurationMode(): void {
-    this.isConfigurationMode.set(false);
-    // Notify main process that we're no longer in configuration mode
-    void this.electron.setConfigurationMode(false);
-  }
-
-  // ============================================================================
   // Public Methods - About Mode
   // ============================================================================
 
@@ -534,8 +488,6 @@ export class Root implements OnDestroy {
     if (untracked((): boolean => this.isMiniplayer())) {
       await this.electron.exitMiniplayer();
     }
-    // Exit configuration mode if active
-    this.isConfigurationMode.set(false);
     this.isAboutMode.set(true);
     // Notify main process so close button returns to media player instead of quitting
     await this.electron.setConfigurationMode(true);
@@ -572,8 +524,7 @@ export class Root implements OnDestroy {
     if (untracked((): boolean => this.isMiniplayer())) {
       await this.electron.exitMiniplayer();
     }
-    // Exit configuration and about modes if active
-    this.isConfigurationMode.set(false);
+    // Exit about mode if active
     this.isAboutMode.set(false);
     this.isHelpMode.set(true);
     // Notify main process so close button returns to media player instead of quitting

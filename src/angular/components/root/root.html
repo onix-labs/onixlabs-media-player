@@ -1,28 +1,31 @@
-@if (isConfigurationMode()) {
-  <app-configuration-view [initialCategory]="configInitialCategory()"/>
-}
-@if (isAboutMode()) {
-  <app-about-view/>
-}
-@if (isHelpMode()) {
-  <app-help-topics-view/>
-}
-@if (isMiniplayer()) {
-  <div class="miniplayer-container"
-       [class.hidden]="isConfigurationMode() || isAboutMode() || isHelpMode()"
-       (mouseenter)="onMiniplayerMouseEnter()"
-       (mouseleave)="onMiniplayerMouseLeave()">
-    <app-layout-outlet class="miniplayer-content" (openDependencySettings)="enterConfigurationMode('dependencies')"/>
-    <app-miniplayer-controls class="miniplayer-overlay" [class.controls-visible]="showControls()"/>
-  </div>
+@if (isConfigurationWindow) {
+  <!-- Standalone configuration window -->
+  <app-configuration-view [isStandaloneWindow]="true"/>
 } @else {
-  <div class="media-player-view" [class.hidden]="isConfigurationMode() || isAboutMode() || isHelpMode()">
-    @if (!isFullscreen()) {
-      <app-layout-header/>
-    }
-    <app-layout-outlet (openDependencySettings)="enterConfigurationMode('dependencies')"/>
-    @if (!isFullscreen() || showControls()) {
-      <app-layout-controls [class.fullscreen-overlay]="isFullscreen()"/>
-    }
-  </div>
+  <!-- Main application window -->
+  @if (isAboutMode()) {
+    <app-about-view/>
+  }
+  @if (isHelpMode()) {
+    <app-help-topics-view/>
+  }
+  @if (isMiniplayer()) {
+    <div class="miniplayer-container"
+         [class.hidden]="isAboutMode() || isHelpMode()"
+         (mouseenter)="onMiniplayerMouseEnter()"
+         (mouseleave)="onMiniplayerMouseLeave()">
+      <app-layout-outlet class="miniplayer-content"/>
+      <app-miniplayer-controls class="miniplayer-overlay" [class.controls-visible]="showControls()"/>
+    </div>
+  } @else {
+    <div class="media-player-view" [class.hidden]="isAboutMode() || isHelpMode()">
+      @if (!isFullscreen()) {
+        <app-layout-header/>
+      }
+      <app-layout-outlet/>
+      @if (!isFullscreen() || showControls()) {
+        <app-layout-controls [class.fullscreen-overlay]="isFullscreen()"/>
+      }
+    </div>
+  }
 }

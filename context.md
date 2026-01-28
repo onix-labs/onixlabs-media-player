@@ -500,7 +500,7 @@ AudioContext.destination (speakers)
 | `src/angular/components/video/video-outlet/` | Video playback, transcoding support |
 | `src/angular/components/playlist/` | Playlist UI panel with drag-and-drop |
 | `src/angular/components/miniplayer/` | Miniplayer overlay controls |
-| `src/angular/components/configuration/configuration-view/` | Settings UI with accordion sidebar, per-visualization settings; close button returns to player |
+| `src/angular/components/configuration/configuration-view/` | Settings UI with accordion sidebar, per-visualization settings; opens in separate 800x600 frameless window |
 | `src/angular/components/about/about-view/` | About dialog with version info and links |
 | `src/angular/components/help/help-topics-view/` | Help documentation with sidebar navigation and topic content |
 
@@ -633,7 +633,7 @@ The `Canvas2DVisualization` base class provides:
 | **Plasma** | Waves | Dual horizontal waveforms at 45% and 55% positions, colors cycle through spectrum, trails expand from center with zoom effect, additive blending | Fixed 128 points, separate trail canvases, pre-allocated point arrays, cached color values |
 | **Infinity** | Waves | Dual circular waveforms orbiting like binary black holes, colors cycle through spectrum, additive blending for overlapping trails | Cached color values with hue threshold, separate trail canvases with lighter compositing |
 | **Neon** | Waves | Two counter-rotating crosses: one rotates clockwise, the other counter-clockwise, cyan/magenta colors randomly swap on intersection (every 45°), both sized to 8/9 of shorter screen dimension, additive blending where crosses overlap, trails expand outward with zoom effect | Pre-allocated point arrays (4 total), separate trail canvases per cross, point-based rotation, intersection zone tracking |
-| **Onix** | Waves | Pulsating gradient circle with ONIXLabs brand colors via conic gradient stroke, rotating trail effect with zoom, inner white circle pulsates to bass/kick drums (no trail effect), power curve for more aggressive fade at low trail intensity, cross-fade blending eliminates waveform seam at circle closure | Pre-computed trig lookup tables, conic gradient for single-pass colored stroke, reuses trail/temp canvases |
+| **Onix** | Waves | Pulsating gradient circle with ONIXLabs brand colors via conic gradient stroke, white glow that complements all spectrum colors, rotating trail effect with zoom, inner white circle pulsates to bass/kick drums (no trail effect), power curve for more aggressive fade at low trail intensity, cross-fade blending eliminates waveform seam at circle closure | Pre-computed trig lookup tables, conic gradient for single-pass colored stroke, reuses trail/temp canvases |
 | **Pulsar** | Waves | Pulsing concentric rings with curved waveforms | Reuses trail/temp canvases, pre-allocated point arrays, cached HSL→RGB colors |
 | **Water** | Waves | Water ripple effect with rotating waveforms, bass-reactive rotation | Reuses canvases, caches background gradient, pre-allocated arrays |
 
@@ -649,7 +649,7 @@ The `Canvas2DVisualization` base class provides:
 - Atomic file writes (write to temp, then rename) prevent corruption
 - Real-time sync via SSE (`settings:updated` event)
 - Settings fetched on service init (handles missed initial SSE event)
-- **Close button behavior**: In settings view or about view, the window close button (macOS red traffic light) returns to the media player instead of quitting the application
+- **Configuration window**: Opens in a separate 800x600 frameless window (non-resizable) with hidden title bar and traffic lights (macOS). Window is draggable by custom header showing "ONIXPlayer Configuration". When opened, main window repositions side-by-side with 32px gutters; original position restored on close.
 
 ### Available Settings
 
@@ -730,15 +730,15 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 
 | Setting | Range | Default | Description |
 |---------|-------|---------|-------------|
-| Font Size | 50-200% | 100% | Subtitle text size |
-| Font Color | Hex color | #ffffff | Subtitle text color |
-| Background Color | Hex color | #000000 | Subtitle background color |
+| Font Size | 50-300% | 100% | Subtitle text size |
+| Font Color | Hex color | #ffffff | Subtitle text color (displayed in monospace) |
+| Background Color | Hex color | #000000 | Subtitle background color (displayed in monospace) |
 | Background Opacity | 0-100% | 75% | Subtitle background transparency |
-| Font Family | Sans-serif/Serif/Monospace | Sans-serif | Subtitle font family |
+| Font Family | Sans-serif/Serif/Monospace/Arial | Sans-serif | Subtitle font family |
 | Text Shadow | On/Off | On | Master toggle for shadow/outline effect |
-| Shadow Spread | 1-5px | 2px | Outline thickness (distance from text) |
-| Shadow Blur | 0-10px | 2px | Shadow softness (0 for crisp outline) |
-| Shadow Color | Hex color | #000000 | Shadow/outline color |
+| Shadow Spread | 1-3px | 2px | Outline thickness (shown only when Text Shadow is on) |
+| Shadow Blur | 0-10px | 2px | Shadow softness, 0 for crisp outline (shown only when Text Shadow is on) |
+| Shadow Color | Hex color | #000000 | Shadow/outline color (shown only when Text Shadow is on, displayed in monospace) |
 
 ---
 
