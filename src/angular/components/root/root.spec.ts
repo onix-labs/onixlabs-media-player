@@ -40,6 +40,10 @@ function createMockElectronService(): Record<string, unknown> {
     menuShowConfig: signal(0),
     menuOpenFile: signal(0),
     menuShowAbout: signal(0),
+    menuShowHelp: signal(0),
+    menuOpenPlaylist: signal(0),
+    menuSavePlaylist: signal(0),
+    menuSavePlaylistAs: signal(0),
     menuSelectAspectMode: signal(''),
     exitConfigurationModeRequested: signal(0),
     fadeOutRequested: signal(0),
@@ -54,6 +58,11 @@ function createMockElectronService(): Record<string, unknown> {
     getWindowPosition: vi.fn().mockResolvedValue({x: 0, y: 0}),
     setWindowPosition: vi.fn().mockResolvedValue({x: 0, y: 0}),
     saveMiniplayerBounds: vi.fn().mockResolvedValue(undefined),
+    openPlaylistDialog: vi.fn().mockResolvedValue(null),
+    savePlaylistDialog: vi.fn().mockResolvedValue(null),
+    savePlaylistToFile: vi.fn().mockResolvedValue(undefined),
+    loadPlaylistFromFile: vi.fn().mockResolvedValue({count: 0, filePath: ''}),
+    getPlaylistSourcePath: vi.fn().mockResolvedValue(null),
   };
 }
 
@@ -662,6 +671,74 @@ describe('Root', (): void => {
       component.exitAboutMode();
 
       expect(component.isAboutMode()).toBe(false);
+      expect(mockElectron['setConfigurationMode']).toHaveBeenCalledWith(false);
+    });
+  });
+
+  // ============================================================================
+  // Help Mode
+  // ============================================================================
+
+  describe('enterHelpMode', (): void => {
+    it('sets isHelpMode to true and notifies main process', async (): Promise<void> => {
+      await component.enterHelpMode();
+
+      expect(component.isHelpMode()).toBe(true);
+      expect(mockElectron['setConfigurationMode']).toHaveBeenCalledWith(true);
+    });
+
+    it('exits fullscreen before entering help mode', async (): Promise<void> => {
+      (mockElectron['isFullscreen'] as WritableSignal<boolean>).set(true);
+
+      await component.enterHelpMode();
+
+      expect(mockElectron['exitFullscreen']).toHaveBeenCalled();
+      expect(component.isHelpMode()).toBe(true);
+    });
+
+    it('exits miniplayer before entering help mode', async (): Promise<void> => {
+      (mockElectron['viewMode'] as WritableSignal<'desktop' | 'miniplayer' | 'fullscreen'>).set('miniplayer');
+
+      await component.enterHelpMode();
+
+      expect(mockElectron['exitMiniplayer']).toHaveBeenCalled();
+      expect(component.isHelpMode()).toBe(true);
+    });
+
+    it('exits configuration mode when entering help mode', async (): Promise<void> => {
+      component.isConfigurationMode.set(true);
+
+      await component.enterHelpMode();
+
+      expect(component.isConfigurationMode()).toBe(false);
+      expect(component.isHelpMode()).toBe(true);
+    });
+
+    it('exits about mode when entering help mode', async (): Promise<void> => {
+      component.isAboutMode.set(true);
+
+      await component.enterHelpMode();
+
+      expect(component.isAboutMode()).toBe(false);
+      expect(component.isHelpMode()).toBe(true);
+    });
+
+    it('does not exit fullscreen when not fullscreen', async (): Promise<void> => {
+      (mockElectron['isFullscreen'] as WritableSignal<boolean>).set(false);
+
+      await component.enterHelpMode();
+
+      expect(mockElectron['exitFullscreen']).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('exitHelpMode', (): void => {
+    it('sets isHelpMode to false and notifies main process', (): void => {
+      component.isHelpMode.set(true);
+
+      component.exitHelpMode();
+
+      expect(component.isHelpMode()).toBe(false);
       expect(mockElectron['setConfigurationMode']).toHaveBeenCalledWith(false);
     });
   });

@@ -17,7 +17,9 @@
     }
   }
 
-  app-configuration-view {
+  app-configuration-view,
+  app-about-view,
+  app-help-topics-view {
     flex: 1;
     min-height: 0;
     overflow: hidden;

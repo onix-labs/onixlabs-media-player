@@ -285,6 +285,18 @@ export interface MediaPlayerAPI {
   openSoundFontDialog: () => Promise<string[]>;
 
   /**
+   * Opens a native dialog to select a .opp playlist file.
+   * @returns Promise resolving to the selected file path, or null if cancelled
+   */
+  openPlaylistDialog: () => Promise<string | null>;
+
+  /**
+   * Opens a native save dialog for a .opp playlist file.
+   * @returns Promise resolving to the chosen file path, or null if cancelled
+   */
+  savePlaylistDialog: () => Promise<string | null>;
+
+  /**
    * Gets the absolute file path for a File object from drag-and-drop.
    * @param file - File object from DataTransfer
    * @returns The absolute file system path
