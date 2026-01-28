@@ -48,67 +48,23 @@
         </button>
         <span class="visualization-name">{{ visualizationDisplayName() }}</span>
       } @else if (isVideo()) {
-        <button tabindex="-1" (click)="previousAspectMode()" (mouseup)="$any($event.currentTarget).blur()" title="Previous aspect ratio">
-          <i class="fa-solid fa-caret-left"></i>
-        </button>
-        <button tabindex="-1" (click)="nextAspectMode()" (mouseup)="$any($event.currentTarget).blur()" title="Next aspect ratio">
-          <i class="fa-solid fa-caret-right"></i>
-        </button>
-        <span class="visualization-name">{{ aspectModeDisplayName() }}</span>
-        <div class="subtitle-selector">
-            <button
-              tabindex="-1"
-              class="subtitle-button"
-              [class.active]="getSelectedSubtitleTrack() !== -1"
-              (click)="toggleSubtitleDropdown()"
-              (mouseup)="$any($event.currentTarget).blur()"
-              title="Subtitles">
-              <i class="fa-solid fa-closed-captioning"></i>
-            </button>
-            @if (subtitleDropdownOpen()) {
-              <div class="subtitle-dropdown" (mouseleave)="closeSubtitleDropdown()">
-                <button
-                  class="subtitle-option"
-                  [class.selected]="isSubtitleTrackSelected(-1)"
-                  (click)="selectSubtitleTrack(-1)"
-                  (mouseup)="$any($event.currentTarget).blur()">
-                  <i class="fa-solid fa-xmark"></i>
-                  <span>Off</span>
-                </button>
-                @for (track of getSubtitleTracks(); track track.index) {
-                  <button
-                    class="subtitle-option"
-                    [class.selected]="isSubtitleTrackSelected(track.index)"
-                    (click)="selectSubtitleTrack(track.index)"
-                    (mouseup)="$any($event.currentTarget).blur()">
-                    <i class="fa-solid fa-check" [style.visibility]="isSubtitleTrackSelected(track.index) ? 'visible' : 'hidden'"></i>
-                    <span>{{ track.title }}</span>
-                    @if (track.forced) {
-                      <span class="subtitle-badge">Forced</span>
-                    }
-                  </button>
-                }
-                @if (hasExternalSubtitle()) {
-                  <button
-                    class="subtitle-option"
-                    [class.selected]="isSubtitleTrackSelected(-2)"
-                    (click)="selectSubtitleTrack(-2)"
-                    (mouseup)="$any($event.currentTarget).blur()">
-                    <i class="fa-solid fa-check" [style.visibility]="isSubtitleTrackSelected(-2) ? 'visible' : 'hidden'"></i>
-                    <span>External</span>
-                    <span class="subtitle-badge">File</span>
-                  </button>
-                }
-                <button
-                  class="subtitle-option load-external"
-                  (click)="loadExternalSubtitle()"
-                  (mouseup)="$any($event.currentTarget).blur()">
-                  <i class="fa-solid fa-folder-open"></i>
-                  <span>Load External...</span>
-                </button>
-              </div>
-            }
-          </div>
+        <select class="media-bar-select" (change)="onAspectModeChange($event)" title="Aspect ratio">
+          @for (option of aspectOptions; track option.value) {
+            <option [value]="option.value" [selected]="option.value === currentAspectMode()">{{ option.label }}</option>
+          }
+        </select>
+        <select class="media-bar-select subtitle-select" (change)="onSubtitleTrackChange($event)" title="Subtitles">
+          <option value="-1" [selected]="getSelectedSubtitleTrack() === -1">Subtitles Off</option>
+          @for (track of getSubtitleTracks(); track track.index) {
+            <option [value]="track.index" [selected]="getSelectedSubtitleTrack() === track.index">
+              {{ track.title }}@if (track.forced) { (Forced)}
+            </option>
+          }
+          @if (hasExternalSubtitle()) {
+            <option value="-2" [selected]="getSelectedSubtitleTrack() === -2">External File</option>
+          }
+          <option value="-3">Load External...</option>
+        </select>
       }
       <div class="spacer"></div>
       <button tabindex="-1" class="playlist-toggle" (click)="togglePlaylist()" (mouseup)="$any($event.currentTarget).blur()" title="Toggle playlist">

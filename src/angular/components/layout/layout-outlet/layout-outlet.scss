@@ -54,7 +54,6 @@
 
     &:hover {
       color: white;
-
     }
   }
 
@@ -62,6 +61,32 @@
     font-size: 0.75rem;
     color: $white-50;
     margin-left: 0.5rem;
+  }
+
+  .media-bar-select {
+    background: $white-10;
+    border: none;
+    border-radius: 3px;
+    color: $white-70;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+    outline: none;
+    transition: color 0.2s ease, background 0.2s ease;
+
+    &:hover {
+      color: white;
+      background: $white-15;
+    }
+
+    &:focus {
+      color: white;
+    }
+
+    option {
+      background: $black-90;
+      color: white;
+    }
   }
 
   .spacer {
@@ -73,88 +98,6 @@
 
     &:hover {
       color: white;
-    }
-  }
-
-  .subtitle-selector {
-    position: relative;
-    margin-left: 0.5rem;
-
-    .subtitle-button {
-      color: $white-50;
-
-      &:hover {
-        color: white;
-      }
-
-      &.active {
-        color: $color-primary-light;
-
-        &:hover {
-          color: white;
-        }
-      }
-    }
-
-    .subtitle-dropdown {
-      position: absolute;
-      bottom: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      margin-bottom: 0.5rem;
-      min-width: 140px;
-      background: $black-90;
-      border: 1px solid $white-15;
-      border-radius: 6px;
-      padding: 0.25rem;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-      z-index: 100;
-
-      .subtitle-option {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        width: 100%;
-        padding: 0.5rem 0.75rem;
-        background: none;
-        border: none;
-        border-radius: 4px;
-        color: $white-70;
-        font-size: 0.75rem;
-        text-align: left;
-        cursor: pointer;
-        transition: background 0.15s ease, color 0.15s ease;
-
-        i {
-          width: 0.75rem;
-          font-size: 0.625rem;
-          color: $color-primary-light;
-        }
-
-        &:hover {
-          background: $white-10;
-          color: white;
-        }
-
-        &.selected {
-          color: white;
-        }
-
-        .subtitle-badge {
-          margin-left: auto;
-          padding: 0.125rem 0.375rem;
-          background: $white-10;
-          border-radius: 3px;
-          font-size: 0.625rem;
-          color: $white-50;
-        }
-
-        &.load-external {
-          border-top: 1px solid $white-10;
-          margin-top: 0.25rem;
-          padding-top: 0.625rem;
-        }
-      }
     }
   }
 }

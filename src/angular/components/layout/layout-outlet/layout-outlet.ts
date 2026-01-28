@@ -25,8 +25,12 @@ import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import {DependencyService} from '../../../services/dependency.service';
+import {VIDEO_ASPECT_OPTIONS, type VideoAspectMode} from '../../../services/settings.service';
 import type {DependencyStatus} from '../../../services/dependency.service';
 import type {PlaylistItem, SubtitleTrack} from '../../../types/electron';
+
+/** Special value for "Load External..." option in subtitle select */
+const SUBTITLE_LOAD_EXTERNAL_VALUE: number = -3;
 
 /**
  * Main content outlet component that displays the appropriate media player.
@@ -85,8 +89,13 @@ export class LayoutOutlet {
   /** Signal for video aspect mode display name (updated reactively from videoOutlet) */
   public readonly aspectModeDisplayName: ReturnType<typeof signal<string>> = signal<string>('Default');
 
-  /** Whether the subtitle dropdown is open */
-  public readonly subtitleDropdownOpen: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+  /** Video aspect ratio options for the select dropdown */
+  public readonly aspectOptions: typeof VIDEO_ASPECT_OPTIONS = VIDEO_ASPECT_OPTIONS;
+
+  /** Current aspect mode value for the select dropdown */
+  public readonly currentAspectMode: ReturnType<typeof computed<VideoAspectMode>> = computed(
+    (): VideoAspectMode => this.videoOutlet?.aspectMode() ?? 'default'
+  );
 
   // ============================================================================
   // Reactive State Signals
@@ -178,17 +187,15 @@ export class LayoutOutlet {
   }
 
   /**
-   * Cycles to the next video aspect mode.
+   * Handles aspect mode change from select element.
+   *
+   * @param event - The change event from the select
    */
-  public nextAspectMode(): void {
-    this.videoOutlet?.nextAspectMode();
-  }
-
-  /**
-   * Cycles to the previous video aspect mode.
-   */
-  public previousAspectMode(): void {
-    this.videoOutlet?.previousAspectMode();
+  public onAspectModeChange(event: Event): void {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLSelectElement) {
+      this.videoOutlet?.setAspectMode(target.value as VideoAspectMode);
+    }
   }
 
   // ============================================================================
@@ -211,40 +218,6 @@ export class LayoutOutlet {
   }
 
   /**
-   * Selects a subtitle track by index.
-   * Pass -1 to disable subtitles.
-   *
-   * @param trackIndex - The track index to select, or -1 to disable
-   */
-  public selectSubtitleTrack(trackIndex: number): void {
-    this.videoOutlet?.selectSubtitleTrack(trackIndex);
-    this.subtitleDropdownOpen.set(false);
-  }
-
-  /**
-   * Toggles the subtitle dropdown visibility.
-   */
-  public toggleSubtitleDropdown(): void {
-    this.subtitleDropdownOpen.update((open: boolean): boolean => !open);
-  }
-
-  /**
-   * Closes the subtitle dropdown.
-   */
-  public closeSubtitleDropdown(): void {
-    this.subtitleDropdownOpen.set(false);
-  }
-
-  /**
-   * Checks if a subtitle track is currently selected.
-   *
-   * @param trackIndex - The track index to check
-   */
-  public isSubtitleTrackSelected(trackIndex: number): boolean {
-    return this.getSelectedSubtitleTrack() === trackIndex;
-  }
-
-  /**
    * Gets whether an external subtitle is loaded.
    */
   public hasExternalSubtitle(): boolean {
@@ -252,11 +225,24 @@ export class LayoutOutlet {
   }
 
   /**
-   * Opens file dialog to load an external subtitle file.
+   * Handles subtitle track change from select element.
+   * Special values: -1 = Off, -2 = External, -3 = Load External...
+   *
+   * @param event - The change event from the select
    */
-  public loadExternalSubtitle(): void {
-    this.videoOutlet?.loadExternalSubtitle();
-    this.subtitleDropdownOpen.set(false);
+  public onSubtitleTrackChange(event: Event): void {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLSelectElement) {
+      const value: number = parseInt(target.value, 10);
+      if (value === SUBTITLE_LOAD_EXTERNAL_VALUE) {
+        // Load External option selected
+        this.videoOutlet?.loadExternalSubtitle();
+        // Reset select to current track since "Load External..." is an action, not a selection
+        target.value = String(this.getSelectedSubtitleTrack());
+      } else {
+        this.videoOutlet?.selectSubtitleTrack(value);
+      }
+    }
   }
 
   // ============================================================================
