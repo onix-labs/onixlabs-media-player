@@ -336,6 +336,12 @@ export interface MediaPlayerAPI {
   savePlaylistDialog: () => Promise<string | null>;
 
   /**
+   * Opens a native dialog to select an external subtitle file (.srt, .vtt, .ass, .ssa).
+   * @returns Promise resolving to the selected file path, or null if cancelled
+   */
+  openSubtitleDialog: () => Promise<string | null>;
+
+  /**
    * Gets the absolute file path for a File object from drag-and-drop.
    * @param file - File object from DataTransfer
    * @returns The absolute file system path

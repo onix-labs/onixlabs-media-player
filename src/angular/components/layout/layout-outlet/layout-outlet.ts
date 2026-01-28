@@ -244,6 +244,21 @@ export class LayoutOutlet {
     return this.getSelectedSubtitleTrack() === trackIndex;
   }
 
+  /**
+   * Gets whether an external subtitle is loaded.
+   */
+  public hasExternalSubtitle(): boolean {
+    return this.videoOutlet?.hasExternalSubtitle() ?? false;
+  }
+
+  /**
+   * Opens file dialog to load an external subtitle file.
+   */
+  public loadExternalSubtitle(): void {
+    this.videoOutlet?.loadExternalSubtitle();
+    this.subtitleDropdownOpen.set(false);
+  }
+
   // ============================================================================
   // Drag and Drop Handlers
   // ============================================================================

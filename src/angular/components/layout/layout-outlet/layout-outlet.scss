@@ -148,6 +148,12 @@
           font-size: 0.625rem;
           color: $white-50;
         }
+
+        &.load-external {
+          border-top: 1px solid $white-10;
+          margin-top: 0.25rem;
+          padding-top: 0.625rem;
+        }
       }
     }
   }

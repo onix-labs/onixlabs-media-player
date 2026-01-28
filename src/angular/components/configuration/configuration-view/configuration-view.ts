@@ -15,7 +15,7 @@
 import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
 import type {InputSignal, EffectRef} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, MacOSVisualEffectState, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, MacOSVisualEffectState, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import type {DependencyId, DependencyState, DependencyStatus, SoundFontInfo, InstallProgress} from '../../../services/dependency.service';
@@ -27,6 +27,15 @@ export const MACOS_VISUAL_EFFECT_STATE_OPTIONS: readonly {value: MacOSVisualEffe
   {value: 'followWindow', label: 'Follow Window'},
   {value: 'active', label: 'Always Active'},
   {value: 'inactive', label: 'Always Inactive'},
+];
+
+/**
+ * Subtitle font family options for the settings UI.
+ */
+export const SUBTITLE_FONT_FAMILY_OPTIONS: readonly {value: SubtitleFontFamily; label: string}[] = [
+  {value: 'sans-serif', label: 'Sans Serif'},
+  {value: 'serif', label: 'Serif'},
+  {value: 'monospace', label: 'Monospace'},
 ];
 
 /**
@@ -55,6 +64,20 @@ function getSelectValue(event: Event): string {
     return target.value;
   }
   return '';
+}
+
+/**
+ * Safely extracts checked state from a checkbox element event target.
+ *
+ * @param event - The DOM event
+ * @returns The checked state or false if target is not an HTMLInputElement
+ */
+function getCheckboxValue(event: Event): boolean {
+  const target: EventTarget | null = event.target;
+  if (target instanceof HTMLInputElement && target.type === 'checkbox') {
+    return target.checked;
+  }
+  return false;
 }
 
 /**
@@ -99,6 +122,12 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     name: 'Playback',
     icon: 'fa-solid fa-play',
     description: 'Configure playback behavior and volume.',
+  },
+  {
+    id: 'subtitles',
+    name: 'Subtitles',
+    icon: 'fa-solid fa-closed-captioning',
+    description: 'Configure subtitle appearance for video playback.',
   },
   {
     id: 'transcoding',
@@ -400,6 +429,55 @@ export class ConfigurationView {
   );
 
   // ============================================================================
+  // Subtitle Computed Signals
+  // ============================================================================
+
+  /** Subtitle font family options for select dropdown */
+  public readonly subtitleFontFamilyOptions: typeof SUBTITLE_FONT_FAMILY_OPTIONS = SUBTITLE_FONT_FAMILY_OPTIONS;
+
+  /** Current subtitle font size (50-200) */
+  public readonly currentSubtitleFontSize: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.subtitleFontSize()
+  );
+
+  /** Current subtitle font color */
+  public readonly currentSubtitleFontColor: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settingsService.subtitleFontColor()
+  );
+
+  /** Current subtitle background color */
+  public readonly currentSubtitleBackgroundColor: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settingsService.subtitleBackgroundColor()
+  );
+
+  /** Current subtitle background opacity (0-1) */
+  public readonly currentSubtitleBackgroundOpacity: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.subtitleBackgroundOpacity()
+  );
+
+  /** Current subtitle font family */
+  public readonly currentSubtitleFontFamily: ReturnType<typeof computed<SubtitleFontFamily>> = computed(
+    (): SubtitleFontFamily => this.settingsService.subtitleFontFamily()
+  );
+
+  /** Current subtitle text shadow enabled state */
+  public readonly currentSubtitleTextShadow: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.settingsService.subtitleTextShadow()
+  );
+
+  /** Preview color for subtitle background with opacity */
+  public readonly subtitleBackgroundPreviewColor: ReturnType<typeof computed<string>> = computed(
+    (): string => {
+      const hex: string = this.currentSubtitleBackgroundColor();
+      const opacity: number = this.currentSubtitleBackgroundOpacity();
+      const r: number = parseInt(hex.slice(1, 3), 16);
+      const g: number = parseInt(hex.slice(3, 5), 16);
+      const b: number = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    }
+  );
+
+  // ============================================================================
   // Dependency Computed Signals
   // ============================================================================
 
@@ -672,6 +750,88 @@ export class ConfigurationView {
   public async onWindowTintAlphaChange(event: Event): Promise<void> {
     const alpha: number = parseFloat(getInputValue(event));
     if (!isNaN(alpha)) await this.settingsService.setWindowTintAlpha(alpha);
+  }
+
+  // ============================================================================
+  // Subtitle Event Handlers
+  // ============================================================================
+
+  /**
+   * Handles subtitle font size slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onSubtitleFontSizeChange(event: Event): Promise<void> {
+    const size: number = parseInt(getInputValue(event), 10);
+    if (!isNaN(size)) await this.settingsService.setSubtitleFontSize(size);
+  }
+
+  /**
+   * Handles subtitle font color change.
+   *
+   * @param event - The input event from the color picker
+   */
+  public async onSubtitleFontColorChange(event: Event): Promise<void> {
+    const color: string = getInputValue(event);
+    if (color) await this.settingsService.setSubtitleFontColor(color);
+  }
+
+  /**
+   * Handles subtitle background color change.
+   *
+   * @param event - The input event from the color picker
+   */
+  public async onSubtitleBackgroundColorChange(event: Event): Promise<void> {
+    const color: string = getInputValue(event);
+    if (color) await this.settingsService.setSubtitleBackgroundColor(color);
+  }
+
+  /**
+   * Handles subtitle background opacity slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onSubtitleBackgroundOpacityChange(event: Event): Promise<void> {
+    const opacity: number = parseFloat(getInputValue(event));
+    if (!isNaN(opacity)) await this.settingsService.setSubtitleBackgroundOpacity(opacity);
+  }
+
+  /**
+   * Handles subtitle font family select change.
+   *
+   * @param event - The change event from the select
+   */
+  public async onSubtitleFontFamilyChange(event: Event): Promise<void> {
+    const family: string = getSelectValue(event);
+    if (family) await this.settingsService.setSubtitleFontFamily(family as SubtitleFontFamily);
+  }
+
+  /**
+   * Handles subtitle text shadow toggle change.
+   *
+   * @param event - The change event from the checkbox
+   */
+  public async onSubtitleTextShadowChange(event: Event): Promise<void> {
+    const checked: boolean = getCheckboxValue(event);
+    await this.settingsService.setSubtitleTextShadow(checked);
+  }
+
+  /**
+   * Formats the subtitle font size for display.
+   *
+   * @returns The font size formatted as a percentage string
+   */
+  public formatSubtitleFontSize(): string {
+    return `${this.currentSubtitleFontSize()}%`;
+  }
+
+  /**
+   * Formats the subtitle background opacity for display.
+   *
+   * @returns The opacity formatted as a percentage string
+   */
+  public formatSubtitleBackgroundOpacity(): string {
+    return `${Math.round(this.currentSubtitleBackgroundOpacity() * 100)}%`;
   }
 
   // ============================================================================

@@ -478,6 +478,29 @@ class Program {
       return result.filePath;
     });
 
+    // Open external subtitle file dialog - scoped to subtitle formats
+    ipcMain.handle("dialog:openSubtitle", async (): Promise<string | null> => {
+      ipcLogger.debug('dialog:openSubtitle');
+      if (!this.window) {
+        ipcLogger.warn('dialog:openSubtitle - no window available');
+        return null;
+      }
+
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
+        title: 'Open Subtitle File',
+        properties: ['openFile'],
+        filters: [{name: 'Subtitle Files', extensions: ['srt', 'vtt', 'ass', 'ssa']}],
+      });
+
+      if (result.canceled || result.filePaths.length === 0) {
+        ipcLogger.info('dialog:openSubtitle - cancelled');
+        return null;
+      }
+
+      ipcLogger.info(`dialog:openSubtitle - selected: ${result.filePaths[0]}`);
+      return result.filePaths[0];
+    });
+
     // Get server port - needed for renderer to connect to HTTP API
     ipcMain.handle("app:getServerPort", (): number => {
       const port: number = this.mediaServer?.getPort() || 0;

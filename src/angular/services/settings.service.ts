@@ -97,6 +97,29 @@ export type AudioBitrate = 128 | 192 | 256 | 320;
 export type VideoAspectMode = 'default' | '4:3' | '16:9' | 'fit';
 
 /**
+ * Subtitle font family options.
+ */
+export type SubtitleFontFamily = 'sans-serif' | 'serif' | 'monospace';
+
+/**
+ * Subtitle appearance settings.
+ */
+export interface SubtitleSettings {
+  /** Font size as percentage (50-200, default 100) */
+  readonly fontSize: number;
+  /** Font color in hex format (default '#ffffff') */
+  readonly fontColor: string;
+  /** Background color in hex format (default '#000000') */
+  readonly backgroundColor: string;
+  /** Background opacity (0-1, default 0.75) */
+  readonly backgroundOpacity: number;
+  /** Font family (sans-serif, serif, monospace, default 'sans-serif') */
+  readonly fontFamily: SubtitleFontFamily;
+  /** Whether to show text shadow for better visibility (default true) */
+  readonly textShadow: boolean;
+}
+
+/**
  * Visualization settings structure.
  * Global settings apply to all visualizations.
  * Per-visualization settings are stored in perVisualizationSettings.
@@ -196,6 +219,8 @@ export interface AppSettings {
   readonly transcoding: TranscodingSettings;
   /** Appearance settings (platform-specific) */
   readonly appearance: AppearanceSettings;
+  /** Subtitle appearance settings */
+  readonly subtitles: SubtitleSettings;
 }
 
 /**
@@ -285,6 +310,14 @@ const DEFAULT_SETTINGS: AppSettings = {
     windowTintSaturation: 0,
     windowTintLightness: 0,
     windowTintAlpha: 0,
+  },
+  subtitles: {
+    fontSize: 100,
+    fontColor: '#ffffff',
+    backgroundColor: '#000000',
+    backgroundOpacity: 0.75,
+    fontFamily: 'sans-serif',
+    textShadow: true,
   },
 };
 
@@ -522,6 +555,40 @@ export class SettingsService implements OnDestroy {
   /** Window tint alpha (0-1) when glass is enabled */
   public readonly windowTintAlpha: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().appearance?.windowTintAlpha ?? 0
+  );
+
+  // ============================================================================
+  // Subtitle Settings Computed Signals
+  // ============================================================================
+
+  /** Subtitle font size as percentage (50-200) */
+  public readonly subtitleFontSize: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().subtitles?.fontSize ?? 100
+  );
+
+  /** Subtitle font color in hex format */
+  public readonly subtitleFontColor: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settings().subtitles?.fontColor ?? '#ffffff'
+  );
+
+  /** Subtitle background color in hex format */
+  public readonly subtitleBackgroundColor: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settings().subtitles?.backgroundColor ?? '#000000'
+  );
+
+  /** Subtitle background opacity (0-1) */
+  public readonly subtitleBackgroundOpacity: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().subtitles?.backgroundOpacity ?? 0.75
+  );
+
+  /** Subtitle font family */
+  public readonly subtitleFontFamily: ReturnType<typeof computed<SubtitleFontFamily>> = computed(
+    (): SubtitleFontFamily => this.settings().subtitles?.fontFamily ?? 'sans-serif'
+  );
+
+  /** Whether subtitle text shadow is enabled */
+  public readonly subtitleTextShadow: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.settings().subtitles?.textShadow ?? true
   );
 
   // ============================================================================
@@ -962,6 +1029,77 @@ export class SettingsService implements OnDestroy {
    */
   public async setWindowTintAlpha(alpha: number): Promise<void> {
     await this.updateSetting('appearance', 'windowTintAlpha', alpha);
+  }
+
+  // ============================================================================
+  // Subtitle Settings
+  // ============================================================================
+
+  /**
+   * Sets the subtitle font size.
+   *
+   * @param size - Font size as percentage (50-200)
+   */
+  public async setSubtitleFontSize(size: number): Promise<void> {
+    await this.updateSetting('subtitles', 'fontSize', this.clamp(Math.round(size), 50, 200));
+  }
+
+  /**
+   * Sets the subtitle font color.
+   *
+   * @param color - Hex color string (e.g., '#ffffff')
+   */
+  public async setSubtitleFontColor(color: string): Promise<void> {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+      console.error(`[SettingsService] Invalid hex color: ${color}`);
+      return;
+    }
+    await this.updateSetting('subtitles', 'fontColor', color);
+  }
+
+  /**
+   * Sets the subtitle background color.
+   *
+   * @param color - Hex color string (e.g., '#000000')
+   */
+  public async setSubtitleBackgroundColor(color: string): Promise<void> {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+      console.error(`[SettingsService] Invalid hex color: ${color}`);
+      return;
+    }
+    await this.updateSetting('subtitles', 'backgroundColor', color);
+  }
+
+  /**
+   * Sets the subtitle background opacity.
+   *
+   * @param opacity - Opacity value (0-1)
+   */
+  public async setSubtitleBackgroundOpacity(opacity: number): Promise<void> {
+    await this.updateSetting('subtitles', 'backgroundOpacity', this.clamp(opacity, 0, 1));
+  }
+
+  /**
+   * Sets the subtitle font family.
+   *
+   * @param family - Font family ('sans-serif', 'serif', or 'monospace')
+   */
+  public async setSubtitleFontFamily(family: SubtitleFontFamily): Promise<void> {
+    const validFamilies: readonly SubtitleFontFamily[] = ['sans-serif', 'serif', 'monospace'];
+    if (!validFamilies.includes(family)) {
+      console.error(`[SettingsService] Invalid font family: ${family}`);
+      return;
+    }
+    await this.updateSetting('subtitles', 'fontFamily', family);
+  }
+
+  /**
+   * Sets whether subtitle text shadow is enabled.
+   *
+   * @param enabled - Whether text shadow should be shown
+   */
+  public async setSubtitleTextShadow(enabled: boolean): Promise<void> {
+    await this.updateSetting('subtitles', 'textShadow', enabled);
   }
 
   /**
