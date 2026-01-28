@@ -10,6 +10,6 @@
      (drop)="onDrop($event)">
   <video #videoElement crossorigin="anonymous"></video>
   @if (subtitleText()) {
-    <div class="subtitle-overlay">{{ subtitleText() }}</div>
+    <div class="subtitle-overlay" [innerHTML]="sanitizedSubtitleHtml()"></div>
   }
 </div>

@@ -117,6 +117,12 @@ export interface SubtitleSettings {
   readonly fontFamily: SubtitleFontFamily;
   /** Whether to show text shadow for better visibility (default true) */
   readonly textShadow: boolean;
+  /** Shadow spread/offset in pixels (1-5, default 2) - controls outline thickness */
+  readonly shadowSpread: number;
+  /** Shadow blur radius in pixels (0-10, default 2) - 0 for crisp outline */
+  readonly shadowBlur: number;
+  /** Shadow color in hex format (default '#000000') */
+  readonly shadowColor: string;
 }
 
 /**
@@ -318,6 +324,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     backgroundOpacity: 0.75,
     fontFamily: 'sans-serif',
     textShadow: true,
+    shadowSpread: 2,
+    shadowBlur: 2,
+    shadowColor: '#000000',
   },
 };
 
@@ -589,6 +598,21 @@ export class SettingsService implements OnDestroy {
   /** Whether subtitle text shadow is enabled */
   public readonly subtitleTextShadow: ReturnType<typeof computed<boolean>> = computed(
     (): boolean => this.settings().subtitles?.textShadow ?? true
+  );
+
+  /** Subtitle shadow spread/offset in pixels (1-5) */
+  public readonly subtitleShadowSpread: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().subtitles?.shadowSpread ?? 2
+  );
+
+  /** Subtitle shadow blur radius in pixels (0-10) */
+  public readonly subtitleShadowBlur: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().subtitles?.shadowBlur ?? 2
+  );
+
+  /** Subtitle shadow color in hex format */
+  public readonly subtitleShadowColor: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settings().subtitles?.shadowColor ?? '#000000'
   );
 
   // ============================================================================
@@ -1100,6 +1124,33 @@ export class SettingsService implements OnDestroy {
    */
   public async setSubtitleTextShadow(enabled: boolean): Promise<void> {
     await this.updateSetting('subtitles', 'textShadow', enabled);
+  }
+
+  /**
+   * Sets the subtitle shadow spread (offset distance).
+   *
+   * @param spread - Spread in pixels (1-5)
+   */
+  public async setSubtitleShadowSpread(spread: number): Promise<void> {
+    await this.updateSetting('subtitles', 'shadowSpread', spread);
+  }
+
+  /**
+   * Sets the subtitle shadow blur radius.
+   *
+   * @param blur - Blur radius in pixels (0-10)
+   */
+  public async setSubtitleShadowBlur(blur: number): Promise<void> {
+    await this.updateSetting('subtitles', 'shadowBlur', blur);
+  }
+
+  /**
+   * Sets the subtitle shadow color.
+   *
+   * @param color - Hex color string (e.g., '#000000')
+   */
+  public async setSubtitleShadowColor(color: string): Promise<void> {
+    await this.updateSetting('subtitles', 'shadowColor', color);
   }
 
   /**

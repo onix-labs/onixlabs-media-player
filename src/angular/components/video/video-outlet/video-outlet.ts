@@ -170,6 +170,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Current subtitle text to display (empty string when no subtitle is active) */
   public readonly subtitleText: ReturnType<typeof signal<string>> = signal<string>('');
 
+  /** Sanitized subtitle HTML (allows only safe formatting tags) */
+  public readonly sanitizedSubtitleHtml: ReturnType<typeof computed<string>> = computed(
+    (): string => this.sanitizeSubtitleHtml(this.subtitleText())
+  );
+
   // ============================================================================
   // Internal State
   // ============================================================================
@@ -376,8 +381,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
       const bgOpacity: number = this.settings.subtitleBackgroundOpacity();
       const fontFamily: SubtitleFontFamily = this.settings.subtitleFontFamily();
       const textShadow: boolean = this.settings.subtitleTextShadow();
+      const shadowSpread: number = this.settings.subtitleShadowSpread();
+      const shadowBlur: number = this.settings.subtitleShadowBlur();
+      const shadowColor: string = this.settings.subtitleShadowColor();
 
-      this.updateSubtitleStyles(fontSize, fontColor, bgColor, bgOpacity, fontFamily, textShadow);
+      this.updateSubtitleStyles(fontSize, fontColor, bgColor, bgOpacity, fontFamily, textShadow, shadowSpread, shadowBlur, shadowColor);
     });
   }
 
@@ -564,6 +572,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
    * @param bgOpacity - Background opacity (0-1)
    * @param fontFamily - Font family name
    * @param textShadow - Whether to show text shadow
+   * @param shadowSpread - Shadow spread/offset in pixels
+   * @param shadowBlur - Shadow blur radius in pixels
+   * @param shadowColor - Shadow color in hex format
    */
   private updateSubtitleStyles(
     fontSize: number,
@@ -571,7 +582,10 @@ export class VideoOutlet implements OnInit, OnDestroy {
     bgColor: string,
     bgOpacity: number,
     fontFamily: SubtitleFontFamily,
-    textShadow: boolean
+    textShadow: boolean,
+    shadowSpread: number,
+    shadowBlur: number,
+    shadowColor: string
   ): void {
     // Create style element if it doesn't exist
     if (!this.subtitleStyleElement) {
@@ -584,10 +598,24 @@ export class VideoOutlet implements OnInit, OnDestroy {
     // Convert hex background color to rgba
     const bgRgba: string = this.hexToRgba(bgColor, bgOpacity);
 
-    // Build shadow CSS (multiple shadows for better visibility)
-    const shadowCss: string = textShadow
-      ? '1px 1px 2px rgba(0,0,0,0.8), -1px -1px 2px rgba(0,0,0,0.8), 1px -1px 2px rgba(0,0,0,0.8), -1px 1px 2px rgba(0,0,0,0.8)'
-      : 'none';
+    // Build shadow CSS - uses 8 directions for a complete outline effect
+    // Directions: N, NE, E, SE, S, SW, W, NW
+    let shadowCss: string = 'none';
+    if (textShadow) {
+      const s: number = shadowSpread;
+      const b: number = shadowBlur;
+      const c: string = shadowColor;
+      shadowCss = [
+        `0 -${s}px ${b}px ${c}`,      // N
+        `${s}px -${s}px ${b}px ${c}`, // NE
+        `${s}px 0 ${b}px ${c}`,       // E
+        `${s}px ${s}px ${b}px ${c}`,  // SE
+        `0 ${s}px ${b}px ${c}`,       // S
+        `-${s}px ${s}px ${b}px ${c}`, // SW
+        `-${s}px 0 ${b}px ${c}`,      // W
+        `-${s}px -${s}px ${b}px ${c}` // NW
+      ].join(', ');
+    }
 
     // Build the CSS rules for the custom overlay
     const css: string = `
@@ -616,6 +644,75 @@ export class VideoOutlet implements OnInit, OnDestroy {
     const g: number = parseInt(hex.slice(3, 5), 16);
     const b: number = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  /**
+   * Sanitizes subtitle text to allow only safe HTML formatting tags.
+   *
+   * Subtitles may contain HTML formatting tags like <i>, <b>, <u>, etc.
+   * This method strips all unsafe tags while preserving safe formatting.
+   * Newlines are converted to <br> tags for proper multi-line display.
+   *
+   * @param text - Raw subtitle text that may contain HTML
+   * @returns Sanitized HTML string safe for innerHTML binding
+   */
+  private sanitizeSubtitleHtml(text: string): string {
+    if (!text) return '';
+
+    // First, escape any content that's not inside our allowed tags
+    // to prevent XSS. Then selectively allow safe formatting tags.
+
+    // Convert newlines to placeholders first
+    let sanitized: string = text.replace(/\n/g, '{{NEWLINE}}');
+
+    // List of allowed formatting tags (WebVTT and common subtitle formats)
+    const allowedTags: string[] = ['i', 'b', 'u', 'em', 'strong'];
+
+    // Create a regex to match allowed tags (both opening and closing)
+    const tagPattern: string = allowedTags.map((tag: string): string => `<\\/?${tag}\\s*>`).join('|');
+    const allowedTagsRegex: RegExp = new RegExp(`(${tagPattern})`, 'gi');
+
+    // Extract allowed tags and their positions
+    const tagMatches: RegExpMatchArray | null = sanitized.match(allowedTagsRegex);
+    const tagPositions: Array<{index: number; tag: string}> = [];
+
+    if (tagMatches) {
+      let searchPos: number = 0;
+      for (const tag of tagMatches) {
+        const idx: number = sanitized.indexOf(tag, searchPos);
+        if (idx !== -1) {
+          tagPositions.push({index: idx, tag});
+          searchPos = idx + tag.length;
+        }
+      }
+    }
+
+    // Escape all HTML entities
+    sanitized = sanitized
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+    // Restore allowed tags (they were escaped, so we need to un-escape them)
+    for (const tagName of allowedTags) {
+      // Restore opening tags: &lt;tagname&gt; -> <tagname>
+      sanitized = sanitized.replace(
+        new RegExp(`&lt;(${tagName})\\s*&gt;`, 'gi'),
+        `<$1>`
+      );
+      // Restore closing tags: &lt;/tagname&gt; -> </tagname>
+      sanitized = sanitized.replace(
+        new RegExp(`&lt;/(${tagName})\\s*&gt;`, 'gi'),
+        `</$1>`
+      );
+    }
+
+    // Convert newline placeholders to <br> tags
+    sanitized = sanitized.replace(/\{\{NEWLINE\}\}/g, '<br>');
+
+    return sanitized;
   }
 
   // ============================================================================

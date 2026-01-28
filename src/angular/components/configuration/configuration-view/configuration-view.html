@@ -754,6 +754,69 @@
                   </div>
                 </div>
 
+                <!-- Shadow Spread -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="subtitle-shadow-spread">Shadow Spread</label>
+                    <p class="setting-description">
+                      Controls the thickness of the text outline effect.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <input
+                      type="range"
+                      id="subtitle-shadow-spread"
+                      min="1"
+                      max="5"
+                      step="0.5"
+                      [value]="currentSubtitleShadowSpread()"
+                      (input)="onSubtitleShadowSpreadChange($event)"
+                    />
+                    <span class="slider-value">{{ formatSubtitleShadowSpread() }}</span>
+                  </div>
+                </div>
+
+                <!-- Shadow Blur -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="subtitle-shadow-blur">Shadow Blur</label>
+                    <p class="setting-description">
+                      Softness of the shadow edge. 0 for a crisp outline.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <input
+                      type="range"
+                      id="subtitle-shadow-blur"
+                      min="0"
+                      max="10"
+                      step="1"
+                      [value]="currentSubtitleShadowBlur()"
+                      (input)="onSubtitleShadowBlurChange($event)"
+                    />
+                    <span class="slider-value">{{ formatSubtitleShadowBlur() }}</span>
+                  </div>
+                </div>
+
+                <!-- Shadow Color -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="subtitle-shadow-color">Shadow Color</label>
+                    <p class="setting-description">
+                      Color of the text shadow/outline.
+                    </p>
+                  </div>
+                  <div class="setting-control color-control">
+                    <input
+                      type="color"
+                      id="subtitle-shadow-color"
+                      [value]="currentSubtitleShadowColor()"
+                      (input)="onSubtitleShadowColorChange($event)"
+                    />
+                    <span class="color-value">{{ currentSubtitleShadowColor() }}</span>
+                  </div>
+                </div>
+
                 <!-- Preview -->
                 <div class="setting-row">
                   <div class="setting-label">
@@ -770,7 +833,7 @@
                         [style.color]="currentSubtitleFontColor()"
                         [style.backgroundColor]="subtitleBackgroundPreviewColor()"
                         [style.fontFamily]="currentSubtitleFontFamily()"
-                        [style.textShadow]="currentSubtitleTextShadow() ? '1px 1px 2px rgba(0,0,0,0.8), -1px -1px 2px rgba(0,0,0,0.8)' : 'none'"
+                        [style.textShadow]="subtitleShadowPreviewStyle()"
                       >Sample Subtitle Text</span>
                     </div>
                   </div>

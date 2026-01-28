@@ -210,6 +210,12 @@ export interface SubtitleSettings {
   readonly fontFamily: SubtitleFontFamily;
   /** Whether to show text shadow for better visibility (default true) */
   readonly textShadow: boolean;
+  /** Shadow spread/offset in pixels (1-5, default 2) - controls outline thickness */
+  readonly shadowSpread: number;
+  /** Shadow blur radius in pixels (0-10, default 2) - 0 for crisp outline */
+  readonly shadowBlur: number;
+  /** Shadow color in hex format (default '#000000') */
+  readonly shadowColor: string;
 }
 
 /**
@@ -322,6 +328,9 @@ export interface SubtitleSettingsUpdate {
   readonly backgroundOpacity?: number;
   readonly fontFamily?: SubtitleFontFamily;
   readonly textShadow?: boolean;
+  readonly shadowSpread?: number;
+  readonly shadowBlur?: number;
+  readonly shadowColor?: string;
 }
 
 // ============================================================================
@@ -411,6 +420,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     backgroundOpacity: 0.75,  // 75% opacity
     fontFamily: 'sans-serif',  // clean sans-serif font
     textShadow: true,  // shadow for better visibility
+    shadowSpread: 2,  // 2px offset for outline effect
+    shadowBlur: 2,  // 2px blur for soft edges
+    shadowColor: '#000000',  // black shadow/outline
   },
   windowState: {
     miniplayerBounds: null,  // no saved position initially
@@ -849,6 +861,30 @@ export class SettingsManager {
       }
     }
 
+    // Validate shadowSpread if provided
+    if (update.shadowSpread !== undefined) {
+      if (!this.isValidSubtitleShadowSpread(update.shadowSpread)) {
+        console.warn(`[SettingsManager] Invalid subtitle shadow spread: ${update.shadowSpread}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate shadowBlur if provided
+    if (update.shadowBlur !== undefined) {
+      if (!this.isValidSubtitleShadowBlur(update.shadowBlur)) {
+        console.warn(`[SettingsManager] Invalid subtitle shadow blur: ${update.shadowBlur}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate shadowColor if provided
+    if (update.shadowColor !== undefined) {
+      if (!this.isValidHexColor(update.shadowColor)) {
+        console.warn(`[SettingsManager] Invalid subtitle shadow color: ${update.shadowColor}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -860,6 +896,9 @@ export class SettingsManager {
         backgroundOpacity: update.backgroundOpacity ?? this.settings.subtitles.backgroundOpacity,
         fontFamily: update.fontFamily ?? this.settings.subtitles.fontFamily,
         textShadow: update.textShadow ?? this.settings.subtitles.textShadow,
+        shadowSpread: update.shadowSpread ?? this.settings.subtitles.shadowSpread,
+        shadowBlur: update.shadowBlur ?? this.settings.subtitles.shadowBlur,
+        shadowColor: update.shadowColor ?? this.settings.subtitles.shadowColor,
       },
     };
 
@@ -1362,6 +1401,9 @@ export class SettingsManager {
     const backgroundOpacity: unknown = subtitlesObj['backgroundOpacity'];
     const fontFamily: unknown = subtitlesObj['fontFamily'];
     const textShadow: unknown = subtitlesObj['textShadow'];
+    const shadowSpread: unknown = subtitlesObj['shadowSpread'];
+    const shadowBlur: unknown = subtitlesObj['shadowBlur'];
+    const shadowColor: unknown = subtitlesObj['shadowColor'];
 
     return {
       fontSize: this.isValidSubtitleFontSize(fontSize)
@@ -1382,6 +1424,15 @@ export class SettingsManager {
       textShadow: typeof textShadow === 'boolean'
         ? textShadow
         : DEFAULT_SETTINGS.subtitles.textShadow,
+      shadowSpread: this.isValidSubtitleShadowSpread(shadowSpread)
+        ? shadowSpread
+        : DEFAULT_SETTINGS.subtitles.shadowSpread,
+      shadowBlur: this.isValidSubtitleShadowBlur(shadowBlur)
+        ? shadowBlur
+        : DEFAULT_SETTINGS.subtitles.shadowBlur,
+      shadowColor: this.isValidHexColor(shadowColor)
+        ? shadowColor
+        : DEFAULT_SETTINGS.subtitles.shadowColor,
     };
   }
 
@@ -1692,6 +1743,30 @@ export class SettingsManager {
    */
   private isValidSubtitleFontFamily(value: unknown): value is SubtitleFontFamily {
     return typeof value === 'string' && VALID_SUBTITLE_FONT_FAMILIES.includes(value as SubtitleFontFamily);
+  }
+
+  /**
+   * Type guard to check if a value is a valid subtitle shadow spread.
+   *
+   * Valid values are numbers from 1 to 5 (inclusive).
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid subtitle shadow spread
+   */
+  private isValidSubtitleShadowSpread(value: unknown): value is number {
+    return typeof value === 'number' && value >= 1 && value <= 5;
+  }
+
+  /**
+   * Type guard to check if a value is a valid subtitle shadow blur.
+   *
+   * Valid values are numbers from 0 to 10 (inclusive).
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid subtitle shadow blur
+   */
+  private isValidSubtitleShadowBlur(value: unknown): value is number {
+    return typeof value === 'number' && value >= 0 && value <= 10;
   }
 
   /**

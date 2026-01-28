@@ -465,6 +465,21 @@ export class ConfigurationView {
     (): boolean => this.settingsService.subtitleTextShadow()
   );
 
+  /** Current subtitle shadow spread in pixels */
+  public readonly currentSubtitleShadowSpread: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.subtitleShadowSpread()
+  );
+
+  /** Current subtitle shadow blur in pixels */
+  public readonly currentSubtitleShadowBlur: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.subtitleShadowBlur()
+  );
+
+  /** Current subtitle shadow color */
+  public readonly currentSubtitleShadowColor: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settingsService.subtitleShadowColor()
+  );
+
   /** Preview color for subtitle background with opacity */
   public readonly subtitleBackgroundPreviewColor: ReturnType<typeof computed<string>> = computed(
     (): string => {
@@ -474,6 +489,26 @@ export class ConfigurationView {
       const g: number = parseInt(hex.slice(3, 5), 16);
       const b: number = parseInt(hex.slice(5, 7), 16);
       return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    }
+  );
+
+  /** Preview style for subtitle shadow (returns CSS value for text-shadow) */
+  public readonly subtitleShadowPreviewStyle: ReturnType<typeof computed<string>> = computed(
+    (): string => {
+      if (!this.currentSubtitleTextShadow()) return 'none';
+      const s: number = this.currentSubtitleShadowSpread();
+      const b: number = this.currentSubtitleShadowBlur();
+      const c: string = this.currentSubtitleShadowColor();
+      return [
+        `0 -${s}px ${b}px ${c}`,
+        `${s}px -${s}px ${b}px ${c}`,
+        `${s}px 0 ${b}px ${c}`,
+        `${s}px ${s}px ${b}px ${c}`,
+        `0 ${s}px ${b}px ${c}`,
+        `-${s}px ${s}px ${b}px ${c}`,
+        `-${s}px 0 ${b}px ${c}`,
+        `-${s}px -${s}px ${b}px ${c}`
+      ].join(', ');
     }
   );
 
@@ -817,6 +852,38 @@ export class ConfigurationView {
   }
 
   /**
+   * Handles subtitle shadow spread slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onSubtitleShadowSpreadChange(event: Event): Promise<void> {
+    const value: string = getInputValue(event);
+    const spread: number = parseFloat(value);
+    if (!isNaN(spread)) await this.settingsService.setSubtitleShadowSpread(spread);
+  }
+
+  /**
+   * Handles subtitle shadow blur slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onSubtitleShadowBlurChange(event: Event): Promise<void> {
+    const value: string = getInputValue(event);
+    const blur: number = parseFloat(value);
+    if (!isNaN(blur)) await this.settingsService.setSubtitleShadowBlur(blur);
+  }
+
+  /**
+   * Handles subtitle shadow color picker change.
+   *
+   * @param event - The input event from the color picker
+   */
+  public async onSubtitleShadowColorChange(event: Event): Promise<void> {
+    const color: string = getInputValue(event);
+    await this.settingsService.setSubtitleShadowColor(color);
+  }
+
+  /**
    * Formats the subtitle font size for display.
    *
    * @returns The font size formatted as a percentage string
@@ -832,6 +899,24 @@ export class ConfigurationView {
    */
   public formatSubtitleBackgroundOpacity(): string {
     return `${Math.round(this.currentSubtitleBackgroundOpacity() * 100)}%`;
+  }
+
+  /**
+   * Formats the subtitle shadow spread for display.
+   *
+   * @returns The shadow spread formatted as a pixel string
+   */
+  public formatSubtitleShadowSpread(): string {
+    return `${this.currentSubtitleShadowSpread()}px`;
+  }
+
+  /**
+   * Formats the subtitle shadow blur for display.
+   *
+   * @returns The shadow blur formatted as a pixel string
+   */
+  public formatSubtitleShadowBlur(): string {
+    return `${this.currentSubtitleShadowBlur()}px`;
   }
 
   // ============================================================================
