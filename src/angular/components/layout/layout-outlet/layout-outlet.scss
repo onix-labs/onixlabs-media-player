@@ -75,6 +75,82 @@
       color: white;
     }
   }
+
+  .subtitle-selector {
+    position: relative;
+    margin-left: 0.5rem;
+
+    .subtitle-button {
+      color: $white-50;
+
+      &:hover {
+        color: white;
+      }
+
+      &.active {
+        color: $color-primary-light;
+
+        &:hover {
+          color: white;
+        }
+      }
+    }
+
+    .subtitle-dropdown {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      margin-bottom: 0.5rem;
+      min-width: 140px;
+      background: $black-90;
+      border: 1px solid $white-15;
+      border-radius: 6px;
+      padding: 0.25rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      z-index: 100;
+
+      .subtitle-option {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        background: none;
+        border: none;
+        border-radius: 4px;
+        color: $white-70;
+        font-size: 0.75rem;
+        text-align: left;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+
+        i {
+          width: 0.75rem;
+          font-size: 0.625rem;
+          color: $color-primary-light;
+        }
+
+        &:hover {
+          background: $white-10;
+          color: white;
+        }
+
+        &.selected {
+          color: white;
+        }
+
+        .subtitle-badge {
+          margin-left: auto;
+          padding: 0.125rem 0.375rem;
+          background: $white-10;
+          border-radius: 3px;
+          font-size: 0.625rem;
+          color: $white-50;
+        }
+      }
+    }
+  }
 }
 
 .content-area {

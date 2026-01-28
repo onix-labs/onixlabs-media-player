@@ -48,6 +48,42 @@ export interface OpenDialogOptions {
 }
 
 /**
+ * Represents a subtitle track embedded in a media file.
+ *
+ * Subtitle tracks are detected via FFprobe and can be extracted
+ * to WebVTT format for display in the HTML5 video element.
+ *
+ * @example
+ * const track: SubtitleTrack = {
+ *   index: 2,
+ *   language: 'eng',
+ *   title: 'English',
+ *   codec: 'subrip',
+ *   forced: false,
+ *   default: true
+ * };
+ */
+export interface SubtitleTrack {
+  /** Stream index in the container (used for extraction) */
+  index: number;
+
+  /** ISO 639-2/B language code (e.g., 'eng', 'spa', 'jpn') */
+  language: string;
+
+  /** Human-readable title (e.g., 'English', 'English SDH', 'Commentary') */
+  title: string;
+
+  /** Subtitle codec (e.g., 'subrip', 'ass', 'mov_text', 'dvd_subtitle') */
+  codec: string;
+
+  /** Whether this is a forced subtitle track (for foreign language portions) */
+  forced: boolean;
+
+  /** Whether this track is marked as the default */
+  default: boolean;
+}
+
+/**
  * Media file metadata returned from the server's probe operation.
  *
  * This information is extracted by ffprobe (for audio/video) or the MIDI
@@ -99,6 +135,9 @@ export interface MediaInfo {
 
   /** Video height in pixels (only for video files) */
   height?: number;
+
+  /** Embedded subtitle tracks (only for video files) */
+  subtitleTracks?: SubtitleTrack[];
 }
 
 /**
