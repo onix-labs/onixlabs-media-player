@@ -882,6 +882,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | MIDI `probeMedia` Ignored Cached Renders | unified-media-server.ts | Every time playback started, `probeMedia()` always called `parseMidiDuration()` even when `midiRenderCache` already had the accurate duration. **Fix**: MIDI branch in `probeMedia` now checks in-memory cache first and returns accurate duration immediately. Background render uses `.catch()` for error logging instead of `void` (fire-and-forget that silently swallowed errors). |
 | MIDI Silent Playback (Corrupt Disk Cache) | unified-media-server.ts | Failed FluidSynth/FFmpeg renders left partial/empty temp files. With hash-based filenames, these corrupt files became persistent disk cache entries served as valid audio. **Fix**: (1) `unlinkSync(tempFile)` cleanup in three error paths (FFmpeg failure, FluidSynth error, FFmpeg error), (2) File size validation on disk cache hit (0 bytes → delete), (3) Probe failure recovery (delete corrupt file, re-render fresh). |
 | FluidSynth Stderr Filter Too Aggressive | unified-media-server.ts | Filter `!msg.includes('FluidSynth')` suppressed ALL FluidSynth messages including critical warnings (e.g., "No preset found"). **Fix**: Changed to `!msg.includes('FluidSynth runtime version')` to only suppress the startup version banner. |
+| Tests Referenced Removed Configuration Mode | root.spec.ts, settings.service.spec.ts | After removing configuration mode from root component, tests still referenced removed signals and methods. **Fix**: Removed `enterConfigurationMode` and `exitConfigurationMode` test blocks from root.spec.ts; added missing `subtitles` property to mock AppSettings in settings.service.spec.ts. |
 | Forced Video Aspect Ratios Not Working | video-outlet.scss | 4:3 and 16:9 forced aspect modes stretched vertically instead of letterboxing/pillarboxing. Original CSS used `height: 100%` with `aspect-ratio` and `max-width: 100%`, which broke aspect ratio when width-constrained. Changed to use CSS container query units (`cqw`/`cqh`) with `min()` to calculate exact dimensions: `width: min(100cqw, calc(100cqh * 4 / 3))` ensures the video always maintains the target aspect ratio and fills the container as large as possible. |
 | Subtitles Desync After Seeking | video-outlet.ts | Browser's native TextTrack API failed to sync subtitles after seeking — cues continued from the beginning regardless of video position. Toggling track mode, pre-fetching as Blob URLs, and FFmpeg `-copyts` flag all failed. **Fix**: Implemented custom subtitle rendering that bypasses TextTrack entirely: (1) WebVTT parser extracts all cues with start/end times into memory, (2) `timeupdate` event handler finds active cues for current video time, (3) Overlay `<div>` displays cue text instead of `<track>` element, (4) For transcoded videos, adjusts time by `transcodeSeekOffset`. Subtitle appearance settings (font size, color, etc.) target the overlay div via injected CSS. |
 
@@ -1371,7 +1372,7 @@ npm run dev
 
 ### Testing Coverage
 
-**759 tests** across 20 spec files — all passing, enforced by CI on every push/PR.
+**738 tests** across 20 spec files — all passing, enforced by CI on every push/PR.
 
 **Electron tests** (253 tests, 6 spec files — Vitest with Node environment):
 
@@ -1384,13 +1385,13 @@ npm run dev
 | `midi-parser.spec.ts` | 21 | MIDI binary parsing, tempo changes, edge cases |
 | `logger.spec.ts` | 21 | Log formatting, scoped loggers, helper functions |
 
-**Angular tests** (506 tests, 14 spec files — Angular CLI with Vitest):
+**Angular tests** (485 tests, 14 spec files — Angular CLI with Vitest):
 
 | Spec File | Tests | What's Covered |
 |-----------|-------|----------------|
 | `electron.service.spec.ts` | 92 | SSE events, HTTP methods, IPC delegation, JSON parsing |
 | `visualization.spec.ts` | 79 | Base class: sensitivity, fade, resize, hslToRgb, caching |
-| `root.spec.ts` | 64 | Routes, view modes, fullscreen, keyboard shortcuts, help mode |
+| `root.spec.ts` | 43 | Routes, view modes, fullscreen, keyboard shortcuts, help mode |
 | `media-player.service.spec.ts` | 53 | Computed signals, transport controls, format helpers |
 | `layout-controls.spec.ts` | 43 | Transport buttons, volume, seek, Shift+click |
 | `settings.service.spec.ts` | 38 | Derived signals, update methods, per-viz settings |
