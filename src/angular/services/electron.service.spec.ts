@@ -274,6 +274,11 @@ describe('ElectronService', (): void => {
         expect(value).toBe('');
       });
 
+      it('should have menuSelectAspectMode start as empty string', (): void => {
+        const value: string = service.menuSelectAspectMode();
+        expect(value).toBe('');
+      });
+
       it('should have fadeOutRequested start at 0', (): void => {
         const value: number = service.fadeOutRequested();
         expect(value).toBe(0);

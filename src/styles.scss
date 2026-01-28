@@ -1,6 +1,8 @@
 :root {
-  // Background color when glass effect is disabled (set dynamically by app.component)
+  // Background color when glass effect is disabled (set dynamically by root component)
   --app-background-color: transparent;
+  // Tint overlay when glass effect is enabled (set dynamically by root component)
+  --app-tint-color: transparent;
 }
 
 html,

@@ -162,8 +162,22 @@ export interface AppearanceSettings {
   readonly glassEnabled: boolean;
   /** macOS visual effect state - only used on macOS when glassEnabled */
   readonly macOSVisualEffectState: MacOSVisualEffectState;
-  /** Background color when glass is disabled or unsupported (hex format) */
+  /** Background color when glass is disabled or unsupported (hex format, derived from HSL) */
   readonly backgroundColor: string;
+  /** Background hue (0-360) when glass is disabled */
+  readonly backgroundHue: number;
+  /** Background saturation (0-100) when glass is disabled */
+  readonly backgroundSaturation: number;
+  /** Background lightness (0-100) when glass is disabled */
+  readonly backgroundLightness: number;
+  /** Window tint hue (0-360) when glass is enabled */
+  readonly windowTintHue: number;
+  /** Window tint saturation (0-100) when glass is enabled */
+  readonly windowTintSaturation: number;
+  /** Window tint lightness (0-100) when glass is enabled */
+  readonly windowTintLightness: number;
+  /** Window tint alpha (0-1) when glass is enabled */
+  readonly windowTintAlpha: number;
 }
 
 /**
@@ -264,6 +278,13 @@ const DEFAULT_SETTINGS: AppSettings = {
     glassEnabled: true,
     macOSVisualEffectState: 'active',
     backgroundColor: '#1e1e1e',
+    backgroundHue: 0,
+    backgroundSaturation: 0,
+    backgroundLightness: 12,
+    windowTintHue: 0,
+    windowTintSaturation: 0,
+    windowTintLightness: 0,
+    windowTintAlpha: 0,
   },
 };
 
@@ -300,8 +321,8 @@ export interface VideoAspectOption {
  */
 export const VIDEO_ASPECT_OPTIONS: readonly VideoAspectOption[] = [
   {value: 'default', label: 'Default'},
-  {value: '4:3', label: '4:3 Forced'},
-  {value: '16:9', label: '16:9 Forced'},
+  {value: '4:3', label: 'Forced (4:3)'},
+  {value: '16:9', label: 'Forced (16:9)'},
   {value: 'fit', label: 'Fit to Screen'},
 ];
 
@@ -463,9 +484,44 @@ export class SettingsService implements OnDestroy {
     (): MacOSVisualEffectState => this.settings().appearance?.macOSVisualEffectState ?? 'active'
   );
 
-  /** Background color when glass is disabled (requires restart to apply) */
+  /** Background color when glass is disabled (hex, derived from HSL) */
   public readonly backgroundColor: ReturnType<typeof computed<string>> = computed(
     (): string => this.settings().appearance?.backgroundColor ?? '#1e1e1e'
+  );
+
+  /** Background hue (0-360) when glass is disabled */
+  public readonly backgroundHue: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().appearance?.backgroundHue ?? 0
+  );
+
+  /** Background saturation (0-100) when glass is disabled */
+  public readonly backgroundSaturation: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().appearance?.backgroundSaturation ?? 0
+  );
+
+  /** Background lightness (0-100) when glass is disabled */
+  public readonly backgroundLightness: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().appearance?.backgroundLightness ?? 12
+  );
+
+  /** Window tint hue (0-360) when glass is enabled */
+  public readonly windowTintHue: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().appearance?.windowTintHue ?? 0
+  );
+
+  /** Window tint saturation (0-100) when glass is enabled */
+  public readonly windowTintSaturation: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().appearance?.windowTintSaturation ?? 0
+  );
+
+  /** Window tint lightness (0-100) when glass is enabled */
+  public readonly windowTintLightness: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().appearance?.windowTintLightness ?? 0
+  );
+
+  /** Window tint alpha (0-1) when glass is enabled */
+  public readonly windowTintAlpha: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settings().appearance?.windowTintAlpha ?? 0
   );
 
   // ============================================================================
@@ -833,7 +889,6 @@ export class SettingsService implements OnDestroy {
 
   /**
    * Sets the background color when glass is disabled.
-   * Requires application restart to take effect.
    *
    * @param color - Hex color string (e.g., '#1e1e1e')
    */
@@ -844,6 +899,69 @@ export class SettingsService implements OnDestroy {
       return;
     }
     await this.updateSetting('appearance', 'backgroundColor', color);
+  }
+
+  /**
+   * Sets the background hue (0-360) when glass is disabled.
+   *
+   * @param hue - Hue value (0-360)
+   */
+  public async setBackgroundHue(hue: number): Promise<void> {
+    await this.updateSetting('appearance', 'backgroundHue', hue);
+  }
+
+  /**
+   * Sets the background saturation (0-100) when glass is disabled.
+   *
+   * @param saturation - Saturation value (0-100)
+   */
+  public async setBackgroundSaturation(saturation: number): Promise<void> {
+    await this.updateSetting('appearance', 'backgroundSaturation', saturation);
+  }
+
+  /**
+   * Sets the background lightness (0-100) when glass is disabled.
+   *
+   * @param lightness - Lightness value (0-100)
+   */
+  public async setBackgroundLightness(lightness: number): Promise<void> {
+    await this.updateSetting('appearance', 'backgroundLightness', lightness);
+  }
+
+  /**
+   * Sets the window tint hue (0-360) when glass is enabled.
+   *
+   * @param hue - Hue value (0-360)
+   */
+  public async setWindowTintHue(hue: number): Promise<void> {
+    await this.updateSetting('appearance', 'windowTintHue', hue);
+  }
+
+  /**
+   * Sets the window tint saturation (0-100) when glass is enabled.
+   *
+   * @param saturation - Saturation value (0-100)
+   */
+  public async setWindowTintSaturation(saturation: number): Promise<void> {
+    await this.updateSetting('appearance', 'windowTintSaturation', saturation);
+  }
+
+  /**
+   * Sets the window tint lightness (0-100) when glass is enabled.
+   *
+   * @param lightness - Lightness value (0-100)
+   */
+  public async setWindowTintLightness(lightness: number): Promise<void> {
+    await this.updateSetting('appearance', 'windowTintLightness', lightness);
+  }
+
+  /**
+   * Sets the window tint alpha (0-1) when glass is enabled.
+   *
+   * @param alpha - Alpha value (0-1)
+   */
+  public async setWindowTintAlpha(alpha: number): Promise<void> {
+    await this.updateSetting('appearance', 'windowTintAlpha', alpha);
   }
 
   /**

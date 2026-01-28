@@ -41,6 +41,16 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
 ];
 
 /**
+ * Available video aspect ratio options for the Playback menu.
+ */
+const ASPECT_RATIO_OPTIONS: ReadonlyArray<{id: string; name: string}> = [
+  {id: 'default', name: 'Default'},
+  {id: '4:3', name: 'Forced (4:3)'},
+  {id: '16:9', name: 'Forced (16:9)'},
+  {id: 'fit', name: 'Fit to Screen'},
+];
+
+/**
  * Callback functions for menu actions.
  */
 export interface MenuCallbacks {
@@ -55,6 +65,7 @@ export interface MenuCallbacks {
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
   onSelectVisualization: (id: string) => void;
+  onSelectAspectMode: (mode: string) => void;
 }
 
 /**
@@ -65,6 +76,7 @@ export interface MenuState {
   repeatEnabled: boolean;
   hasMedia: boolean;
   isPlaying: boolean;
+  isVideo: boolean;
   openEnabled: boolean;
 }
 
@@ -72,7 +84,7 @@ export interface MenuState {
 let storedCallbacks: MenuCallbacks | null = null;
 
 /** Current menu state */
-let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false, hasMedia: false, isPlaying: false, openEnabled: true};
+let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false, hasMedia: false, isPlaying: false, isVideo: false, openEnabled: true};
 
 /**
  * Updates the menu state and rebuilds the menu.
@@ -247,6 +259,15 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
         checked: state.repeatEnabled,
         enabled: state.hasMedia,
         click: callbacks.onToggleRepeat
+      },
+      {type: 'separator'},
+      {
+        label: 'Aspect Ratio',
+        enabled: state.isVideo,
+        submenu: ASPECT_RATIO_OPTIONS.map((option: Readonly<{id: string; name: string}>): MenuItemConstructorOptions => ({
+          label: option.name,
+          click: (): void => callbacks.onSelectAspectMode(option.id)
+        }))
       }
     ]
   });

@@ -170,6 +170,9 @@ export class ElectronService implements OnDestroy {
   /** Signal emitted when a visualization is selected from the menu */
   public readonly menuSelectVisualization: ReturnType<typeof signal<string>> = signal<string>('');
 
+  /** Signal emitted when an aspect mode is selected from the menu */
+  public readonly menuSelectAspectMode: ReturnType<typeof signal<string>> = signal<string>('');
+
   /** Signal emitted when window is about to close - value is fade duration in ms (0 = no fade requested) */
   public readonly fadeOutRequested: ReturnType<typeof signal<number>> = signal<number>(0);
 
@@ -428,6 +431,17 @@ export class ElectronService implements OnDestroy {
         this.ngZone.run((): void => {
           if (typeof id === 'string') {
             this.menuSelectVisualization.set(id);
+          }
+        });
+      })
+    );
+
+    // Select aspect mode
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('selectAspectMode', (mode: unknown): void => {
+        this.ngZone.run((): void => {
+          if (typeof mode === 'string') {
+            this.menuSelectAspectMode.set(mode);
           }
         });
       })

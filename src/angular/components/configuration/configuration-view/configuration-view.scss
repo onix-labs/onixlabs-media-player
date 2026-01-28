@@ -201,6 +201,19 @@
       border-color: $white-12;
     }
 
+    // Compact HSL/HSLA sub-slider rows
+    &.hsl-slider-row {
+      padding: 0.5rem 1rem;
+      margin-left: 1rem;
+
+      .setting-label label {
+        font-size: 0.8125rem;
+        font-weight: 400;
+        color: $white-70;
+        margin-bottom: 0;
+      }
+    }
+
     .setting-label {
       flex: 1;
 
@@ -291,6 +304,20 @@
           appearance: none;
           cursor: pointer;
           @include slider-thumb(16px, 1.1, true);
+
+          // Rainbow gradient for hue sliders
+          &.hue-slider {
+            background: linear-gradient(
+              to right,
+              hsl(0, 100%, 50%),
+              hsl(60, 100%, 50%),
+              hsl(120, 100%, 50%),
+              hsl(180, 100%, 50%),
+              hsl(240, 100%, 50%),
+              hsl(300, 100%, 50%),
+              hsl(360, 100%, 50%)
+            );
+          }
         }
 
         .slider-value {
@@ -302,50 +329,13 @@
         }
       }
 
-      // Color picker control styles
-      &.color-control {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        min-width: 180px;
-
-        input[type="color"] {
-          width: 40px;
-          height: 28px;
-          padding: 0;
-          border: 2px solid $white-30;
-          border-radius: 4px;
-          background: transparent;
-          cursor: pointer;
-          transition: border-color 0.15s ease;
-
-          &::-webkit-color-swatch-wrapper {
-            padding: 2px;
-          }
-
-          &::-webkit-color-swatch {
-            border: none;
-            border-radius: 2px;
-          }
-
-          &:hover {
-            border-color: $white-60;
-          }
-
-          &:focus {
-            outline: none;
-            border-color: $white-80;
-          }
-        }
-
-        .color-value {
-          min-width: 4.5rem;
-          text-align: left;
-          color: $white-70;
-          font-size: 0.875rem;
-          font-family: monospace;
-          text-transform: uppercase;
-        }
+      // Color preview swatch
+      .color-preview {
+        width: 40px;
+        height: 28px;
+        border: 2px solid $white-30;
+        border-radius: 4px;
+        transition: background 0.1s ease;
       }
 
       // Toggle switch styles

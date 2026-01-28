@@ -344,7 +344,7 @@ export class ConfigurationView {
     (): boolean => this.settingsService.glassEnabled()
   );
 
-  /** Current background color setting */
+  /** Current background color setting (hex, derived from HSL) */
   public readonly currentBackgroundColor: ReturnType<typeof computed<string>> = computed(
     (): string => this.settingsService.backgroundColor()
   );
@@ -352,6 +352,51 @@ export class ConfigurationView {
   /** Current macOS visual effect state setting */
   public readonly currentMacOSVisualEffectState: ReturnType<typeof computed<MacOSVisualEffectState>> = computed(
     (): MacOSVisualEffectState => this.settingsService.macOSVisualEffectState()
+  );
+
+  /** Current background hue (0-360) */
+  public readonly currentBackgroundHue: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.backgroundHue()
+  );
+
+  /** Current background saturation (0-100) */
+  public readonly currentBackgroundSaturation: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.backgroundSaturation()
+  );
+
+  /** Current background lightness (0-100) */
+  public readonly currentBackgroundLightness: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.backgroundLightness()
+  );
+
+  /** Current window tint hue (0-360) */
+  public readonly currentWindowTintHue: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.windowTintHue()
+  );
+
+  /** Current window tint saturation (0-100) */
+  public readonly currentWindowTintSaturation: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.windowTintSaturation()
+  );
+
+  /** Current window tint lightness (0-100) */
+  public readonly currentWindowTintLightness: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.windowTintLightness()
+  );
+
+  /** Current window tint alpha (0-1) */
+  public readonly currentWindowTintAlpha: ReturnType<typeof computed<number>> = computed(
+    (): number => this.settingsService.windowTintAlpha()
+  );
+
+  /** Preview color for background HSL sliders */
+  public readonly backgroundPreviewColor: ReturnType<typeof computed<string>> = computed(
+    (): string => `hsl(${this.currentBackgroundHue()}, ${this.currentBackgroundSaturation()}%, ${this.currentBackgroundLightness()}%)`
+  );
+
+  /** Preview color for window tint HSLA sliders */
+  public readonly windowTintPreviewColor: ReturnType<typeof computed<string>> = computed(
+    (): string => `hsla(${this.currentWindowTintHue()}, ${this.currentWindowTintSaturation()}%, ${this.currentWindowTintLightness()}%, ${this.currentWindowTintAlpha()})`
   );
 
   // ============================================================================
@@ -549,6 +594,84 @@ export class ConfigurationView {
   public async onMacOSVisualEffectStateChange(event: Event): Promise<void> {
     const state: string = getSelectValue(event);
     await this.settingsService.setMacOSVisualEffectState(state as MacOSVisualEffectState);
+  }
+
+  // ============================================================================
+  // Background HSL Event Handlers
+  // ============================================================================
+
+  /**
+   * Handles background hue slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onBackgroundHueChange(event: Event): Promise<void> {
+    const hue: number = parseFloat(getInputValue(event));
+    if (!isNaN(hue)) await this.settingsService.setBackgroundHue(hue);
+  }
+
+  /**
+   * Handles background saturation slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onBackgroundSaturationChange(event: Event): Promise<void> {
+    const saturation: number = parseFloat(getInputValue(event));
+    if (!isNaN(saturation)) await this.settingsService.setBackgroundSaturation(saturation);
+  }
+
+  /**
+   * Handles background lightness slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onBackgroundLightnessChange(event: Event): Promise<void> {
+    const lightness: number = parseFloat(getInputValue(event));
+    if (!isNaN(lightness)) await this.settingsService.setBackgroundLightness(lightness);
+  }
+
+  // ============================================================================
+  // Window Tint HSLA Event Handlers
+  // ============================================================================
+
+  /**
+   * Handles window tint hue slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onWindowTintHueChange(event: Event): Promise<void> {
+    const hue: number = parseFloat(getInputValue(event));
+    if (!isNaN(hue)) await this.settingsService.setWindowTintHue(hue);
+  }
+
+  /**
+   * Handles window tint saturation slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onWindowTintSaturationChange(event: Event): Promise<void> {
+    const saturation: number = parseFloat(getInputValue(event));
+    if (!isNaN(saturation)) await this.settingsService.setWindowTintSaturation(saturation);
+  }
+
+  /**
+   * Handles window tint lightness slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onWindowTintLightnessChange(event: Event): Promise<void> {
+    const lightness: number = parseFloat(getInputValue(event));
+    if (!isNaN(lightness)) await this.settingsService.setWindowTintLightness(lightness);
+  }
+
+  /**
+   * Handles window tint alpha slider change.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onWindowTintAlphaChange(event: Event): Promise<void> {
+    const alpha: number = parseFloat(getInputValue(event));
+    if (!isNaN(alpha)) await this.settingsService.setWindowTintAlpha(alpha);
   }
 
   // ============================================================================

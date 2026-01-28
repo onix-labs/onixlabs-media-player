@@ -40,6 +40,7 @@ function createMockElectronService(): Record<string, unknown> {
     menuShowConfig: signal(0),
     menuOpenFile: signal(0),
     menuShowAbout: signal(0),
+    menuSelectAspectMode: signal(''),
     exitConfigurationModeRequested: signal(0),
     fadeOutRequested: signal(0),
     platformInfo: signal({platform: 'darwin', supportsGlass: false, systemTheme: 'dark' as const}),
@@ -73,6 +74,13 @@ function createMockSettingsService(): Record<string, unknown> {
     controlsAutoHideDelay: signal(5),
     glassEnabled: signal(true),
     backgroundColor: signal('#1e1e1e'),
+    backgroundHue: signal(0),
+    backgroundSaturation: signal(0),
+    backgroundLightness: signal(12),
+    windowTintHue: signal(0),
+    windowTintSaturation: signal(0),
+    windowTintLightness: signal(0),
+    windowTintAlpha: signal(0),
   };
 }
 

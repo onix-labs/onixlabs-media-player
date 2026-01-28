@@ -32,7 +32,7 @@ import {AboutView} from '../about/about-view/about-view';
 import {MiniplayerControls} from '../miniplayer/miniplayer-controls';
 import {ElectronService} from '../../services/electron.service';
 import {MediaPlayerService} from '../../services/media-player.service';
-import {SettingsService} from '../../services/settings.service';
+import {SettingsService, type VideoAspectMode} from '../../services/settings.service';
 import {DependencyService} from '../../services/dependency.service';
 import {buildFileDialogFilters} from '../../constants/media.constants';
 
@@ -180,18 +180,32 @@ export class Root implements OnDestroy {
    * - backgroundColor/glassEnabled: Updates CSS variable for background color
    */
   public constructor() {
-    // React to background color and glass settings changes
-    // Updates CSS variable dynamically (no restart required for background color)
+    // React to background color/tint and glass settings changes
+    // Uses two CSS variables:
+    //   --app-background-color: solid background on html/body (transparent when glass enabled)
+    //   --app-tint-color: translucent tint on :host (only when glass enabled)
     effect((): void => {
       const glassEnabled: boolean = this.settings.glassEnabled();
-      const backgroundColor: string = this.settings.backgroundColor();
       const supportsGlass: boolean = this.electron.platformInfo().supportsGlass;
+      const showGlass: boolean = glassEnabled && supportsGlass;
 
-      // Show background color when glass is disabled or platform doesn't support glass
-      const showBackgroundColor: boolean = !glassEnabled || !supportsGlass;
-      const cssColor: string = showBackgroundColor ? backgroundColor : 'transparent';
-
-      document.documentElement.style.setProperty('--app-background-color', cssColor);
+      if (showGlass) {
+        // Glass mode: body stays transparent for native vibrancy/acrylic to show through
+        // Tint is applied as a separate layer on :host via --app-tint-color
+        const h: number = this.settings.windowTintHue();
+        const s: number = this.settings.windowTintSaturation();
+        const l: number = this.settings.windowTintLightness();
+        const a: number = this.settings.windowTintAlpha();
+        document.documentElement.style.setProperty('--app-background-color', 'transparent');
+        document.documentElement.style.setProperty('--app-tint-color', a > 0 ? `hsla(${h}, ${s}%, ${l}%, ${a})` : 'transparent');
+      } else {
+        // Solid mode: apply background color via HSL on body, no tint
+        const h: number = this.settings.backgroundHue();
+        const s: number = this.settings.backgroundSaturation();
+        const l: number = this.settings.backgroundLightness();
+        document.documentElement.style.setProperty('--app-background-color', `hsl(${h}, ${s}%, ${l}%)`);
+        document.documentElement.style.setProperty('--app-tint-color', 'transparent');
+      }
     });
 
     // React to "Show Config" menu event
@@ -215,6 +229,15 @@ export class Root implements OnDestroy {
       const trigger: number = this.electron.menuShowAbout();
       if (trigger > 0) {
         void this.enterAboutMode();
+      }
+    });
+
+    // React to "Aspect Ratio" menu event
+    effect((): void => {
+      const mode: string = this.electron.menuSelectAspectMode();
+      if (mode) {
+        this.electron.menuSelectAspectMode.set('');
+        void this.settings.setVideoAspectMode(mode as VideoAspectMode);
       }
     });
 

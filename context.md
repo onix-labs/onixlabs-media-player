@@ -85,7 +85,7 @@ Based on independent review with all 31 action items resolved:
 
 ### MIDI Playback
 
-- Server-side synthesis via FluidSynth with SoundFont support
+- Server-side synthesis via FluidSynth with SoundFont support (gain set to 1.0 for louder output, 5x default)
 - Conversion pipeline: FluidSynth (raw audio) → FFmpeg (MP3 encoding) → temp file → HTTP streaming
 - Full visualization support (converted audio flows through Web Audio API pipeline)
 - MIDI duration parsing from binary file (reads tempo changes, calculates from tick positions)
@@ -110,8 +110,8 @@ Based on independent review with all 31 action items resolved:
 - Configurable transcoding quality (CRF 18/23/28) and audio bitrate (128-320 kbps)
 - Video aspect ratio modes with media bar toggle (same UI pattern as visualizations):
   - **Default**: Preserves video's native aspect ratio
-  - **4:3 Forced**: Stretches video to 4:3 aspect ratio
-  - **16:9 Forced**: Stretches video to 16:9 aspect ratio
+  - **Forced (4:3)**: Stretches video to 4:3 aspect ratio
+  - **Forced (16:9)**: Stretches video to 16:9 aspect ratio
   - **Fit to Screen**: Stretches video to fill the entire canvas
 - Aspect ratio setting persists across sessions and applies in all view modes
 
@@ -195,8 +195,10 @@ Based on independent review with all 31 action items resolved:
     - Windows 11: Uses acrylic blur via `backgroundMaterial`
     - Linux: Glass not supported (toggle disabled)
   - **Visual Effect State** (macOS only, when glass enabled): Follow Window, Always Active (default), Always Inactive
-  - **Background Color** picker (when glass disabled or unsupported): Hex color selection, updates immediately without restart
+  - **Background Color** HSL sliders (when glass disabled or unsupported): Hue (0-360), Saturation (0-100%), Lightness (0-100%) with live preview swatch, updates immediately without restart
+  - **Window Tint** HSLA sliders (when glass enabled): Hue, Saturation, Lightness, Alpha (0-100%) — applies a color tint over the glass effect, Alpha controls tint intensity
   - Default background color auto-detects system light/dark mode (#1e1e1e dark, #e0e0e0 light)
+  - HSL hue sliders display a rainbow gradient for visual feedback
   - Appearance settings accessible via Settings > Appearance
 
 ### Application Menu
@@ -208,7 +210,7 @@ Based on independent review with all 31 action items resolved:
   - Close All stops playback and clears the entire playlist (same as playlist Clear button)
 - **View menu**: Full Screen toggle, Visualizations submenu (organized by category: Bars, Waves), Options (settings)
   - Full Screen disabled when no media loaded
-- **Playback menu**: Play/Pause (Space) with dynamic label, Stop (Shift+Space), Shuffle/Repeat toggles
+- **Playback menu**: Play/Pause (Space) with dynamic label, Stop (Shift+Space), Shuffle/Repeat toggles, Aspect Ratio submenu (enabled only during video playback)
 - **Help menu**: About ONIXPlayer (opens About view), placeholders for Help Topics
 - Menu callbacks communicated via IPC to renderer for UI updates
 - UI zoom disabled (zoomFactor: 1.0, keyboard shortcuts blocked, pinch-to-zoom disabled)
@@ -514,6 +516,7 @@ AudioContext.destination (speakers)
 | PUT | `/settings/application` | Update application settings |
 | PUT | `/settings/playback` | Update playback settings |
 | PUT | `/settings/transcoding` | Update transcoding settings |
+| PUT | `/settings/appearance` | Update appearance settings |
 
 ### Server-Sent Events
 
@@ -649,7 +652,8 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 |---------|---------|---------|-------------|------------------|
 | Glass Effect | On/Off | On | Enables window transparency with blur | Yes |
 | Visual Effect State | Follow Window/Always Active/Always Inactive | Always Active | macOS vibrancy state (shown when glass enabled on macOS) | Yes |
-| Background Color | Hex color picker | Auto-detected | Window background when glass disabled | No |
+| Background Color | HSL sliders (Hue 0-360, Saturation 0-100, Lightness 0-100) | H:0 S:0 L:12 | Window background when glass disabled | No |
+| Window Tint | HSLA sliders (Hue 0-360, Saturation 0-100, Lightness 0-100, Alpha 0-1) | H:0 S:0 L:0 A:0 | Color tint over glass effect when glass enabled | No |
 
 ---
 
