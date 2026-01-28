@@ -300,7 +300,7 @@ class Program {
     const projectRoot: string = Program.getProjectRoot();
     // Preload must always be compiled JS - Electron can't run TS preload scripts
     const preloadPath: string = path.join(projectRoot, "src", "electron", "dist", "preload.js");
-    const iconPath: string = path.join(projectRoot, "public", "icon.png");
+    const iconPath: string = path.join(projectRoot, "public", "icon-windows-linux.png");
 
     // Set dock icon on macOS (for development - packaged apps use Info.plist)
     if (process.platform === 'darwin' && !app.isPackaged) {
