@@ -119,8 +119,10 @@ Based on independent review with all 31 action items resolved:
   - Subtitle extraction endpoint converts any format (SRT, ASS, etc.) to WebVTT on-the-fly
   - Custom subtitle rendering via overlay div (bypasses browser's unreliable TextTrack API)
   - WebVTT parser extracts cues with timing; `timeupdate` event displays correct cue for current time
+  - HTML formatting tags (`<i>`, `<b>`, `<u>`, `<em>`, `<strong>`) rendered correctly via sanitized innerHTML
   - Reliable seeking/skipping — subtitles stay synchronized regardless of playback position
-  - Subtitle appearance settings: font size, color, background, opacity, font family, text shadow
+  - Configurable appearance: font size, color, background, opacity, font family
+  - 8-direction text shadow for outline effect with configurable spread, blur, and color
   - Subtitle selector button in media bar (closed-captioning icon, only shown when tracks available)
   - Dropdown menu with "Off" option and all available tracks with language labels
   - External subtitle loading via "Load External..." option (supports .srt, .vtt, .ass, .ssa)
@@ -733,7 +735,10 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 | Background Color | Hex color | #000000 | Subtitle background color |
 | Background Opacity | 0-100% | 75% | Subtitle background transparency |
 | Font Family | Sans-serif/Serif/Monospace | Sans-serif | Subtitle font family |
-| Text Shadow | On/Off | On | Shadow effect for better visibility |
+| Text Shadow | On/Off | On | Master toggle for shadow/outline effect |
+| Shadow Spread | 1-5px | 2px | Outline thickness (distance from text) |
+| Shadow Blur | 0-10px | 2px | Shadow softness (0 for crisp outline) |
+| Shadow Color | Hex color | #000000 | Shadow/outline color |
 
 ---
 
