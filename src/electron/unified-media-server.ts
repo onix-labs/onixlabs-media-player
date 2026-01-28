@@ -832,7 +832,6 @@ export class UnifiedMediaServer {
       // Video transcoding optimized for real-time 4K/UHD playback
       // Only add explicit stream mapping when selecting a non-default audio track
       // For default (audioTrackIndex=0), let FFmpeg use its default stream selection
-      // This avoids compatibility issues with complex MKV files
       const streamMapping: string[] = audioTrackIndex > 0
         ? ['-map', '0:v:0', '-map', `0:a:${audioTrackIndex}`]
         : [];
@@ -841,6 +840,8 @@ export class UnifiedMediaServer {
         '-hide_banner',
         '-loglevel', 'warning',
         '-threads', '0',            // Use all available CPU cores
+        '-probesize', '10M',        // Analyze 10MB for stream detection
+        '-analyzeduration', '5000000', // Analyze 5 seconds for timestamps
         '-ss', seekTime,            // Seek before input (fast seek)
         '-i', filePath,
         ...streamMapping,           // Stream mapping (only for non-default audio track)
