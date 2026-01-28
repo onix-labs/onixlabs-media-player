@@ -83,26 +83,27 @@
     "files": [
       "dist/**/*",
       "src/electron/dist/**/*",
-      "public/icon.png",
+      "public/icon-macos.png",
+      "public/icon-windows-linux.png",
       "node_modules/electron-log/**/*"
     ],
     "mac": {
       "category": "public.app-category.entertainment",
-      "icon": "public/icon.png",
+      "icon": "public/icon-macos.png",
       "target": [
         "dmg",
         "zip"
       ]
     },
     "win": {
-      "icon": "public/icon.png",
+      "icon": "public/icon-windows-linux.png",
       "target": [
         "nsis",
         "portable"
       ]
     },
     "linux": {
-      "icon": "public/icon.png",
+      "icon": "public/icon-windows-linux.png",
       "target": [
         "AppImage",
         "deb"

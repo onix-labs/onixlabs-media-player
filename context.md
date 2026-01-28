@@ -1152,11 +1152,22 @@ const esmRequire = createRequire(import.meta.url);
 const log = esmRequire('electron-log/main');
 ```
 
+### Platform Icons
+
+| File | Platforms | Usage |
+|------|-----------|-------|
+| `public/icon-macos.png` | macOS | electron-builder mac icon |
+| `public/icon-windows-linux.png` | Windows, Linux | electron-builder win/linux icon, BrowserWindow icon, dock icon (dev) |
+
 ### Build Output
 
 - `release/mac/ONIXPlayer.app` - macOS application bundle
 - `release/ONIXPlayer-{version}.dmg` - macOS disk image
 - `release/ONIXPlayer-{version}-mac.zip` - macOS zip archive
+- `release/ONIXPlayer-{version}-setup.exe` - Windows installer (NSIS)
+- `release/ONIXPlayer-{version}-portable.exe` - Windows portable
+- `release/ONIXPlayer-{version}.AppImage` - Linux AppImage
+- `release/ONIXPlayer-{version}.deb` - Linux Debian package
 
 ### FFmpeg Commands Used
 
