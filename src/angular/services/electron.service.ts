@@ -151,6 +151,9 @@ export class ElectronService implements OnDestroy {
   /** Cleanup function for prepare-for-close listener */
   private prepareForCloseCleanup: (() => void) | null = null;
 
+  /** Cached subtitle track selections per file path (persists across view mode changes) */
+  private readonly subtitleSelections: Map<string, number> = new Map();
+
   /** Cleanup function for exit-configuration-mode listener */
   private exitConfigurationModeCleanup: (() => void) | null = null;
 
@@ -1300,6 +1303,39 @@ export class ElectronService implements OnDestroy {
       url += `&t=${seekTime}`;
     }
     return url;
+  }
+
+  // ============================================================================
+  // Subtitle Selection Cache (persists across view mode changes)
+  // ============================================================================
+
+  /**
+   * Gets the cached subtitle track selection for a file path.
+   *
+   * @param filePath - The media file path
+   * @returns The selected track index, or undefined if no cached selection
+   */
+  public getSubtitleSelection(filePath: string): number | undefined {
+    return this.subtitleSelections.get(filePath);
+  }
+
+  /**
+   * Caches the subtitle track selection for a file path.
+   *
+   * @param filePath - The media file path
+   * @param trackIndex - The selected track index (-1 for off, -2 for external)
+   */
+  public setSubtitleSelection(filePath: string, trackIndex: number): void {
+    this.subtitleSelections.set(filePath, trackIndex);
+  }
+
+  /**
+   * Clears the subtitle selection cache for a file path.
+   *
+   * @param filePath - The media file path
+   */
+  public clearSubtitleSelection(filePath: string): void {
+    this.subtitleSelections.delete(filePath);
   }
 
   // ============================================================================

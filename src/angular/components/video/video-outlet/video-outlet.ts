@@ -477,6 +477,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
   public selectSubtitleTrack(trackIndex: number): void {
     this.selectedSubtitleTrack.set(trackIndex);
 
+    // Cache the selection so it persists across view mode changes
+    if (this.currentFilePath) {
+      this.electron.setSubtitleSelection(this.currentFilePath, trackIndex);
+    }
+
     // Update display immediately with current time
     const video: HTMLVideoElement = this.videoRef.nativeElement;
     if (trackIndex === -1) {
@@ -850,13 +855,25 @@ export class VideoOutlet implements OnInit, OnDestroy {
       }
     }
 
-    // Select the default track if available
-    if (defaultTrackIndex >= 0) {
+    // Check for a cached selection (persists across view mode changes)
+    const cachedSelection: number | undefined = this.electron.getSubtitleSelection(filePath);
+    const video: HTMLVideoElement = this.videoRef.nativeElement;
+
+    if (cachedSelection !== undefined) {
+      // Restore the user's previous selection
+      this.selectedSubtitleTrack.set(cachedSelection);
+      if (cachedSelection !== -1) {
+        this.updateSubtitleDisplay(video.currentTime);
+      }
+    } else if (defaultTrackIndex >= 0) {
+      // No cached selection - use the default track
       this.selectedSubtitleTrack.set(defaultTrackIndex);
-      const video: HTMLVideoElement = this.videoRef.nativeElement;
+      this.electron.setSubtitleSelection(filePath, defaultTrackIndex);
       this.updateSubtitleDisplay(video.currentTime);
     } else {
+      // No default track - subtitles off
       this.selectedSubtitleTrack.set(-1);
+      this.electron.setSubtitleSelection(filePath, -1);
     }
   }
 

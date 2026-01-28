@@ -108,7 +108,7 @@ Based on independent review with all 31 action items resolved:
 - **UHD/4K optimized**: Real-time transcoding with `-preset ultrafast`, `-level 5.1`, VBV buffering
 - Synchronized with server-side time tracking
 - Configurable transcoding quality (CRF 18/23/28) and audio bitrate (128-320 kbps)
-- Video aspect ratio modes with media bar toggle (same UI pattern as visualizations):
+- Video aspect ratio modes via media bar select dropdown:
   - **Default**: Preserves video's native aspect ratio
   - **Forced (4:3)**: Stretches video to 4:3 aspect ratio
   - **Forced (16:9)**: Stretches video to 16:9 aspect ratio
@@ -123,12 +123,11 @@ Based on independent review with all 31 action items resolved:
   - Reliable seeking/skipping — subtitles stay synchronized regardless of playback position
   - Configurable appearance: font size, color, background, opacity, font family
   - 8-direction text shadow for outline effect with configurable spread, blur, and color
-  - Subtitle selector button in media bar (closed-captioning icon, only shown when tracks available)
-  - Dropdown menu with "Off" option and all available tracks with language labels
+  - Subtitle selector via media bar select dropdown with "Subtitles Off" and all available tracks
   - External subtitle loading via "Load External..." option (supports .srt, .vtt, .ass, .ssa)
-  - "Forced" badge for forced subtitle tracks (foreign language portions)
-  - Default track auto-selected when video loads
-  - Selected track highlighted in blue; checkmark indicates current selection
+  - "(Forced)" suffix for forced subtitle tracks (foreign language portions)
+  - Default track auto-selected when video loads (if no cached selection)
+  - Selection persists across view mode changes (desktop ↔ miniplayer) via ElectronService cache
 
 ### Playlist & Controls
 
@@ -200,7 +199,9 @@ Based on independent review with all 31 action items resolved:
 ### UI Layout
 
 - **Header**: Draggable area for window movement (macOS traffic lights region)
-- **Media bar** (bottom of outlet): Visualization switcher (audio only) + playlist toggle
+- **Media bar** (bottom of outlet): Visualization switcher (audio) or aspect ratio + subtitle selects (video) + playlist toggle
+  - Audio mode: Left/right buttons cycle visualizations, name displayed
+  - Video mode: Aspect ratio select dropdown, subtitle track select dropdown
   - Always visible when not in fullscreen (even with no media loaded)
 - **Playback controls**: Media title, transport controls, volume, fullscreen toggle
 - Track title displayed in playback controls (format: "Artist - Title" or just title)
@@ -885,6 +886,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | Tests Referenced Removed Configuration Mode | root.spec.ts, settings.service.spec.ts | After removing configuration mode from root component, tests still referenced removed signals and methods. **Fix**: Removed `enterConfigurationMode` and `exitConfigurationMode` test blocks from root.spec.ts; added missing `subtitles` property to mock AppSettings in settings.service.spec.ts. |
 | Forced Video Aspect Ratios Not Working | video-outlet.scss | 4:3 and 16:9 forced aspect modes stretched vertically instead of letterboxing/pillarboxing. Original CSS used `height: 100%` with `aspect-ratio` and `max-width: 100%`, which broke aspect ratio when width-constrained. Changed to use CSS container query units (`cqw`/`cqh`) with `min()` to calculate exact dimensions: `width: min(100cqw, calc(100cqh * 4 / 3))` ensures the video always maintains the target aspect ratio and fills the container as large as possible. |
 | Subtitles Desync After Seeking | video-outlet.ts | Browser's native TextTrack API failed to sync subtitles after seeking — cues continued from the beginning regardless of video position. Toggling track mode, pre-fetching as Blob URLs, and FFmpeg `-copyts` flag all failed. **Fix**: Implemented custom subtitle rendering that bypasses TextTrack entirely: (1) WebVTT parser extracts all cues with start/end times into memory, (2) `timeupdate` event handler finds active cues for current video time, (3) Overlay `<div>` displays cue text instead of `<track>` element, (4) For transcoded videos, adjusts time by `transcodeSeekOffset`. Subtitle appearance settings (font size, color, etc.) target the overlay div via injected CSS. |
+| Subtitle Selection Lost on View Mode Change | video-outlet.ts, electron.service.ts | Switching between desktop and miniplayer modes created a new VideoOutlet instance, causing subtitle tracks to reload and auto-select the default track — user's "Subtitles Off" selection was lost. **Fix**: Added subtitle selection cache (`Map<string, number>`) in ElectronService (singleton) that persists per file path. `selectSubtitleTrack()` now caches selection; `loadSubtitleTracks()` checks cache before using default. |
 
 ### Code Duplication Eliminated
 
