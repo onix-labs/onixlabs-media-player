@@ -449,6 +449,38 @@ export class ConfigurationView {
   );
 
   // ============================================================================
+  // Unified Window Color (uses background when glass off, tint when glass on)
+  // ============================================================================
+
+  /** Unified window color hue - uses background or tint based on glass state */
+  public readonly windowColorHue: ReturnType<typeof computed<number>> = computed(
+    (): number => this.currentGlassEnabled() && this.supportsGlass()
+      ? this.currentWindowTintHue()
+      : this.currentBackgroundHue()
+  );
+
+  /** Unified window color saturation - uses background or tint based on glass state */
+  public readonly windowColorSaturation: ReturnType<typeof computed<number>> = computed(
+    (): number => this.currentGlassEnabled() && this.supportsGlass()
+      ? this.currentWindowTintSaturation()
+      : this.currentBackgroundSaturation()
+  );
+
+  /** Unified window color lightness - uses background or tint based on glass state */
+  public readonly windowColorLightness: ReturnType<typeof computed<number>> = computed(
+    (): number => this.currentGlassEnabled() && this.supportsGlass()
+      ? this.currentWindowTintLightness()
+      : this.currentBackgroundLightness()
+  );
+
+  /** Unified window color preview - uses background or tint based on glass state */
+  public readonly windowColorPreview: ReturnType<typeof computed<string>> = computed(
+    (): string => this.currentGlassEnabled() && this.supportsGlass()
+      ? this.windowTintPreviewColor()
+      : this.backgroundPreviewColor()
+  );
+
+  // ============================================================================
   // Subtitle Computed Signals
   // ============================================================================
 
@@ -805,6 +837,61 @@ export class ConfigurationView {
   public async onWindowTintAlphaChange(event: Event): Promise<void> {
     const alpha: number = parseFloat(getInputValue(event));
     if (!isNaN(alpha)) await this.settingsService.setWindowTintAlpha(alpha);
+  }
+
+  // ============================================================================
+  // Unified Window Color Event Handlers (routes to background or tint based on glass state)
+  // ============================================================================
+
+  /**
+   * Handles unified window color hue slider change.
+   * Routes to background or tint based on glass state.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onWindowColorHueChange(event: Event): Promise<void> {
+    const hue: number = parseFloat(getInputValue(event));
+    if (isNaN(hue)) return;
+
+    if (this.currentGlassEnabled() && this.supportsGlass()) {
+      await this.settingsService.setWindowTintHue(hue);
+    } else {
+      await this.settingsService.setBackgroundHue(hue);
+    }
+  }
+
+  /**
+   * Handles unified window color saturation slider change.
+   * Routes to background or tint based on glass state.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onWindowColorSaturationChange(event: Event): Promise<void> {
+    const saturation: number = parseFloat(getInputValue(event));
+    if (isNaN(saturation)) return;
+
+    if (this.currentGlassEnabled() && this.supportsGlass()) {
+      await this.settingsService.setWindowTintSaturation(saturation);
+    } else {
+      await this.settingsService.setBackgroundSaturation(saturation);
+    }
+  }
+
+  /**
+   * Handles unified window color lightness slider change.
+   * Routes to background or tint based on glass state.
+   *
+   * @param event - The input event from the slider
+   */
+  public async onWindowColorLightnessChange(event: Event): Promise<void> {
+    const lightness: number = parseFloat(getInputValue(event));
+    if (isNaN(lightness)) return;
+
+    if (this.currentGlassEnabled() && this.supportsGlass()) {
+      await this.settingsService.setWindowTintLightness(lightness);
+    } else {
+      await this.settingsService.setBackgroundLightness(lightness);
+    }
   }
 
   // ============================================================================

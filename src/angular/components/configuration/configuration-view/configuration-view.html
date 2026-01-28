@@ -935,133 +935,70 @@
                   }
                 }
 
-                <!-- Background Color HSL (when glass disabled or unsupported) -->
-                @if (!currentGlassEnabled() || !supportsGlass()) {
-                  <div class="setting-row">
+                <!-- Window Color (unified: background when glass off, tint when glass on) -->
+                <div class="setting-box">
+                  <div class="setting-box-header">
                     <div class="setting-label">
-                      <label>Background Color</label>
+                      <label>Window Color</label>
                       <p class="setting-description">
-                        Window background color when glass effect is disabled.
+                        @if (currentGlassEnabled() && supportsGlass()) {
+                          Color tint over the glass effect. Use Alpha to control tint intensity.
+                        } @else {
+                          Window background color.
+                        }
                       </p>
                     </div>
                     <div class="setting-control">
-                      <div class="color-preview" [style.background]="backgroundPreviewColor()"></div>
+                      <div class="color-preview" [style.background]="windowColorPreview()"></div>
                     </div>
                   </div>
-                  <div class="setting-row hsl-slider-row">
-                    <div class="setting-label">
-                      <label for="bg-hue">Hue</label>
-                    </div>
-                    <div class="setting-control slider-control">
+                  <div class="setting-box-content">
+                    <div class="inline-slider-row">
+                      <label for="window-color-hue">Hue</label>
                       <input
                         type="range"
-                        id="bg-hue"
+                        id="window-color-hue"
                         class="hue-slider"
                         min="0"
                         max="360"
                         step="1"
-                        [value]="currentBackgroundHue()"
-                        (input)="onBackgroundHueChange($event)"
+                        [value]="windowColorHue()"
+                        (input)="onWindowColorHueChange($event)"
                       />
-                      <span class="slider-value">{{ currentBackgroundHue() }}°</span>
+                      <span class="slider-value">{{ windowColorHue() }}°</span>
                     </div>
-                  </div>
-                  <div class="setting-row hsl-slider-row">
-                    <div class="setting-label">
-                      <label for="bg-saturation">Saturation</label>
-                    </div>
-                    <div class="setting-control slider-control">
+                    <div class="inline-slider-row">
+                      <label for="window-color-saturation">Saturation</label>
                       <input
                         type="range"
-                        id="bg-saturation"
+                        id="window-color-saturation"
                         min="0"
                         max="100"
                         step="1"
-                        [value]="currentBackgroundSaturation()"
-                        (input)="onBackgroundSaturationChange($event)"
+                        [value]="windowColorSaturation()"
+                        (input)="onWindowColorSaturationChange($event)"
                       />
-                      <span class="slider-value">{{ currentBackgroundSaturation() }}%</span>
+                      <span class="slider-value">{{ windowColorSaturation() }}%</span>
                     </div>
-                  </div>
-                  <div class="setting-row hsl-slider-row">
-                    <div class="setting-label">
-                      <label for="bg-lightness">Lightness</label>
-                    </div>
-                    <div class="setting-control slider-control">
+                    <div class="inline-slider-row">
+                      <label for="window-color-lightness">Lightness</label>
                       <input
                         type="range"
-                        id="bg-lightness"
+                        id="window-color-lightness"
                         min="0"
                         max="100"
                         step="1"
-                        [value]="currentBackgroundLightness()"
-                        (input)="onBackgroundLightnessChange($event)"
+                        [value]="windowColorLightness()"
+                        (input)="onWindowColorLightnessChange($event)"
                       />
-                      <span class="slider-value">{{ currentBackgroundLightness() }}%</span>
+                      <span class="slider-value">{{ windowColorLightness() }}%</span>
                     </div>
-                  </div>
-                }
-
-                <!-- Window Tint HSLA (when glass enabled and supported) -->
-                @if (currentGlassEnabled() && supportsGlass()) {
-                  <div class="setting-box">
-                    <div class="setting-box-header">
-                      <div class="setting-label">
-                        <label>Window Tint</label>
-                        <p class="setting-description">
-                          Applies a color tint over the glass effect. Use Alpha to control tint intensity.
-                        </p>
-                      </div>
-                      <div class="setting-control">
-                        <div class="color-preview" [style.background]="windowTintPreviewColor()"></div>
-                      </div>
-                    </div>
-                    <div class="setting-box-content">
+                    @if (currentGlassEnabled() && supportsGlass()) {
                       <div class="inline-slider-row">
-                        <label for="tint-hue">Hue</label>
+                        <label for="window-color-alpha">Alpha</label>
                         <input
                           type="range"
-                          id="tint-hue"
-                          class="hue-slider"
-                          min="0"
-                          max="360"
-                          step="1"
-                          [value]="currentWindowTintHue()"
-                          (input)="onWindowTintHueChange($event)"
-                        />
-                        <span class="slider-value">{{ currentWindowTintHue() }}°</span>
-                      </div>
-                      <div class="inline-slider-row">
-                        <label for="tint-saturation">Saturation</label>
-                        <input
-                          type="range"
-                          id="tint-saturation"
-                          min="0"
-                          max="100"
-                          step="1"
-                          [value]="currentWindowTintSaturation()"
-                          (input)="onWindowTintSaturationChange($event)"
-                        />
-                        <span class="slider-value">{{ currentWindowTintSaturation() }}%</span>
-                      </div>
-                      <div class="inline-slider-row">
-                        <label for="tint-lightness">Lightness</label>
-                        <input
-                          type="range"
-                          id="tint-lightness"
-                          min="0"
-                          max="100"
-                          step="1"
-                          [value]="currentWindowTintLightness()"
-                          (input)="onWindowTintLightnessChange($event)"
-                        />
-                        <span class="slider-value">{{ currentWindowTintLightness() }}%</span>
-                      </div>
-                      <div class="inline-slider-row">
-                        <label for="tint-alpha">Alpha</label>
-                        <input
-                          type="range"
-                          id="tint-alpha"
+                          id="window-color-alpha"
                           min="0"
                           max="1"
                           step="0.05"
@@ -1070,9 +1007,9 @@
                         />
                         <span class="slider-value">{{ (currentWindowTintAlpha() * 100).toFixed(0) }}%</span>
                       </div>
-                    </div>
+                    }
                   </div>
-                }
+                </div>
 
               </div>
             }
