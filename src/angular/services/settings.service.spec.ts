@@ -73,6 +73,17 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       windowTintLightness: 0,
       windowTintAlpha: 0,
     },
+    subtitles: {
+      fontSize: 100,
+      fontColor: '#ffffff',
+      backgroundColor: '#000000',
+      backgroundOpacity: 0.75,
+      fontFamily: 'sans-serif',
+      textShadow: true,
+      shadowSpread: 2,
+      shadowBlur: 2,
+      shadowColor: '#000000',
+    },
   };
 
   return {...base, ...overrides};

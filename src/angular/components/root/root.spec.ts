@@ -537,86 +537,6 @@ describe('Root', (): void => {
   });
 
   // ============================================================================
-  // Configuration Mode
-  // ============================================================================
-
-  describe('enterConfigurationMode', (): void => {
-    it('sets isConfigurationMode to true', async (): Promise<void> => {
-      await component.enterConfigurationMode();
-
-      expect(component.isConfigurationMode()).toBe(true);
-    });
-
-    it('calls setConfigurationMode on electron service', async (): Promise<void> => {
-      await component.enterConfigurationMode();
-
-      expect(mockElectron['setConfigurationMode']).toHaveBeenCalledWith(true);
-    });
-
-    it('exits fullscreen before entering configuration mode', async (): Promise<void> => {
-      (mockElectron['isFullscreen'] as WritableSignal<boolean>).set(true);
-
-      await component.enterConfigurationMode();
-
-      expect(mockElectron['exitFullscreen']).toHaveBeenCalled();
-      expect(component.isConfigurationMode()).toBe(true);
-    });
-
-    it('exits miniplayer before entering configuration mode', async (): Promise<void> => {
-      (mockElectron['viewMode'] as WritableSignal<'desktop' | 'miniplayer' | 'fullscreen'>).set('miniplayer');
-
-      await component.enterConfigurationMode();
-
-      expect(mockElectron['exitMiniplayer']).toHaveBeenCalled();
-      expect(component.isConfigurationMode()).toBe(true);
-    });
-
-    it('does not exit fullscreen when not fullscreen', async (): Promise<void> => {
-      (mockElectron['isFullscreen'] as WritableSignal<boolean>).set(false);
-
-      await component.enterConfigurationMode();
-
-      expect(mockElectron['exitFullscreen']).not.toHaveBeenCalled();
-    });
-
-    it('does not exit miniplayer when not in miniplayer mode', async (): Promise<void> => {
-      (mockElectron['viewMode'] as WritableSignal<'desktop' | 'miniplayer' | 'fullscreen'>).set('desktop');
-
-      await component.enterConfigurationMode();
-
-      expect(mockElectron['exitMiniplayer']).not.toHaveBeenCalled();
-    });
-
-    it('sets configInitialCategory when provided', async (): Promise<void> => {
-      await component.enterConfigurationMode('dependencies');
-
-      expect(component.configInitialCategory()).toBe('dependencies');
-    });
-
-    it('sets configInitialCategory to empty string when not provided', async (): Promise<void> => {
-      await component.enterConfigurationMode();
-
-      expect(component.configInitialCategory()).toBe('');
-    });
-  });
-
-  describe('exitConfigurationMode', (): void => {
-    it('sets isConfigurationMode to false', (): void => {
-      component.isConfigurationMode.set(true);
-
-      component.exitConfigurationMode();
-
-      expect(component.isConfigurationMode()).toBe(false);
-    });
-
-    it('calls setConfigurationMode with false on electron service', (): void => {
-      component.exitConfigurationMode();
-
-      expect(mockElectron['setConfigurationMode']).toHaveBeenCalledWith(false);
-    });
-  });
-
-  // ============================================================================
   // About Mode
   // ============================================================================
 
@@ -643,15 +563,6 @@ describe('Root', (): void => {
       await component.enterAboutMode();
 
       expect(mockElectron['exitMiniplayer']).toHaveBeenCalled();
-      expect(component.isAboutMode()).toBe(true);
-    });
-
-    it('exits configuration mode when entering about mode', async (): Promise<void> => {
-      component.isConfigurationMode.set(true);
-
-      await component.enterAboutMode();
-
-      expect(component.isConfigurationMode()).toBe(false);
       expect(component.isAboutMode()).toBe(true);
     });
 
@@ -702,15 +613,6 @@ describe('Root', (): void => {
       await component.enterHelpMode();
 
       expect(mockElectron['exitMiniplayer']).toHaveBeenCalled();
-      expect(component.isHelpMode()).toBe(true);
-    });
-
-    it('exits configuration mode when entering help mode', async (): Promise<void> => {
-      component.isConfigurationMode.set(true);
-
-      await component.enterHelpMode();
-
-      expect(component.isConfigurationMode()).toBe(false);
       expect(component.isHelpMode()).toBe(true);
     });
 
