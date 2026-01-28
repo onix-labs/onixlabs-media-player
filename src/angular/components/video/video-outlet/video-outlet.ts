@@ -19,7 +19,7 @@
  * @module app/components/video/video-outlet
  */
 
-import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, output, ChangeDetectionStrategy, OutputEmitterRef, Renderer2} from '@angular/core';
+import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, untracked, output, ChangeDetectionStrategy, OutputEmitterRef, Renderer2} from '@angular/core';
 import {DOCUMENT} from '@angular/common';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
@@ -190,6 +190,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Path of the currently loaded video file */
   private currentFilePath: string | null = null;
 
+  /** Path of the last successfully loaded video (state reached 'playing') */
+  private lastSuccessfullyLoadedPath: string | null = null;
+
   /** Whether the current video requires transcoding */
   private isTranscoded: boolean = false;
 
@@ -236,14 +239,23 @@ export class VideoOutlet implements OnInit, OnDestroy {
    */
   public constructor() {
     // React to track changes - load new video source.
-    // Also depends on playbackState to detect same-track re-selection:
-    // when the server enters 'loading', currentFilePath is always cleared
-    // so the same file gets reloaded on re-selection.
+    // Also handles same-track re-selection: when the user clicks on a track
+    // that was already playing, we detect this by checking if the 'loading'
+    // state is for a track that was previously successfully loaded.
     effect((): void => {
       const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
       const state: string = this.mediaPlayer.playbackState();
 
-      if (state === 'loading') {
+      // Track when we successfully loaded a video (state reached 'playing')
+      if (state === 'playing' && this.currentFilePath) {
+        this.lastSuccessfullyLoadedPath = this.currentFilePath;
+      }
+
+      // For re-selection: only clear currentFilePath if we're loading a track
+      // that was already successfully played. This prevents double-loading when
+      // selectTrack is called right after addToPlaylist (the track hasn't been
+      // successfully loaded yet, so we shouldn't clear and reload).
+      if (state === 'loading' && track?.filePath === this.lastSuccessfullyLoadedPath) {
         this.currentFilePath = null;
       }
 
@@ -279,6 +291,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
       if (!video || !video.src || video.seeking) return;
 
       if (this.isTranscoded) {
+        // Don't trigger seeks while video is still loading from a previous seek
+        // readyState < 3 means the video doesn't have enough data to play smoothly
+        // HAVE_FUTURE_DATA (3) or HAVE_ENOUGH_DATA (4) indicates the video is ready
+        if (video.readyState < 3) return;
+
         // For transcoded files, account for seek offset
         const expectedVideoTime: number = time - this.transcodeSeekOffset;
         const timeDiff: number = Math.abs(video.currentTime - expectedVideoTime);
@@ -291,14 +308,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
           this.lastSeekTime = now;
           const seekFilePath: string = this.currentFilePath;
           console.log(`Seeking transcoded video to ${time}s (diff: ${timeDiff}s)`);
-          void this.loadVideo(seekFilePath, time).then((): void => {
-            this.seekPending = false;
-            // Verify we're still on the same file after async operation
-            if (this.currentFilePath === seekFilePath && this.mediaPlayer.isPlaying()) {
-              const currentVideo: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
-              currentVideo?.play().catch(console.error);
-            }
-          });
+          void this.loadVideo(seekFilePath, time);
+          // Note: seekPending is cleared when video fires 'canplay' in setupVideoEvents
         }
       } else {
         // For native formats, just set the currentTime
@@ -423,6 +434,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     video.pause();
     video.src = '';
     this.currentFilePath = null;
+    this.lastSuccessfullyLoadedPath = null;
 
     // Remove event listeners
     if (this.videoErrorHandler) {
@@ -807,7 +819,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
    */
   private async loadVideo(filePath: string, seekTime: number = 0): Promise<void> {
     const video: HTMLVideoElement = this.videoRef.nativeElement;
-    const serverUrl: string = this.mediaPlayer.serverUrl();
+    // Use untracked() to prevent signal reads from being tracked by the calling effect
+    const serverUrl: string = untracked((): string => this.mediaPlayer.serverUrl());
 
     if (!serverUrl) return;
 
@@ -818,18 +831,20 @@ export class VideoOutlet implements OnInit, OnDestroy {
     this.isTranscoded = !NATIVE_VIDEO_FORMATS.has(ext);
 
     // Initialize audio track selection from cache or default
+    // Use untracked() to prevent signal reads from being tracked by the calling effect,
+    // which would cause double-loading when currentMedia() updates
     const cachedAudioSelection: number | undefined = this.electron.getAudioSelection(filePath);
     if (cachedAudioSelection !== undefined) {
-      this.selectedAudioTrack.set(cachedAudioSelection);
+      untracked((): void => this.selectedAudioTrack.set(cachedAudioSelection));
     } else {
       // Default to first audio track (or track marked as default)
-      const audioTracks: readonly AudioTrack[] = this.electron.currentMedia()?.audioTracks ?? [];
+      const audioTracks: readonly AudioTrack[] = untracked((): readonly AudioTrack[] => this.electron.currentMedia()?.audioTracks ?? []);
       const defaultTrack: AudioTrack | undefined = audioTracks.find((t: AudioTrack): boolean => t.default);
       const defaultIndex: number = defaultTrack?.index ?? 0;
-      this.selectedAudioTrack.set(defaultIndex);
+      untracked((): void => this.selectedAudioTrack.set(defaultIndex));
     }
 
-    const audioTrack: number = this.selectedAudioTrack();
+    const audioTrack: number = untracked((): number => this.selectedAudioTrack());
 
     // Build the stream URL
     let url: string = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}`;
@@ -871,6 +886,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     this.videoCanPlayHandler = (): void => {
       console.log('Video can play');
+      // Clear seekPending now that the video has loaded and is ready to play
+      // This allows the seek effect to trigger new seeks if needed
+      this.seekPending = false;
       if (this.mediaPlayer.isPlaying()) {
         video.play().catch(console.error);
       }
