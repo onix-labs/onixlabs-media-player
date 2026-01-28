@@ -219,6 +219,12 @@ class Program {
       updateMenuState({isPlaying});
     });
 
+    // Register callback to update menu when media type changes (enables/disables Aspect Ratio)
+    this.mediaServer.onMediaTypeChange((isVideo: boolean): void => {
+      mainLogger.debug(`Media type changed: isVideo=${isVideo}`);
+      updateMenuState({isVideo});
+    });
+
     // Register callback to update menu when dependency state changes (enables/disables Open)
     this.mediaServer.onDependencyStateChange((ffmpeg: boolean, fluidsynth: boolean): void => {
       mainLogger.debug(`Dependency state changed: ffmpeg=${ffmpeg}, fluidsynth=${fluidsynth}`);
@@ -752,6 +758,9 @@ class Program {
       },
       onSelectVisualization: (id: string): void => {
         this.window?.webContents.send('menu:selectVisualization', id);
+      },
+      onSelectAspectMode: (mode: string): void => {
+        this.window?.webContents.send('menu:selectAspectMode', mode);
       }
     });
   }

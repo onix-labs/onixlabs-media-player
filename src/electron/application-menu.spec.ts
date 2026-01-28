@@ -54,6 +54,7 @@ function createMockCallbacks(): MenuCallbacks {
     onToggleShuffle: vi.fn(),
     onToggleRepeat: vi.fn(),
     onSelectVisualization: vi.fn(),
+    onSelectAspectMode: vi.fn(),
   };
 }
 

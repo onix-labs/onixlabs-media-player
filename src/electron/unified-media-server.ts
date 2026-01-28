@@ -153,6 +153,9 @@ export class UnifiedMediaServer {
   /** Callback for dependency state changes (for menu open enabled state) */
   private onDependencyStateChangeCallback: ((ffmpegInstalled: boolean, fluidsynthInstalled: boolean) => void) | null = null;
 
+  /** Callback for media type changes (for menu aspect ratio enabled state) */
+  private onMediaTypeChangeCallback: ((isVideo: boolean) => void) | null = null;
+
   /** Maximum number of entries in the MIDI render cache (FIFO eviction when exceeded) */
   private static readonly MAX_MIDI_CACHE_SIZE: number = 50;
 
@@ -205,6 +208,15 @@ export class UnifiedMediaServer {
    */
   public onDependencyStateChange(callback: (ffmpegInstalled: boolean, fluidsynthInstalled: boolean) => void): void {
     this.onDependencyStateChangeCallback = callback;
+  }
+
+  /**
+   * Registers a callback for media type changes.
+   *
+   * @param callback - Function called when the current media type changes (video or not)
+   */
+  public onMediaTypeChange(callback: (isVideo: boolean) => void): void {
+    this.onMediaTypeChangeCallback = callback;
   }
 
   /**
@@ -935,6 +947,7 @@ export class UnifiedMediaServer {
       // Spawn FluidSynth: MIDI → raw PCM
       const fluidsynthArgs: string[] = [
         '-ni',           // Non-interactive mode
+        '-g', '1.0',     // Gain: 5x default (0.2) for louder MIDI output
         '-T', 'raw',     // Output format: raw PCM
         '-F', '-',       // Output to stdout
         '-r', '44100',   // Sample rate: 44.1kHz
@@ -2185,6 +2198,9 @@ export class UnifiedMediaServer {
 
     // Notify of playback state change for menu state
     this.onPlaybackStateChangeCallback?.(this.playback.state === 'playing');
+
+    // Notify of media type change for menu aspect ratio state
+    this.onMediaTypeChangeCallback?.(this.playback.currentMedia?.type === 'video');
   }
 
   /**

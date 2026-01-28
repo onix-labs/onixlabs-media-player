@@ -6,6 +6,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  background: var(--app-tint-color);
 
   // Hide cursor when controls are auto-hidden in fullscreen/miniplayer mode
   &.cursor-hidden {

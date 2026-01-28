@@ -164,15 +164,29 @@ export interface TranscodingSettings {
 
 /**
  * Appearance settings (cross-platform).
- * Supports glass effects (vibrancy on macOS, acrylic on Windows) and background color.
+ * Supports glass effects (vibrancy on macOS, acrylic on Windows), background color via HSL, and window tint via HSLA.
  */
 export interface AppearanceSettings {
   /** Whether glass effect (transparency/blur) is enabled (default true on supported platforms) */
   readonly glassEnabled: boolean;
   /** macOS visual effect state (followWindow, active, inactive, default active) - only used on macOS when glassEnabled */
   readonly macOSVisualEffectState: MacOSVisualEffectState;
-  /** Background color when glass is disabled or unsupported (hex format, e.g., '#1e1e1e') */
+  /** Background color when glass is disabled or unsupported (hex format, e.g., '#1e1e1e') — derived from HSL values */
   readonly backgroundColor: string;
+  /** Background hue (0-360) when glass is disabled */
+  readonly backgroundHue: number;
+  /** Background saturation (0-100) when glass is disabled */
+  readonly backgroundSaturation: number;
+  /** Background lightness (0-100) when glass is disabled */
+  readonly backgroundLightness: number;
+  /** Window tint hue (0-360) when glass is enabled */
+  readonly windowTintHue: number;
+  /** Window tint saturation (0-100) when glass is enabled */
+  readonly windowTintSaturation: number;
+  /** Window tint lightness (0-100) when glass is enabled */
+  readonly windowTintLightness: number;
+  /** Window tint alpha (0-1) when glass is enabled — controls how much tint is applied */
+  readonly windowTintAlpha: number;
 }
 
 /**
@@ -264,6 +278,13 @@ export interface AppearanceSettingsUpdate {
   readonly glassEnabled?: boolean;
   readonly macOSVisualEffectState?: MacOSVisualEffectState;
   readonly backgroundColor?: string;
+  readonly backgroundHue?: number;
+  readonly backgroundSaturation?: number;
+  readonly backgroundLightness?: number;
+  readonly windowTintHue?: number;
+  readonly windowTintSaturation?: number;
+  readonly windowTintLightness?: number;
+  readonly windowTintAlpha?: number;
 }
 
 // ============================================================================
@@ -334,7 +355,14 @@ const DEFAULT_SETTINGS: AppSettings = {
   appearance: {
     glassEnabled: true,  // glass effect enabled by default (vibrancy on macOS, acrylic on Windows)
     macOSVisualEffectState: 'active',  // always active (even when window inactive)
-    backgroundColor: '#1e1e1e',  // dark background when glass disabled (will be overridden by system theme detection at runtime)
+    backgroundColor: '#1e1e1e',  // derived from HSL values for BrowserWindow creation
+    backgroundHue: 0,  // HSL hue (0-360) — #1e1e1e is achromatic
+    backgroundSaturation: 0,  // HSL saturation (0-100) — #1e1e1e has no saturation
+    backgroundLightness: 12,  // HSL lightness (0-100) — #1e1e1e ≈ 12% lightness
+    windowTintHue: 0,  // HSLA hue (0-360) for glass tint
+    windowTintSaturation: 0,  // HSLA saturation (0-100) for glass tint
+    windowTintLightness: 0,  // HSLA lightness (0-100) for glass tint
+    windowTintAlpha: 0,  // HSLA alpha (0-1) — 0 = no tint by default
   },
   windowState: {
     miniplayerBounds: null,  // no saved position initially
@@ -651,6 +679,48 @@ export class SettingsManager {
       }
     }
 
+    // Validate background HSL fields if provided
+    if (update.backgroundHue !== undefined && !this.isValidHue(update.backgroundHue)) {
+      console.warn(`[SettingsManager] Invalid backgroundHue: ${update.backgroundHue}, ignoring`);
+      return this.settings;
+    }
+    if (update.backgroundSaturation !== undefined && !this.isValidPercentage(update.backgroundSaturation)) {
+      console.warn(`[SettingsManager] Invalid backgroundSaturation: ${update.backgroundSaturation}, ignoring`);
+      return this.settings;
+    }
+    if (update.backgroundLightness !== undefined && !this.isValidPercentage(update.backgroundLightness)) {
+      console.warn(`[SettingsManager] Invalid backgroundLightness: ${update.backgroundLightness}, ignoring`);
+      return this.settings;
+    }
+
+    // Validate window tint HSLA fields if provided
+    if (update.windowTintHue !== undefined && !this.isValidHue(update.windowTintHue)) {
+      console.warn(`[SettingsManager] Invalid windowTintHue: ${update.windowTintHue}, ignoring`);
+      return this.settings;
+    }
+    if (update.windowTintSaturation !== undefined && !this.isValidPercentage(update.windowTintSaturation)) {
+      console.warn(`[SettingsManager] Invalid windowTintSaturation: ${update.windowTintSaturation}, ignoring`);
+      return this.settings;
+    }
+    if (update.windowTintLightness !== undefined && !this.isValidPercentage(update.windowTintLightness)) {
+      console.warn(`[SettingsManager] Invalid windowTintLightness: ${update.windowTintLightness}, ignoring`);
+      return this.settings;
+    }
+    if (update.windowTintAlpha !== undefined && !this.isValidAlpha(update.windowTintAlpha)) {
+      console.warn(`[SettingsManager] Invalid windowTintAlpha: ${update.windowTintAlpha}, ignoring`);
+      return this.settings;
+    }
+
+    // Resolve HSL values (use updated or current)
+    const bgHue: number = update.backgroundHue ?? this.settings.appearance.backgroundHue;
+    const bgSat: number = update.backgroundSaturation ?? this.settings.appearance.backgroundSaturation;
+    const bgLit: number = update.backgroundLightness ?? this.settings.appearance.backgroundLightness;
+
+    // Derive hex backgroundColor from HSL values when any HSL field changes
+    const derivedBgColor: string = (update.backgroundHue !== undefined || update.backgroundSaturation !== undefined || update.backgroundLightness !== undefined)
+      ? this.hslToHex(bgHue, bgSat, bgLit)
+      : (update.backgroundColor ?? this.settings.appearance.backgroundColor);
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -658,7 +728,14 @@ export class SettingsManager {
         ...this.settings.appearance,
         glassEnabled: update.glassEnabled ?? this.settings.appearance.glassEnabled,
         macOSVisualEffectState: update.macOSVisualEffectState ?? this.settings.appearance.macOSVisualEffectState,
-        backgroundColor: update.backgroundColor ?? this.settings.appearance.backgroundColor,
+        backgroundColor: derivedBgColor,
+        backgroundHue: bgHue,
+        backgroundSaturation: bgSat,
+        backgroundLightness: bgLit,
+        windowTintHue: update.windowTintHue ?? this.settings.appearance.windowTintHue,
+        windowTintSaturation: update.windowTintSaturation ?? this.settings.appearance.windowTintSaturation,
+        windowTintLightness: update.windowTintLightness ?? this.settings.appearance.windowTintLightness,
+        windowTintAlpha: update.windowTintAlpha ?? this.settings.appearance.windowTintAlpha,
       },
     };
 
@@ -1082,6 +1159,24 @@ export class SettingsManager {
     const macOSVisualEffectState: unknown = appearanceObj['macOSVisualEffectState'];
     const backgroundColor: unknown = appearanceObj['backgroundColor'];
 
+    // Validate HSL fields (use defaults if missing — backward compat with old settings)
+    const backgroundHue: number = this.isValidHue(appearanceObj['backgroundHue'])
+      ? appearanceObj['backgroundHue'] : DEFAULT_SETTINGS.appearance.backgroundHue;
+    const backgroundSaturation: number = this.isValidPercentage(appearanceObj['backgroundSaturation'])
+      ? appearanceObj['backgroundSaturation'] : DEFAULT_SETTINGS.appearance.backgroundSaturation;
+    const backgroundLightness: number = this.isValidPercentage(appearanceObj['backgroundLightness'])
+      ? appearanceObj['backgroundLightness'] : DEFAULT_SETTINGS.appearance.backgroundLightness;
+
+    // Validate window tint HSLA fields
+    const windowTintHue: number = this.isValidHue(appearanceObj['windowTintHue'])
+      ? appearanceObj['windowTintHue'] : DEFAULT_SETTINGS.appearance.windowTintHue;
+    const windowTintSaturation: number = this.isValidPercentage(appearanceObj['windowTintSaturation'])
+      ? appearanceObj['windowTintSaturation'] : DEFAULT_SETTINGS.appearance.windowTintSaturation;
+    const windowTintLightness: number = this.isValidPercentage(appearanceObj['windowTintLightness'])
+      ? appearanceObj['windowTintLightness'] : DEFAULT_SETTINGS.appearance.windowTintLightness;
+    const windowTintAlpha: number = this.isValidAlpha(appearanceObj['windowTintAlpha'])
+      ? appearanceObj['windowTintAlpha'] : DEFAULT_SETTINGS.appearance.windowTintAlpha;
+
     return {
       glassEnabled,
       macOSVisualEffectState: this.isValidMacOSVisualEffectState(macOSVisualEffectState)
@@ -1090,6 +1185,13 @@ export class SettingsManager {
       backgroundColor: this.isValidHexColor(backgroundColor)
         ? backgroundColor
         : DEFAULT_SETTINGS.appearance.backgroundColor,
+      backgroundHue,
+      backgroundSaturation,
+      backgroundLightness,
+      windowTintHue,
+      windowTintSaturation,
+      windowTintLightness,
+      windowTintAlpha,
     };
   }
 
@@ -1365,5 +1467,56 @@ export class SettingsManager {
    */
   private isValidMacOSVisualEffectState(value: unknown): value is MacOSVisualEffectState {
     return typeof value === 'string' && VALID_MACOS_VISUAL_EFFECT_STATE.includes(value as MacOSVisualEffectState);
+  }
+
+  /**
+   * Type guard to check if a value is a valid hue (0-360).
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid hue
+   */
+  private isValidHue(value: unknown): value is number {
+    return typeof value === 'number' && value >= 0 && value <= 360;
+  }
+
+  /**
+   * Type guard to check if a value is a valid saturation or lightness (0-100).
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid percentage
+   */
+  private isValidPercentage(value: unknown): value is number {
+    return typeof value === 'number' && value >= 0 && value <= 100;
+  }
+
+  /**
+   * Type guard to check if a value is a valid alpha (0-1).
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid alpha
+   */
+  private isValidAlpha(value: unknown): value is number {
+    return typeof value === 'number' && value >= 0 && value <= 1;
+  }
+
+  /**
+   * Converts HSL values to a hex color string.
+   *
+   * @param h - Hue (0-360)
+   * @param s - Saturation (0-100)
+   * @param l - Lightness (0-100)
+   * @returns Hex color string (e.g., '#1e1e1e')
+   */
+  private hslToHex(h: number, s: number, l: number): string {
+    const sNorm: number = s / 100;
+    const lNorm: number = l / 100;
+    const a: number = sNorm * Math.min(lNorm, 1 - lNorm);
+    const f: (n: number) => number = (n: number): number => {
+      const k: number = (n + h / 30) % 12;
+      const color: number = lNorm - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+      return Math.round(255 * color);
+    };
+    const toHex: (x: number) => string = (x: number): string => x.toString(16).padStart(2, '0');
+    return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
   }
 }
