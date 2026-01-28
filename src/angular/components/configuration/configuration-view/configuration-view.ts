@@ -281,6 +281,14 @@ export class ConfigurationView {
     (): number => this.settingsService.serverPort()
   );
 
+  /** Initial server port (captured at component creation for change detection) */
+  private readonly initialServerPort: number = this.settingsService.serverPort();
+
+  /** Whether the server port has been changed from its initial value */
+  public readonly serverPortChanged: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.currentServerPort() !== this.initialServerPort
+  );
+
   /** Current auto-hide delay in seconds (0 = disabled) */
   public readonly currentAutoHideDelay: ReturnType<typeof computed<number>> = computed(
     (): number => this.settingsService.controlsAutoHideDelay()
@@ -385,6 +393,14 @@ export class ConfigurationView {
   /** Current macOS visual effect state setting */
   public readonly currentMacOSVisualEffectState: ReturnType<typeof computed<MacOSVisualEffectState>> = computed(
     (): MacOSVisualEffectState => this.settingsService.macOSVisualEffectState()
+  );
+
+  /** Initial macOS visual effect state (captured at component creation for change detection) */
+  private readonly initialMacOSVisualEffectState: MacOSVisualEffectState = this.settingsService.macOSVisualEffectState();
+
+  /** Whether the macOS visual effect state has been changed from its initial value */
+  public readonly visualEffectStateChanged: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.currentMacOSVisualEffectState() !== this.initialMacOSVisualEffectState
   );
 
   /** Current background hue (0-360) */

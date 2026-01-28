@@ -697,8 +697,7 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 
 | Setting | Range | Default | Description |
 |---------|-------|---------|-------------|
-| Server Port | 0 or 1024-65535 | 0 (auto) | Internal media server port |
-| Controls Auto-Hide | 0-30s | 5s | Fullscreen control bar auto-hide delay |
+| Server Port | 0 or 1024-65535 | 0 (auto) | Internal media server port (restart notice shown when changed) |
 
 #### Playback Category
 
@@ -709,6 +708,7 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 | Previous Track Threshold | 0-10s | 3s | Time before restart vs previous track |
 | Skip Duration | 1-60s | 10s | Shift+click skip amount |
 | Video Aspect Ratio | Default/4:3/16:9/Fit | Default | Video display aspect mode |
+| Controls Auto-Hide | 0-30s | 5s | Fullscreen control bar auto-hide delay |
 
 #### Transcoding Category
 
@@ -722,9 +722,9 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 | Setting | Options | Default | Description | Restart Required |
 |---------|---------|---------|-------------|------------------|
 | Glass Effect | On/Off | On | Enables window transparency with blur | Yes |
-| Visual Effect State | Follow Window/Always Active/Always Inactive | Always Active | macOS vibrancy state (shown when glass enabled on macOS) | Yes |
+| Visual Effect State | Follow Window/Always Active/Always Inactive | Always Active | macOS vibrancy state (shown when glass enabled on macOS); restart notice shown when changed | Yes |
 | Background Color | HSL sliders (Hue 0-360, Saturation 0-100, Lightness 0-100) | H:0 S:0 L:12 | Window background when glass disabled | No |
-| Window Tint | HSLA sliders (Hue 0-360, Saturation 0-100, Lightness 0-100, Alpha 0-1) | H:0 S:0 L:0 A:0 | Color tint over glass effect when glass enabled | No |
+| Window Tint | HSLA sliders in boxed container (Hue 0-360, Saturation 0-100, Lightness 0-100, Alpha 0-1) | H:0 S:0 L:0 A:0 | Color tint over glass effect when glass enabled | No |
 
 #### Subtitles Category
 
