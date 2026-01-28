@@ -56,6 +56,9 @@ export class PlaylistManager {
   /** History of played track indices for "previous" navigation */
   private playHistory: number[] = [];
 
+  /** Path to the .opp file the current playlist was loaded from, or null if not from a file */
+  private sourceFilePath: string | null = null;
+
   /** Reference to SSE manager for broadcasting updates */
   private readonly sse: SSEManager;
 
@@ -85,6 +88,24 @@ export class PlaylistManager {
       shuffleEnabled: this.shuffleEnabled,
       repeatEnabled: this.repeatEnabled,
     };
+  }
+
+  /**
+   * Gets the source .opp file path, or null if the playlist was not loaded from a file.
+   *
+   * @returns The source file path or null
+   */
+  public getSourceFilePath(): string | null {
+    return this.sourceFilePath;
+  }
+
+  /**
+   * Sets the source .opp file path (called after loading or saving a playlist file).
+   *
+   * @param filePath - The file path, or null to clear
+   */
+  public setSourceFilePath(filePath: string | null): void {
+    this.sourceFilePath = filePath;
   }
 
   /**
@@ -194,7 +215,7 @@ export class PlaylistManager {
 
   /**
    * Clears all items from the playlist.
-   * Resets all state including shuffle order and play history.
+   * Resets all state including shuffle order, play history, and source file.
    */
   public clear(): void {
     this.items = [];
@@ -202,6 +223,7 @@ export class PlaylistManager {
     this.shuffleOrder = [];
     this.shufflePosition = 0;
     this.playHistory = [];
+    this.sourceFilePath = null;
     // Broadcast cleared event instead of full playlist
     this.sse.broadcast('playlist:cleared', {});
   }

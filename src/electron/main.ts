@@ -432,6 +432,52 @@ class Program {
       return result.canceled ? [] : result.filePaths;
     });
 
+    // Open playlist file dialog - scoped to .opp files
+    ipcMain.handle("dialog:openPlaylist", async (): Promise<string | null> => {
+      ipcLogger.debug('dialog:openPlaylist');
+      if (!this.window) {
+        ipcLogger.warn('dialog:openPlaylist - no window available');
+        return null;
+      }
+
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
+        title: 'Open Playlist',
+        properties: ['openFile'],
+        filters: [{name: 'ONIXPlayer Playlist', extensions: ['opp']}],
+      });
+
+      if (result.canceled || result.filePaths.length === 0) {
+        ipcLogger.info('dialog:openPlaylist - cancelled');
+        return null;
+      }
+
+      ipcLogger.info(`dialog:openPlaylist - selected: ${result.filePaths[0]}`);
+      return result.filePaths[0];
+    });
+
+    // Save playlist file dialog - scoped to .opp files
+    ipcMain.handle("dialog:savePlaylist", async (): Promise<string | null> => {
+      ipcLogger.debug('dialog:savePlaylist');
+      if (!this.window) {
+        ipcLogger.warn('dialog:savePlaylist - no window available');
+        return null;
+      }
+
+      const result: Electron.SaveDialogReturnValue = await dialog.showSaveDialog(this.window, {
+        title: 'Save Playlist',
+        defaultPath: 'playlist.opp',
+        filters: [{name: 'ONIXPlayer Playlist', extensions: ['opp']}],
+      });
+
+      if (result.canceled || !result.filePath) {
+        ipcLogger.info('dialog:savePlaylist - cancelled');
+        return null;
+      }
+
+      ipcLogger.info(`dialog:savePlaylist - selected: ${result.filePath}`);
+      return result.filePath;
+    });
+
     // Get server port - needed for renderer to connect to HTTP API
     ipcMain.handle("app:getServerPort", (): number => {
       const port: number = this.mediaServer?.getPort() || 0;
@@ -730,13 +776,25 @@ class Program {
       onShowAbout: (): void => {
         this.window?.webContents.send('menu:showAbout');
       },
+      onShowHelp: (): void => {
+        this.window?.webContents.send('menu:showHelp');
+      },
       onOpenFile: (): void => {
         this.window?.webContents.send('menu:openFile');
+      },
+      onOpenPlaylist: (): void => {
+        this.window?.webContents.send('menu:openPlaylist');
+      },
+      onSavePlaylist: (): void => {
+        this.window?.webContents.send('menu:savePlaylist');
+      },
+      onSavePlaylistAs: (): void => {
+        this.window?.webContents.send('menu:savePlaylistAs');
       },
       onCloseMedia: (): void => {
         this.window?.webContents.send('menu:closeMedia');
       },
-      onCloseAll: (): void => {
+      onClosePlaylist: (): void => {
         this.window?.webContents.send('menu:closeAll');
       },
       onToggleFullscreen: (): void => {

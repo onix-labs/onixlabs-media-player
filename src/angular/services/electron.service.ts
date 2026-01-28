@@ -167,6 +167,18 @@ export class ElectronService implements OnDestroy {
   /** Signal emitted when "Show About" menu item is selected */
   public readonly menuShowAbout: ReturnType<typeof signal<number>> = signal<number>(0);
 
+  /** Signal emitted when "Show Help" menu item is selected */
+  public readonly menuShowHelp: ReturnType<typeof signal<number>> = signal<number>(0);
+
+  /** Signal emitted when "Open Playlist" menu item is selected */
+  public readonly menuOpenPlaylist: ReturnType<typeof signal<number>> = signal<number>(0);
+
+  /** Signal emitted when "Save Playlist" menu item is selected */
+  public readonly menuSavePlaylist: ReturnType<typeof signal<number>> = signal<number>(0);
+
+  /** Signal emitted when "Save Playlist As" menu item is selected */
+  public readonly menuSavePlaylistAs: ReturnType<typeof signal<number>> = signal<number>(0);
+
   /** Signal emitted when a visualization is selected from the menu */
   public readonly menuSelectVisualization: ReturnType<typeof signal<string>> = signal<string>('');
 
@@ -461,6 +473,42 @@ export class ElectronService implements OnDestroy {
       this.api.onMenuEvent('closeAll', (): void => {
         this.ngZone.run((): void => {
           void this.stop().then((): Promise<void> => this.clearPlaylist());
+        });
+      })
+    );
+
+    // Show help menu item
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('showHelp', (): void => {
+        this.ngZone.run((): void => {
+          this.menuShowHelp.update((v: number): number => v + 1);
+        });
+      })
+    );
+
+    // Open playlist menu item
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('openPlaylist', (): void => {
+        this.ngZone.run((): void => {
+          this.menuOpenPlaylist.update((v: number): number => v + 1);
+        });
+      })
+    );
+
+    // Save playlist menu item
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('savePlaylist', (): void => {
+        this.ngZone.run((): void => {
+          this.menuSavePlaylist.update((v: number): number => v + 1);
+        });
+      })
+    );
+
+    // Save playlist as menu item
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('savePlaylistAs', (): void => {
+        this.ngZone.run((): void => {
+          this.menuSavePlaylistAs.update((v: number): number => v + 1);
         });
       })
     );
@@ -1151,6 +1199,59 @@ export class ElectronService implements OnDestroy {
    */
   public async setRepeat(enabled: boolean): Promise<void> {
     await this.post('/playlist/repeat', {enabled});
+  }
+
+  // ============================================================================
+  // HTTP API Methods - Playlist File Operations
+  // ============================================================================
+
+  /**
+   * Opens a native dialog to select a .opp playlist file.
+   *
+   * @returns Promise resolving to the chosen file path, or null if cancelled
+   */
+  public async openPlaylistDialog(): Promise<string | null> {
+    if (!this.isElectron || !this.api) return null;
+    return this.api.openPlaylistDialog();
+  }
+
+  /**
+   * Opens a native save dialog for a .opp playlist file.
+   *
+   * @returns Promise resolving to the chosen file path, or null if cancelled
+   */
+  public async savePlaylistDialog(): Promise<string | null> {
+    if (!this.isElectron || !this.api) return null;
+    return this.api.savePlaylistDialog();
+  }
+
+  /**
+   * Saves the current playlist to a .opp file at the given path.
+   *
+   * @param filePath - Absolute path to save the playlist
+   */
+  public async savePlaylistToFile(filePath: string): Promise<void> {
+    await this.post('/playlist/save', {filePath});
+  }
+
+  /**
+   * Loads a playlist from a .opp file, replacing the current playlist.
+   *
+   * @param filePath - Absolute path to the .opp file
+   * @returns The number of items loaded
+   */
+  public async loadPlaylistFromFile(filePath: string): Promise<{count: number; filePath: string}> {
+    return this.post('/playlist/load', {filePath});
+  }
+
+  /**
+   * Gets the source .opp file path of the current playlist (if loaded from file).
+   *
+   * @returns The file path or null
+   */
+  public async getPlaylistSourcePath(): Promise<string | null> {
+    const result: {filePath: string | null} = await this.get('/playlist/source');
+    return result.filePath;
   }
 
   // ============================================================================

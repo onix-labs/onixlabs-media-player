@@ -204,14 +204,18 @@ Based on independent review with all 31 action items resolved:
 ### Application Menu
 
 - Native menu bar for macOS (app menu), Windows/Linux (File menu)
-- **File menu**: Open (Cmd+O), Close (Cmd+W), Close All (Cmd+Shift+W), with placeholders for URL, playlists, Save As
-  - Open disabled when no dependencies installed (at least FFmpeg or FluidSynth required)
-  - Close and Close All disabled when no media loaded
-  - Close All stops playback and clears the entire playlist (same as playlist Clear button)
+- **File menu**:
+  - Open (Cmd+O) - disabled when no dependencies installed
+  - Open Playlist (Cmd+Shift+O) - loads .opp playlist file, disabled when no dependencies
+  - Save Playlist As (Cmd+Shift+S) - saves playlist to new .opp file, disabled when no media
+  - Save Playlist (Cmd+S) - saves to existing .opp file or shows Save As dialog, disabled when no media
+  - Close (Cmd+W) - stops current track and removes from playlist, disabled when no media
+  - Close Playlist (Cmd+Shift+W) - stops playback and clears entire playlist, disabled when no media
+  - Exit (Alt+F4) - Windows/Linux only
 - **View menu**: Full Screen toggle, Visualizations submenu (organized by category: Bars, Waves), Options (settings)
   - Full Screen disabled when no media loaded
 - **Playback menu**: Play/Pause (Space) with dynamic label, Stop (Shift+Space), Shuffle/Repeat toggles, Aspect Ratio submenu (enabled only during video playback)
-- **Help menu**: About ONIXPlayer (opens About view), placeholders for Help Topics
+- **Help menu**: Help Topics (opens Help Topics view), About ONIXPlayer (opens About view)
 - Menu callbacks communicated via IPC to renderer for UI updates
 - UI zoom disabled (zoomFactor: 1.0, keyboard shortcuts blocked, pinch-to-zoom disabled)
 - Shuffle/Repeat menu checkboxes sync with actual state via callback mechanism
@@ -232,6 +236,48 @@ Based on independent review with all 31 action items resolved:
 - Copyright footer with dynamic year
 - **Window close behavior**: Same as configuration view — closing the window returns to the media player instead of quitting the application (reuses `setConfigurationMode` IPC)
 - External links use Electron shell.openExternal() for proper OS browser launch
+
+### Help Topics View
+
+- Access via Help > Help Topics menu item
+- Sidebar + content layout (same pattern as Configuration view)
+- 8 help categories with icons:
+  - **Getting Started** (fa-rocket) - Welcome, quick start, first-time setup
+  - **Supported Formats** (fa-file-audio) - Audio formats (7), MIDI, Video formats (6), transcoding info
+  - **Visualizations** (fa-wave-square) - 10 visualizations organized by category (Bars, Waves)
+  - **Window Modes** (fa-desktop) - Desktop, fullscreen, miniplayer modes
+  - **Keyboard Shortcuts** (fa-keyboard) - All shortcuts including Shift+click modifiers
+  - **Dependencies** (fa-puzzle-piece) - FFmpeg, FluidSynth, SoundFonts
+  - **Playlist** (fa-list) - Adding files, auto-play behavior, shuffle/repeat
+  - **Settings** (fa-gear) - Categories overview, glass effect, appearance
+- **Window close behavior**: Same as About view — returns to media player instead of quitting
+
+### Playlist Save/Load (.opp Format)
+
+- ONIXPlayer Playlist (.opp) is a JSON file format for persisting playlists
+- **File > Open Playlist**: Clears current playlist, loads .opp file, auto-plays first item
+- **File > Save Playlist As**: Shows save dialog, saves current playlist to new .opp file
+- **File > Save Playlist**: Saves to existing .opp file (if loaded from one) or shows Save As dialog
+- Playlist source file path tracked internally for "Save" vs "Save As" behavior
+
+**OPP File Format (JSON)**:
+```json
+{
+  "format": "onixplayer-playlist",
+  "version": 1,
+  "savedAt": "2026-01-28T12:00:00.000Z",
+  "items": [
+    {
+      "filePath": "/path/to/file.mp3",
+      "title": "Song Title",
+      "artist": "Artist Name",
+      "album": "Album Name",
+      "duration": 180.5,
+      "type": "audio"
+    }
+  ]
+}
+```
 
 ### Dependency Management
 
@@ -329,8 +375,10 @@ Based on independent review with all 31 action items resolved:
 │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
-│  IPC (minimal - 18 channels):                                          │
+│  IPC (minimal - 20 channels):                                          │
 │  ├── dialog:openFile         (native file picker)                      │
+│  ├── dialog:openPlaylist     (playlist file picker for .opp files)     │
+│  ├── dialog:savePlaylist     (save dialog for .opp files)              │
 │  ├── dialog:openSoundFont    (SoundFont file picker)                   │
 │  ├── app:getServerPort       (get HTTP server port)                    │
 │  ├── app:getPlatformInfo     (platform, glass support, system theme)   │
@@ -438,6 +486,7 @@ AudioContext.destination (speakers)
 | `src/angular/components/miniplayer/` | Miniplayer overlay controls |
 | `src/angular/components/configuration/configuration-view/` | Settings UI with accordion sidebar, per-visualization settings; close button returns to player |
 | `src/angular/components/about/about-view/` | About dialog with version info and links |
+| `src/angular/components/help/help-topics-view/` | Help documentation with sidebar navigation and topic content |
 
 ### Shared Components & Directives
 
@@ -495,6 +544,9 @@ AudioContext.destination (speakers)
 | POST | `/playlist/previous` | Previous track |
 | POST | `/playlist/shuffle` | Body: `{ enabled: boolean }` |
 | POST | `/playlist/repeat` | Body: `{ enabled: boolean }` |
+| POST | `/playlist/save` | Body: `{ filePath: string }` — Save playlist to .opp file |
+| POST | `/playlist/load` | Body: `{ filePath: string }` — Load playlist from .opp file |
+| GET | `/playlist/source` | Get source .opp file path (if loaded from file) |
 
 ### Dependencies
 
@@ -1285,7 +1337,7 @@ npm run dev
 
 ### Testing Coverage
 
-**734 tests** across 19 spec files — all passing, enforced by CI on every push/PR.
+**759 tests** across 20 spec files — all passing, enforced by CI on every push/PR.
 
 **Electron tests** (253 tests, 6 spec files — Vitest with Node environment):
 
@@ -1298,13 +1350,13 @@ npm run dev
 | `midi-parser.spec.ts` | 21 | MIDI binary parsing, tempo changes, edge cases |
 | `logger.spec.ts` | 21 | Log formatting, scoped loggers, helper functions |
 
-**Angular tests** (481 tests, 13 spec files — Angular CLI with Vitest):
+**Angular tests** (506 tests, 14 spec files — Angular CLI with Vitest):
 
 | Spec File | Tests | What's Covered |
 |-----------|-------|----------------|
-| `electron.service.spec.ts` | 91 | SSE events, HTTP methods, IPC delegation, JSON parsing |
+| `electron.service.spec.ts` | 92 | SSE events, HTTP methods, IPC delegation, JSON parsing |
 | `visualization.spec.ts` | 79 | Base class: sensitivity, fade, resize, hslToRgb, caching |
-| `root.spec.ts` | 57 | Routes, view modes, fullscreen, keyboard shortcuts |
+| `root.spec.ts` | 64 | Routes, view modes, fullscreen, keyboard shortcuts, help mode |
 | `media-player.service.spec.ts` | 53 | Computed signals, transport controls, format helpers |
 | `layout-controls.spec.ts` | 43 | Transport buttons, volume, seek, Shift+click |
 | `settings.service.spec.ts` | 38 | Derived signals, update methods, per-viz settings |
@@ -1312,7 +1364,8 @@ npm run dev
 | `dependency.service.spec.ts` | 26 | Computed signals, allowed extensions, install/uninstall |
 | `playlist.spec.ts` | 25 | Items, selection, clear, drag-and-drop, empty state |
 | `layout-outlet.spec.ts` | 23 | Audio/video switching, media bar, idle state |
-| `about-view.spec.ts` | 12 | Version info, formats, links |
+| `about-view.spec.ts` | 11 | Version info, formats, links |
+| `help-topics-view.spec.ts` | 9 | Topics list, selection, topic content switching |
 | `file-drop.service.spec.ts` | 6 | Path extraction, filtering, error handling |
 | `layout-header.spec.ts` | 1 | Component creation |
 
@@ -1330,7 +1383,6 @@ npm run dev
 
 ### Potential Enhancements
 
-- Playlist persistence (save/load playlists)
 - URL streaming support
 - Keyboard shortcuts customization
 - Additional visualization modes

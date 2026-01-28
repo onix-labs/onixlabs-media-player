@@ -61,6 +61,20 @@ export interface MediaPlayerAPI {
   readonly openFileDialog: (options: Readonly<OpenDialogOptions>) => Promise<string[]>;
 
   /**
+   * Opens a native dialog to select a .opp playlist file.
+   *
+   * @returns Promise resolving to the selected file path, or null if cancelled
+   */
+  readonly openPlaylistDialog: () => Promise<string | null>;
+
+  /**
+   * Opens a native save dialog for a .opp playlist file.
+   *
+   * @returns Promise resolving to the chosen file path, or null if cancelled
+   */
+  readonly savePlaylistDialog: () => Promise<string | null>;
+
+  /**
    * Gets the absolute file system path for a File object.
    * Used for drag-and-drop where we receive File objects but need paths.
    *
@@ -262,6 +276,8 @@ export interface MediaPlayerAPI {
  */
 const api: MediaPlayerAPI = {
   openFileDialog: (options: Readonly<OpenDialogOptions>): Promise<string[]> => ipcRenderer.invoke('dialog:openFile', options),
+  openPlaylistDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openPlaylist'),
+  savePlaylistDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:savePlaylist'),
   openSoundFontDialog: (): Promise<string[]> => ipcRenderer.invoke('dialog:openSoundFont'),
   getPathForFile: (file: Readonly<File>): string => webUtils.getPathForFile(file),
   getServerPort: (): Promise<number> => ipcRenderer.invoke('app:getServerPort'),

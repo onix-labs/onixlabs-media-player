@@ -1,0 +1,375 @@
+<div class="help-container">
+  <!-- Header (drag region for traffic lights) -->
+  <div class="help-header"></div>
+
+  <!-- Content area with sidebar and panel -->
+  <div class="help-content">
+    <!-- Sidebar with topics -->
+    <div class="help-sidebar">
+      <nav class="topic-list">
+        @for (topic of topics; track topic.id) {
+          <button
+            class="topic-item"
+            [class.active]="selectedTopic() === topic.id"
+            (click)="onSelectTopic(topic.id)"
+          >
+            <i [class]="topic.icon"></i>
+            <span>{{ topic.name }}</span>
+          </button>
+        }
+      </nav>
+    </div>
+
+    <!-- Help panel -->
+    <div class="help-panel">
+      @if (currentTopic(); as topic) {
+        <div class="panel-header">
+          <h2>{{ topic.name }}</h2>
+          <p class="panel-description">{{ topic.description }}</p>
+        </div>
+
+        <div class="help-topic-content">
+          @switch (selectedTopic()) {
+            @case ('getting-started') {
+              <div class="topic-section">
+                <h3>Welcome to ONIXPlayer</h3>
+                <p>ONIXPlayer is a desktop media player built with Electron that supports a wide range of audio and video formats with real-time audio visualizations.</p>
+              </div>
+              <div class="topic-section">
+                <h3>Quick Start</h3>
+                <ol class="help-list numbered">
+                  <li><strong>Install dependencies</strong> &mdash; Open Settings (Cmd/Ctrl + ,) and navigate to Dependencies to install FFmpeg and optionally FluidSynth for MIDI support.</li>
+                  <li><strong>Open media files</strong> &mdash; Use File &gt; Open (Cmd/Ctrl + O) or drag and drop files onto the player window.</li>
+                  <li><strong>Control playback</strong> &mdash; Use the transport controls at the bottom of the window or keyboard shortcuts (Space to play/pause).</li>
+                  <li><strong>Explore visualizations</strong> &mdash; Audio files display real-time visualizations. Switch between modes via View &gt; Visualizations in the menu.</li>
+                </ol>
+              </div>
+              <div class="topic-section">
+                <h3>First-Time Setup</h3>
+                <p>ONIXPlayer requires FFmpeg for audio and video playback. Without it, no media files can be opened. Navigate to Settings &gt; Dependencies and click "Install" next to FFmpeg.</p>
+                <p>For MIDI file playback, you also need FluidSynth and at least one SoundFont (.sf2) file. Install FluidSynth from Settings &gt; Dependencies, then install a SoundFont file.</p>
+              </div>
+            }
+
+            @case ('supported-formats') {
+              <div class="topic-section">
+                <h3>Audio Formats</h3>
+                <p>The following audio formats are supported when FFmpeg is installed:</p>
+                <div class="format-tags">
+                  <span class="format-tag">MP3</span>
+                  <span class="format-tag">FLAC</span>
+                  <span class="format-tag">WAV</span>
+                  <span class="format-tag">OGG</span>
+                  <span class="format-tag">M4A</span>
+                  <span class="format-tag">AAC</span>
+                  <span class="format-tag">WMA</span>
+                </div>
+              </div>
+              <div class="topic-section">
+                <h3>MIDI Format</h3>
+                <p>MIDI files (.mid, .midi) require both FluidSynth and a SoundFont (.sf2) file to be installed. FluidSynth synthesizes audio from MIDI data using SoundFont instrument samples.</p>
+                <div class="format-tags">
+                  <span class="format-tag">MIDI</span>
+                </div>
+              </div>
+              <div class="topic-section">
+                <h3>Video Formats</h3>
+                <p>The following video formats are supported when FFmpeg is installed:</p>
+                <div class="format-tags">
+                  <span class="format-tag">MP4</span>
+                  <span class="format-tag">M4V</span>
+                  <span class="format-tag">MKV</span>
+                  <span class="format-tag">AVI</span>
+                  <span class="format-tag">WebM</span>
+                  <span class="format-tag">MOV</span>
+                </div>
+              </div>
+              <div class="topic-section">
+                <h3>Transcoding</h3>
+                <p>Some formats (MKV, AVI, WMA, FLAC, etc.) are not natively supported by the browser and are transcoded in real-time by FFmpeg. Transcoding quality can be configured in Settings &gt; Transcoding.</p>
+              </div>
+            }
+
+            @case ('visualizations') {
+              <div class="topic-section">
+                <h3>About Visualizations</h3>
+                <p>ONIXPlayer includes 10 real-time audio visualizations organized into two categories. Visualizations respond to the audio frequency spectrum and waveform data in real-time.</p>
+              </div>
+              <div class="topic-section">
+                <h3>Bars Category</h3>
+                <p>Bar-based visualizations display frequency data as vertical bars.</p>
+                <div class="viz-list">
+                  <div class="viz-item">
+                    <span class="viz-name">Analyzer</span>
+                    <span class="viz-description">Classic frequency spectrum analyzer with vertical bars and a gradient from bottom to top.</span>
+                  </div>
+                  <div class="viz-item">
+                    <span class="viz-name">Spectre</span>
+                    <span class="viz-description">Frequency bars with a mirrored, ghostly aesthetic.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="topic-section">
+                <h3>Waves Category</h3>
+                <p>Wave-based visualizations display waveform data as flowing lines and shapes.</p>
+                <div class="viz-list">
+                  <div class="viz-item">
+                    <span class="viz-name">Classic</span>
+                    <span class="viz-description">Traditional oscilloscope-style waveform display.</span>
+                  </div>
+                  <div class="viz-item">
+                    <span class="viz-name">Modern</span>
+                    <span class="viz-description">Smooth, flowing waveform with a contemporary visual style.</span>
+                  </div>
+                  <div class="viz-item">
+                    <span class="viz-name">Plasma</span>
+                    <span class="viz-description">Tunnel-like plasma effect that reacts to audio intensity.</span>
+                  </div>
+                  <div class="viz-item">
+                    <span class="viz-name">Infinity</span>
+                    <span class="viz-description">Figure-eight infinity pattern that morphs with the audio.</span>
+                  </div>
+                  <div class="viz-item">
+                    <span class="viz-name">Neon</span>
+                    <span class="viz-description">Bright neon-colored waveform with glowing trail effects.</span>
+                  </div>
+                  <div class="viz-item">
+                    <span class="viz-name">Onix</span>
+                    <span class="viz-description">ONIXLabs signature visualization using the brand color palette.</span>
+                  </div>
+                  <div class="viz-item">
+                    <span class="viz-name">Pulsar</span>
+                    <span class="viz-description">Pulsing circular waveform that radiates outward.</span>
+                  </div>
+                  <div class="viz-item">
+                    <span class="viz-name">Water</span>
+                    <span class="viz-description">Fluid water-like waveform with ripple effects.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="topic-section">
+                <h3>Customizing Visualizations</h3>
+                <p>Each visualization can be individually customized via Settings &gt; Visualizations. Expand the Visualizations category to see per-visualization options including sensitivity, trail intensity, line width, and glow intensity.</p>
+              </div>
+            }
+
+            @case ('window-modes') {
+              <div class="topic-section">
+                <h3>Desktop Mode</h3>
+                <p>The default window mode. Shows the full player interface with header, visualization or video content area, playlist sidebar, and transport controls at the bottom. The window can be freely resized (minimum 640x480).</p>
+              </div>
+              <div class="topic-section">
+                <h3>Fullscreen Mode</h3>
+                <p>Hides the window chrome and expands the content to fill the entire screen. Transport controls auto-hide after a configurable delay and reappear when the mouse is moved.</p>
+                <ul class="help-list">
+                  <li>Enter fullscreen: Click the expand button in the controls, or use Ctrl+Cmd+F (macOS) / F11 (Windows/Linux)</li>
+                  <li>Exit fullscreen: Press Escape, or move the mouse and click the compress button</li>
+                  <li>Configure auto-hide delay: Settings &gt; Application &gt; Controls Auto-Hide</li>
+                </ul>
+              </div>
+              <div class="topic-section">
+                <h3>Miniplayer Mode</h3>
+                <p>A compact, always-on-top window (320x200 to 640x400) that stays above other windows. Ideal for keeping playback visible while working in other applications.</p>
+                <ul class="help-list">
+                  <li>Enter miniplayer: Click the miniplayer button in the controls</li>
+                  <li>Drag to move: Click and drag anywhere on the miniplayer window</li>
+                  <li>Edge snapping: The window magnetically snaps to screen edges when dragged nearby</li>
+                  <li>Resize: Drag the window edges (constrained to 320x200 minimum, 640x400 maximum)</li>
+                  <li>The miniplayer position and size are remembered between sessions</li>
+                </ul>
+              </div>
+            }
+
+            @case ('keyboard-shortcuts') {
+              <div class="topic-section">
+                <h3>Playback Controls</h3>
+                <div class="shortcut-table">
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Space</span>
+                    <span class="shortcut-action">Play / Pause</span>
+                  </div>
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Shift + Space</span>
+                    <span class="shortcut-action">Stop</span>
+                  </div>
+                </div>
+              </div>
+              <div class="topic-section">
+                <h3>File Operations</h3>
+                <div class="shortcut-table">
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Cmd/Ctrl + O</span>
+                    <span class="shortcut-action">Open file(s)</span>
+                  </div>
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Cmd/Ctrl + Shift + O</span>
+                    <span class="shortcut-action">Open playlist</span>
+                  </div>
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Cmd/Ctrl + S</span>
+                    <span class="shortcut-action">Save playlist</span>
+                  </div>
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Cmd/Ctrl + Shift + S</span>
+                    <span class="shortcut-action">Save playlist as...</span>
+                  </div>
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Cmd/Ctrl + W</span>
+                    <span class="shortcut-action">Close current media</span>
+                  </div>
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Cmd/Ctrl + Shift + W</span>
+                    <span class="shortcut-action">Close playlist</span>
+                  </div>
+                </div>
+              </div>
+              <div class="topic-section">
+                <h3>Navigation</h3>
+                <div class="shortcut-table">
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Tab</span>
+                    <span class="shortcut-action">Toggle playlist sidebar</span>
+                  </div>
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Escape</span>
+                    <span class="shortcut-action">Exit fullscreen</span>
+                  </div>
+                </div>
+              </div>
+              <div class="topic-section">
+                <h3>Window</h3>
+                <div class="shortcut-table">
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Ctrl + Cmd + F (macOS) / F11</span>
+                    <span class="shortcut-action">Toggle fullscreen</span>
+                  </div>
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Cmd + , (macOS) / Ctrl + ,</span>
+                    <span class="shortcut-action">Open Settings</span>
+                  </div>
+                </div>
+              </div>
+              <div class="topic-section">
+                <h3>Shift-Click Modifiers</h3>
+                <p>Hold Shift while clicking transport buttons to access alternate actions:</p>
+                <div class="shortcut-table">
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Shift + Click Play/Pause</span>
+                    <span class="shortcut-action">Stop playback</span>
+                  </div>
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Shift + Click Previous</span>
+                    <span class="shortcut-action">Skip backward</span>
+                  </div>
+                  <div class="shortcut-row">
+                    <span class="shortcut-keys">Shift + Click Next</span>
+                    <span class="shortcut-action">Skip forward</span>
+                  </div>
+                </div>
+              </div>
+            }
+
+            @case ('dependencies') {
+              <div class="topic-section">
+                <h3>About Dependencies</h3>
+                <p>ONIXPlayer relies on external tools for media processing. These are managed through the Settings &gt; Dependencies panel, which can automatically install and uninstall them via your system package manager (Homebrew on macOS).</p>
+              </div>
+              <div class="topic-section">
+                <h3>FFmpeg</h3>
+                <p>FFmpeg is the primary media processing engine. It handles transcoding, format detection, and metadata extraction for all audio and video formats. Without FFmpeg, no media files can be played.</p>
+                <ul class="help-list">
+                  <li>Required for all audio formats (MP3, FLAC, WAV, OGG, M4A, AAC, WMA)</li>
+                  <li>Required for all video formats (MP4, M4V, MKV, AVI, WebM, MOV)</li>
+                  <li>Handles real-time transcoding for non-native browser formats</li>
+                  <li>Install via Settings &gt; Dependencies</li>
+                </ul>
+              </div>
+              <div class="topic-section">
+                <h3>FluidSynth</h3>
+                <p>FluidSynth is a software synthesizer that renders MIDI files into audible audio using SoundFont instrument samples. It is only needed for MIDI file playback.</p>
+                <ul class="help-list">
+                  <li>Required only for MIDI (.mid, .midi) files</li>
+                  <li>Requires at least one SoundFont (.sf2) file to produce sound</li>
+                  <li>Install via Settings &gt; Dependencies</li>
+                </ul>
+              </div>
+              <div class="topic-section">
+                <h3>SoundFonts</h3>
+                <p>SoundFont (.sf2) files contain instrument samples used by FluidSynth to synthesize MIDI audio. You need at least one SoundFont installed for MIDI playback to produce sound.</p>
+                <ul class="help-list">
+                  <li>Install SoundFonts via Settings &gt; Dependencies (under the FluidSynth section)</li>
+                  <li>Popular free SoundFonts include FluidR3, GeneralUser GS, and Arachno</li>
+                  <li>Multiple SoundFonts can be installed; the first one is used by default</li>
+                </ul>
+              </div>
+            }
+
+            @case ('playlist') {
+              <div class="topic-section">
+                <h3>Adding Files</h3>
+                <p>Files can be added to the playlist in several ways:</p>
+                <ul class="help-list">
+                  <li><strong>File menu</strong> &mdash; Use File &gt; Open (Cmd/Ctrl + O) to open the file picker dialog</li>
+                  <li><strong>Drag and drop</strong> &mdash; Drag media files from Finder or Explorer onto the player window</li>
+                  <li><strong>Eject button</strong> &mdash; Click the eject button in the transport controls to open the file picker</li>
+                </ul>
+              </div>
+              <div class="topic-section">
+                <h3>Auto-Play Behavior</h3>
+                <p>When adding files, ONIXPlayer uses smart auto-play:</p>
+                <ul class="help-list">
+                  <li><strong>Single file</strong> &mdash; Always plays immediately</li>
+                  <li><strong>Multiple files + empty playlist</strong> &mdash; Plays from the first file</li>
+                  <li><strong>Multiple files + existing playlist</strong> &mdash; Appends without interrupting current playback</li>
+                </ul>
+              </div>
+              <div class="topic-section">
+                <h3>Playlist Sidebar</h3>
+                <p>Press Tab to toggle the playlist sidebar on the right side of the window. The sidebar shows all tracks in the playlist and highlights the current track. Click any track to select and play it.</p>
+              </div>
+              <div class="topic-section">
+                <h3>Shuffle and Repeat</h3>
+                <p>Toggle shuffle and repeat modes using the buttons in the transport controls:</p>
+                <ul class="help-list">
+                  <li><strong>Shuffle</strong> &mdash; Randomizes playback order (Fisher-Yates shuffle)</li>
+                  <li><strong>Repeat</strong> &mdash; Loops the playlist after the last track finishes</li>
+                </ul>
+              </div>
+              <div class="topic-section">
+                <h3>Saving and Loading Playlists</h3>
+                <p>ONIXPlayer can save and load playlists using the .opp (ONIXPlayer Playlist) format:</p>
+                <ul class="help-list">
+                  <li><strong>Save Playlist</strong> (Cmd/Ctrl + S) &mdash; Saves to the current file, or shows Save As dialog if no file is open</li>
+                  <li><strong>Save Playlist As</strong> (Cmd/Ctrl + Shift + S) &mdash; Always shows the save dialog</li>
+                  <li><strong>Open Playlist</strong> (Cmd/Ctrl + Shift + O) &mdash; Opens a .opp file, replacing the current playlist</li>
+                </ul>
+              </div>
+            }
+
+            @case ('settings') {
+              <div class="topic-section">
+                <h3>Accessing Settings</h3>
+                <p>Open Settings with Cmd + , on macOS or Ctrl + , on Windows/Linux, or via the View &gt; Options menu item. The settings view replaces the player and the close button (macOS red traffic light) returns to the player.</p>
+              </div>
+              <div class="topic-section">
+                <h3>Settings Categories</h3>
+                <ul class="help-list">
+                  <li><strong>Application</strong> &mdash; Server port configuration, controls auto-hide delay</li>
+                  <li><strong>Appearance</strong> &mdash; Glass effect (window transparency), background color, and window tint controls with HSL/HSLA sliders</li>
+                  <li><strong>Dependencies</strong> &mdash; Install/uninstall FFmpeg, FluidSynth, and SoundFont files</li>
+                  <li><strong>Playback</strong> &mdash; Default volume, crossfade duration, previous track threshold, skip duration, and video aspect ratio</li>
+                  <li><strong>Transcoding</strong> &mdash; Video quality preset and audio bitrate for transcoded formats</li>
+                  <li><strong>Visualizations</strong> &mdash; Default visualization type, max frame rate, FFT size, and per-visualization customization</li>
+                </ul>
+              </div>
+              <div class="topic-section">
+                <h3>Glass Effect</h3>
+                <p>On macOS and Windows, ONIXPlayer supports native window transparency with blur effects (vibrancy on macOS, acrylic on Windows). Enable this in Settings &gt; Appearance. The glass effect requires an application restart to take effect.</p>
+              </div>
+            }
+          }
+        </div>
+      }
+    </div>
+  </div>
+</div>

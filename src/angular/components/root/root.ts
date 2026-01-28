@@ -29,6 +29,7 @@ import {LayoutOutlet} from '../layout/layout-outlet/layout-outlet';
 import {LayoutControls} from '../layout/layout-controls/layout-controls';
 import {ConfigurationView} from '../configuration/configuration-view/configuration-view';
 import {AboutView} from '../about/about-view/about-view';
+import {HelpTopicsView} from '../help/help-topics-view/help-topics-view';
 import {MiniplayerControls} from '../miniplayer/miniplayer-controls';
 import {ElectronService} from '../../services/electron.service';
 import {MediaPlayerService} from '../../services/media-player.service';
@@ -59,7 +60,7 @@ import {buildFileDialogFilters} from '../../constants/media.constants';
  */
 @Component({
   selector: 'app-root',
-  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView, AboutView, MiniplayerControls],
+  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView, AboutView, HelpTopicsView, MiniplayerControls],
   templateUrl: './root.html',
   styleUrl: './root.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -116,6 +117,9 @@ export class Root implements OnDestroy {
 
   /** Whether the about view is displayed (about mode) */
   public readonly isAboutMode: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /** Whether the help topics view is displayed (help mode) */
+  public readonly isHelpMode: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** Internal signal tracking if controls should be visible in fullscreen */
   private readonly controlsVisible: ReturnType<typeof signal<boolean>> = signal<boolean>(true);
@@ -232,6 +236,38 @@ export class Root implements OnDestroy {
       }
     });
 
+    // React to "Show Help" menu event
+    effect((): void => {
+      const trigger: number = this.electron.menuShowHelp();
+      if (trigger > 0) {
+        void this.enterHelpMode();
+      }
+    });
+
+    // React to "Open Playlist" menu event
+    effect((): void => {
+      const trigger: number = this.electron.menuOpenPlaylist();
+      if (trigger > 0) {
+        void this.openPlaylistFromMenu();
+      }
+    });
+
+    // React to "Save Playlist" menu event
+    effect((): void => {
+      const trigger: number = this.electron.menuSavePlaylist();
+      if (trigger > 0) {
+        void this.savePlaylist();
+      }
+    });
+
+    // React to "Save Playlist As" menu event
+    effect((): void => {
+      const trigger: number = this.electron.menuSavePlaylistAs();
+      if (trigger > 0) {
+        void this.savePlaylistAs();
+      }
+    });
+
     // React to "Aspect Ratio" menu event
     effect((): void => {
       const mode: string = this.electron.menuSelectAspectMode();
@@ -249,6 +285,8 @@ export class Root implements OnDestroy {
           this.exitConfigurationMode();
         } else if (untracked((): boolean => this.isAboutMode())) {
           this.exitAboutMode();
+        } else if (untracked((): boolean => this.isHelpMode())) {
+          this.exitHelpMode();
         }
       }
     });
@@ -349,7 +387,7 @@ export class Root implements OnDestroy {
 
       // Only toggle playlist in desktop mode (not fullscreen, not miniplayer)
       const isDesktopMode: boolean = !this.isFullscreen() && !this.isMiniplayer();
-      if (isDesktopMode && !this.isConfigurationMode() && !this.isAboutMode()) {
+      if (isDesktopMode && !this.isConfigurationMode() && !this.isAboutMode() && !this.isHelpMode()) {
         this.layoutOutlet?.togglePlaylist();
       }
     }
@@ -514,6 +552,45 @@ export class Root implements OnDestroy {
   }
 
   // ============================================================================
+  // Public Methods - Help Mode
+  // ============================================================================
+
+  /**
+   * Enters help mode, displaying the help topics view.
+   * Called when the Help Topics menu item is clicked.
+   * Exits fullscreen/miniplayer mode first to ensure proper window display.
+   *
+   * Uses untracked() to prevent signal reads from registering as effect
+   * dependencies when called from an effect (e.g., menu event handler).
+   */
+  public async enterHelpMode(): Promise<void> {
+    // Exit fullscreen if active (untracked to avoid effect dependency)
+    if (untracked((): boolean => this.isFullscreen())) {
+      await this.electron.exitFullscreen();
+    }
+    // Exit miniplayer if active (untracked to avoid effect dependency)
+    if (untracked((): boolean => this.isMiniplayer())) {
+      await this.electron.exitMiniplayer();
+    }
+    // Exit configuration and about modes if active
+    this.isConfigurationMode.set(false);
+    this.isAboutMode.set(false);
+    this.isHelpMode.set(true);
+    // Notify main process so close button returns to media player instead of quitting
+    await this.electron.setConfigurationMode(true);
+  }
+
+  /**
+   * Exits help mode, returning to the media player view.
+   * Called when the window close button is pressed while in help mode.
+   */
+  public exitHelpMode(): void {
+    this.isHelpMode.set(false);
+    // Notify main process that we're no longer in an overlay mode
+    void this.electron.setConfigurationMode(false);
+  }
+
+  // ============================================================================
   // Public Methods - Miniplayer Controls Visibility
   // ============================================================================
 
@@ -560,5 +637,45 @@ export class Root implements OnDestroy {
         this.controlsVisible.set(false);
       }, delaySeconds * 1000);
     }
+  }
+
+  /**
+   * Opens a playlist file (.opp) from the menu.
+   * Shows the open playlist dialog and loads the selected file.
+   */
+  private async openPlaylistFromMenu(): Promise<void> {
+    if (this.deps.noDependenciesInstalled()) return;
+
+    const filePath: string | null = await this.electron.openPlaylistDialog();
+    if (!filePath) return;
+
+    await this.electron.loadPlaylistFromFile(filePath);
+  }
+
+  /**
+   * Saves the current playlist.
+   * If playlist was loaded from a .opp file, saves to that path.
+   * Otherwise, shows the Save As dialog.
+   */
+  private async savePlaylist(): Promise<void> {
+    // Check if there's an existing source path
+    const sourcePath: string | null = await this.electron.getPlaylistSourcePath();
+    if (sourcePath) {
+      // Save to existing file
+      await this.electron.savePlaylistToFile(sourcePath);
+    } else {
+      // No existing source, show Save As dialog
+      await this.savePlaylistAs();
+    }
+  }
+
+  /**
+   * Shows the Save As dialog and saves the playlist to the selected path.
+   */
+  private async savePlaylistAs(): Promise<void> {
+    const filePath: string | null = await this.electron.savePlaylistDialog();
+    if (!filePath) return;
+
+    await this.electron.savePlaylistToFile(filePath);
   }
 }

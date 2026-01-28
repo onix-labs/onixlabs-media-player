@@ -339,27 +339,27 @@ describe('application-menu', (): void => {
       createApplicationMenu(callbacks, { hasMedia: false });
       vi.mocked(Menu.buildFromTemplate).mockClear();
 
-      // Without media, Close and Close All should be disabled
+      // Without media, Close and Close Playlist should be disabled
       updateMenuState({ hasMedia: false });
 
       let template: Record<string, unknown>[] = getCapturedTemplate();
       let fileMenu: Record<string, unknown> | undefined = findMenu(template, 'File');
       let submenu: Record<string, unknown>[] = getSubmenu(fileMenu!);
       let closeItem: Record<string, unknown> | undefined = findSubmenuItem(submenu, 'Close');
-      let closeAllItem: Record<string, unknown> | undefined = findSubmenuItem(submenu, 'Close All');
+      let closePlaylistItem: Record<string, unknown> | undefined = findSubmenuItem(submenu, 'Close Playlist');
       expect(closeItem!['enabled']).toBe(false);
-      expect(closeAllItem!['enabled']).toBe(false);
+      expect(closePlaylistItem!['enabled']).toBe(false);
 
-      // With media, Close and Close All should be enabled
+      // With media, Close and Close Playlist should be enabled
       updateMenuState({ hasMedia: true });
 
       template = getCapturedTemplate();
       fileMenu = findMenu(template, 'File');
       submenu = getSubmenu(fileMenu!);
       closeItem = findSubmenuItem(submenu, 'Close');
-      closeAllItem = findSubmenuItem(submenu, 'Close All');
+      closePlaylistItem = findSubmenuItem(submenu, 'Close Playlist');
       expect(closeItem!['enabled']).toBe(true);
-      expect(closeAllItem!['enabled']).toBe(true);
+      expect(closePlaylistItem!['enabled']).toBe(true);
     });
 
     it('does not rebuild menu if createApplicationMenu was not called first', (): void => {

@@ -21,7 +21,7 @@
 
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { createHash } from 'crypto';
-import { createReadStream, statSync, existsSync, readFileSync, mkdirSync, unlinkSync, Stats } from 'fs';
+import { createReadStream, statSync, existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, Stats } from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { SettingsManager } from './settings-manager.js';
@@ -33,7 +33,7 @@ import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdat
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
 import { SSEManager } from './sse-manager.js';
 import { PlaylistManager } from './playlist-manager.js';
-import type { PlaylistItem, MediaInfo, PlaybackState } from './media-types.js';
+import type { PlaylistItem, PlaylistState, MediaInfo, PlaybackState } from './media-types.js';
 
 // Re-export types that were previously exported from this module
 export type { PlaylistItem, MediaInfo } from './media-types.js';
@@ -401,6 +401,12 @@ export class UnifiedMediaServer {
         await this.handlePlaylistShuffle(req, res);
       } else if (pathname === '/playlist/repeat' && method === 'POST') {
         await this.handlePlaylistRepeat(req, res);
+      } else if (pathname === '/playlist/save' && method === 'POST') {
+        await this.handlePlaylistSave(req, res);
+      } else if (pathname === '/playlist/load' && method === 'POST') {
+        await this.handlePlaylistLoad(req, res);
+      } else if (pathname === '/playlist/source' && method === 'GET') {
+        this.handlePlaylistSource(res);
       } else if (pathname === '/settings' && method === 'GET') {
         this.handleSettingsGet(res);
       } else if (pathname === '/settings/visualization' && method === 'PUT') {
@@ -1809,6 +1815,163 @@ export class UnifiedMediaServer {
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, repeatEnabled: enabled }));
+  }
+
+  /**
+   * Handles POST /playlist/save requests.
+   * Saves the current playlist to a .opp (ONIXPlayer Playlist) file.
+   *
+   * @param req - Request with { filePath: string } body
+   * @param res - HTTP response
+   */
+  private async handlePlaylistSave(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const { filePath }: { filePath: string } = JSON.parse(body);
+
+    if (!filePath) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Missing filePath' }));
+      return;
+    }
+
+    const state: PlaylistState = this.playlist.getState();
+
+    if (state.items.length === 0) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Playlist is empty' }));
+      return;
+    }
+
+    const oppData: object = {
+      format: 'onixplayer-playlist',
+      version: 1,
+      savedAt: new Date().toISOString(),
+      items: state.items.map((item: PlaylistItem): object => ({
+        filePath: item.filePath,
+        title: item.title,
+        artist: item.artist,
+        album: item.album,
+        duration: item.duration,
+        type: item.type,
+        width: item.width,
+        height: item.height,
+      })),
+    };
+
+    try {
+      writeFileSync(filePath, JSON.stringify(oppData, null, 2), 'utf-8');
+      this.playlist.setSourceFilePath(filePath);
+      playlistLogger.info(`Playlist saved to: ${filePath}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, filePath }));
+    } catch (err) {
+      playlistLogger.error(`Failed to save playlist: ${(err as Error).message}`);
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+  }
+
+  /**
+   * Handles POST /playlist/load requests.
+   * Loads a playlist from a .opp (ONIXPlayer Playlist) file, replacing the current playlist.
+   *
+   * @param req - Request with { filePath: string } body
+   * @param res - HTTP response
+   */
+  private async handlePlaylistLoad(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const { filePath }: { filePath: string } = JSON.parse(body);
+
+    if (!filePath) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Missing filePath' }));
+      return;
+    }
+
+    // Validate file exists
+    if (!existsSync(filePath)) {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: 'File not found' }));
+      return;
+    }
+
+    try {
+      const content: string = readFileSync(filePath, 'utf-8');
+      const data: unknown = JSON.parse(content);
+
+      // Validate format
+      if (
+        typeof data !== 'object' || data === null ||
+        (data as Record<string, unknown>).format !== 'onixplayer-playlist' ||
+        !Array.isArray((data as Record<string, unknown>).items)
+      ) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: 'Invalid playlist file format' }));
+        return;
+      }
+
+      const oppData: { items: Array<Omit<PlaylistItem, 'id'>> } = data as { items: Array<Omit<PlaylistItem, 'id'>> };
+
+      // Stop current playback
+      this.playback.state = 'idle';
+      this.playback.currentMedia = null;
+      this.playback.currentTime = 0;
+      this.playback.duration = 0;
+      this.stopTimeTracking();
+
+      // Clear and replace playlist
+      this.playlist.clear();
+      const added: PlaylistItem[] = this.playlist.addItems(oppData.items);
+
+      // Track the source file
+      this.playlist.setSourceFilePath(filePath);
+
+      // Broadcast state updates
+      this.broadcastState();
+      this.broadcastTime();
+      this.onPlaylistCountChangeCallback?.(added.length);
+
+      playlistLogger.info(`Playlist loaded from: ${filePath} (${added.length} items)`);
+
+      // Auto-play first item if playlist has items
+      if (added.length > 0) {
+        const firstItem: PlaylistItem = added[0];
+        this.playlist.selectItem(firstItem.id);
+
+        this.playback.state = 'loading';
+        this.broadcastState();
+
+        const mediaInfo: MediaInfo = await this.probeMedia(firstItem.filePath);
+        this.playback.currentMedia = mediaInfo;
+        this.playback.duration = mediaInfo.duration;
+        this.playback.currentTime = 0;
+        this.playback.state = 'playing';
+        this.startTime = Date.now();
+
+        this.sse.broadcast('playback:loaded', mediaInfo);
+        this.broadcastState();
+        this.broadcastTime();
+        this.startTimeTracking();
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, count: added.length, filePath }));
+    } catch (err) {
+      playlistLogger.error(`Failed to load playlist: ${(err as Error).message}`);
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+  }
+
+  /**
+   * Handles GET /playlist/source requests.
+   * Returns the source .opp file path of the current playlist (if loaded from file).
+   *
+   * @param res - HTTP response
+   */
+  private handlePlaylistSource(res: Readonly<ServerResponse>): void {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ filePath: this.playlist.getSourceFilePath() }));
   }
 
   // ============================================================================

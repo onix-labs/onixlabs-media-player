@@ -4,16 +4,19 @@
 @if (isAboutMode()) {
   <app-about-view/>
 }
+@if (isHelpMode()) {
+  <app-help-topics-view/>
+}
 @if (isMiniplayer()) {
   <div class="miniplayer-container"
-       [class.hidden]="isConfigurationMode() || isAboutMode()"
+       [class.hidden]="isConfigurationMode() || isAboutMode() || isHelpMode()"
        (mouseenter)="onMiniplayerMouseEnter()"
        (mouseleave)="onMiniplayerMouseLeave()">
     <app-layout-outlet class="miniplayer-content" (openDependencySettings)="enterConfigurationMode('dependencies')"/>
     <app-miniplayer-controls class="miniplayer-overlay" [class.controls-visible]="showControls()"/>
   </div>
 } @else {
-  <div class="media-player-view" [class.hidden]="isConfigurationMode() || isAboutMode()">
+  <div class="media-player-view" [class.hidden]="isConfigurationMode() || isAboutMode() || isHelpMode()">
     @if (!isFullscreen()) {
       <app-layout-header/>
     }

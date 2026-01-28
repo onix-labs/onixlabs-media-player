@@ -56,9 +56,13 @@ const ASPECT_RATIO_OPTIONS: ReadonlyArray<{id: string; name: string}> = [
 export interface MenuCallbacks {
   onShowConfig: () => void;
   onShowAbout: () => void;
+  onShowHelp: () => void;
   onOpenFile: () => void;
+  onOpenPlaylist: () => void;
+  onSavePlaylist: () => void;
+  onSavePlaylistAs: () => void;
   onCloseMedia: () => void;
-  onCloseAll: () => void;
+  onClosePlaylist: () => void;
   onToggleFullscreen: () => void;
   onTogglePlayPause: () => void;
   onStop: () => void;
@@ -142,9 +146,23 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
         click: callbacks.onOpenFile
       },
       {
-        label: 'Open URL...',
-        accelerator: 'CmdOrCtrl+U',
-        enabled: false // Placeholder
+        label: 'Open Playlist',
+        accelerator: 'CmdOrCtrl+Shift+O',
+        enabled: state.openEnabled,
+        click: callbacks.onOpenPlaylist
+      },
+      {type: 'separator'},
+      {
+        label: 'Save Playlist As...',
+        accelerator: 'CmdOrCtrl+Shift+S',
+        enabled: state.hasMedia,
+        click: callbacks.onSavePlaylistAs
+      },
+      {
+        label: 'Save Playlist',
+        accelerator: 'CmdOrCtrl+S',
+        enabled: state.hasMedia,
+        click: callbacks.onSavePlaylist
       },
       {type: 'separator'},
       {
@@ -154,35 +172,10 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
         click: callbacks.onCloseMedia
       },
       {
-        label: 'Close All',
+        label: 'Close Playlist',
         accelerator: 'CmdOrCtrl+Shift+W',
         enabled: state.hasMedia,
-        click: callbacks.onCloseAll
-      },
-      {type: 'separator'},
-      {
-        label: 'New Playlist',
-        accelerator: 'CmdOrCtrl+N',
-        enabled: false // Placeholder
-      },
-      {
-        label: 'Edit Current Playlist',
-        enabled: false // Placeholder
-      },
-      {type: 'separator'},
-      {
-        label: 'Save As...',
-        accelerator: 'CmdOrCtrl+Shift+S',
-        enabled: false // Placeholder
-      },
-      {
-        label: 'Save Playlist',
-        accelerator: 'CmdOrCtrl+S',
-        enabled: false // Placeholder
-      },
-      {
-        label: 'Save Playlist As...',
-        enabled: false // Placeholder
+        click: callbacks.onClosePlaylist
       },
       ...(!isMac ? [
         {type: 'separator'} as MenuItemConstructorOptions,
@@ -278,11 +271,7 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
     submenu: [
       {
         label: 'Help Topics',
-        enabled: false // Placeholder
-      },
-      {
-        label: 'Getting Started',
-        enabled: false // Placeholder
+        click: callbacks.onShowHelp
       },
       {type: 'separator'},
       {
