@@ -33,10 +33,10 @@ import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdat
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
 import { SSEManager } from './sse-manager.js';
 import { PlaylistManager } from './playlist-manager.js';
-import type { PlaylistItem, PlaylistState, MediaInfo, PlaybackState, SubtitleTrack } from './media-types.js';
+import type { PlaylistItem, PlaylistState, MediaInfo, PlaybackState, SubtitleTrack, AudioTrack } from './media-types.js';
 
 // Re-export types that were previously exported from this module
-export type { PlaylistItem, MediaInfo, SubtitleTrack } from './media-types.js';
+export type { PlaylistItem, MediaInfo, SubtitleTrack, AudioTrack } from './media-types.js';
 
 // ============================================================================
 // Constants
@@ -785,6 +785,8 @@ export class UnifiedMediaServer {
    */
   private serveTranscodedFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string, url: Readonly<URL>): void {
     const seekTime: string = url.searchParams.get('t') || '0';
+    const audioTrackParam: string | null = url.searchParams.get('audioTrack');
+    const audioTrackIndex: number = audioTrackParam !== null ? parseInt(audioTrackParam, 10) : 0;
     const ext: string = path.extname(filePath).toLowerCase();
 
     // Determine if this is audio-only transcoding
@@ -803,7 +805,7 @@ export class UnifiedMediaServer {
     // Convert audio bitrate to FFmpeg format
     const audioBitrateStr: string = `${transcodingSettings.audioBitrate}k`;
 
-    ffmpegLogger.info(`Transcoding: ${path.basename(filePath)} (seek: ${seekTime}s, audio-only: ${isAudioTranscode}, crf: ${crfValue}, audio: ${audioBitrateStr})`);
+    ffmpegLogger.info(`Transcoding: ${path.basename(filePath)} (seek: ${seekTime}s, audio-only: ${isAudioTranscode}, audioTrack: ${audioTrackIndex}, crf: ${crfValue}, audio: ${audioBitrateStr})`);
 
     let ffmpegArgs: string[];
 
@@ -828,12 +830,20 @@ export class UnifiedMediaServer {
       });
     } else {
       // Video transcoding optimized for real-time 4K/UHD playback
+      // Only add explicit stream mapping when selecting a non-default audio track
+      // For default (audioTrackIndex=0), let FFmpeg use its default stream selection
+      // This avoids compatibility issues with complex MKV files
+      const streamMapping: string[] = audioTrackIndex > 0
+        ? ['-map', '0:v:0', '-map', `0:a:${audioTrackIndex}`]
+        : [];
+
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
         '-threads', '0',            // Use all available CPU cores
         '-ss', seekTime,            // Seek before input (fast seek)
         '-i', filePath,
+        ...streamMapping,           // Stream mapping (only for non-default audio track)
         '-c:v', 'libx264',
         '-preset', 'ultrafast',     // Fastest encoding for real-time 4K
         '-tune', 'zerolatency',     // Minimize latency
@@ -1495,6 +1505,23 @@ export class UnifiedMediaServer {
               };
             }) : undefined;
 
+          // Extract audio tracks (only for video files with multiple audio streams)
+          const audioStreams: Array<Record<string, unknown>> = streams
+            .filter((s: Readonly<Record<string, unknown>>): boolean => s.codec_type === 'audio');
+          const audioTracks: AudioTrack[] | undefined = hasVideo && audioStreams.length > 1 ? audioStreams
+            .map((s: Readonly<Record<string, unknown>>, mapIndex: number): AudioTrack => {
+              const streamTags: Record<string, string> = (s.tags as Record<string, string>) || {};
+              const disposition: Record<string, number> = (s.disposition as Record<string, number>) || {};
+              return {
+                index: mapIndex,  // Use map index for FFmpeg -map 0:a:{index}
+                language: streamTags.language || 'und',
+                title: streamTags.title || this.getLanguageDisplayName(streamTags.language || 'und'),
+                codec: s.codec_name as string,
+                channels: (s.channels as number) || 2,
+                default: disposition.default === 1,
+              };
+            }) : undefined;
+
           // Extract metadata tags (handle various case conventions)
           const tags: Record<string, string> = (format.tags as Record<string, string>) || {};
 
@@ -1507,6 +1534,7 @@ export class UnifiedMediaServer {
             filePath,
             width: videoStream?.width as number | undefined,
             height: videoStream?.height as number | undefined,
+            audioTracks: audioTracks && audioTracks.length > 0 ? audioTracks : undefined,
             subtitleTracks: subtitleTracks && subtitleTracks.length > 0 ? subtitleTracks : undefined,
           });
         } catch (e) {

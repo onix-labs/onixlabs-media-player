@@ -17,14 +17,14 @@
  */
 
 import {Injectable, NgZone, OnDestroy, signal} from '@angular/core';
-import type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack} from '../types/electron';
+import type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack, AudioTrack} from '../types/electron';
 import type {AppSettings} from './settings.service';
 
 /**
  * Re-export types for consumers that import from this service.
  * This allows components to import both the service and types from one location.
  */
-export type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack};
+export type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack, AudioTrack};
 
 /**
  * Service that manages communication with Electron and the media server.
@@ -153,6 +153,9 @@ export class ElectronService implements OnDestroy {
 
   /** Cached subtitle track selections per file path (persists across view mode changes) */
   private readonly subtitleSelections: Map<string, number> = new Map();
+
+  /** Cached audio track selections per file path (persists across view mode changes) */
+  private readonly audioSelections: Map<string, number> = new Map();
 
   /** Cleanup function for exit-configuration-mode listener */
   private exitConfigurationModeCleanup: (() => void) | null = null;
@@ -1336,6 +1339,39 @@ export class ElectronService implements OnDestroy {
    */
   public clearSubtitleSelection(filePath: string): void {
     this.subtitleSelections.delete(filePath);
+  }
+
+  // ============================================================================
+  // Audio Selection Cache (persists across view mode changes)
+  // ============================================================================
+
+  /**
+   * Gets the cached audio track selection for a file path.
+   *
+   * @param filePath - The media file path
+   * @returns The selected track index, or undefined if no cached selection
+   */
+  public getAudioSelection(filePath: string): number | undefined {
+    return this.audioSelections.get(filePath);
+  }
+
+  /**
+   * Caches the audio track selection for a file path.
+   *
+   * @param filePath - The media file path
+   * @param trackIndex - The selected track index (0-based)
+   */
+  public setAudioSelection(filePath: string, trackIndex: number): void {
+    this.audioSelections.set(filePath, trackIndex);
+  }
+
+  /**
+   * Clears the audio selection cache for a file path.
+   *
+   * @param filePath - The media file path
+   */
+  public clearAudioSelection(filePath: string): void {
+    this.audioSelections.delete(filePath);
   }
 
   // ============================================================================
