@@ -5,8 +5,7 @@
  * - Component creation
  * - Template data (version, versionInfo, audioExtensions, videoExtensions,
  *   dependencies, githubUrl, onixlabsUrl, currentYear)
- * - Event handlers (onClose emitting close output, openExternal with and
- *   without the Electron preload bridge)
+ * - Event handlers (openExternal with and without the Electron preload bridge)
  *
  * Since AboutView reads `window.mediaPlayer?.getVersionInfo()` during class
  * field initialization, versionInfo will be null when running outside Electron.
@@ -129,17 +128,6 @@ describe('AboutView', (): void => {
   // ===========================================================================
 
   describe('event handlers', (): void => {
-    it('onClose should emit close event', (): void => {
-      let closeEmitted: boolean = false;
-      component.close.subscribe((): void => {
-        closeEmitted = true;
-      });
-
-      component.onClose();
-
-      expect(closeEmitted).toBe(true);
-    });
-
     it('openExternal should call window.mediaPlayer.openExternal when available', (): void => {
       const mockOpenExternal: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue(undefined);
       (window as unknown as Record<string, unknown>)['mediaPlayer'] = {

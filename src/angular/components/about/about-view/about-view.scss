@@ -16,33 +16,13 @@
   overflow: hidden;
 }
 
-// Header
+// Header (draggable region for macOS traffic lights)
 .about-header {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   padding: 0.5rem;
   -webkit-app-region: drag;
-
-  .close-button {
-    -webkit-app-region: no-drag;
-    background: $white-10;
-    border: none;
-    border-radius: 6px;
-    color: $white-70;
-    width: 1.5rem;
-    height: 1.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease;
-
-    &:hover {
-      background: $white-15;
-      color: white;
-    }
-  }
 }
 
 // Content

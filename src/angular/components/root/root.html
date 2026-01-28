@@ -2,7 +2,7 @@
   <app-configuration-view [initialCategory]="configInitialCategory()"/>
 }
 @if (isAboutMode()) {
-  <app-about-view (close)="exitAboutMode()"/>
+  <app-about-view/>
 }
 @if (isMiniplayer()) {
   <div class="miniplayer-container"

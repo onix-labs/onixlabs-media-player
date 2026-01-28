@@ -230,7 +230,7 @@ Based on independent review with all 31 action items resolved:
 - Dependencies section with links: FFmpeg, FluidSynth (opens in default browser)
 - Links section: GitHub repository, onixlabs.io (opens in default browser)
 - Copyright footer with dynamic year
-- Close button returns to media player view
+- **Window close behavior**: Same as configuration view — closing the window returns to the media player instead of quitting the application (reuses `setConfigurationMode` IPC)
 - External links use Electron shell.openExternal() for proper OS browser launch
 
 ### Dependency Management
@@ -578,7 +578,7 @@ The `Canvas2DVisualization` base class provides:
 - Atomic file writes (write to temp, then rename) prevent corruption
 - Real-time sync via SSE (`settings:updated` event)
 - Settings fetched on service init (handles missed initial SSE event)
-- **Close button behavior**: In settings view, the window close button (macOS red traffic light) returns to the media player instead of quitting the application
+- **Close button behavior**: In settings view or about view, the window close button (macOS red traffic light) returns to the media player instead of quitting the application
 
 ### Available Settings
 
