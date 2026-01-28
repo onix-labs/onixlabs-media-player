@@ -8,15 +8,8 @@
      (dragover)="onDragOver($event)"
      (dragleave)="onDragLeave($event)"
      (drop)="onDrop($event)">
-  <video #videoElement crossorigin="anonymous">
-    @for (track of subtitleTracks(); track track.index) {
-      <track
-        kind="subtitles"
-        [src]="getSubtitleUrl(track)"
-        [srclang]="track.language"
-        [label]="track.title"
-        [default]="track.default"
-      />
-    }
-  </video>
+  <video #videoElement crossorigin="anonymous"></video>
+  @if (subtitleText()) {
+    <div class="subtitle-overlay">{{ subtitleText() }}</div>
+  }
 </div>

@@ -629,6 +629,155 @@
               </div>
             }
 
+            @case ('subtitles') {
+              <div class="setting-group">
+                <!-- Font Size -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="subtitle-font-size">Font Size</label>
+                    <p class="setting-description">
+                      Subtitle text size. 100% is the default browser size.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="subtitle-font-size"
+                      min="50"
+                      max="200"
+                      step="10"
+                      [value]="currentSubtitleFontSize()"
+                      (input)="onSubtitleFontSizeChange($event)"
+                    />
+                    <span class="slider-value">{{ formatSubtitleFontSize() }}</span>
+                  </div>
+                </div>
+
+                <!-- Font Color -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="subtitle-font-color">Font Color</label>
+                    <p class="setting-description">
+                      Text color for subtitles.
+                    </p>
+                  </div>
+                  <div class="setting-control color-control">
+                    <input
+                      type="color"
+                      id="subtitle-font-color"
+                      [value]="currentSubtitleFontColor()"
+                      (input)="onSubtitleFontColorChange($event)"
+                    />
+                    <span class="color-value">{{ currentSubtitleFontColor() }}</span>
+                  </div>
+                </div>
+
+                <!-- Background Color -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="subtitle-background-color">Background Color</label>
+                    <p class="setting-description">
+                      Background color behind subtitle text.
+                    </p>
+                  </div>
+                  <div class="setting-control color-control">
+                    <input
+                      type="color"
+                      id="subtitle-background-color"
+                      [value]="currentSubtitleBackgroundColor()"
+                      (input)="onSubtitleBackgroundColorChange($event)"
+                    />
+                    <span class="color-value">{{ currentSubtitleBackgroundColor() }}</span>
+                  </div>
+                </div>
+
+                <!-- Background Opacity -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="subtitle-background-opacity">Background Opacity</label>
+                    <p class="setting-description">
+                      Transparency of the subtitle background. 0% is fully transparent.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="subtitle-background-opacity"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      [value]="currentSubtitleBackgroundOpacity()"
+                      (input)="onSubtitleBackgroundOpacityChange($event)"
+                    />
+                    <span class="slider-value">{{ formatSubtitleBackgroundOpacity() }}</span>
+                  </div>
+                </div>
+
+                <!-- Font Family -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="subtitle-font-family">Font Family</label>
+                    <p class="setting-description">
+                      The typeface used for subtitle text.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="subtitle-font-family"
+                      (change)="onSubtitleFontFamilyChange($event)"
+                    >
+                      @for (option of subtitleFontFamilyOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentSubtitleFontFamily()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Text Shadow -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="subtitle-text-shadow">Text Shadow</label>
+                    <p class="setting-description">
+                      Adds a shadow behind text for better visibility on bright backgrounds.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <label class="toggle">
+                      <input
+                        type="checkbox"
+                        id="subtitle-text-shadow"
+                        [checked]="currentSubtitleTextShadow()"
+                        (change)="onSubtitleTextShadowChange($event)"
+                      />
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Preview -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label>Preview</label>
+                    <p class="setting-description">
+                      How subtitles will appear during video playback.
+                    </p>
+                  </div>
+                  <div class="setting-control subtitle-preview">
+                    <div class="subtitle-preview-container">
+                      <span
+                        class="subtitle-preview-text"
+                        [style.fontSize.%]="currentSubtitleFontSize()"
+                        [style.color]="currentSubtitleFontColor()"
+                        [style.backgroundColor]="subtitleBackgroundPreviewColor()"
+                        [style.fontFamily]="currentSubtitleFontFamily()"
+                        [style.textShadow]="currentSubtitleTextShadow() ? '1px 1px 2px rgba(0,0,0,0.8), -1px -1px 2px rgba(0,0,0,0.8)' : 'none'"
+                      >Sample Subtitle Text</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            }
+
             @case ('transcoding') {
               <div class="setting-group">
                 <div class="setting-row">

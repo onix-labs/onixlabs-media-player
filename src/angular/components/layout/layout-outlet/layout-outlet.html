@@ -55,8 +55,7 @@
           <i class="fa-solid fa-caret-right"></i>
         </button>
         <span class="visualization-name">{{ aspectModeDisplayName() }}</span>
-        @if (getSubtitleTracks().length > 0) {
-          <div class="subtitle-selector">
+        <div class="subtitle-selector">
             <button
               tabindex="-1"
               class="subtitle-button"
@@ -89,10 +88,27 @@
                     }
                   </button>
                 }
+                @if (hasExternalSubtitle()) {
+                  <button
+                    class="subtitle-option"
+                    [class.selected]="isSubtitleTrackSelected(-2)"
+                    (click)="selectSubtitleTrack(-2)"
+                    (mouseup)="$any($event.currentTarget).blur()">
+                    <i class="fa-solid fa-check" [style.visibility]="isSubtitleTrackSelected(-2) ? 'visible' : 'hidden'"></i>
+                    <span>External</span>
+                    <span class="subtitle-badge">File</span>
+                  </button>
+                }
+                <button
+                  class="subtitle-option load-external"
+                  (click)="loadExternalSubtitle()"
+                  (mouseup)="$any($event.currentTarget).blur()">
+                  <i class="fa-solid fa-folder-open"></i>
+                  <span>Load External...</span>
+                </button>
               </div>
             }
           </div>
-        }
       }
       <div class="spacer"></div>
       <button tabindex="-1" class="playlist-toggle" (click)="togglePlaylist()" (mouseup)="$any($event.currentTarget).blur()" title="Toggle playlist">

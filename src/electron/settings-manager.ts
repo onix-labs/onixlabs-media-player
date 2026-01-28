@@ -102,6 +102,11 @@ export type AudioBitrate = 128 | 192 | 256 | 320;
 export type VideoAspectMode = 'default' | '4:3' | '16:9' | 'fit';
 
 /**
+ * Subtitle font family options.
+ */
+export type SubtitleFontFamily = 'sans-serif' | 'serif' | 'monospace';
+
+/**
  * macOS visual effect state.
  * - followWindow: Effect follows window active state
  * - active: Always active (even when window is inactive)
@@ -190,6 +195,24 @@ export interface AppearanceSettings {
 }
 
 /**
+ * Subtitle appearance settings.
+ */
+export interface SubtitleSettings {
+  /** Font size as percentage (50-200, default 100) */
+  readonly fontSize: number;
+  /** Font color in hex format (default '#ffffff') */
+  readonly fontColor: string;
+  /** Background color in hex format (default '#000000') */
+  readonly backgroundColor: string;
+  /** Background opacity (0-1, default 0.75) */
+  readonly backgroundOpacity: number;
+  /** Font family (sans-serif, serif, monospace, default 'sans-serif') */
+  readonly fontFamily: SubtitleFontFamily;
+  /** Whether to show text shadow for better visibility (default true) */
+  readonly textShadow: boolean;
+}
+
+/**
  * Window bounds (position and size).
  */
 export interface WindowBounds {
@@ -230,6 +253,8 @@ export interface AppSettings {
   readonly transcoding: TranscodingSettings;
   /** Appearance settings (platform-specific) */
   readonly appearance: AppearanceSettings;
+  /** Subtitle appearance settings */
+  readonly subtitles: SubtitleSettings;
   /** Window state settings (not exposed in UI) */
   readonly windowState: WindowStateSettings;
 }
@@ -287,6 +312,18 @@ export interface AppearanceSettingsUpdate {
   readonly windowTintAlpha?: number;
 }
 
+/**
+ * Partial subtitle settings for updates.
+ */
+export interface SubtitleSettingsUpdate {
+  readonly fontSize?: number;
+  readonly fontColor?: string;
+  readonly backgroundColor?: string;
+  readonly backgroundOpacity?: number;
+  readonly fontFamily?: SubtitleFontFamily;
+  readonly textShadow?: boolean;
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -328,6 +365,9 @@ const VALID_VIDEO_ASPECT_MODES: readonly VideoAspectMode[] = ['default', '4:3', 
 /** Valid macOS visual effect state values */
 const VALID_MACOS_VISUAL_EFFECT_STATE: readonly MacOSVisualEffectState[] = ['followWindow', 'active', 'inactive'];
 
+/** Valid subtitle font family values */
+const VALID_SUBTITLE_FONT_FAMILIES: readonly SubtitleFontFamily[] = ['sans-serif', 'serif', 'monospace'];
+
 /** Default settings used when no file exists or on parse error */
 const DEFAULT_SETTINGS: AppSettings = {
   version: SETTINGS_VERSION,
@@ -363,6 +403,14 @@ const DEFAULT_SETTINGS: AppSettings = {
     windowTintSaturation: 0,  // HSLA saturation (0-100) for glass tint
     windowTintLightness: 0,  // HSLA lightness (0-100) for glass tint
     windowTintAlpha: 0,  // HSLA alpha (0-1) — 0 = no tint by default
+  },
+  subtitles: {
+    fontSize: 100,  // 100% = default size
+    fontColor: '#ffffff',  // white text
+    backgroundColor: '#000000',  // black background
+    backgroundOpacity: 0.75,  // 75% opacity
+    fontFamily: 'sans-serif',  // clean sans-serif font
+    textShadow: true,  // shadow for better visibility
   },
   windowState: {
     miniplayerBounds: null,  // no saved position initially
@@ -744,6 +792,82 @@ export class SettingsManager {
   }
 
   /**
+   * Updates subtitle settings with partial values.
+   *
+   * Only provided fields are updated; others retain their current values.
+   * Changes are immediately persisted to disk.
+   *
+   * @param update - Partial subtitle settings to apply
+   * @returns The updated complete settings object
+   */
+  public updateSubtitleSettings(update: SubtitleSettingsUpdate): AppSettings {
+    // Validate fontSize if provided
+    if (update.fontSize !== undefined) {
+      if (!this.isValidSubtitleFontSize(update.fontSize)) {
+        console.warn(`[SettingsManager] Invalid subtitle font size: ${update.fontSize}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate fontColor if provided
+    if (update.fontColor !== undefined) {
+      if (!this.isValidHexColor(update.fontColor)) {
+        console.warn(`[SettingsManager] Invalid subtitle font color: ${update.fontColor}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate backgroundColor if provided
+    if (update.backgroundColor !== undefined) {
+      if (!this.isValidHexColor(update.backgroundColor)) {
+        console.warn(`[SettingsManager] Invalid subtitle background color: ${update.backgroundColor}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate backgroundOpacity if provided
+    if (update.backgroundOpacity !== undefined) {
+      if (!this.isValidAlpha(update.backgroundOpacity)) {
+        console.warn(`[SettingsManager] Invalid subtitle background opacity: ${update.backgroundOpacity}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate fontFamily if provided
+    if (update.fontFamily !== undefined) {
+      if (!this.isValidSubtitleFontFamily(update.fontFamily)) {
+        console.warn(`[SettingsManager] Invalid subtitle font family: ${update.fontFamily}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate textShadow if provided
+    if (update.textShadow !== undefined) {
+      if (typeof update.textShadow !== 'boolean') {
+        console.warn(`[SettingsManager] Invalid subtitle text shadow: ${update.textShadow}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Merge the update
+    this.settings = {
+      ...this.settings,
+      subtitles: {
+        ...this.settings.subtitles,
+        fontSize: update.fontSize ?? this.settings.subtitles.fontSize,
+        fontColor: update.fontColor ?? this.settings.subtitles.fontColor,
+        backgroundColor: update.backgroundColor ?? this.settings.subtitles.backgroundColor,
+        backgroundOpacity: update.backgroundOpacity ?? this.settings.subtitles.backgroundOpacity,
+        fontFamily: update.fontFamily ?? this.settings.subtitles.fontFamily,
+        textShadow: update.textShadow ?? this.settings.subtitles.textShadow,
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
+  /**
    * Sets the miniplayer bounds (position and size).
    *
    * This is a non-UI setting used to remember miniplayer position between sessions.
@@ -886,6 +1010,11 @@ export class SettingsManager {
       obj['appearance']
     );
 
+    // Extract and validate subtitle settings
+    const subtitleSettings: SubtitleSettings = this.validateSubtitleSettings(
+      obj['subtitles']
+    );
+
     // Extract and validate window state settings
     const windowStateSettings: WindowStateSettings = this.validateWindowStateSettings(
       obj['windowState']
@@ -898,6 +1027,7 @@ export class SettingsManager {
       playback: playbackSettings,
       transcoding: transcodingSettings,
       appearance: appearanceSettings,
+      subtitles: subtitleSettings,
       windowState: windowStateSettings,
     };
   }
@@ -1215,6 +1345,47 @@ export class SettingsManager {
   }
 
   /**
+   * Validates subtitle settings object.
+   *
+   * @param subtitles - The subtitle settings to validate (unknown type)
+   * @returns Valid subtitle settings with defaults for invalid values
+   */
+  private validateSubtitleSettings(subtitles: unknown): SubtitleSettings {
+    if (!subtitles || typeof subtitles !== 'object') {
+      return DEFAULT_SETTINGS.subtitles;
+    }
+
+    const subtitlesObj: Record<string, unknown> = subtitles as Record<string, unknown>;
+    const fontSize: unknown = subtitlesObj['fontSize'];
+    const fontColor: unknown = subtitlesObj['fontColor'];
+    const backgroundColor: unknown = subtitlesObj['backgroundColor'];
+    const backgroundOpacity: unknown = subtitlesObj['backgroundOpacity'];
+    const fontFamily: unknown = subtitlesObj['fontFamily'];
+    const textShadow: unknown = subtitlesObj['textShadow'];
+
+    return {
+      fontSize: this.isValidSubtitleFontSize(fontSize)
+        ? fontSize
+        : DEFAULT_SETTINGS.subtitles.fontSize,
+      fontColor: this.isValidHexColor(fontColor)
+        ? fontColor
+        : DEFAULT_SETTINGS.subtitles.fontColor,
+      backgroundColor: this.isValidHexColor(backgroundColor)
+        ? backgroundColor
+        : DEFAULT_SETTINGS.subtitles.backgroundColor,
+      backgroundOpacity: this.isValidAlpha(backgroundOpacity)
+        ? backgroundOpacity
+        : DEFAULT_SETTINGS.subtitles.backgroundOpacity,
+      fontFamily: this.isValidSubtitleFontFamily(fontFamily)
+        ? fontFamily
+        : DEFAULT_SETTINGS.subtitles.fontFamily,
+      textShadow: typeof textShadow === 'boolean'
+        ? textShadow
+        : DEFAULT_SETTINGS.subtitles.textShadow,
+    };
+  }
+
+  /**
    * Type guard to check if a value is valid window bounds.
    *
    * @param value - The value to check
@@ -1497,6 +1668,30 @@ export class SettingsManager {
    */
   private isValidAlpha(value: unknown): value is number {
     return typeof value === 'number' && value >= 0 && value <= 1;
+  }
+
+  /**
+   * Type guard to check if a value is a valid subtitle font size.
+   *
+   * Valid values are integers between 50 and 200 (percentage).
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid subtitle font size
+   */
+  private isValidSubtitleFontSize(value: unknown): value is number {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 50 && value <= 200;
+  }
+
+  /**
+   * Type guard to check if a value is a valid subtitle font family.
+   *
+   * Valid values are 'sans-serif', 'serif', or 'monospace'.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid subtitle font family
+   */
+  private isValidSubtitleFontFamily(value: unknown): value is SubtitleFontFamily {
+    return typeof value === 'string' && VALID_SUBTITLE_FONT_FAMILIES.includes(value as SubtitleFontFamily);
   }
 
   /**

@@ -29,7 +29,7 @@ import { serverLogger, playlistLogger, playbackLogger, ffmpegLogger, midiLogger,
 import { app } from 'electron';
 import { DependencyManager } from './dependency-manager.js';
 import type { DependencyId, DependencyState, InstallProgress, SoundFontInfo } from './dependency-manager.js';
-import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate } from './settings-manager.js';
+import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate, SubtitleSettingsUpdate } from './settings-manager.js';
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
 import { SSEManager } from './sse-manager.js';
 import { PlaylistManager } from './playlist-manager.js';
@@ -414,6 +414,8 @@ export class UnifiedMediaServer {
         await this.handleMediaInfo(res, url);
       } else if (pathname === '/media/subtitles' && method === 'GET') {
         this.handleSubtitles(req, res, url);
+      } else if (pathname === '/media/subtitles/external' && method === 'GET') {
+        this.handleExternalSubtitles(req, res, url);
       } else if (pathname === '/player/play' && method === 'POST') {
         await this.handlePlay(res);
       } else if (pathname === '/player/pause' && method === 'POST') {
@@ -462,6 +464,8 @@ export class UnifiedMediaServer {
         await this.handleSettingsTranscoding(req, res);
       } else if (pathname === '/settings/appearance' && method === 'PUT') {
         await this.handleSettingsAppearance(req, res);
+      } else if (pathname === '/settings/subtitles' && method === 'PUT') {
+        await this.handleSettingsSubtitles(req, res);
       } else if (pathname === '/dependencies' && method === 'GET') {
         this.handleDependenciesGet(res);
       } else if (pathname === '/dependencies/install' && method === 'POST') {
@@ -1248,9 +1252,11 @@ export class UnifiedMediaServer {
     }
 
     // Extract subtitle track and convert to WebVTT
+    // -copyts preserves original timestamps from the container
     // -map 0:{trackNum} selects the specific stream index
     // -f webvtt outputs WebVTT format
     const ffmpeg: ChildProcess = spawn(ffmpegBin, [
+      '-copyts',
       '-i', filePath,
       '-map', `0:${trackNum}`,
       '-f', 'webvtt',
@@ -1286,6 +1292,98 @@ export class UnifiedMediaServer {
     ffmpeg.on('close', (code: number | null): void => {
       if (code !== 0 && code !== null) {
         ffmpegLogger.warn(`Subtitle extraction exited with code ${code}`);
+      }
+    });
+
+    // Handle client disconnect
+    req.on('close', (): void => {
+      ffmpeg.kill('SIGTERM');
+    });
+  }
+
+  /**
+   * Handles GET /media/subtitles/external requests.
+   * Converts an external subtitle file (.srt, .ass, .ssa, .vtt) to WebVTT format.
+   *
+   * Query parameters:
+   * - path: Absolute path to the subtitle file (required)
+   *
+   * @param req - HTTP request
+   * @param res - HTTP response
+   * @param url - Parsed URL with query parameters
+   */
+  private handleExternalSubtitles(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): void {
+    const filePath: string | null = url.searchParams.get('path');
+
+    if (!filePath) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Missing path parameter' }));
+      return;
+    }
+
+    // Validate file path for security
+    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    if (!validation.valid) {
+      res.writeHead(validation.error === 'File not found' ? 404 : 400);
+      res.end(JSON.stringify({ error: validation.error }));
+      return;
+    }
+
+    // Validate subtitle extension
+    const ext: string = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
+    const validExtensions: Set<string> = new Set(['.srt', '.vtt', '.ass', '.ssa']);
+    if (!validExtensions.has(ext)) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Invalid subtitle format. Supported: .srt, .vtt, .ass, .ssa' }));
+      return;
+    }
+
+    const ffmpegBin: string | null = this.deps.getFfmpegPath();
+    if (!ffmpegBin) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'FFmpeg not found' }));
+      return;
+    }
+
+    // Convert subtitle file to WebVTT using FFmpeg
+    // -copyts preserves original timestamps
+    // FFmpeg can read most subtitle formats and convert to WebVTT
+    const ffmpeg: ChildProcess = spawn(ffmpegBin, [
+      '-copyts',
+      '-i', filePath,
+      '-f', 'webvtt',
+      'pipe:1'
+    ]);
+
+    // Set response headers for WebVTT
+    res.writeHead(200, {
+      'Content-Type': 'text/vtt; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600',
+    });
+
+    // Pipe FFmpeg output directly to response
+    ffmpeg.stdout?.pipe(res);
+
+    // Handle errors
+    ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
+      const msg: string = data.toString().trim();
+      // Only log actual errors, not progress info
+      if (msg.includes('Error') || msg.includes('Invalid')) {
+        ffmpegLogger.error(`External subtitle conversion error: ${msg}`);
+      }
+    });
+
+    ffmpeg.on('error', (err: Readonly<Error>): void => {
+      ffmpegLogger.error(`External subtitle conversion failed: ${err.message}`);
+      if (!res.headersSent) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+
+    ffmpeg.on('close', (code: number | null): void => {
+      if (code !== 0 && code !== null) {
+        ffmpegLogger.warn(`External subtitle conversion exited with code ${code}`);
       }
     });
 
@@ -2258,6 +2356,27 @@ export class UnifiedMediaServer {
     const update: AppearanceSettingsUpdate = JSON.parse(body) as AppearanceSettingsUpdate;
 
     const updatedSettings: AppSettings = this.settings.updateAppearanceSettings(update);
+
+    // Broadcast the updated settings to all clients
+    this.sse.broadcast('settings:updated', updatedSettings);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+  }
+
+  /**
+   * Handles PUT /settings/subtitles requests.
+   *
+   * Updates subtitle appearance settings and broadcasts the change to all clients.
+   *
+   * @param req - Incoming HTTP request with SubtitleSettingsUpdate body
+   * @param res - HTTP response to write to
+   */
+  private async handleSettingsSubtitles(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const update: SubtitleSettingsUpdate = JSON.parse(body) as SubtitleSettingsUpdate;
+
+    const updatedSettings: AppSettings = this.settings.updateSubtitleSettings(update);
 
     // Broadcast the updated settings to all clients
     this.sse.broadcast('settings:updated', updatedSettings);

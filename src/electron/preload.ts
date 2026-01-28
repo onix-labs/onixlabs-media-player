@@ -75,6 +75,13 @@ export interface MediaPlayerAPI {
   readonly savePlaylistDialog: () => Promise<string | null>;
 
   /**
+   * Opens a native dialog to select an external subtitle file.
+   *
+   * @returns Promise resolving to the selected file path, or null if cancelled
+   */
+  readonly openSubtitleDialog: () => Promise<string | null>;
+
+  /**
    * Gets the absolute file system path for a File object.
    * Used for drag-and-drop where we receive File objects but need paths.
    *
@@ -278,6 +285,7 @@ const api: MediaPlayerAPI = {
   openFileDialog: (options: Readonly<OpenDialogOptions>): Promise<string[]> => ipcRenderer.invoke('dialog:openFile', options),
   openPlaylistDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openPlaylist'),
   savePlaylistDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:savePlaylist'),
+  openSubtitleDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openSubtitle'),
   openSoundFontDialog: (): Promise<string[]> => ipcRenderer.invoke('dialog:openSoundFont'),
   getPathForFile: (file: Readonly<File>): string => webUtils.getPathForFile(file),
   getServerPort: (): Promise<number> => ipcRenderer.invoke('app:getServerPort'),

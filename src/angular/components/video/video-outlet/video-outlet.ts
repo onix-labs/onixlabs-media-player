@@ -19,11 +19,12 @@
  * @module app/components/video/video-outlet
  */
 
-import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, output, ChangeDetectionStrategy, OutputEmitterRef} from '@angular/core';
+import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, output, ChangeDetectionStrategy, OutputEmitterRef, Renderer2} from '@angular/core';
+import {DOCUMENT} from '@angular/common';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
-import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS} from '../../../services/settings.service';
+import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS, SubtitleFontFamily} from '../../../services/settings.service';
 import type {PlaylistItem, SubtitleTrack} from '../../../services/electron.service';
 
 /**
@@ -31,6 +32,35 @@ import type {PlaylistItem, SubtitleTrack} from '../../../services/electron.servi
  * These formats support HTTP range requests for efficient seeking.
  */
 const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.m4v', '.webm', '.ogg']);
+
+/**
+ * Track index indicating an external subtitle file is selected.
+ * Used to distinguish from embedded subtitle tracks (0+) and off (-1).
+ */
+const EXTERNAL_SUBTITLE_TRACK_INDEX: number = -2;
+
+/**
+ * Represents a parsed WebVTT cue with timing and text content.
+ * Used for custom subtitle rendering that bypasses the browser's TextTrack API.
+ */
+interface ParsedSubtitleCue {
+  /** Start time in seconds */
+  readonly startTime: number;
+  /** End time in seconds */
+  readonly endTime: number;
+  /** Text content (may contain HTML formatting) */
+  readonly text: string;
+}
+
+/**
+ * Represents a loaded subtitle track with all its parsed cues.
+ */
+interface LoadedSubtitleTrack {
+  /** Track index (matches SubtitleTrack.index) */
+  readonly index: number;
+  /** All parsed cues for this track */
+  readonly cues: readonly ParsedSubtitleCue[];
+}
 
 /**
  * Video outlet component for video media playback.
@@ -83,8 +113,14 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** File drop service for drag-and-drop handling */
   private readonly fileDrop: FileDropService = inject(FileDropService);
 
-  /** Settings service for video aspect mode */
+  /** Settings service for video aspect mode and subtitle appearance */
   private readonly settings: SettingsService = inject(SettingsService);
+
+  /** Renderer for DOM manipulation */
+  private readonly renderer: Renderer2 = inject(Renderer2);
+
+  /** Document reference for style injection */
+  private readonly document: Document = inject(DOCUMENT);
 
   // ============================================================================
   // Outputs
@@ -120,8 +156,19 @@ export class VideoOutlet implements OnInit, OnDestroy {
     (): readonly SubtitleTrack[] => this.electron.currentMedia()?.subtitleTracks ?? []
   );
 
-  /** Currently selected subtitle track index (-1 for off) */
+  /** Currently selected subtitle track index (-1 for off, -2 for external) */
   public readonly selectedSubtitleTrack: ReturnType<typeof signal<number>> = signal<number>(-1);
+
+  /** External subtitle file path (loaded via dialog) */
+  public readonly externalSubtitlePath: ReturnType<typeof signal<string | null>> = signal<string | null>(null);
+
+  /** Whether an external subtitle is loaded */
+  public readonly hasExternalSubtitle: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.externalSubtitlePath() !== null
+  );
+
+  /** Current subtitle text to display (empty string when no subtitle is active) */
+  public readonly subtitleText: ReturnType<typeof signal<string>> = signal<string>('');
 
   // ============================================================================
   // Internal State
@@ -145,10 +192,20 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Video event handlers (stored for cleanup) */
   private videoErrorHandler: (() => void) | null = null;
   private videoCanPlayHandler: (() => void) | null = null;
+  private videoSeekedHandler: (() => void) | null = null;
   private videoLoadedMetadataHandler: (() => void) | null = null;
 
   /** Fade-out interval handle (stored for cleanup) */
   private fadeInterval: ReturnType<typeof setInterval> | null = null;
+
+  /** Style element for subtitle appearance customization */
+  private subtitleStyleElement: HTMLStyleElement | null = null;
+
+  /** Loaded subtitle tracks with parsed cues (for custom rendering) */
+  private loadedSubtitleTracks: LoadedSubtitleTrack[] = [];
+
+  /** Video timeupdate handler (stored for cleanup) */
+  private videoTimeUpdateHandler: (() => void) | null = null;
 
   // ============================================================================
   // Constructor - Reactive Effects
@@ -292,16 +349,35 @@ export class VideoOutlet implements OnInit, OnDestroy {
       this.aspectModeChange.emit(name);
     });
 
-    // Reset subtitle track selection when video changes or subtitles become available
+    // Load subtitle tracks when they change (custom rendering approach)
     effect((): void => {
       const tracks: readonly SubtitleTrack[] = this.subtitleTracks();
-      // Select the default track if available, otherwise disable subtitles
-      const defaultTrack: SubtitleTrack | undefined = tracks.find((t: SubtitleTrack): boolean => t.default);
-      if (defaultTrack) {
-        this.selectedSubtitleTrack.set(defaultTrack.index);
-      } else {
+      const filePath: string | null = this.currentFilePath;
+      const serverUrl: string = this.mediaPlayer.serverUrl();
+
+      // Clean up existing tracks
+      this.cleanupSubtitleTracks();
+
+      if (!filePath || !serverUrl || tracks.length === 0) {
         this.selectedSubtitleTrack.set(-1);
+        this.subtitleText.set('');
+        return;
       }
+
+      // Load and parse each track asynchronously
+      void this.loadSubtitleTracks(tracks, serverUrl, filePath);
+    });
+
+    // React to subtitle appearance settings changes
+    effect((): void => {
+      const fontSize: number = this.settings.subtitleFontSize();
+      const fontColor: string = this.settings.subtitleFontColor();
+      const bgColor: string = this.settings.subtitleBackgroundColor();
+      const bgOpacity: number = this.settings.subtitleBackgroundOpacity();
+      const fontFamily: SubtitleFontFamily = this.settings.subtitleFontFamily();
+      const textShadow: boolean = this.settings.subtitleTextShadow();
+
+      this.updateSubtitleStyles(fontSize, fontColor, bgColor, bgOpacity, fontFamily, textShadow);
     });
   }
 
@@ -342,6 +418,21 @@ export class VideoOutlet implements OnInit, OnDestroy {
     if (this.videoLoadedMetadataHandler) {
       video.removeEventListener('loadedmetadata', this.videoLoadedMetadataHandler);
     }
+    if (this.videoSeekedHandler) {
+      video.removeEventListener('seeked', this.videoSeekedHandler);
+    }
+    if (this.videoTimeUpdateHandler) {
+      video.removeEventListener('timeupdate', this.videoTimeUpdateHandler);
+    }
+
+    // Remove subtitle style element
+    if (this.subtitleStyleElement) {
+      this.renderer.removeChild(this.document.head, this.subtitleStyleElement);
+      this.subtitleStyleElement = null;
+    }
+
+    // Clean up subtitle tracks and blob URLs
+    this.cleanupSubtitleTracks();
   }
 
   // ============================================================================
@@ -356,40 +447,36 @@ export class VideoOutlet implements OnInit, OnDestroy {
   }
 
   /**
-   * Gets the URL for a subtitle track.
-   *
-   * @param track - The subtitle track to get the URL for
-   * @returns The URL to fetch the WebVTT subtitle track
+   * Opens a file dialog to load an external subtitle file.
+   * Clears any previously loaded external subtitle if cancelled.
    */
-  public getSubtitleUrl(track: SubtitleTrack): string {
-    const serverUrl: string = this.mediaPlayer.serverUrl();
-    const filePath: string | null = this.currentFilePath;
-    if (!serverUrl || !filePath) return '';
-    return `${serverUrl}/media/subtitles?path=${encodeURIComponent(filePath)}&track=${track.index}`;
+  public async loadExternalSubtitle(): Promise<void> {
+    const filePath: string | null = await this.electron.openSubtitleDialog();
+    if (filePath) {
+      this.externalSubtitlePath.set(filePath);
+      // Load the external subtitle track
+      await this.loadExternalSubtitleTrack(filePath);
+    }
   }
 
   /**
    * Selects a subtitle track by index.
    * Pass -1 to disable subtitles.
+   * Pass EXTERNAL_SUBTITLE_TRACK_INDEX (-2) to select the external subtitle track.
    *
-   * @param trackIndex - The track index to select, or -1 to disable
+   * @param trackIndex - The track index to select, or -1 to disable, or -2 for external
    */
   public selectSubtitleTrack(trackIndex: number): void {
     this.selectedSubtitleTrack.set(trackIndex);
 
-    // Find the title of the selected track (if any)
-    const tracks: readonly SubtitleTrack[] = this.subtitleTracks();
-    const selectedTrack: SubtitleTrack | undefined = tracks.find(
-      (t: SubtitleTrack): boolean => t.index === trackIndex
-    );
-    const selectedLabel: string | null = selectedTrack?.title ?? null;
-
-    // Update the video element's text tracks
+    // Update display immediately with current time
     const video: HTMLVideoElement = this.videoRef.nativeElement;
-    for (let i: number = 0; i < video.textTracks.length; i++) {
-      const textTrack: TextTrack = video.textTracks[i];
-      // Show the track if its label matches, otherwise disable it
-      textTrack.mode = (selectedLabel !== null && textTrack.label === selectedLabel) ? 'showing' : 'disabled';
+    if (trackIndex === -1) {
+      // Subtitles off
+      this.subtitleText.set('');
+    } else {
+      // Trigger immediate update
+      this.updateSubtitleDisplay(video.currentTime);
     }
   }
 
@@ -459,6 +546,76 @@ export class VideoOutlet implements OnInit, OnDestroy {
     if (filePaths.length === 0) return;
 
     await this.electron.addFilesWithAutoPlay(filePaths);
+  }
+
+  // ============================================================================
+  // Subtitle Styling
+  // ============================================================================
+
+  /**
+   * Updates the subtitle appearance by injecting a style element targeting the overlay.
+   *
+   * Since we use a custom subtitle overlay instead of the browser's TextTrack API,
+   * we inject CSS rules targeting the .subtitle-overlay class.
+   *
+   * @param fontSize - Font size as percentage (100 = default)
+   * @param fontColor - Font color in hex format
+   * @param bgColor - Background color in hex format
+   * @param bgOpacity - Background opacity (0-1)
+   * @param fontFamily - Font family name
+   * @param textShadow - Whether to show text shadow
+   */
+  private updateSubtitleStyles(
+    fontSize: number,
+    fontColor: string,
+    bgColor: string,
+    bgOpacity: number,
+    fontFamily: SubtitleFontFamily,
+    textShadow: boolean
+  ): void {
+    // Create style element if it doesn't exist
+    if (!this.subtitleStyleElement) {
+      const styleEl: HTMLStyleElement = this.renderer.createElement('style') as HTMLStyleElement;
+      styleEl.id = 'onix-subtitle-styles';
+      this.renderer.appendChild(this.document.head, styleEl);
+      this.subtitleStyleElement = styleEl;
+    }
+
+    // Convert hex background color to rgba
+    const bgRgba: string = this.hexToRgba(bgColor, bgOpacity);
+
+    // Build shadow CSS (multiple shadows for better visibility)
+    const shadowCss: string = textShadow
+      ? '1px 1px 2px rgba(0,0,0,0.8), -1px -1px 2px rgba(0,0,0,0.8), 1px -1px 2px rgba(0,0,0,0.8), -1px 1px 2px rgba(0,0,0,0.8)'
+      : 'none';
+
+    // Build the CSS rules for the custom overlay
+    const css: string = `
+      .subtitle-overlay {
+        font-size: ${fontSize}% !important;
+        color: ${fontColor} !important;
+        background-color: ${bgRgba} !important;
+        font-family: ${fontFamily}, sans-serif !important;
+        text-shadow: ${shadowCss} !important;
+      }
+    `;
+
+    // Update the style element content
+    this.subtitleStyleElement.textContent = css;
+  }
+
+  /**
+   * Converts a hex color to rgba format.
+   *
+   * @param hex - Hex color string (e.g., '#ffffff')
+   * @param alpha - Alpha value (0-1)
+   * @returns RGBA color string
+   */
+  private hexToRgba(hex: string, alpha: number): string {
+    const r: number = parseInt(hex.slice(1, 3), 16);
+    const g: number = parseInt(hex.slice(3, 5), 16);
+    const b: number = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
   // ============================================================================
@@ -535,5 +692,249 @@ export class VideoOutlet implements OnInit, OnDestroy {
       console.log('Video metadata loaded, duration:', video.duration);
     };
     video.addEventListener('loadedmetadata', this.videoLoadedMetadataHandler);
+
+    // Force subtitle track refresh after seeking to fix sync issues
+    this.videoSeekedHandler = (): void => {
+      this.updateSubtitleDisplay(video.currentTime);
+    };
+    video.addEventListener('seeked', this.videoSeekedHandler);
+
+    // Custom subtitle rendering: update display on each time update
+    this.videoTimeUpdateHandler = (): void => {
+      this.updateSubtitleDisplay(video.currentTime);
+    };
+    video.addEventListener('timeupdate', this.videoTimeUpdateHandler);
+  }
+
+  /**
+   * Loads subtitle tracks by fetching and parsing WebVTT content.
+   *
+   * This custom approach parses all cues into memory and renders them
+   * manually via the subtitleText signal. This completely bypasses
+   * the browser's TextTrack API which has sync issues after seeking.
+   *
+   * @param tracks - The subtitle tracks to load
+   * @param serverUrl - The server URL for fetching
+   * @param filePath - The video file path
+   */
+  private async loadSubtitleTracks(
+    tracks: readonly SubtitleTrack[],
+    serverUrl: string,
+    filePath: string
+  ): Promise<void> {
+    let defaultTrackIndex: number = -1;
+
+    for (const track of tracks) {
+      try {
+        const url: string = `${serverUrl}/media/subtitles?path=${encodeURIComponent(filePath)}&track=${track.index}`;
+        const response: Response = await fetch(url);
+
+        if (!response.ok) {
+          console.error(`Failed to load subtitle track ${track.index}: ${response.status}`);
+          continue;
+        }
+
+        const webvttContent: string = await response.text();
+        const cues: ParsedSubtitleCue[] = this.parseWebVTT(webvttContent);
+
+        this.loadedSubtitleTracks.push({
+          index: track.index,
+          cues,
+        });
+
+        console.log(`Loaded subtitle track ${track.index} with ${cues.length} cues`);
+
+        // Remember default track
+        if (track.default) {
+          defaultTrackIndex = track.index;
+        }
+      } catch (error: unknown) {
+        console.error(`Error loading subtitle track ${track.index}:`, error);
+      }
+    }
+
+    // Select the default track if available
+    if (defaultTrackIndex >= 0) {
+      this.selectedSubtitleTrack.set(defaultTrackIndex);
+      const video: HTMLVideoElement = this.videoRef.nativeElement;
+      this.updateSubtitleDisplay(video.currentTime);
+    } else {
+      this.selectedSubtitleTrack.set(-1);
+    }
+  }
+
+  /**
+   * Loads an external subtitle file by fetching and parsing it.
+   *
+   * @param subtitlePath - The path to the external subtitle file
+   */
+  private async loadExternalSubtitleTrack(subtitlePath: string): Promise<void> {
+    const serverUrl: string = this.mediaPlayer.serverUrl();
+
+    if (!serverUrl) return;
+
+    try {
+      const url: string = `${serverUrl}/media/subtitles/external?path=${encodeURIComponent(subtitlePath)}`;
+      const response: Response = await fetch(url);
+
+      if (!response.ok) {
+        console.error(`Failed to load external subtitle: ${response.status}`);
+        return;
+      }
+
+      const webvttContent: string = await response.text();
+      const cues: ParsedSubtitleCue[] = this.parseWebVTT(webvttContent);
+
+      this.loadedSubtitleTracks.push({
+        index: EXTERNAL_SUBTITLE_TRACK_INDEX,
+        cues,
+      });
+
+      console.log(`Loaded external subtitle with ${cues.length} cues`);
+
+      // Select the external track
+      this.selectedSubtitleTrack.set(EXTERNAL_SUBTITLE_TRACK_INDEX);
+      const video: HTMLVideoElement = this.videoRef.nativeElement;
+      this.updateSubtitleDisplay(video.currentTime);
+    } catch (error: unknown) {
+      console.error('Error loading external subtitle:', error);
+    }
+  }
+
+  /**
+   * Parses WebVTT content into an array of cues.
+   *
+   * @param content - Raw WebVTT file content
+   * @returns Array of parsed cues with timing and text
+   */
+  private parseWebVTT(content: string): ParsedSubtitleCue[] {
+    const cues: ParsedSubtitleCue[] = [];
+    const lines: string[] = content.split('\n');
+
+    let i: number = 0;
+
+    // Skip WEBVTT header and any metadata
+    while (i < lines.length && !lines[i].includes('-->')) {
+      i++;
+    }
+
+    // Parse cues
+    while (i < lines.length) {
+      const line: string = lines[i].trim();
+
+      // Look for timing line (contains "-->")
+      if (line.includes('-->')) {
+        const timing: { start: number; end: number } | null = this.parseTimingLine(line);
+        if (timing) {
+          // Collect text lines until we hit an empty line or EOF
+          const textLines: string[] = [];
+          i++;
+          while (i < lines.length && lines[i].trim() !== '') {
+            textLines.push(lines[i].trim());
+            i++;
+          }
+
+          if (textLines.length > 0) {
+            cues.push({
+              startTime: timing.start,
+              endTime: timing.end,
+              text: textLines.join('\n'),
+            });
+          }
+        }
+      }
+      i++;
+    }
+
+    return cues;
+  }
+
+  /**
+   * Parses a WebVTT timing line to extract start and end times.
+   *
+   * @param line - Timing line (e.g., "00:01:23.456 --> 00:01:27.890")
+   * @returns Object with start and end times in seconds, or null if invalid
+   */
+  private parseTimingLine(line: string): { start: number; end: number } | null {
+    // Match pattern: HH:MM:SS.mmm --> HH:MM:SS.mmm (hours optional)
+    const match: RegExpMatchArray | null = line.match(
+      /(\d{1,2}:)?(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{1,2}:)?(\d{2}):(\d{2})\.(\d{3})/
+    );
+
+    if (!match) return null;
+
+    const startHours: number = match[1] ? parseInt(match[1].replace(':', ''), 10) : 0;
+    const startMinutes: number = parseInt(match[2], 10);
+    const startSeconds: number = parseInt(match[3], 10);
+    const startMs: number = parseInt(match[4], 10);
+
+    const endHours: number = match[5] ? parseInt(match[5].replace(':', ''), 10) : 0;
+    const endMinutes: number = parseInt(match[6], 10);
+    const endSeconds: number = parseInt(match[7], 10);
+    const endMs: number = parseInt(match[8], 10);
+
+    const secondsPerMinute: number = 60;
+    const secondsPerHour: number = 3600;
+    const msPerSecond: number = 1000;
+
+    const start: number = startHours * secondsPerHour + startMinutes * secondsPerMinute + startSeconds + startMs / msPerSecond;
+    const end: number = endHours * secondsPerHour + endMinutes * secondsPerMinute + endSeconds + endMs / msPerSecond;
+
+    return { start, end };
+  }
+
+  /**
+   * Updates the subtitle display based on the current video time.
+   *
+   * Finds the active cue(s) for the selected track at the given time
+   * and updates the subtitleText signal.
+   *
+   * @param currentTime - Current video playback time in seconds
+   */
+  private updateSubtitleDisplay(currentTime: number): void {
+    const selectedIndex: number = this.selectedSubtitleTrack();
+
+    // If subtitles are off, clear the display
+    if (selectedIndex === -1) {
+      this.subtitleText.set('');
+      return;
+    }
+
+    // For transcoded videos, account for the seek offset
+    const adjustedTime: number = this.isTranscoded
+      ? currentTime + this.transcodeSeekOffset
+      : currentTime;
+
+    // Find the track
+    const track: LoadedSubtitleTrack | undefined = this.loadedSubtitleTracks.find(
+      (t: LoadedSubtitleTrack): boolean => t.index === selectedIndex
+    );
+
+    if (!track) {
+      this.subtitleText.set('');
+      return;
+    }
+
+    // Find active cues at this time
+    const activeCues: ParsedSubtitleCue[] = track.cues.filter(
+      (cue: ParsedSubtitleCue): boolean =>
+        adjustedTime >= cue.startTime && adjustedTime <= cue.endTime
+    );
+
+    if (activeCues.length > 0) {
+      // Join multiple cues with newline
+      const text: string = activeCues.map((c: ParsedSubtitleCue): string => c.text).join('\n');
+      this.subtitleText.set(text);
+    } else {
+      this.subtitleText.set('');
+    }
+  }
+
+  /**
+   * Cleans up loaded subtitle tracks.
+   */
+  private cleanupSubtitleTracks(): void {
+    this.loadedSubtitleTracks = [];
+    this.subtitleText.set('');
   }
 }

@@ -117,9 +117,13 @@ Based on independent review with all 31 action items resolved:
 - **Subtitle support**:
   - Automatic detection of embedded subtitle tracks via FFprobe
   - Subtitle extraction endpoint converts any format (SRT, ASS, etc.) to WebVTT on-the-fly
-  - Native HTML5 `<track>` element rendering with browser's built-in WebVTT support
+  - Custom subtitle rendering via overlay div (bypasses browser's unreliable TextTrack API)
+  - WebVTT parser extracts cues with timing; `timeupdate` event displays correct cue for current time
+  - Reliable seeking/skipping — subtitles stay synchronized regardless of playback position
+  - Subtitle appearance settings: font size, color, background, opacity, font family, text shadow
   - Subtitle selector button in media bar (closed-captioning icon, only shown when tracks available)
   - Dropdown menu with "Off" option and all available tracks with language labels
+  - External subtitle loading via "Load External..." option (supports .srt, .vtt, .ass, .ssa)
   - "Forced" badge for forced subtitle tracks (foreign language portions)
   - Default track auto-selected when video loads
   - Selected track highlighted in blue; checkmark indicates current selection
@@ -384,10 +388,11 @@ Based on independent review with all 31 action items resolved:
 │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
-│  IPC (minimal - 20 channels):                                          │
+│  IPC (minimal - 21 channels):                                          │
 │  ├── dialog:openFile         (native file picker)                      │
 │  ├── dialog:openPlaylist     (playlist file picker for .opp files)     │
 │  ├── dialog:savePlaylist     (save dialog for .opp files)              │
+│  ├── dialog:openSubtitle     (subtitle file picker for .srt/.vtt/.ass) │
 │  ├── dialog:openSoundFont    (SoundFont file picker)                   │
 │  ├── app:getServerPort       (get HTTP server port)                    │
 │  ├── app:getPlatformInfo     (platform, glass support, system theme)   │
@@ -528,7 +533,8 @@ AudioContext.destination (speakers)
 |--------|----------|-------------|
 | GET | `/media/stream?path={path}&t={time}` | Stream media file (supports range requests) |
 | GET | `/media/info?path={path}` | Get metadata via ffprobe |
-| GET | `/media/subtitles?path={path}&track={index}` | Extract subtitle track as WebVTT |
+| GET | `/media/subtitles?path={path}&track={index}` | Extract embedded subtitle track as WebVTT |
+| GET | `/media/subtitles/external?path={path}` | Convert external subtitle file to WebVTT |
 
 ### Playback Control
 
@@ -579,6 +585,7 @@ AudioContext.destination (speakers)
 | PUT | `/settings/playback` | Update playback settings |
 | PUT | `/settings/transcoding` | Update transcoding settings |
 | PUT | `/settings/appearance` | Update appearance settings |
+| PUT | `/settings/subtitles` | Update subtitle appearance settings |
 
 ### Server-Sent Events
 
@@ -716,6 +723,17 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 | Visual Effect State | Follow Window/Always Active/Always Inactive | Always Active | macOS vibrancy state (shown when glass enabled on macOS) | Yes |
 | Background Color | HSL sliders (Hue 0-360, Saturation 0-100, Lightness 0-100) | H:0 S:0 L:12 | Window background when glass disabled | No |
 | Window Tint | HSLA sliders (Hue 0-360, Saturation 0-100, Lightness 0-100, Alpha 0-1) | H:0 S:0 L:0 A:0 | Color tint over glass effect when glass enabled | No |
+
+#### Subtitles Category
+
+| Setting | Range | Default | Description |
+|---------|-------|---------|-------------|
+| Font Size | 50-200% | 100% | Subtitle text size |
+| Font Color | Hex color | #ffffff | Subtitle text color |
+| Background Color | Hex color | #000000 | Subtitle background color |
+| Background Opacity | 0-100% | 75% | Subtitle background transparency |
+| Font Family | Sans-serif/Serif/Monospace | Sans-serif | Subtitle font family |
+| Text Shadow | On/Off | On | Shadow effect for better visibility |
 
 ---
 
@@ -860,6 +878,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | MIDI Silent Playback (Corrupt Disk Cache) | unified-media-server.ts | Failed FluidSynth/FFmpeg renders left partial/empty temp files. With hash-based filenames, these corrupt files became persistent disk cache entries served as valid audio. **Fix**: (1) `unlinkSync(tempFile)` cleanup in three error paths (FFmpeg failure, FluidSynth error, FFmpeg error), (2) File size validation on disk cache hit (0 bytes → delete), (3) Probe failure recovery (delete corrupt file, re-render fresh). |
 | FluidSynth Stderr Filter Too Aggressive | unified-media-server.ts | Filter `!msg.includes('FluidSynth')` suppressed ALL FluidSynth messages including critical warnings (e.g., "No preset found"). **Fix**: Changed to `!msg.includes('FluidSynth runtime version')` to only suppress the startup version banner. |
 | Forced Video Aspect Ratios Not Working | video-outlet.scss | 4:3 and 16:9 forced aspect modes stretched vertically instead of letterboxing/pillarboxing. Original CSS used `height: 100%` with `aspect-ratio` and `max-width: 100%`, which broke aspect ratio when width-constrained. Changed to use CSS container query units (`cqw`/`cqh`) with `min()` to calculate exact dimensions: `width: min(100cqw, calc(100cqh * 4 / 3))` ensures the video always maintains the target aspect ratio and fills the container as large as possible. |
+| Subtitles Desync After Seeking | video-outlet.ts | Browser's native TextTrack API failed to sync subtitles after seeking — cues continued from the beginning regardless of video position. Toggling track mode, pre-fetching as Blob URLs, and FFmpeg `-copyts` flag all failed. **Fix**: Implemented custom subtitle rendering that bypasses TextTrack entirely: (1) WebVTT parser extracts all cues with start/end times into memory, (2) `timeupdate` event handler finds active cues for current video time, (3) Overlay `<div>` displays cue text instead of `<track>` element, (4) For transcoded videos, adjusts time by `transcodeSeekOffset`. Subtitle appearance settings (font size, color, etc.) target the overlay div via injected CSS. |
 
 ### Code Duplication Eliminated
 

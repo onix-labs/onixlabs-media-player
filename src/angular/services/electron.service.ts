@@ -847,6 +847,18 @@ export class ElectronService implements OnDestroy {
   }
 
   /**
+   * Opens the native file picker dialog for selecting external subtitle files.
+   *
+   * Supports common subtitle formats: .srt, .vtt, .ass, .ssa
+   *
+   * @returns Promise resolving to selected file path, or null if cancelled
+   */
+  public async openSubtitleDialog(): Promise<string | null> {
+    if (!this.isElectron || !this.api) return null;
+    return this.api.openSubtitleDialog();
+  }
+
+  /**
    * Gets the absolute file system path for a File object.
    *
    * Used for drag-and-drop where browser provides File objects but
