@@ -25,7 +25,7 @@ import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS, SubtitleFontFamily} from '../../../services/settings.service';
-import type {PlaylistItem, SubtitleTrack} from '../../../services/electron.service';
+import type {PlaylistItem, SubtitleTrack, AudioTrack} from '../../../services/electron.service';
 
 /**
  * Video formats that Chromium can play natively.
@@ -174,6 +174,14 @@ export class VideoOutlet implements OnInit, OnDestroy {
   public readonly sanitizedSubtitleHtml: ReturnType<typeof computed<string>> = computed(
     (): string => this.sanitizeSubtitleHtml(this.subtitleText())
   );
+
+  /** Audio tracks available for the current video (only when multiple exist) */
+  public readonly audioTracks: ReturnType<typeof computed<readonly AudioTrack[]>> = computed(
+    (): readonly AudioTrack[] => this.electron.currentMedia()?.audioTracks ?? []
+  );
+
+  /** Currently selected audio track index (0-based) */
+  public readonly selectedAudioTrack: ReturnType<typeof signal<number>> = signal<number>(0);
 
   // ============================================================================
   // Internal State
@@ -494,6 +502,69 @@ export class VideoOutlet implements OnInit, OnDestroy {
   }
 
   /**
+   * Selects an audio track by index.
+   * This reloads the video stream with the new audio track and seeks back to the current position.
+   *
+   * @param trackIndex - The audio track index (0-based)
+   */
+  public selectAudioTrack(trackIndex: number): void {
+    // Don't reload if same track
+    if (trackIndex === this.selectedAudioTrack()) {
+      return;
+    }
+
+    const video: HTMLVideoElement = this.videoRef.nativeElement;
+    const currentTime: number = video.currentTime;
+    const wasPlaying: boolean = !video.paused;
+
+    this.selectedAudioTrack.set(trackIndex);
+
+    // Cache the selection so it persists across view mode changes
+    if (this.currentFilePath) {
+      this.electron.setAudioSelection(this.currentFilePath, trackIndex);
+    }
+
+    // Reload video with new audio track
+    this.reloadVideoWithAudioTrack(currentTime, wasPlaying);
+  }
+
+  /**
+   * Reloads the video with the selected audio track and seeks to the specified time.
+   *
+   * @param seekTime - Time to seek to after reload
+   * @param autoPlay - Whether to auto-play after seeking
+   */
+  private reloadVideoWithAudioTrack(seekTime: number, autoPlay: boolean): void {
+    if (!this.currentFilePath) {
+      return;
+    }
+
+    const video: HTMLVideoElement = this.videoRef.nativeElement;
+    const audioTrack: number = this.selectedAudioTrack();
+
+    // Build stream URL with audio track parameter
+    const streamUrl: string = this.isTranscoded
+      ? `${this.electron.serverUrl()}/media/stream?path=${encodeURIComponent(this.currentFilePath)}&t=${seekTime}&audioTrack=${audioTrack}`
+      : `${this.electron.serverUrl()}/media/stream?path=${encodeURIComponent(this.currentFilePath)}&audioTrack=${audioTrack}`;
+
+    video.src = streamUrl;
+    video.load();
+
+    // For native formats, seek after load; for transcoded, time is in URL
+    if (!this.isTranscoded && seekTime > 0) {
+      const onCanPlay: () => void = (): void => {
+        video.currentTime = seekTime;
+        video.removeEventListener('canplay', onCanPlay);
+      };
+      video.addEventListener('canplay', onCanPlay);
+    }
+
+    if (autoPlay) {
+      void video.play();
+    }
+  }
+
+  /**
    * Cycles to the next aspect mode.
    * Order: default -> 4:3 -> 16:9 -> fit -> default
    */
@@ -746,23 +817,39 @@ export class VideoOutlet implements OnInit, OnDestroy {
     const ext: string = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
     this.isTranscoded = !NATIVE_VIDEO_FORMATS.has(ext);
 
+    // Initialize audio track selection from cache or default
+    const cachedAudioSelection: number | undefined = this.electron.getAudioSelection(filePath);
+    if (cachedAudioSelection !== undefined) {
+      this.selectedAudioTrack.set(cachedAudioSelection);
+    } else {
+      // Default to first audio track (or track marked as default)
+      const audioTracks: readonly AudioTrack[] = this.electron.currentMedia()?.audioTracks ?? [];
+      const defaultTrack: AudioTrack | undefined = audioTracks.find((t: AudioTrack): boolean => t.default);
+      const defaultIndex: number = defaultTrack?.index ?? 0;
+      this.selectedAudioTrack.set(defaultIndex);
+    }
+
+    const audioTrack: number = this.selectedAudioTrack();
+
     // Build the stream URL
     let url: string = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}`;
 
-    // For transcoded files, track the offset
+    // For transcoded files, track the offset and include audio track
     if (this.isTranscoded) {
       this.transcodeSeekOffset = seekTime;
       if (seekTime > 0) {
         url += `&t=${seekTime}`;
       }
+      url += `&audioTrack=${audioTrack}`;
     } else {
       this.transcodeSeekOffset = 0;
+      // For native formats, audio track is not used (browser plays all tracks)
     }
 
     video.src = url;
     video.load();
 
-    console.log(`Loading video: ${filePath}, transcoded: ${this.isTranscoded}, seekTime: ${seekTime}`);
+    console.log(`Loading video: ${filePath}, transcoded: ${this.isTranscoded}, seekTime: ${seekTime}, audioTrack: ${audioTrack}`);
   }
 
   /**

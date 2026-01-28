@@ -27,7 +27,7 @@ import {FileDropService} from '../../../services/file-drop.service';
 import {DependencyService} from '../../../services/dependency.service';
 import {VIDEO_ASPECT_OPTIONS, type VideoAspectMode} from '../../../services/settings.service';
 import type {DependencyStatus} from '../../../services/dependency.service';
-import type {PlaylistItem, SubtitleTrack} from '../../../types/electron';
+import type {PlaylistItem, SubtitleTrack, AudioTrack} from '../../../types/electron';
 
 /** Special value for "Load External..." option in subtitle select */
 const SUBTITLE_LOAD_EXTERNAL_VALUE: number = -3;
@@ -242,6 +242,39 @@ export class LayoutOutlet {
       } else {
         this.videoOutlet?.selectSubtitleTrack(value);
       }
+    }
+  }
+
+  // ============================================================================
+  // Audio Track Methods
+  // ============================================================================
+
+  /**
+   * Gets the available audio tracks from the video outlet.
+   * Returns empty array if no video outlet or no multiple audio tracks.
+   */
+  public getAudioTracks(): readonly AudioTrack[] {
+    return this.videoOutlet?.audioTracks() ?? [];
+  }
+
+  /**
+   * Gets the currently selected audio track index.
+   * Returns 0 if no video outlet.
+   */
+  public getSelectedAudioTrack(): number {
+    return this.videoOutlet?.selectedAudioTrack() ?? 0;
+  }
+
+  /**
+   * Handles audio track change from select element.
+   *
+   * @param event - The change event from the select
+   */
+  public onAudioTrackChange(event: Event): void {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLSelectElement) {
+      const value: number = parseInt(target.value, 10);
+      this.videoOutlet?.selectAudioTrack(value);
     }
   }
 

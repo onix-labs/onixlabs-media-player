@@ -34,6 +34,27 @@ export interface SubtitleTrack {
 }
 
 /**
+ * Represents an audio track embedded in a media file.
+ *
+ * Audio tracks are detected via FFprobe and can be selected
+ * for playback when multiple tracks exist (e.g., different languages).
+ */
+export interface AudioTrack {
+  /** Audio stream index (0-based, for FFmpeg -map 0:a:{index}) */
+  readonly index: number;
+  /** ISO 639-2/B language code (e.g., 'eng', 'jpn', 'und') */
+  readonly language: string;
+  /** Human-readable title (e.g., 'English', 'Japanese', 'Commentary') */
+  readonly title: string;
+  /** Audio codec (e.g., 'aac', 'ac3', 'dts', 'flac') */
+  readonly codec: string;
+  /** Number of audio channels (2 = stereo, 6 = 5.1, 8 = 7.1) */
+  readonly channels: number;
+  /** Whether this track is marked as the default */
+  readonly default: boolean;
+}
+
+/**
  * Represents an item in the playlist.
  *
  * Playlist items contain all metadata needed for display and playback.
@@ -83,6 +104,8 @@ export interface MediaInfo {
   readonly width?: number;
   /** Video height in pixels (video only) */
   readonly height?: number;
+  /** Embedded audio tracks (video only, when multiple exist) */
+  readonly audioTracks?: readonly AudioTrack[];
   /** Embedded subtitle tracks (video only) */
   readonly subtitleTracks?: readonly SubtitleTrack[];
 }

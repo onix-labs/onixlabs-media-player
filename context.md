@@ -114,6 +114,14 @@ Based on independent review with all 31 action items resolved:
   - **Forced (16:9)**: Stretches video to 16:9 aspect ratio
   - **Fit to Screen**: Stretches video to fill the entire canvas
 - Aspect ratio setting persists across sessions and applies in all view modes
+- **Audio track selection** (for videos with multiple audio streams):
+  - Automatic detection of embedded audio tracks via FFprobe
+  - Audio track selector via media bar select dropdown (only shown when 2+ tracks exist)
+  - Displays language name with channel info (e.g., "English (5.1)" for 6-channel surround)
+  - Switching audio tracks reloads the stream and seeks back to current position
+  - Default track auto-selected based on FFprobe `default` flag
+  - Selection persists across view mode changes (desktop ↔ miniplayer) via ElectronService cache
+  - FFmpeg uses `-map 0:v:0 -map 0:a:{index}` for stream selection during transcoding
 - **Subtitle support**:
   - Automatic detection of embedded subtitle tracks via FFprobe
   - Subtitle extraction endpoint converts any format (SRT, ASS, etc.) to WebVTT on-the-fly
@@ -199,9 +207,9 @@ Based on independent review with all 31 action items resolved:
 ### UI Layout
 
 - **Header**: Draggable area for window movement (macOS traffic lights region)
-- **Media bar** (bottom of outlet): Visualization switcher (audio) or aspect ratio + subtitle selects (video) + playlist toggle
+- **Media bar** (bottom of outlet): Visualization switcher (audio) or aspect ratio + audio + subtitle selects (video) + playlist toggle
   - Audio mode: Left/right buttons cycle visualizations, name displayed
-  - Video mode: Aspect ratio select dropdown, subtitle track select dropdown
+  - Video mode: Aspect ratio select dropdown, audio track select dropdown (when 2+ tracks), subtitle track select dropdown
   - Always visible when not in fullscreen (even with no media loaded)
 - **Playback controls**: Media title, transport controls, volume, fullscreen toggle
 - Track title displayed in playback controls (format: "Artist - Title" or just title)
@@ -533,7 +541,7 @@ AudioContext.destination (speakers)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/media/stream?path={path}&t={time}` | Stream media file (supports range requests) |
+| GET | `/media/stream?path={path}&t={time}&audioTrack={index}` | Stream media file (supports range requests, audioTrack for video) |
 | GET | `/media/info?path={path}` | Get metadata via ffprobe |
 | GET | `/media/subtitles?path={path}&track={index}` | Extract embedded subtitle track as WebVTT |
 | GET | `/media/subtitles/external?path={path}` | Convert external subtitle file to WebVTT |

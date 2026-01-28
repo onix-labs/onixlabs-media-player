@@ -84,6 +84,42 @@ export interface SubtitleTrack {
 }
 
 /**
+ * Represents an audio track embedded in a media file.
+ *
+ * Audio tracks are detected via FFprobe and can be selected
+ * for playback when multiple tracks exist (e.g., different languages).
+ *
+ * @example
+ * const track: AudioTrack = {
+ *   index: 0,
+ *   language: 'eng',
+ *   title: 'English',
+ *   codec: 'aac',
+ *   channels: 6,
+ *   default: true
+ * };
+ */
+export interface AudioTrack {
+  /** Audio stream index (0-based, for FFmpeg -map 0:a:{index}) */
+  index: number;
+
+  /** ISO 639-2/B language code (e.g., 'eng', 'jpn', 'und') */
+  language: string;
+
+  /** Human-readable title (e.g., 'English', 'Japanese', 'Commentary') */
+  title: string;
+
+  /** Audio codec (e.g., 'aac', 'ac3', 'dts', 'flac') */
+  codec: string;
+
+  /** Number of audio channels (2 = stereo, 6 = 5.1, 8 = 7.1) */
+  channels: number;
+
+  /** Whether this track is marked as the default */
+  default: boolean;
+}
+
+/**
  * Media file metadata returned from the server's probe operation.
  *
  * This information is extracted by ffprobe (for audio/video) or the MIDI
@@ -135,6 +171,9 @@ export interface MediaInfo {
 
   /** Video height in pixels (only for video files) */
   height?: number;
+
+  /** Embedded audio tracks (only for video files with multiple audio streams) */
+  audioTracks?: AudioTrack[];
 
   /** Embedded subtitle tracks (only for video files) */
   subtitleTracks?: SubtitleTrack[];
