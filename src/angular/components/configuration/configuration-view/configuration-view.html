@@ -473,7 +473,6 @@
                     <label for="server-port">Server Port</label>
                     <p class="setting-description">
                       The port for the internal media server. Leave empty for auto-assign.
-                      Changes require app restart to take effect.
                     </p>
                   </div>
                   <div class="setting-control port-control">
@@ -497,32 +496,12 @@
                     }
                   </div>
                 </div>
-
-                <div class="setting-row">
-                  <div class="setting-label">
-                    <label for="auto-hide-delay">Controls Auto-Hide</label>
-                    <p class="setting-description">
-                      Time before playback controls hide in fullscreen mode. Set to 0 to disable.
-                    </p>
+                @if (serverPortChanged()) {
+                  <div class="restart-notice">
+                    <i class="fa-solid fa-info-circle"></i>
+                    <span>Server Port setting requires an application restart to take effect.</span>
                   </div>
-                  <div class="setting-control slider-control">
-                    <input
-                      type="range"
-                      id="auto-hide-delay"
-                      min="0"
-                      max="30"
-                      step="1"
-                      [value]="currentAutoHideDelay()"
-                      (input)="onAutoHideDelayChange($event)"
-                    />
-                    <span class="slider-value">{{ formatAutoHideDelay() }}</span>
-                  </div>
-                </div>
-
-                <div class="restart-notice">
-                  <i class="fa-solid fa-info-circle"></i>
-                  <span>Some settings require an application restart to take effect.</span>
-                </div>
+                }
               </div>
             }
 
@@ -628,6 +607,27 @@
                         <option [value]="option.value" [selected]="option.value === currentVideoAspectMode()">{{ option.label }}</option>
                       }
                     </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="auto-hide-delay">Controls Auto-Hide</label>
+                    <p class="setting-description">
+                      Time before playback controls hide in fullscreen mode. Set to 0 to disable.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="auto-hide-delay"
+                      min="0"
+                      max="30"
+                      step="1"
+                      [value]="currentAutoHideDelay()"
+                      (input)="onAutoHideDelayChange($event)"
+                    />
+                    <span class="slider-value">{{ formatAutoHideDelay() }}</span>
                   </div>
                 </div>
               </div>
@@ -927,6 +927,12 @@
                       </select>
                     </div>
                   </div>
+                  @if (visualEffectStateChanged()) {
+                    <div class="restart-notice">
+                      <i class="fa-solid fa-info-circle"></i>
+                      <span>Visual Effect State setting requires an application restart to take effect.</span>
+                    </div>
+                  }
                 }
 
                 <!-- Background Color HSL (when glass disabled or unsupported) -->
@@ -998,92 +1004,76 @@
 
                 <!-- Window Tint HSLA (when glass enabled and supported) -->
                 @if (currentGlassEnabled() && supportsGlass()) {
-                  <div class="setting-row">
-                    <div class="setting-label">
-                      <label>Window Tint</label>
-                      <p class="setting-description">
-                        Applies a color tint over the glass effect. Use Alpha to control tint intensity.
-                      </p>
+                  <div class="setting-box">
+                    <div class="setting-box-header">
+                      <div class="setting-label">
+                        <label>Window Tint</label>
+                        <p class="setting-description">
+                          Applies a color tint over the glass effect. Use Alpha to control tint intensity.
+                        </p>
+                      </div>
+                      <div class="setting-control">
+                        <div class="color-preview" [style.background]="windowTintPreviewColor()"></div>
+                      </div>
                     </div>
-                    <div class="setting-control">
-                      <div class="color-preview" [style.background]="windowTintPreviewColor()"></div>
-                    </div>
-                  </div>
-                  <div class="setting-row hsl-slider-row">
-                    <div class="setting-label">
-                      <label for="tint-hue">Hue</label>
-                    </div>
-                    <div class="setting-control slider-control">
-                      <input
-                        type="range"
-                        id="tint-hue"
-                        class="hue-slider"
-                        min="0"
-                        max="360"
-                        step="1"
-                        [value]="currentWindowTintHue()"
-                        (input)="onWindowTintHueChange($event)"
-                      />
-                      <span class="slider-value">{{ currentWindowTintHue() }}°</span>
-                    </div>
-                  </div>
-                  <div class="setting-row hsl-slider-row">
-                    <div class="setting-label">
-                      <label for="tint-saturation">Saturation</label>
-                    </div>
-                    <div class="setting-control slider-control">
-                      <input
-                        type="range"
-                        id="tint-saturation"
-                        min="0"
-                        max="100"
-                        step="1"
-                        [value]="currentWindowTintSaturation()"
-                        (input)="onWindowTintSaturationChange($event)"
-                      />
-                      <span class="slider-value">{{ currentWindowTintSaturation() }}%</span>
-                    </div>
-                  </div>
-                  <div class="setting-row hsl-slider-row">
-                    <div class="setting-label">
-                      <label for="tint-lightness">Lightness</label>
-                    </div>
-                    <div class="setting-control slider-control">
-                      <input
-                        type="range"
-                        id="tint-lightness"
-                        min="0"
-                        max="100"
-                        step="1"
-                        [value]="currentWindowTintLightness()"
-                        (input)="onWindowTintLightnessChange($event)"
-                      />
-                      <span class="slider-value">{{ currentWindowTintLightness() }}%</span>
-                    </div>
-                  </div>
-                  <div class="setting-row hsl-slider-row">
-                    <div class="setting-label">
-                      <label for="tint-alpha">Alpha</label>
-                    </div>
-                    <div class="setting-control slider-control">
-                      <input
-                        type="range"
-                        id="tint-alpha"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        [value]="currentWindowTintAlpha()"
-                        (input)="onWindowTintAlphaChange($event)"
-                      />
-                      <span class="slider-value">{{ (currentWindowTintAlpha() * 100).toFixed(0) }}%</span>
+                    <div class="setting-box-content">
+                      <div class="inline-slider-row">
+                        <label for="tint-hue">Hue</label>
+                        <input
+                          type="range"
+                          id="tint-hue"
+                          class="hue-slider"
+                          min="0"
+                          max="360"
+                          step="1"
+                          [value]="currentWindowTintHue()"
+                          (input)="onWindowTintHueChange($event)"
+                        />
+                        <span class="slider-value">{{ currentWindowTintHue() }}°</span>
+                      </div>
+                      <div class="inline-slider-row">
+                        <label for="tint-saturation">Saturation</label>
+                        <input
+                          type="range"
+                          id="tint-saturation"
+                          min="0"
+                          max="100"
+                          step="1"
+                          [value]="currentWindowTintSaturation()"
+                          (input)="onWindowTintSaturationChange($event)"
+                        />
+                        <span class="slider-value">{{ currentWindowTintSaturation() }}%</span>
+                      </div>
+                      <div class="inline-slider-row">
+                        <label for="tint-lightness">Lightness</label>
+                        <input
+                          type="range"
+                          id="tint-lightness"
+                          min="0"
+                          max="100"
+                          step="1"
+                          [value]="currentWindowTintLightness()"
+                          (input)="onWindowTintLightnessChange($event)"
+                        />
+                        <span class="slider-value">{{ currentWindowTintLightness() }}%</span>
+                      </div>
+                      <div class="inline-slider-row">
+                        <label for="tint-alpha">Alpha</label>
+                        <input
+                          type="range"
+                          id="tint-alpha"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          [value]="currentWindowTintAlpha()"
+                          (input)="onWindowTintAlphaChange($event)"
+                        />
+                        <span class="slider-value">{{ (currentWindowTintAlpha() * 100).toFixed(0) }}%</span>
+                      </div>
                     </div>
                   </div>
                 }
 
-                <div class="restart-notice">
-                  <i class="fa-solid fa-info-circle"></i>
-                  <span>Glass effect setting requires an application restart to take effect.</span>
-                </div>
               </div>
             }
           }
