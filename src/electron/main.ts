@@ -105,6 +105,9 @@ class Program {
   /** The main browser window instance, null when closed */
   private window: BrowserWindow | null = null;
 
+  /** The configuration window instance, null when closed */
+  private configWindow: BrowserWindow | null = null;
+
   /** The unified HTTP media server instance */
   private mediaServer: UnifiedMediaServer | null = null;
 
@@ -131,6 +134,9 @@ class Program {
 
   /** Whether the application is currently in configuration mode (settings view) */
   private isInConfigurationMode: boolean = false;
+
+  /** Stored main window bounds before opening config window (for restoration on close) */
+  private mainWindowBoundsBeforeConfig: Electron.Rectangle | null = null;
 
   /**
    * Gets the default background color based on system theme.
@@ -374,6 +380,144 @@ class Program {
     window.webContents.setVisualZoomLevelLimits(1, 1);
 
     return window;
+  }
+
+  /**
+   * Creates and shows the configuration window.
+   *
+   * The configuration window is a fixed-size frameless dialog (800x600) that displays
+   * the settings view. It loads the Angular app with a query parameter to
+   * indicate it should show only the configuration view.
+   *
+   * If the window already exists, it will be focused instead of creating a new one.
+   */
+  private showConfigurationWindow(): void {
+    // If window already exists, focus it
+    if (this.configWindow && !this.configWindow.isDestroyed()) {
+      this.configWindow.focus();
+      return;
+    }
+
+    const projectRoot: string = Program.getProjectRoot();
+    const preloadPath: string = path.join(projectRoot, "src", "electron", "dist", "preload.js");
+
+    // Fixed size, non-resizable dialog with hidden title bar
+    const configWindowWidth: number = 800;
+    const configWindowHeight: number = 600;
+
+    // Platform-specific options for hidden title bar with traffic lights
+    const platformOptions: Electron.BrowserWindowConstructorOptions = process.platform === 'darwin'
+      ? {
+          titleBarStyle: 'hiddenInset',
+          trafficLightPosition: {x: 12, y: 13}
+        }
+      : {
+          frame: false
+        };
+
+    // Determine if we should do side-by-side positioning
+    // Only in normal windowed mode (not fullscreen, not miniplayer)
+    const shouldPositionSideBySide: boolean = this.window !== null &&
+      !this.window.isFullScreen() &&
+      !this.isInMiniPlayerMode;
+
+    // Calculate positions for side-by-side layout
+    let configWindowX: number | undefined;
+    let configWindowY: number | undefined;
+
+    if (shouldPositionSideBySide && this.window) {
+      // Remember main window position for restoration on close
+      this.mainWindowBoundsBeforeConfig = this.window.getBounds();
+
+      // Get the display containing the main window
+      const mainBounds: Electron.Rectangle = this.mainWindowBoundsBeforeConfig;
+      const display: Electron.Display = screen.getDisplayNearestPoint({
+        x: mainBounds.x + mainBounds.width / 2,
+        y: mainBounds.y + mainBounds.height / 2
+      });
+      const workArea: Electron.Rectangle = display.workArea;
+
+      const gutter: number = 32;
+      const totalWidth: number = configWindowWidth + mainBounds.width + gutter * 2;
+
+      // Calculate vertical center
+      const configY: number = Math.round(workArea.y + (workArea.height - configWindowHeight) / 2);
+      const mainY: number = Math.round(workArea.y + (workArea.height - mainBounds.height) / 2);
+
+      if (totalWidth <= workArea.width) {
+        // Enough space: position side by side with gutters
+        configWindowX = workArea.x + gutter;
+        configWindowY = configY;
+        const mainX: number = workArea.x + workArea.width - mainBounds.width - gutter;
+        this.window.setBounds({x: mainX, y: mainY, width: mainBounds.width, height: mainBounds.height});
+      } else {
+        // Not enough space: config on left with gutter, main on right with gutter (overlapping allowed)
+        configWindowX = workArea.x + gutter;
+        configWindowY = configY;
+        const mainX: number = workArea.x + workArea.width - mainBounds.width - gutter;
+        this.window.setBounds({x: mainX, y: mainY, width: mainBounds.width, height: mainBounds.height});
+      }
+    }
+
+    this.configWindow = new BrowserWindow({
+      width: configWindowWidth,
+      height: configWindowHeight,
+      x: configWindowX,
+      y: configWindowY,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      center: configWindowX === undefined, // Only center if we didn't calculate position
+      parent: this.window ?? undefined,
+      modal: false,
+      show: false,
+      title: 'ONIXPlayer Configuration',
+      backgroundColor: '#1e1e1e',
+      ...platformOptions,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        preload: preloadPath,
+        zoomFactor: 1.0,
+        webSecurity: true
+      }
+    });
+
+    // Hide menu bar on Windows/Linux
+    this.configWindow.setMenuBarVisibility(false);
+
+    // Load the Angular app with configuration window parameter
+    const baseUrl: string = app.isPackaged
+      ? `http://127.0.0.1:${this.serverPort}/`
+      : Program.DEVELOPMENT_SERVER_URL;
+    const configUrl: string = `${baseUrl}?window=configuration`;
+
+    void this.configWindow.loadURL(configUrl);
+
+    // Show when ready
+    this.configWindow.once('ready-to-show', (): void => {
+      this.configWindow?.show();
+    });
+
+    // Clean up reference and restore main window position when closed
+    this.configWindow.on('closed', (): void => {
+      // Restore main window to original position
+      if (this.mainWindowBoundsBeforeConfig && this.window && !this.window.isDestroyed()) {
+        this.window.setBounds(this.mainWindowBoundsBeforeConfig);
+      }
+      this.mainWindowBoundsBeforeConfig = null;
+      this.configWindow = null;
+    });
+
+    // Prevent zoom
+    this.configWindow.webContents.on('before-input-event', (_event: Electron.Event, input: Electron.Input): void => {
+      if ((input.control || input.meta) && (input.key === '+' || input.key === '-' || input.key === '=' || input.key === '0')) {
+        _event.preventDefault();
+      }
+    });
+    this.configWindow.webContents.setVisualZoomLevelLimits(1, 1);
   }
 
   /**
@@ -794,7 +938,7 @@ class Program {
   private setupApplicationMenu(): void {
     createApplicationMenu({
       onShowConfig: (): void => {
-        this.window?.webContents.send('menu:showConfig');
+        this.showConfigurationWindow();
       },
       onShowAbout: (): void => {
         this.window?.webContents.send('menu:showAbout');

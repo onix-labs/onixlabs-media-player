@@ -99,13 +99,13 @@ export type VideoAspectMode = 'default' | '4:3' | '16:9' | 'fit';
 /**
  * Subtitle font family options.
  */
-export type SubtitleFontFamily = 'sans-serif' | 'serif' | 'monospace';
+export type SubtitleFontFamily = 'sans-serif' | 'serif' | 'monospace' | 'Arial';
 
 /**
  * Subtitle appearance settings.
  */
 export interface SubtitleSettings {
-  /** Font size as percentage (50-200, default 100) */
+  /** Font size as percentage (50-300, default 100) */
   readonly fontSize: number;
   /** Font color in hex format (default '#ffffff') */
   readonly fontColor: string;
@@ -1062,10 +1062,10 @@ export class SettingsService implements OnDestroy {
   /**
    * Sets the subtitle font size.
    *
-   * @param size - Font size as percentage (50-200)
+   * @param size - Font size as percentage (50-300)
    */
   public async setSubtitleFontSize(size: number): Promise<void> {
-    await this.updateSetting('subtitles', 'fontSize', this.clamp(Math.round(size), 50, 200));
+    await this.updateSetting('subtitles', 'fontSize', this.clamp(Math.round(size), 50, 300));
   }
 
   /**
@@ -1109,7 +1109,7 @@ export class SettingsService implements OnDestroy {
    * @param family - Font family ('sans-serif', 'serif', or 'monospace')
    */
   public async setSubtitleFontFamily(family: SubtitleFontFamily): Promise<void> {
-    const validFamilies: readonly SubtitleFontFamily[] = ['sans-serif', 'serif', 'monospace'];
+    const validFamilies: readonly SubtitleFontFamily[] = ['sans-serif', 'serif', 'monospace', 'Arial'];
     if (!validFamilies.includes(family)) {
       console.error(`[SettingsService] Invalid font family: ${family}`);
       return;

@@ -1,6 +1,10 @@
-<div class="configuration-container">
-  <!-- Header (drag region for traffic lights) -->
-  <div class="configuration-header"></div>
+<div class="configuration-container" [class.standalone-window]="isStandaloneWindow()">
+  <!-- Header (drag region, shows title in standalone mode) -->
+  <div class="configuration-header">
+    @if (isStandaloneWindow()) {
+      <span class="header-title">ONIXPlayer Configuration</span>
+    }
+  </div>
 
   <!-- Content area with sidebar and panel -->
   <div class="configuration-content">
@@ -644,7 +648,7 @@
                       type="range"
                       id="subtitle-font-size"
                       min="50"
-                      max="200"
+                      max="300"
                       step="10"
                       [value]="currentSubtitleFontSize()"
                       (input)="onSubtitleFontSizeChange($event)"
@@ -668,7 +672,7 @@
                       [value]="currentSubtitleFontColor()"
                       (input)="onSubtitleFontColorChange($event)"
                     />
-                    <span class="color-value">{{ currentSubtitleFontColor() }}</span>
+                    <span class="color-value mono">{{ currentSubtitleFontColor() }}</span>
                   </div>
                 </div>
 
@@ -687,7 +691,7 @@
                       [value]="currentSubtitleBackgroundColor()"
                       (input)="onSubtitleBackgroundColorChange($event)"
                     />
-                    <span class="color-value">{{ currentSubtitleBackgroundColor() }}</span>
+                    <span class="color-value mono">{{ currentSubtitleBackgroundColor() }}</span>
                   </div>
                 </div>
 
@@ -754,89 +758,81 @@
                   </div>
                 </div>
 
-                <!-- Shadow Spread -->
-                <div class="setting-row">
-                  <div class="setting-label">
-                    <label for="subtitle-shadow-spread">Shadow Spread</label>
-                    <p class="setting-description">
-                      Controls the thickness of the text outline effect.
-                    </p>
-                  </div>
-                  <div class="setting-control">
-                    <input
-                      type="range"
-                      id="subtitle-shadow-spread"
-                      min="1"
-                      max="5"
-                      step="0.5"
-                      [value]="currentSubtitleShadowSpread()"
-                      (input)="onSubtitleShadowSpreadChange($event)"
-                    />
-                    <span class="slider-value">{{ formatSubtitleShadowSpread() }}</span>
-                  </div>
-                </div>
-
-                <!-- Shadow Blur -->
-                <div class="setting-row">
-                  <div class="setting-label">
-                    <label for="subtitle-shadow-blur">Shadow Blur</label>
-                    <p class="setting-description">
-                      Softness of the shadow edge. 0 for a crisp outline.
-                    </p>
-                  </div>
-                  <div class="setting-control">
-                    <input
-                      type="range"
-                      id="subtitle-shadow-blur"
-                      min="0"
-                      max="10"
-                      step="1"
-                      [value]="currentSubtitleShadowBlur()"
-                      (input)="onSubtitleShadowBlurChange($event)"
-                    />
-                    <span class="slider-value">{{ formatSubtitleShadowBlur() }}</span>
-                  </div>
-                </div>
-
-                <!-- Shadow Color -->
-                <div class="setting-row">
-                  <div class="setting-label">
-                    <label for="subtitle-shadow-color">Shadow Color</label>
-                    <p class="setting-description">
-                      Color of the text shadow/outline.
-                    </p>
-                  </div>
-                  <div class="setting-control color-control">
-                    <input
-                      type="color"
-                      id="subtitle-shadow-color"
-                      [value]="currentSubtitleShadowColor()"
-                      (input)="onSubtitleShadowColorChange($event)"
-                    />
-                    <span class="color-value">{{ currentSubtitleShadowColor() }}</span>
-                  </div>
-                </div>
-
-                <!-- Preview -->
-                <div class="setting-row">
-                  <div class="setting-label">
-                    <label>Preview</label>
-                    <p class="setting-description">
-                      How subtitles will appear during video playback.
-                    </p>
-                  </div>
-                  <div class="setting-control subtitle-preview">
-                    <div class="subtitle-preview-container">
-                      <span
-                        class="subtitle-preview-text"
-                        [style.fontSize.%]="currentSubtitleFontSize()"
-                        [style.color]="currentSubtitleFontColor()"
-                        [style.backgroundColor]="subtitleBackgroundPreviewColor()"
-                        [style.fontFamily]="currentSubtitleFontFamily()"
-                        [style.textShadow]="subtitleShadowPreviewStyle()"
-                      >Sample Subtitle Text</span>
+                @if (currentSubtitleTextShadow()) {
+                  <!-- Shadow Spread -->
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label for="subtitle-shadow-spread">Shadow Spread</label>
+                      <p class="setting-description">
+                        Controls the thickness of the text outline effect.
+                      </p>
+                    </div>
+                    <div class="setting-control slider-control">
+                      <input
+                        type="range"
+                        id="subtitle-shadow-spread"
+                        min="1"
+                        max="3"
+                        step="0.5"
+                        [value]="currentSubtitleShadowSpread()"
+                        (input)="onSubtitleShadowSpreadChange($event)"
+                      />
+                      <span class="slider-value">{{ formatSubtitleShadowSpread() }}</span>
                     </div>
                   </div>
+
+                  <!-- Shadow Blur -->
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label for="subtitle-shadow-blur">Shadow Blur</label>
+                      <p class="setting-description">
+                        Softness of the shadow edge. 0 for a crisp outline.
+                      </p>
+                    </div>
+                    <div class="setting-control slider-control">
+                      <input
+                        type="range"
+                        id="subtitle-shadow-blur"
+                        min="0"
+                        max="10"
+                        step="1"
+                        [value]="currentSubtitleShadowBlur()"
+                        (input)="onSubtitleShadowBlurChange($event)"
+                      />
+                      <span class="slider-value">{{ formatSubtitleShadowBlur() }}</span>
+                    </div>
+                  </div>
+
+                  <!-- Shadow Color -->
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label for="subtitle-shadow-color">Shadow Color</label>
+                      <p class="setting-description">
+                        Color of the text shadow/outline.
+                      </p>
+                    </div>
+                    <div class="setting-control color-control">
+                      <input
+                        type="color"
+                        id="subtitle-shadow-color"
+                        [value]="currentSubtitleShadowColor()"
+                        (input)="onSubtitleShadowColorChange($event)"
+                      />
+                      <span class="color-value mono">{{ currentSubtitleShadowColor() }}</span>
+                    </div>
+                  </div>
+                }
+
+                <!-- Preview -->
+                <div class="subtitle-preview-standalone">
+                  <span
+                    class="subtitle-preview-text"
+                    [style.fontSize.%]="currentSubtitleFontSize()"
+                    [style.color]="currentSubtitleFontColor()"
+                    [style.backgroundColor]="subtitleBackgroundPreviewColor()"
+                    [style.fontFamily]="currentSubtitleFontFamily()"
+                    [style.textShadow]="subtitleShadowPreviewStyle()"
+                  >Sample Subtitle Text</span>
                 </div>
               </div>
             }

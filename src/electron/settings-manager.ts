@@ -104,7 +104,7 @@ export type VideoAspectMode = 'default' | '4:3' | '16:9' | 'fit';
 /**
  * Subtitle font family options.
  */
-export type SubtitleFontFamily = 'sans-serif' | 'serif' | 'monospace';
+export type SubtitleFontFamily = 'sans-serif' | 'serif' | 'monospace' | 'Arial';
 
 /**
  * macOS visual effect state.
@@ -198,7 +198,7 @@ export interface AppearanceSettings {
  * Subtitle appearance settings.
  */
 export interface SubtitleSettings {
-  /** Font size as percentage (50-200, default 100) */
+  /** Font size as percentage (50-300, default 100) */
   readonly fontSize: number;
   /** Font color in hex format (default '#ffffff') */
   readonly fontColor: string;
@@ -375,7 +375,7 @@ const VALID_VIDEO_ASPECT_MODES: readonly VideoAspectMode[] = ['default', '4:3', 
 const VALID_MACOS_VISUAL_EFFECT_STATE: readonly MacOSVisualEffectState[] = ['followWindow', 'active', 'inactive'];
 
 /** Valid subtitle font family values */
-const VALID_SUBTITLE_FONT_FAMILIES: readonly SubtitleFontFamily[] = ['sans-serif', 'serif', 'monospace'];
+const VALID_SUBTITLE_FONT_FAMILIES: readonly SubtitleFontFamily[] = ['sans-serif', 'serif', 'monospace', 'Arial'];
 
 /** Default settings used when no file exists or on parse error */
 const DEFAULT_SETTINGS: AppSettings = {
@@ -1724,13 +1724,13 @@ export class SettingsManager {
   /**
    * Type guard to check if a value is a valid subtitle font size.
    *
-   * Valid values are integers between 50 and 200 (percentage).
+   * Valid values are integers between 50 and 300 (percentage).
    *
    * @param value - The value to check
    * @returns True if the value is a valid subtitle font size
    */
   private isValidSubtitleFontSize(value: unknown): value is number {
-    return typeof value === 'number' && Number.isInteger(value) && value >= 50 && value <= 200;
+    return typeof value === 'number' && Number.isInteger(value) && value >= 50 && value <= 300;
   }
 
   /**
