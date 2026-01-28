@@ -24,7 +24,7 @@ import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS} from '../../../services/settings.service';
-import type {PlaylistItem} from '../../../services/electron.service';
+import type {PlaylistItem, SubtitleTrack} from '../../../services/electron.service';
 
 /**
  * Video formats that Chromium can play natively.
@@ -114,6 +114,14 @@ export class VideoOutlet implements OnInit, OnDestroy {
     const option: {value: VideoAspectMode; label: string} | undefined = VIDEO_ASPECT_OPTIONS.find((opt: {value: VideoAspectMode; label: string}): boolean => opt.value === mode);
     return option?.label ?? 'Default';
   });
+
+  /** Subtitle tracks available for the current video */
+  public readonly subtitleTracks: ReturnType<typeof computed<readonly SubtitleTrack[]>> = computed(
+    (): readonly SubtitleTrack[] => this.electron.currentMedia()?.subtitleTracks ?? []
+  );
+
+  /** Currently selected subtitle track index (-1 for off) */
+  public readonly selectedSubtitleTrack: ReturnType<typeof signal<number>> = signal<number>(-1);
 
   // ============================================================================
   // Internal State
@@ -283,6 +291,18 @@ export class VideoOutlet implements OnInit, OnDestroy {
       const name: string = this.aspectModeName();
       this.aspectModeChange.emit(name);
     });
+
+    // Reset subtitle track selection when video changes or subtitles become available
+    effect((): void => {
+      const tracks: readonly SubtitleTrack[] = this.subtitleTracks();
+      // Select the default track if available, otherwise disable subtitles
+      const defaultTrack: SubtitleTrack | undefined = tracks.find((t: SubtitleTrack): boolean => t.default);
+      if (defaultTrack) {
+        this.selectedSubtitleTrack.set(defaultTrack.index);
+      } else {
+        this.selectedSubtitleTrack.set(-1);
+      }
+    });
   }
 
   // ============================================================================
@@ -333,6 +353,44 @@ export class VideoOutlet implements OnInit, OnDestroy {
    */
   public onDoubleClick(): void {
     void this.electron.toggleFullscreen();
+  }
+
+  /**
+   * Gets the URL for a subtitle track.
+   *
+   * @param track - The subtitle track to get the URL for
+   * @returns The URL to fetch the WebVTT subtitle track
+   */
+  public getSubtitleUrl(track: SubtitleTrack): string {
+    const serverUrl: string = this.mediaPlayer.serverUrl();
+    const filePath: string | null = this.currentFilePath;
+    if (!serverUrl || !filePath) return '';
+    return `${serverUrl}/media/subtitles?path=${encodeURIComponent(filePath)}&track=${track.index}`;
+  }
+
+  /**
+   * Selects a subtitle track by index.
+   * Pass -1 to disable subtitles.
+   *
+   * @param trackIndex - The track index to select, or -1 to disable
+   */
+  public selectSubtitleTrack(trackIndex: number): void {
+    this.selectedSubtitleTrack.set(trackIndex);
+
+    // Find the title of the selected track (if any)
+    const tracks: readonly SubtitleTrack[] = this.subtitleTracks();
+    const selectedTrack: SubtitleTrack | undefined = tracks.find(
+      (t: SubtitleTrack): boolean => t.index === trackIndex
+    );
+    const selectedLabel: string | null = selectedTrack?.title ?? null;
+
+    // Update the video element's text tracks
+    const video: HTMLVideoElement = this.videoRef.nativeElement;
+    for (let i: number = 0; i < video.textTracks.length; i++) {
+      const textTrack: TextTrack = video.textTracks[i];
+      // Show the track if its label matches, otherwise disable it
+      textTrack.mode = (selectedLabel !== null && textTrack.label === selectedLabel) ? 'showing' : 'disabled';
+    }
   }
 
   /**

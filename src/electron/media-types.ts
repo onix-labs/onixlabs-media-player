@@ -13,6 +13,27 @@
 // ============================================================================
 
 /**
+ * Represents a subtitle track embedded in a media file.
+ *
+ * Subtitle tracks are detected via FFprobe and can be extracted
+ * to WebVTT format for display in the HTML5 video element.
+ */
+export interface SubtitleTrack {
+  /** Stream index in the container (used for extraction) */
+  readonly index: number;
+  /** ISO 639-2/B language code (e.g., 'eng', 'spa', 'jpn') */
+  readonly language: string;
+  /** Human-readable title (e.g., 'English', 'English SDH', 'Commentary') */
+  readonly title: string;
+  /** Subtitle codec (e.g., 'subrip', 'ass', 'mov_text', 'dvd_subtitle') */
+  readonly codec: string;
+  /** Whether this is a forced subtitle track (for foreign language portions) */
+  readonly forced: boolean;
+  /** Whether this track is marked as the default */
+  readonly default: boolean;
+}
+
+/**
  * Represents an item in the playlist.
  *
  * Playlist items contain all metadata needed for display and playback.
@@ -62,6 +83,8 @@ export interface MediaInfo {
   readonly width?: number;
   /** Video height in pixels (video only) */
   readonly height?: number;
+  /** Embedded subtitle tracks (video only) */
+  readonly subtitleTracks?: readonly SubtitleTrack[];
 }
 
 /**

@@ -33,10 +33,10 @@ import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdat
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
 import { SSEManager } from './sse-manager.js';
 import { PlaylistManager } from './playlist-manager.js';
-import type { PlaylistItem, PlaylistState, MediaInfo, PlaybackState } from './media-types.js';
+import type { PlaylistItem, PlaylistState, MediaInfo, PlaybackState, SubtitleTrack } from './media-types.js';
 
 // Re-export types that were previously exported from this module
-export type { PlaylistItem, MediaInfo } from './media-types.js';
+export type { PlaylistItem, MediaInfo, SubtitleTrack } from './media-types.js';
 
 // ============================================================================
 // Constants
@@ -47,6 +47,47 @@ export type { PlaylistItem, MediaInfo } from './media-types.js';
  * These support HTTP range requests for seeking.
  */
 const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.m4v', '.webm', '.ogg']);
+
+/**
+ * ISO 639-2/B language codes to display names.
+ * Common languages used in media files for subtitle tracks.
+ */
+const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
+  eng: 'English',
+  spa: 'Spanish',
+  fre: 'French',
+  fra: 'French',
+  ger: 'German',
+  deu: 'German',
+  ita: 'Italian',
+  por: 'Portuguese',
+  rus: 'Russian',
+  jpn: 'Japanese',
+  kor: 'Korean',
+  chi: 'Chinese',
+  zho: 'Chinese',
+  ara: 'Arabic',
+  hin: 'Hindi',
+  tha: 'Thai',
+  vie: 'Vietnamese',
+  pol: 'Polish',
+  dut: 'Dutch',
+  nld: 'Dutch',
+  swe: 'Swedish',
+  nor: 'Norwegian',
+  dan: 'Danish',
+  fin: 'Finnish',
+  tur: 'Turkish',
+  heb: 'Hebrew',
+  gre: 'Greek',
+  ell: 'Greek',
+  cze: 'Czech',
+  ces: 'Czech',
+  hun: 'Hungarian',
+  rum: 'Romanian',
+  ron: 'Romanian',
+  und: 'Unknown',
+};
 
 /**
  * Audio formats that Chromium can play natively.
@@ -371,6 +412,8 @@ export class UnifiedMediaServer {
         this.handleMediaStream(req, res, url);
       } else if (pathname === '/media/info' && method === 'GET') {
         await this.handleMediaInfo(res, url);
+      } else if (pathname === '/media/subtitles' && method === 'GET') {
+        this.handleSubtitles(req, res, url);
       } else if (pathname === '/player/play' && method === 'POST') {
         await this.handlePlay(res);
       } else if (pathname === '/player/pause' && method === 'POST') {
@@ -509,6 +552,16 @@ export class UnifiedMediaServer {
    * @param filePath - The file path to validate
    * @returns Object with valid flag and optional error message
    */
+  /**
+   * Converts an ISO 639-2/B language code to a human-readable display name.
+   *
+   * @param code - ISO 639-2/B language code (e.g., 'eng', 'spa')
+   * @returns Human-readable language name (e.g., 'English', 'Spanish')
+   */
+  private getLanguageDisplayName(code: string): string {
+    return LANGUAGE_NAMES[code.toLowerCase()] || code.toUpperCase();
+  }
+
   private validateFilePath(filePath: string): { valid: boolean; error?: string } {
     // Check for path traversal attempts
     if (filePath.includes('..')) {
@@ -1145,6 +1198,104 @@ export class UnifiedMediaServer {
   }
 
   /**
+   * Handles GET /media/subtitles requests.
+   * Extracts a subtitle track from a video file and converts it to WebVTT format.
+   *
+   * Query parameters:
+   * - path: Absolute path to the video file (required)
+   * - track: Stream index of the subtitle track (required)
+   *
+   * @param req - HTTP request
+   * @param res - HTTP response
+   * @param url - Parsed URL with query parameters
+   */
+  private handleSubtitles(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): void {
+    const filePath: string | null = url.searchParams.get('path');
+    const trackIndex: string | null = url.searchParams.get('track');
+
+    if (!filePath) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Missing path parameter' }));
+      return;
+    }
+
+    if (trackIndex === null) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Missing track parameter' }));
+      return;
+    }
+
+    const trackNum: number = parseInt(trackIndex, 10);
+    if (isNaN(trackNum) || trackNum < 0) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Invalid track parameter' }));
+      return;
+    }
+
+    // Validate file path for security
+    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    if (!validation.valid) {
+      res.writeHead(validation.error === 'File not found' ? 404 : 400);
+      res.end(JSON.stringify({ error: validation.error }));
+      return;
+    }
+
+    const ffmpegBin: string | null = this.deps.getFfmpegPath();
+    if (!ffmpegBin) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'FFmpeg not found' }));
+      return;
+    }
+
+    // Extract subtitle track and convert to WebVTT
+    // -map 0:{trackNum} selects the specific stream index
+    // -f webvtt outputs WebVTT format
+    const ffmpeg: ChildProcess = spawn(ffmpegBin, [
+      '-i', filePath,
+      '-map', `0:${trackNum}`,
+      '-f', 'webvtt',
+      'pipe:1'
+    ]);
+
+    // Set response headers for WebVTT
+    res.writeHead(200, {
+      'Content-Type': 'text/vtt; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600',
+    });
+
+    // Pipe FFmpeg output directly to response
+    ffmpeg.stdout?.pipe(res);
+
+    // Handle errors
+    ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
+      const msg: string = data.toString().trim();
+      // Only log actual errors, not progress info
+      if (msg.includes('Error') || msg.includes('Invalid')) {
+        ffmpegLogger.error(`Subtitle extraction error: ${msg}`);
+      }
+    });
+
+    ffmpeg.on('error', (err: Readonly<Error>): void => {
+      ffmpegLogger.error(`Subtitle extraction failed: ${err.message}`);
+      if (!res.headersSent) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+
+    ffmpeg.on('close', (code: number | null): void => {
+      if (code !== 0 && code !== null) {
+        ffmpegLogger.warn(`Subtitle extraction exited with code ${code}`);
+      }
+    });
+
+    // Handle client disconnect
+    req.on('close', (): void => {
+      ffmpeg.kill('SIGTERM');
+    });
+  }
+
+  /**
    * Extracts metadata from a media file using ffprobe or MIDI parser.
    *
    * For most formats, spawns ffprobe to extract:
@@ -1230,6 +1381,22 @@ export class UnifiedMediaServer {
           );
           const hasVideo: boolean = !!videoStream;
 
+          // Extract subtitle tracks (only for video files)
+          const subtitleTracks: SubtitleTrack[] | undefined = hasVideo ? streams
+            .filter((s: Readonly<Record<string, unknown>>): boolean => s.codec_type === 'subtitle')
+            .map((s: Readonly<Record<string, unknown>>): SubtitleTrack => {
+              const streamTags: Record<string, string> = (s.tags as Record<string, string>) || {};
+              const disposition: Record<string, number> = (s.disposition as Record<string, number>) || {};
+              return {
+                index: s.index as number,
+                language: streamTags.language || 'und',
+                title: streamTags.title || this.getLanguageDisplayName(streamTags.language || 'und'),
+                codec: s.codec_name as string,
+                forced: disposition.forced === 1,
+                default: disposition.default === 1,
+              };
+            }) : undefined;
+
           // Extract metadata tags (handle various case conventions)
           const tags: Record<string, string> = (format.tags as Record<string, string>) || {};
 
@@ -1242,6 +1409,7 @@ export class UnifiedMediaServer {
             filePath,
             width: videoStream?.width as number | undefined,
             height: videoStream?.height as number | undefined,
+            subtitleTracks: subtitleTracks && subtitleTracks.length > 0 ? subtitleTracks : undefined,
           });
         } catch (e) {
           reject(new Error(`Failed to parse ffprobe output: ${e}`));

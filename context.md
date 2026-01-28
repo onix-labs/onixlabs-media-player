@@ -114,6 +114,15 @@ Based on independent review with all 31 action items resolved:
   - **Forced (16:9)**: Stretches video to 16:9 aspect ratio
   - **Fit to Screen**: Stretches video to fill the entire canvas
 - Aspect ratio setting persists across sessions and applies in all view modes
+- **Subtitle support**:
+  - Automatic detection of embedded subtitle tracks via FFprobe
+  - Subtitle extraction endpoint converts any format (SRT, ASS, etc.) to WebVTT on-the-fly
+  - Native HTML5 `<track>` element rendering with browser's built-in WebVTT support
+  - Subtitle selector button in media bar (closed-captioning icon, only shown when tracks available)
+  - Dropdown menu with "Off" option and all available tracks with language labels
+  - "Forced" badge for forced subtitle tracks (foreign language portions)
+  - Default track auto-selected when video loads
+  - Selected track highlighted in blue; checkmark indicates current selection
 
 ### Playlist & Controls
 
@@ -456,7 +465,7 @@ AudioContext.destination (speakers)
 | `src/electron/playlist-manager.ts` | Server-side playlist with shuffle (Fisher-Yates) and repeat |
 | `src/electron/sse-manager.ts` | Server-Sent Events broadcast and client management |
 | `src/electron/midi-parser.ts` | MIDI binary duration parsing (tempo changes, tick positions) |
-| `src/electron/media-types.ts` | Shared TypeScript interfaces (PlaylistItem, PlaylistState, etc.) |
+| `src/electron/media-types.ts` | Shared TypeScript interfaces (PlaylistItem, PlaylistState, SubtitleTrack, etc.) |
 | `src/electron/settings-manager.ts` | Persistent settings storage (JSON file in userData) |
 | `src/electron/application-menu.ts` | Native application menu for macOS/Windows/Linux |
 | `src/electron/dependency-manager.ts` | Cross-platform binary detection, install/uninstall, SoundFont management |
@@ -519,6 +528,7 @@ AudioContext.destination (speakers)
 |--------|----------|-------------|
 | GET | `/media/stream?path={path}&t={time}` | Stream media file (supports range requests) |
 | GET | `/media/info?path={path}` | Get metadata via ffprobe |
+| GET | `/media/subtitles?path={path}&track={index}` | Extract subtitle track as WebVTT |
 
 ### Playback Control
 

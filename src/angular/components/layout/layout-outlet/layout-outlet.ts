@@ -26,7 +26,7 @@ import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import {DependencyService} from '../../../services/dependency.service';
 import type {DependencyStatus} from '../../../services/dependency.service';
-import type {PlaylistItem} from '../../../types/electron';
+import type {PlaylistItem, SubtitleTrack} from '../../../types/electron';
 
 /**
  * Main content outlet component that displays the appropriate media player.
@@ -84,6 +84,9 @@ export class LayoutOutlet {
 
   /** Signal for video aspect mode display name (updated reactively from videoOutlet) */
   public readonly aspectModeDisplayName: ReturnType<typeof signal<string>> = signal<string>('Default');
+
+  /** Whether the subtitle dropdown is open */
+  public readonly subtitleDropdownOpen: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   // ============================================================================
   // Reactive State Signals
@@ -186,6 +189,59 @@ export class LayoutOutlet {
    */
   public previousAspectMode(): void {
     this.videoOutlet?.previousAspectMode();
+  }
+
+  // ============================================================================
+  // Subtitle Methods
+  // ============================================================================
+
+  /**
+   * Gets the available subtitle tracks from the video outlet.
+   */
+  public getSubtitleTracks(): readonly SubtitleTrack[] {
+    return this.videoOutlet?.subtitleTracks() ?? [];
+  }
+
+  /**
+   * Gets the currently selected subtitle track index.
+   * Returns -1 if subtitles are off.
+   */
+  public getSelectedSubtitleTrack(): number {
+    return this.videoOutlet?.selectedSubtitleTrack() ?? -1;
+  }
+
+  /**
+   * Selects a subtitle track by index.
+   * Pass -1 to disable subtitles.
+   *
+   * @param trackIndex - The track index to select, or -1 to disable
+   */
+  public selectSubtitleTrack(trackIndex: number): void {
+    this.videoOutlet?.selectSubtitleTrack(trackIndex);
+    this.subtitleDropdownOpen.set(false);
+  }
+
+  /**
+   * Toggles the subtitle dropdown visibility.
+   */
+  public toggleSubtitleDropdown(): void {
+    this.subtitleDropdownOpen.update((open: boolean): boolean => !open);
+  }
+
+  /**
+   * Closes the subtitle dropdown.
+   */
+  public closeSubtitleDropdown(): void {
+    this.subtitleDropdownOpen.set(false);
+  }
+
+  /**
+   * Checks if a subtitle track is currently selected.
+   *
+   * @param trackIndex - The track index to check
+   */
+  public isSubtitleTrackSelected(trackIndex: number): boolean {
+    return this.getSelectedSubtitleTrack() === trackIndex;
   }
 
   // ============================================================================

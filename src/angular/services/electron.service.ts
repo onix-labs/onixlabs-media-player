@@ -17,14 +17,14 @@
  */
 
 import {Injectable, NgZone, OnDestroy, signal} from '@angular/core';
-import type {MediaInfo, PlaylistItem, PlaylistState} from '../types/electron';
+import type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack} from '../types/electron';
 import type {AppSettings} from './settings.service';
 
 /**
  * Re-export types for consumers that import from this service.
  * This allows components to import both the service and types from one location.
  */
-export type {MediaInfo, PlaylistItem, PlaylistState};
+export type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack};
 
 /**
  * Service that manages communication with Electron and the media server.
