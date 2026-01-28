@@ -824,8 +824,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
     serverUrl: string,
     filePath: string
   ): Promise<void> {
-    let defaultTrackIndex: number = -1;
-
     for (const track of tracks) {
       try {
         const url: string = `${serverUrl}/media/subtitles?path=${encodeURIComponent(filePath)}&track=${track.index}`;
@@ -845,11 +843,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
         });
 
         console.log(`Loaded subtitle track ${track.index} with ${cues.length} cues`);
-
-        // Remember default track
-        if (track.default) {
-          defaultTrackIndex = track.index;
-        }
       } catch (error: unknown) {
         console.error(`Error loading subtitle track ${track.index}:`, error);
       }
@@ -865,13 +858,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
       if (cachedSelection !== -1) {
         this.updateSubtitleDisplay(video.currentTime);
       }
-    } else if (defaultTrackIndex >= 0) {
-      // No cached selection - use the default track
-      this.selectedSubtitleTrack.set(defaultTrackIndex);
-      this.electron.setSubtitleSelection(filePath, defaultTrackIndex);
-      this.updateSubtitleDisplay(video.currentTime);
     } else {
-      // No default track - subtitles off
+      // No cached selection - default to subtitles off
       this.selectedSubtitleTrack.set(-1);
       this.electron.setSubtitleSelection(filePath, -1);
     }
