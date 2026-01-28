@@ -11,7 +11,7 @@
  * @module app/components/about/about-view
  */
 
-import {Component, output, ChangeDetectionStrategy, OutputEmitterRef} from '@angular/core';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
 
 /**
  * Application version (CalVer format).
@@ -78,7 +78,7 @@ const DEPENDENCIES: readonly Dependency[] = [
  * - Links to project resources
  *
  * @example
- * <app-about-view (close)="exitAboutMode()" />
+ * <app-about-view />
  */
 @Component({
   selector: 'app-about-view',
@@ -89,13 +89,6 @@ const DEPENDENCIES: readonly Dependency[] = [
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AboutView {
-  // ============================================================================
-  // Outputs
-  // ============================================================================
-
-  /** Event emitted when the close button is clicked */
-  public readonly close: OutputEmitterRef<void> = output<void>();
-
   // ============================================================================
   // Template Data
   // ============================================================================
@@ -127,14 +120,6 @@ export class AboutView {
   // ============================================================================
   // Event Handlers
   // ============================================================================
-
-  /**
-   * Handles close button click.
-   * Emits the close event to return to the media player view.
-   */
-  public onClose(): void {
-    this.close.emit();
-  }
 
   /**
    * Opens an external URL in the default system browser.

@@ -241,11 +241,15 @@ export class Root implements OnDestroy {
       }
     });
 
-    // React to close button pressed in configuration mode
+    // React to window close button pressed in configuration or about mode
     effect((): void => {
       const trigger: number = this.electron.exitConfigurationModeRequested();
       if (trigger > 0) {
-        this.exitConfigurationMode();
+        if (untracked((): boolean => this.isConfigurationMode())) {
+          this.exitConfigurationMode();
+        } else if (untracked((): boolean => this.isAboutMode())) {
+          this.exitAboutMode();
+        }
       }
     });
 
@@ -495,14 +499,18 @@ export class Root implements OnDestroy {
     // Exit configuration mode if active
     this.isConfigurationMode.set(false);
     this.isAboutMode.set(true);
+    // Notify main process so close button returns to media player instead of quitting
+    await this.electron.setConfigurationMode(true);
   }
 
   /**
    * Exits about mode, returning to the media player view.
-   * Called when the close button in the about view is clicked.
+   * Called when the window close button is pressed while in about mode.
    */
   public exitAboutMode(): void {
     this.isAboutMode.set(false);
+    // Notify main process that we're no longer in an overlay mode
+    void this.electron.setConfigurationMode(false);
   }
 
   // ============================================================================

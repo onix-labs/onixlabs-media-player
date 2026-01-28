@@ -612,10 +612,11 @@ describe('Root', (): void => {
   // ============================================================================
 
   describe('enterAboutMode', (): void => {
-    it('sets isAboutMode to true', async (): Promise<void> => {
+    it('sets isAboutMode to true and notifies main process', async (): Promise<void> => {
       await component.enterAboutMode();
 
       expect(component.isAboutMode()).toBe(true);
+      expect(mockElectron['setConfigurationMode']).toHaveBeenCalledWith(true);
     });
 
     it('exits fullscreen before entering about mode', async (): Promise<void> => {
@@ -655,12 +656,13 @@ describe('Root', (): void => {
   });
 
   describe('exitAboutMode', (): void => {
-    it('sets isAboutMode to false', (): void => {
+    it('sets isAboutMode to false and notifies main process', (): void => {
       component.isAboutMode.set(true);
 
       component.exitAboutMode();
 
       expect(component.isAboutMode()).toBe(false);
+      expect(mockElectron['setConfigurationMode']).toHaveBeenCalledWith(false);
     });
   });
 
