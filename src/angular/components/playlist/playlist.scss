@@ -13,6 +13,7 @@
   min-width: 280px;
   min-height: 0;
   flex: 1;
+  // Always use dark mode colors since playlist sits on dark background
   border-left: 1px solid $white-10;
   transition: transform 0.3s ease, opacity 0.3s ease, width 0.3s ease, min-width 0.3s ease, border-color 0.2s ease, background 0.2s ease;
 

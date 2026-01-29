@@ -2,6 +2,23 @@
 // Shared SCSS Mixins
 // =============================================================================
 
+/// Applies styles when the app is in light mode.
+/// This handles both:
+/// - System preference following (data-color-scheme="system" + prefers-color-scheme: light)
+/// - Forced light mode (data-color-scheme="light")
+///
+/// @content The styles to apply in light mode
+@mixin light-mode {
+  @media (prefers-color-scheme: light) {
+    :root[data-color-scheme="system"] & {
+      @content;
+    }
+  }
+  :root[data-color-scheme="light"] & {
+    @content;
+  }
+}
+
 /// Generates cross-browser slider thumb styles (webkit + moz).
 /// The webkit thumb includes hover and optional focus-ring support.
 ///

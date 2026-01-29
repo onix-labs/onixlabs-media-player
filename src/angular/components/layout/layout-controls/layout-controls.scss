@@ -1,4 +1,5 @@
 @use 'variables' as *;
+@use 'mixins' as *;
 
 :host {
   display: flex;
@@ -13,7 +14,7 @@
 
     span {
       font-size: 0.75rem;
-      color: $white-50;
+      color: var(--text-50);
       min-width: 2.5rem;
       font-variant-numeric: tabular-nums;
 
@@ -83,7 +84,7 @@
     text-align: left;
     padding-right: 1.5rem;
     font-size: 0.75rem;
-    color: $white-75;
+    color: var(--text-75);
     user-select: none;
   }
 
@@ -94,6 +95,10 @@
     border: 0.0625rem solid $black-50;
     outline: 0.0625rem solid $white-15;
     backdrop-filter: blur(16px);
+
+    @include light-mode {
+      outline-color: $white-30;
+    }
 
     &.left button, &.right button {
       width: 2rem;
@@ -121,13 +126,17 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    color: $white-75;
+    color: var(--text-75);
     background: $btn-glass;
     border: none;
     border-left: 0.0625rem solid $white-15;
     border-right: 0.0625rem solid $black-30;
     outline: none;
     font-size: 1rem;
+
+    @include light-mode {
+      border-left-color: $white-30;
+    }
 
     &:first-of-type {
       border-left: none;
@@ -142,12 +151,12 @@
     }
 
     &:hover:not(:disabled) {
-      color: white;
+      color: var(--text-primary);
       background: $btn-glass-hover;
     }
 
     &.active {
-      color: white;
+      color: var(--text-primary);
       background: linear-gradient(to bottom,
         rgba(109, 179, 242, 0.75) 0%,
         rgba(84, 163, 238, 0.75) 50%,
@@ -156,7 +165,7 @@
     }
 
     &.muted {
-      color: white;
+      color: var(--text-primary);
       background: linear-gradient(to bottom,
         rgba(248, 80, 50, 0.75) 0%,
         rgba(241, 111, 92, 0.75) 50%,
@@ -165,7 +174,7 @@
     }
 
     &:disabled {
-      color: $white-30;
+      color: var(--text-30);
       cursor: not-allowed;
     }
   }

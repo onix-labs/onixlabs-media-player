@@ -1024,6 +1024,26 @@
                   }
                 }
 
+                <!-- Color Scheme -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="color-scheme">Color Scheme</label>
+                    <p class="setting-description">
+                      Choose between light and dark mode, or follow system preferences.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="color-scheme"
+                      (change)="onColorSchemeChange($event)"
+                    >
+                      @for (option of colorSchemeOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentColorScheme()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
                 <!-- Window Color (unified: background when glass off, tint when glass on) -->
                 <div class="setting-box">
                   <div class="setting-box-header">

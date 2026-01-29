@@ -3,13 +3,82 @@
   --app-background-color: transparent;
   // Tint overlay when glass effect is enabled (set dynamically by root component)
   --app-tint-color: transparent;
+
+  // =============================================================================
+  // Theme Colors (Dark Mode - Default)
+  // =============================================================================
+  // Text and icon colors that adapt to system color scheme
+  --text-primary: white;
+  --text-90: rgba(255, 255, 255, 0.9);
+  --text-80: rgba(255, 255, 255, 0.8);
+  --text-75: rgba(255, 255, 255, 0.75);
+  --text-70: rgba(255, 255, 255, 0.7);
+  --text-60: rgba(255, 255, 255, 0.6);
+  --text-50: rgba(255, 255, 255, 0.5);
+  --text-40: rgba(255, 255, 255, 0.4);
+  --text-30: rgba(255, 255, 255, 0.3);
+  --text-20: rgba(255, 255, 255, 0.2);
+  --text-15: rgba(255, 255, 255, 0.15);
+  --text-12: rgba(255, 255, 255, 0.12);
+  --text-10: rgba(255, 255, 255, 0.1);
+  --text-8: rgba(255, 255, 255, 0.08);
+  --text-5: rgba(255, 255, 255, 0.05);
+  --text-3: rgba(255, 255, 255, 0.03);
+  --text-2: rgba(255, 255, 255, 0.02);
+}
+
+// =============================================================================
+// Light Mode Overrides
+// =============================================================================
+// When color scheme is "system", follow OS preference via media query
+@media (prefers-color-scheme: light) {
+  :root[data-color-scheme="system"] {
+    --text-primary: black;
+    --text-90: rgba(0, 0, 0, 0.9);
+    --text-80: rgba(0, 0, 0, 0.8);
+    --text-75: rgba(0, 0, 0, 0.75);
+    --text-70: rgba(0, 0, 0, 0.7);
+    --text-60: rgba(0, 0, 0, 0.6);
+    --text-50: rgba(0, 0, 0, 0.5);
+    --text-40: rgba(0, 0, 0, 0.4);
+    --text-30: rgba(0, 0, 0, 0.3);
+    --text-20: rgba(0, 0, 0, 0.2);
+    --text-15: rgba(0, 0, 0, 0.15);
+    --text-12: rgba(0, 0, 0, 0.12);
+    --text-10: rgba(0, 0, 0, 0.1);
+    --text-8: rgba(0, 0, 0, 0.08);
+    --text-5: rgba(0, 0, 0, 0.05);
+    --text-3: rgba(0, 0, 0, 0.03);
+    --text-2: rgba(0, 0, 0, 0.02);
+  }
+}
+
+// When color scheme is explicitly "light", always use light mode colors
+:root[data-color-scheme="light"] {
+  --text-primary: black;
+  --text-90: rgba(0, 0, 0, 0.9);
+  --text-80: rgba(0, 0, 0, 0.8);
+  --text-75: rgba(0, 0, 0, 0.75);
+  --text-70: rgba(0, 0, 0, 0.7);
+  --text-60: rgba(0, 0, 0, 0.6);
+  --text-50: rgba(0, 0, 0, 0.5);
+  --text-40: rgba(0, 0, 0, 0.4);
+  --text-30: rgba(0, 0, 0, 0.3);
+  --text-20: rgba(0, 0, 0, 0.2);
+  --text-15: rgba(0, 0, 0, 0.15);
+  --text-12: rgba(0, 0, 0, 0.12);
+  --text-10: rgba(0, 0, 0, 0.1);
+  --text-8: rgba(0, 0, 0, 0.08);
+  --text-5: rgba(0, 0, 0, 0.05);
+  --text-3: rgba(0, 0, 0, 0.03);
+  --text-2: rgba(0, 0, 0, 0.02);
 }
 
 html,
 body {
   display: flex;
   flex-direction: column;
-  color: white;
+  color: var(--text-primary);
   margin: 0;
   padding: 0;
   width: 100vw;
@@ -33,11 +102,11 @@ $scrollbar-width: 8px;
 $scrollbar-width-hover: 10px;
 $scrollbar-radius: 4px;
 
-// Scrollbar colors
-$scrollbar-track: rgba(255, 255, 255, 0.05);
-$scrollbar-thumb: rgba(255, 255, 255, 0.2);
-$scrollbar-thumb-hover: rgba(255, 255, 255, 0.35);
-$scrollbar-thumb-active: rgba(255, 255, 255, 0.5);
+// Scrollbar colors (use CSS variables for theme support)
+$scrollbar-track: var(--text-5);
+$scrollbar-thumb: var(--text-20);
+$scrollbar-thumb-hover: var(--text-30);
+$scrollbar-thumb-active: var(--text-50);
 
 // Webkit browsers (Chrome, Edge, Safari, Electron)
 ::-webkit-scrollbar {

@@ -21,7 +21,7 @@
     -webkit-app-region: no-drag;
     background: none;
     border: none;
-    color: $white-50;
+    color: var(--text-50);
     cursor: pointer;
     padding: 0.25rem 0.5rem;
     border-radius: 3px;
@@ -29,8 +29,8 @@
     font-size: 0.875rem;
 
     &:hover {
-      color: white;
-      background: $white-10;
+      color: var(--text-primary);
+      background: var(--text-10);
     }
   }
 }

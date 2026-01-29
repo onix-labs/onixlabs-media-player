@@ -15,7 +15,7 @@
 import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
 import type {InputSignal, EffectRef} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, MacOSVisualEffectState, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import type {DependencyId, DependencyState, DependencyStatus, SoundFontInfo, InstallProgress} from '../../../services/dependency.service';
@@ -27,6 +27,15 @@ export const MACOS_VISUAL_EFFECT_STATE_OPTIONS: readonly {value: MacOSVisualEffe
   {value: 'followWindow', label: 'Follow Window'},
   {value: 'active', label: 'Always Active'},
   {value: 'inactive', label: 'Always Inactive'},
+];
+
+/**
+ * Color scheme options for the settings UI.
+ */
+export const COLOR_SCHEME_OPTIONS: readonly {value: ColorScheme; label: string}[] = [
+  {value: 'system', label: 'System'},
+  {value: 'dark', label: 'Dark'},
+  {value: 'light', label: 'Light'},
 ];
 
 /**
@@ -415,6 +424,14 @@ export class ConfigurationView {
 
   /** Available macOS visual effect state options for the dropdown */
   public readonly macOSVisualEffectStateOptions: typeof MACOS_VISUAL_EFFECT_STATE_OPTIONS = MACOS_VISUAL_EFFECT_STATE_OPTIONS;
+
+  /** Available color scheme options for the dropdown */
+  public readonly colorSchemeOptions: typeof COLOR_SCHEME_OPTIONS = COLOR_SCHEME_OPTIONS;
+
+  /** Current color scheme setting */
+  public readonly currentColorScheme: ReturnType<typeof computed<ColorScheme>> = computed(
+    (): ColorScheme => this.settingsService.colorScheme()
+  );
 
   /** Whether glass effects are supported on current platform */
   public readonly supportsGlass: ReturnType<typeof computed<boolean>> = computed(
@@ -842,6 +859,16 @@ export class ConfigurationView {
   public async onMacOSVisualEffectStateChange(event: Event): Promise<void> {
     const state: string = getSelectValue(event);
     await this.settingsService.setMacOSVisualEffectState(state as MacOSVisualEffectState);
+  }
+
+  /**
+   * Handles color scheme selection change.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onColorSchemeChange(event: Event): Promise<void> {
+    const scheme: string = getSelectValue(event);
+    await this.settingsService.setColorScheme(scheme as ColorScheme);
   }
 
   // ============================================================================
