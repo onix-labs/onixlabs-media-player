@@ -2,6 +2,7 @@
   class="playlist-container"
   [class.hidden]="!isVisible()"
   [class.drag-over]="isDragOver()"
+  [class.drag-invalid]="isDragInvalid()"
   (dragover)="onDragOver($event)"
   (dragleave)="onDragLeave($event)"
   (drop)="onDrop($event)"

@@ -106,6 +106,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Whether files are being dragged over this component */
   public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
+  /** Whether dragged files are invalid (no valid media extensions) */
+  public readonly isDragInvalid: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
   /** Currently playing track (for display purposes) */
   public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
 
@@ -431,11 +434,19 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
   /**
    * Handles dragover to enable drop target.
+   * Validates dragged files and shows appropriate visual feedback.
    */
   public onDragOver(event: DragEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    this.isDragOver.set(true);
+
+    const hasValid: boolean = this.fileDrop.hasValidFiles(event);
+    this.isDragOver.set(hasValid);
+    this.isDragInvalid.set(!hasValid);
+
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = hasValid ? 'copy' : 'none';
+    }
   }
 
   /**
@@ -445,6 +456,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.isDragOver.set(false);
+    this.isDragInvalid.set(false);
   }
 
   /**
@@ -459,6 +471,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.isDragOver.set(false);
+    this.isDragInvalid.set(false);
 
     const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
     if (filePaths.length === 0) return;

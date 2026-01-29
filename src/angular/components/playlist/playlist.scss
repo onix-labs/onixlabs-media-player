@@ -28,6 +28,12 @@
     background: rgba(74, 222, 128, 0.1);
     border-left-color: rgba(74, 222, 128, 0.5);
   }
+
+  &.drag-invalid {
+    background: rgba(239, 68, 68, 0.1);
+    border-left-color: rgba(239, 68, 68, 0.5);
+    cursor: not-allowed;
+  }
 }
 
 .playlist-header {
@@ -232,5 +238,9 @@
 
   .drag-over & {
     color: rgba(74, 222, 128, 0.8);
+  }
+
+  .drag-invalid & {
+    color: rgba(239, 68, 68, 0.8);
   }
 }

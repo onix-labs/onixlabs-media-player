@@ -8,6 +8,7 @@
       } @else {
         <div class="idle-state"
              [class.drag-over]="isDragOver()"
+             [class.drag-invalid]="isDragInvalid()"
              (dragover)="onDragOver($event)"
              (dragleave)="onDragLeave($event)"
              (drop)="onDrop($event)">
@@ -53,15 +54,6 @@
             <option [value]="option.value" [selected]="option.value === currentAspectMode()">{{ option.label }}</option>
           }
         </select>
-        @if (getAudioTracks().length > 1) {
-          <select class="media-bar-select" (change)="onAudioTrackChange($event)" title="Audio track">
-            @for (track of getAudioTracks(); track track.index) {
-              <option [value]="track.index" [selected]="getSelectedAudioTrack() === track.index">
-                {{ track.title }}@if (track.channels > 2) { ({{ track.channels === 6 ? '5.1' : (track.channels === 8 ? '7.1' : track.channels + 'ch') }})}
-              </option>
-            }
-          </select>
-        }
         <select class="media-bar-select subtitle-select" (change)="onSubtitleTrackChange($event)" title="Subtitles">
           <option value="-1" [selected]="getSelectedSubtitleTrack() === -1">Subtitles Off</option>
           @for (track of getSubtitleTracks(); track track.index) {
@@ -74,6 +66,15 @@
           }
           <option value="-3">Load External...</option>
         </select>
+        @if (getAudioTracks().length > 1) {
+          <select class="media-bar-select" (change)="onAudioTrackChange($event)" title="Audio track">
+            @for (track of getAudioTracks(); track track.index) {
+              <option [value]="track.index" [selected]="getSelectedAudioTrack() === track.index">
+                {{ track.title }}@if (track.channels > 2) { ({{ track.channels === 6 ? '5.1' : (track.channels === 8 ? '7.1' : track.channels + 'ch') }})}
+              </option>
+            }
+          </select>
+        }
       }
       <div class="spacer"></div>
       <button tabindex="-1" class="playlist-toggle" (click)="togglePlaylist()" (mouseup)="$any($event.currentTarget).blur()" title="Toggle playlist">

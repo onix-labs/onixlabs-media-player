@@ -23,6 +23,11 @@
     box-shadow: inset 0 0 0 2px $color-accent-glow;
   }
 
+  &.drag-invalid {
+    box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.5);
+    cursor: not-allowed;
+  }
+
   // Default: preserve video's native aspect ratio
   &.aspect-default video {
     max-width: 100%;

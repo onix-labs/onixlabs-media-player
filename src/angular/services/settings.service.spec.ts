@@ -56,6 +56,8 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       previousTrackThreshold: 3,
       skipDuration: 10,
       videoAspectMode: 'default',
+      preferredAudioLanguage: 'eng',
+      preferredSubtitleLanguage: 'off',
     },
     transcoding: {
       videoQuality: 'medium',
@@ -188,7 +190,7 @@ describe('SettingsService', (): void => {
 
     it('defaultVolume reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        playback: {defaultVolume: 0.8, crossfadeDuration: 100, previousTrackThreshold: 3, skipDuration: 10, videoAspectMode: 'default'},
+        playback: {defaultVolume: 0.8, crossfadeDuration: 100, previousTrackThreshold: 3, skipDuration: 10, videoAspectMode: 'default', preferredAudioLanguage: 'eng', preferredSubtitleLanguage: 'off'},
       });
       service.updateFromSSE(testSettings);
 
@@ -198,7 +200,7 @@ describe('SettingsService', (): void => {
 
     it('crossfadeDuration reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        playback: {defaultVolume: 0.5, crossfadeDuration: 250, previousTrackThreshold: 3, skipDuration: 10, videoAspectMode: 'default'},
+        playback: {defaultVolume: 0.5, crossfadeDuration: 250, previousTrackThreshold: 3, skipDuration: 10, videoAspectMode: 'default', preferredAudioLanguage: 'eng', preferredSubtitleLanguage: 'off'},
       });
       service.updateFromSSE(testSettings);
 
@@ -208,7 +210,7 @@ describe('SettingsService', (): void => {
 
     it('videoAspectMode reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        playback: {defaultVolume: 0.5, crossfadeDuration: 100, previousTrackThreshold: 3, skipDuration: 10, videoAspectMode: '16:9'},
+        playback: {defaultVolume: 0.5, crossfadeDuration: 100, previousTrackThreshold: 3, skipDuration: 10, videoAspectMode: '16:9', preferredAudioLanguage: 'eng', preferredSubtitleLanguage: 'off'},
       });
       service.updateFromSSE(testSettings);
 

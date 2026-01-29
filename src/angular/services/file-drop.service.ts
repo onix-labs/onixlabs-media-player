@@ -79,4 +79,54 @@ export class FileDropService {
 
     return filePaths;
   }
+
+  /**
+   * Checks if a drag event contains any files with valid media extensions.
+   *
+   * Used during dragover to provide visual feedback before the drop occurs.
+   * Returns true if at least one valid media file is being dragged, false otherwise.
+   *
+   * NOTE: During dragover, browsers often restrict access to file details for security.
+   * When dataTransfer.files is empty but items exist, we assume files are valid
+   * since we can't check extensions. The actual filtering happens in extractMediaFilePaths.
+   *
+   * @param event - The DragEvent from a dragover handler
+   * @returns True if the drag contains at least one valid media file, false if invalid or unknown
+   */
+  public hasValidFiles(event: DragEvent): boolean {
+    const files: FileList | undefined = event.dataTransfer?.files;
+    const allowedExtensions: ReadonlySet<string> = this.deps.allowedExtensions();
+
+    // If no dependencies installed, nothing is valid
+    if (allowedExtensions.size === 0) {
+      return false;
+    }
+
+    // If we have access to the files list (during drop), check extensions
+    if (files && files.length > 0) {
+      for (let i: number = 0; i < files.length; i++) {
+        const file: File = files[i];
+        const ext: string = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+        if (allowedExtensions.has(ext)) {
+          return true; // At least one valid file
+        }
+      }
+      return false; // No valid files found
+    }
+
+    // During dragover, files list is often empty (browser security restriction).
+    // Check dataTransfer.items to see if files are being dragged.
+    const items: DataTransferItemList | undefined = event.dataTransfer?.items;
+    if (items && items.length > 0) {
+      for (let i: number = 0; i < items.length; i++) {
+        if (items[i].kind === 'file') {
+          // We know it's a file but can't check the extension during dragover.
+          // Assume valid and let extractMediaFilePaths filter on drop.
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
 }

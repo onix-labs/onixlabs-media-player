@@ -15,7 +15,7 @@
 import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
 import type {InputSignal, EffectRef} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, MacOSVisualEffectState, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, MacOSVisualEffectState, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import type {DependencyId, DependencyState, DependencyStatus, SoundFontInfo, InstallProgress} from '../../../services/dependency.service';
@@ -375,6 +375,24 @@ export class ConfigurationView {
    */
   public readonly currentPreferredAudioLanguage: ReturnType<typeof computed<PreferredAudioLanguage>> = computed(
     (): PreferredAudioLanguage => this.settingsService.preferredAudioLanguage()
+  );
+
+  /**
+   * Available subtitle language options for the dropdown.
+   *
+   * Includes 'Subtitles Off' to disable subtitles by default, plus language options.
+   */
+  public readonly subtitleLanguageOptions: typeof SUBTITLE_LANGUAGE_OPTIONS = SUBTITLE_LANGUAGE_OPTIONS;
+
+  /**
+   * Current preferred subtitle language setting.
+   *
+   * This setting determines which subtitle track is auto-selected when loading
+   * videos with embedded subtitles. 'off' disables subtitles by default.
+   * Manual track selection via the media bar overrides this preference.
+   */
+  public readonly currentPreferredSubtitleLanguage: ReturnType<typeof computed<PreferredSubtitleLanguage>> = computed(
+    (): PreferredSubtitleLanguage => this.settingsService.preferredSubtitleLanguage()
   );
 
   // ============================================================================
@@ -750,6 +768,19 @@ export class ConfigurationView {
   public async onPreferredAudioLanguageChange(event: Event): Promise<void> {
     const language: string = getSelectValue(event);
     await this.settingsService.setPreferredAudioLanguage(language as PreferredAudioLanguage);
+  }
+
+  /**
+   * Handles preferred subtitle language selection change.
+   *
+   * The new language preference is persisted and will be applied on the
+   * next video load. Currently playing videos are not affected.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onPreferredSubtitleLanguageChange(event: Event): Promise<void> {
+    const language: string = getSelectValue(event);
+    await this.settingsService.setPreferredSubtitleLanguage(language as PreferredSubtitleLanguage);
   }
 
   // ============================================================================
