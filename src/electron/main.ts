@@ -807,8 +807,46 @@ class Program {
         const width: number = Math.min(Math.max(savedBounds.width, 320), 640);
         const height: number = Math.min(Math.max(savedBounds.height, 200), 400);
         this.window.setSize(width, height);
-        this.window.setPosition(savedBounds.x, savedBounds.y);
-        windowLogger.debug(`Restored miniplayer bounds: ${width}x${height} at (${savedBounds.x}, ${savedBounds.y})`);
+
+        // Check if saved position is on-screen, snap to edges if not
+        const display: Electron.Display = screen.getDisplayNearestPoint({x: savedBounds.x, y: savedBounds.y});
+        const workArea: Electron.Rectangle = display.workArea;
+
+        let x: number = savedBounds.x;
+        let y: number = savedBounds.y;
+        let positionCorrected: boolean = false;
+
+        // Clamp to keep window on-screen with gap
+        // Left edge: ensure window left edge is at least SNAP_GAP from work area left
+        if (x < workArea.x + this.SNAP_GAP) {
+          x = workArea.x + this.SNAP_GAP;
+          positionCorrected = true;
+        }
+        // Right edge: ensure window right edge is at least SNAP_GAP from work area right
+        if (x + width > workArea.x + workArea.width - this.SNAP_GAP) {
+          x = workArea.x + workArea.width - width - this.SNAP_GAP;
+          positionCorrected = true;
+        }
+        // Top edge: ensure window top edge is at least SNAP_GAP from work area top
+        if (y < workArea.y + this.SNAP_GAP) {
+          y = workArea.y + this.SNAP_GAP;
+          positionCorrected = true;
+        }
+        // Bottom edge: ensure window bottom edge is at least SNAP_GAP from work area bottom
+        if (y + height > workArea.y + workArea.height - this.SNAP_GAP) {
+          y = workArea.y + workArea.height - height - this.SNAP_GAP;
+          positionCorrected = true;
+        }
+
+        this.window.setPosition(x, y);
+
+        // If position was corrected, save the new bounds
+        if (positionCorrected) {
+          this.mediaServer?.getSettingsManager().setMiniplayerBounds({x, y, width, height});
+          windowLogger.debug(`Corrected miniplayer position to stay on-screen: ${width}x${height} at (${x}, ${y})`);
+        } else {
+          windowLogger.debug(`Restored miniplayer bounds: ${width}x${height} at (${savedBounds.x}, ${savedBounds.y})`);
+        }
       } else {
         // Default: position in bottom-right corner of primary display
         this.window.setSize(320, 200);
