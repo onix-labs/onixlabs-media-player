@@ -9,6 +9,7 @@
 
 import {app, Menu} from 'electron';
 import type {MenuItemConstructorOptions} from 'electron';
+import type {RecentItem} from './settings-manager.js';
 
 /**
  * Available visualization types organized by category.
@@ -59,6 +60,9 @@ export interface MenuCallbacks {
   onShowHelp: () => void;
   onOpenFile: () => void;
   onOpenPlaylist: () => void;
+  onOpenRecentFile: (filePath: string) => void;
+  onOpenRecentPlaylist: (playlistPath: string) => void;
+  onClearRecent: () => void;
   onSavePlaylist: () => void;
   onSavePlaylistAs: () => void;
   onCloseMedia: () => void;
@@ -82,13 +86,15 @@ export interface MenuState {
   isPlaying: boolean;
   isVideo: boolean;
   openEnabled: boolean;
+  recentFiles: readonly RecentItem[];
+  recentPlaylists: readonly RecentItem[];
 }
 
 /** Stored callbacks for menu recreation */
 let storedCallbacks: MenuCallbacks | null = null;
 
 /** Current menu state */
-let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false, hasMedia: false, isPlaying: false, isVideo: false, openEnabled: true};
+let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false, hasMedia: false, isPlaying: false, isVideo: false, openEnabled: true, recentFiles: [], recentPlaylists: []};
 
 /**
  * Updates the menu state and rebuilds the menu.
@@ -100,6 +106,70 @@ export function updateMenuState(state: Partial<MenuState>): void {
   if (storedCallbacks) {
     buildMenu(storedCallbacks, currentState);
   }
+}
+
+/**
+ * Builds the Recent Items submenu.
+ *
+ * Structure:
+ * - Recent Files (up to 10 items)
+ * - Separator
+ * - Recent Playlists (up to 5 items)
+ * - Separator
+ * - Clear Recent
+ *
+ * @param callbacks - Callback functions for menu actions
+ * @param state - Current menu state with recent items
+ * @returns Array of menu items for the submenu
+ */
+function buildRecentItemsSubmenu(callbacks: MenuCallbacks, state: MenuState): MenuItemConstructorOptions[] {
+  const items: MenuItemConstructorOptions[] = [];
+  const hasRecentFiles: boolean = state.recentFiles.length > 0;
+  const hasRecentPlaylists: boolean = state.recentPlaylists.length > 0;
+  const hasAnyRecent: boolean = hasRecentFiles || hasRecentPlaylists;
+
+  // Recent Files section
+  if (hasRecentFiles) {
+    state.recentFiles.forEach((file: RecentItem): void => {
+      items.push({
+        label: file.displayName,
+        click: (): void => callbacks.onOpenRecentFile(file.path)
+      });
+    });
+  } else {
+    items.push({
+      label: 'No Recent Files',
+      enabled: false
+    });
+  }
+
+  items.push({type: 'separator'});
+
+  // Recent Playlists section
+  if (hasRecentPlaylists) {
+    state.recentPlaylists.forEach((playlist: RecentItem): void => {
+      items.push({
+        label: playlist.displayName,
+        click: (): void => callbacks.onOpenRecentPlaylist(playlist.path)
+      });
+    });
+  } else {
+    items.push({
+      label: 'No Recent Playlists',
+      enabled: false
+    });
+  }
+
+  items.push({type: 'separator'});
+
+  // Clear Recent option
+  items.push({
+    label: 'Clear Recent',
+    enabled: hasAnyRecent,
+    click: callbacks.onClearRecent
+  });
+
+  return items;
 }
 
 /**
@@ -150,6 +220,10 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
         accelerator: 'CmdOrCtrl+Shift+O',
         enabled: state.openEnabled,
         click: callbacks.onOpenPlaylist
+      },
+      {
+        label: 'Recent Items',
+        submenu: buildRecentItemsSubmenu(callbacks, state)
       },
       {type: 'separator'},
       {

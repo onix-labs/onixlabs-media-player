@@ -29,7 +29,7 @@ import { serverLogger, playlistLogger, playbackLogger, ffmpegLogger, midiLogger,
 import { app } from 'electron';
 import { DependencyManager } from './dependency-manager.js';
 import type { DependencyId, DependencyState, InstallProgress, SoundFontInfo } from './dependency-manager.js';
-import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate, SubtitleSettingsUpdate } from './settings-manager.js';
+import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate, SubtitleSettingsUpdate, RecentItemsSettings } from './settings-manager.js';
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
 import { SSEManager } from './sse-manager.js';
 import { PlaylistManager } from './playlist-manager.js';
@@ -197,6 +197,9 @@ export class UnifiedMediaServer {
   /** Callback for media type changes (for menu aspect ratio enabled state) */
   private onMediaTypeChangeCallback: ((isVideo: boolean) => void) | null = null;
 
+  /** Callback for recent items changes (for menu recent items submenu) */
+  private onRecentItemsChangeCallback: ((recentFiles: readonly import('./settings-manager.js').RecentItem[], recentPlaylists: readonly import('./settings-manager.js').RecentItem[]) => void) | null = null;
+
   /** Maximum number of entries in the MIDI render cache (FIFO eviction when exceeded) */
   private static readonly MAX_MIDI_CACHE_SIZE: number = 50;
 
@@ -264,6 +267,15 @@ export class UnifiedMediaServer {
    */
   public onMediaTypeChange(callback: (isVideo: boolean) => void): void {
     this.onMediaTypeChangeCallback = callback;
+  }
+
+  /**
+   * Registers a callback for recent items changes.
+   *
+   * @param callback - Function called when recent files or playlists change
+   */
+  public onRecentItemsChange(callback: (recentFiles: readonly import('./settings-manager.js').RecentItem[], recentPlaylists: readonly import('./settings-manager.js').RecentItem[]) => void): void {
+    this.onRecentItemsChangeCallback = callback;
   }
 
   /**
@@ -1892,6 +1904,15 @@ export class UnifiedMediaServer {
     playlistLogger.info(`Adding ${items.length} item(s) to playlist`);
     const added: PlaylistItem[] = this.playlist.addItems(items);
 
+    // Add each file to recent items and notify menu
+    for (const item of added) {
+      this.settings.addRecentFile(item.filePath);
+    }
+    if (added.length > 0) {
+      const recentItems: RecentItemsSettings = this.settings.getRecentItems();
+      this.onRecentItemsChangeCallback?.(recentItems.recentFiles, recentItems.recentPlaylists);
+    }
+
     // Notify of playlist count change for menu state
     this.onPlaylistCountChangeCallback?.(this.playlist.getState().items.length);
 
@@ -2309,6 +2330,11 @@ export class UnifiedMediaServer {
 
       // Track the source file
       this.playlist.setSourceFilePath(filePath);
+
+      // Add playlist to recent items and notify menu
+      this.settings.addRecentPlaylist(filePath);
+      const recentItems: RecentItemsSettings = this.settings.getRecentItems();
+      this.onRecentItemsChangeCallback?.(recentItems.recentFiles, recentItems.recentPlaylists);
 
       // Broadcast state updates
       this.broadcastState();

@@ -160,6 +160,12 @@ export class ElectronService implements OnDestroy {
   /** Cleanup function for exit-configuration-mode listener */
   private exitConfigurationModeCleanup: (() => void) | null = null;
 
+  /** Cleanup function for OS file open listener */
+  private osOpenFileCleanup: (() => void) | null = null;
+
+  /** Cleanup function for OS playlist open listener */
+  private osOpenPlaylistCleanup: (() => void) | null = null;
+
   // ============================================================================
   // Menu Event Signals - For components to react to menu actions
   // ============================================================================
@@ -303,6 +309,9 @@ export class ElectronService implements OnDestroy {
 
     // Setup exit-configuration-mode listener (for close button in config mode)
     this.setupExitConfigurationModeListener();
+
+    // Setup OS file open listeners (for double-click from file manager)
+    this.setupOSFileOpenListeners();
   }
 
   /**
@@ -518,6 +527,28 @@ export class ElectronService implements OnDestroy {
         });
       })
     );
+
+    // Open recent file menu item
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('openRecentFile', (filePath: unknown): void => {
+        this.ngZone.run((): void => {
+          if (typeof filePath === 'string') {
+            void this.addFilesWithAutoPlay([filePath]);
+          }
+        });
+      })
+    );
+
+    // Open recent playlist menu item
+    this.menuCleanupFunctions.push(
+      this.api.onMenuEvent('openRecentPlaylist', (playlistPath: unknown): void => {
+        this.ngZone.run((): void => {
+          if (typeof playlistPath === 'string') {
+            void this.loadPlaylistFromFile(playlistPath);
+          }
+        });
+      })
+    );
   }
 
   /**
@@ -576,6 +607,33 @@ export class ElectronService implements OnDestroy {
     this.exitConfigurationModeCleanup = this.api.onExitConfigurationMode((): void => {
       this.ngZone.run((): void => {
         this.exitConfigurationModeRequested.update((v: number): number => v + 1);
+      });
+    });
+  }
+
+  /**
+   * Sets up listeners for files opened from the OS.
+   *
+   * Handles files opened via:
+   * - Double-clicking a media file in the file manager
+   * - Dropping a file onto the dock icon (macOS)
+   * - Command line arguments on app launch
+   * - Second instance launch with files (Windows/Linux)
+   */
+  private setupOSFileOpenListeners(): void {
+    if (!this.isElectron || !this.api) return;
+
+    // Handle media files opened from OS
+    this.osOpenFileCleanup = this.api.onOSOpenFile((filePath: string): void => {
+      this.ngZone.run((): void => {
+        void this.addFilesWithAutoPlay([filePath]);
+      });
+    });
+
+    // Handle playlist files opened from OS
+    this.osOpenPlaylistCleanup = this.api.onOSOpenPlaylist((playlistPath: string): void => {
+      this.ngZone.run((): void => {
+        void this.loadPlaylistFromFile(playlistPath);
       });
     });
   }
@@ -1449,6 +1507,8 @@ export class ElectronService implements OnDestroy {
     this.viewModeCleanup?.();
     this.prepareForCloseCleanup?.();
     this.exitConfigurationModeCleanup?.();
+    this.osOpenFileCleanup?.();
+    this.osOpenPlaylistCleanup?.();
     this.menuCleanupFunctions.forEach((cleanup: () => void): void => cleanup());
     if (this.reconnectTimeoutId) {
       clearTimeout(this.reconnectTimeoutId);

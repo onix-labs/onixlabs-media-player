@@ -213,6 +213,29 @@ Based on independent review with all 31 action items resolved:
   - Main process waits for fade completion (with timeout fallback) before destroying window
 - **All platforms**: Closing window quits the application entirely
 
+### File Associations & OS Integration
+
+- ONIXPlayer can be set as the default application for supported media file types
+- **Registered file associations** (via electron-builder `fileAssociations`):
+  - Audio: `.mp3`, `.flac`, `.wav`, `.ogg`, `.m4a`, `.aac`, `.wma`
+  - Video: `.mp4`, `.m4v`, `.mkv`, `.avi`, `.webm`, `.mov`
+  - MIDI: `.mid`, `.midi`
+  - Playlists: `.opp` (ONIXPlayer Playlist)
+- **Opening files from the OS**:
+  - Double-clicking a media file in Finder/Explorer opens it in ONIXPlayer
+  - Dragging files onto the dock icon (macOS) adds them to the playlist
+  - Files passed via command line arguments are processed on launch
+  - Files opened before app is ready are queued and processed after window loads
+- **Single-instance lock**: Only one instance of ONIXPlayer runs at a time
+  - Second launch attempt routes files to the existing instance via `second-instance` event
+  - Existing window is focused and restored if minimized
+- **IPC channels for OS file events**:
+  - `os:openFile` - routes media files from OS to renderer
+  - `os:openPlaylist` - routes playlist files from OS to renderer
+- **Settings UI** (Settings > General > File Associations):
+  - Displays all supported extensions organized by category
+  - Platform-specific instructions for setting ONIXPlayer as default app
+
 ### UI Layout
 
 - **Header**: Draggable area for window movement (macOS traffic lights region)
@@ -239,6 +262,11 @@ Based on independent review with all 31 action items resolved:
 - **File menu**:
   - Open (Cmd+O) - disabled when no dependencies installed
   - Open Playlist (Cmd+Shift+O) - loads .opp playlist file, disabled when no dependencies
+  - Recent Items - submenu with recently opened files and playlists
+    - Up to 10 recent media files (most recent first)
+    - Up to 5 recent playlists (most recent first)
+    - Clear Recent option to clear history
+    - Items persist across app restarts
   - Save Playlist As (Cmd+Shift+S) - saves playlist to new .opp file, disabled when no media
   - Save Playlist (Cmd+S) - saves to existing .opp file or shows Save As dialog, disabled when no media
   - Close (Cmd+W) - stops current track and removes from playlist, disabled when no media

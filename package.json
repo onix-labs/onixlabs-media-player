@@ -109,6 +109,28 @@
         "deb"
       ],
       "category": "AudioVideo"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": ["mp3", "flac", "wav", "ogg", "m4a", "aac", "wma"],
+        "name": "Audio File",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["mp4", "m4v", "mkv", "avi", "webm", "mov"],
+        "name": "Video File",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["mid", "midi"],
+        "name": "MIDI File",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["opp"],
+        "name": "ONIXPlayer Playlist",
+        "role": "Editor"
+      }
+    ]
   }
 }

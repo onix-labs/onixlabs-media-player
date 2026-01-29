@@ -503,6 +503,55 @@
                   </div>
                 }
               </div>
+
+              <!-- File Associations Section -->
+              <div class="setting-group">
+                <div class="setting-group-header">
+                  <h3>File Associations</h3>
+                  <p class="setting-group-description">
+                    ONIXPlayer can be used as the default application for the following file types.
+                  </p>
+                </div>
+
+                <div class="file-associations-info">
+                  <div class="extension-category">
+                    <span class="extension-category-label">Audio Files</span>
+                    <div class="extension-badges">
+                      @for (ext of supportedAudioExtensions; track ext) {
+                        <span class="extension-badge">.{{ ext }}</span>
+                      }
+                    </div>
+                  </div>
+
+                  <div class="extension-category">
+                    <span class="extension-category-label">Video Files</span>
+                    <div class="extension-badges">
+                      @for (ext of supportedVideoExtensions; track ext) {
+                        <span class="extension-badge">.{{ ext }}</span>
+                      }
+                    </div>
+                  </div>
+
+                  <div class="extension-category">
+                    <span class="extension-category-label">Playlists</span>
+                    <div class="extension-badges">
+                      <span class="extension-badge">.opp</span>
+                    </div>
+                  </div>
+
+                  @if (isMacOS()) {
+                    <div class="file-associations-hint">
+                      <i class="fa-solid fa-info-circle"></i>
+                      <span>To set ONIXPlayer as your default application, right-click a file in Finder, select "Get Info", then choose ONIXPlayer under "Open with".</span>
+                    </div>
+                  } @else {
+                    <div class="file-associations-hint">
+                      <i class="fa-solid fa-info-circle"></i>
+                      <span>To set ONIXPlayer as your default application, right-click a file, select "Open with", then choose ONIXPlayer and set as default.</span>
+                    </div>
+                  }
+                </div>
+              </div>
             }
 
             @case ('playback') {
