@@ -76,8 +76,11 @@ export class Playlist {
   /** Whether the playlist panel is visible */
   public readonly isVisible: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
-  /** Whether files are being dragged over the playlist */
+  /** Whether files are being dragged over the playlist (valid files) */
   public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /** Whether invalid files are being dragged over the playlist */
+  public readonly isDragInvalid: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** All items in the playlist */
   public readonly items: ReturnType<typeof computed<PlaylistItem[]>> = computed((): PlaylistItem[] => this.mediaPlayer.playlistItems());
@@ -199,12 +202,19 @@ export class Playlist {
   // ============================================================================
 
   /**
-   * Handles dragover to enable drop target.
+   * Handles dragover to enable drop target with visual validation feedback.
    */
   public onDragOver(event: DragEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    this.isDragOver.set(true);
+
+    const hasValid: boolean = this.fileDrop.hasValidFiles(event);
+    this.isDragOver.set(hasValid);
+    this.isDragInvalid.set(!hasValid);
+
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = hasValid ? 'copy' : 'none';
+    }
   }
 
   /**
@@ -214,6 +224,7 @@ export class Playlist {
     event.preventDefault();
     event.stopPropagation();
     this.isDragOver.set(false);
+    this.isDragInvalid.set(false);
   }
 
   /**
@@ -228,6 +239,7 @@ export class Playlist {
     event.preventDefault();
     event.stopPropagation();
     this.isDragOver.set(false);
+    this.isDragInvalid.set(false);
 
     const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
     if (filePaths.length === 0) return;

@@ -124,9 +124,52 @@ export type PreferredAudioLanguage =
   | 'dut' | 'swe' | 'nor' | 'dan' | 'fin' | 'tur' | 'heb' | 'cze' | 'hun';
 
 /**
+ * Preferred subtitle language codes (ISO 639-2/B).
+ * 'off' means disable subtitles by default.
+ * 'default' means use the file's default track if one exists.
+ */
+export type PreferredSubtitleLanguage =
+  | 'off' | 'default' | 'eng' | 'spa' | 'fre' | 'ger' | 'ita' | 'por' | 'rus'
+  | 'jpn' | 'kor' | 'chi' | 'ara' | 'hin' | 'tha' | 'vie' | 'pol'
+  | 'dut' | 'swe' | 'nor' | 'dan' | 'fin' | 'tur' | 'heb' | 'cze' | 'hun';
+
+/**
  * Display names for preferred audio languages.
  */
 export const AUDIO_LANGUAGE_OPTIONS: readonly { value: PreferredAudioLanguage; label: string }[] = [
+  { value: 'default', label: 'File Default' },
+  { value: 'eng', label: 'English' },
+  { value: 'spa', label: 'Spanish' },
+  { value: 'fre', label: 'French' },
+  { value: 'ger', label: 'German' },
+  { value: 'ita', label: 'Italian' },
+  { value: 'por', label: 'Portuguese' },
+  { value: 'rus', label: 'Russian' },
+  { value: 'jpn', label: 'Japanese' },
+  { value: 'kor', label: 'Korean' },
+  { value: 'chi', label: 'Chinese' },
+  { value: 'ara', label: 'Arabic' },
+  { value: 'hin', label: 'Hindi' },
+  { value: 'tha', label: 'Thai' },
+  { value: 'vie', label: 'Vietnamese' },
+  { value: 'pol', label: 'Polish' },
+  { value: 'dut', label: 'Dutch' },
+  { value: 'swe', label: 'Swedish' },
+  { value: 'nor', label: 'Norwegian' },
+  { value: 'dan', label: 'Danish' },
+  { value: 'fin', label: 'Finnish' },
+  { value: 'tur', label: 'Turkish' },
+  { value: 'heb', label: 'Hebrew' },
+  { value: 'cze', label: 'Czech' },
+  { value: 'hun', label: 'Hungarian' },
+];
+
+/**
+ * Display names for preferred subtitle languages.
+ * Includes 'Subtitles Off' as a selectable preference.
+ */
+export const SUBTITLE_LANGUAGE_OPTIONS: readonly { value: PreferredSubtitleLanguage; label: string }[] = [
+  { value: 'off', label: 'Subtitles Off' },
   { value: 'default', label: 'File Default' },
   { value: 'eng', label: 'English' },
   { value: 'spa', label: 'Spanish' },
@@ -197,6 +240,8 @@ export interface PlaybackSettings {
   readonly videoAspectMode: VideoAspectMode;
   /** Preferred audio language (ISO 639-2/B code, or 'default' for file default) */
   readonly preferredAudioLanguage: PreferredAudioLanguage;
+  /** Preferred subtitle language (ISO 639-2/B code, 'default' for file default, or 'off' to disable) */
+  readonly preferredSubtitleLanguage: PreferredSubtitleLanguage;
 }
 
 /**
@@ -335,6 +380,7 @@ export interface PlaybackSettingsUpdate {
   readonly skipDuration?: number;
   readonly videoAspectMode?: VideoAspectMode;
   readonly preferredAudioLanguage?: PreferredAudioLanguage;
+  readonly preferredSubtitleLanguage?: PreferredSubtitleLanguage;
 }
 
 /**
@@ -423,6 +469,9 @@ const VALID_SUBTITLE_FONT_FAMILIES: readonly SubtitleFontFamily[] = ['sans-serif
 /** Valid preferred audio language values (derived from AUDIO_LANGUAGE_OPTIONS) */
 const VALID_PREFERRED_AUDIO_LANGUAGES: readonly PreferredAudioLanguage[] = AUDIO_LANGUAGE_OPTIONS.map((opt: { value: PreferredAudioLanguage; label: string }): PreferredAudioLanguage => opt.value);
 
+/** Valid preferred subtitle language values (derived from SUBTITLE_LANGUAGE_OPTIONS) */
+const VALID_PREFERRED_SUBTITLE_LANGUAGES: readonly PreferredSubtitleLanguage[] = SUBTITLE_LANGUAGE_OPTIONS.map((opt: { value: PreferredSubtitleLanguage; label: string }): PreferredSubtitleLanguage => opt.value);
+
 /** Default settings used when no file exists or on parse error */
 const DEFAULT_SETTINGS: AppSettings = {
   version: SETTINGS_VERSION,
@@ -443,6 +492,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     skipDuration: 10,  // 10 seconds default skip
     videoAspectMode: 'default',  // use video's native aspect ratio
     preferredAudioLanguage: 'eng',  // prefer English audio if available
+    preferredSubtitleLanguage: 'off',  // subtitles off by default
   },
   transcoding: {
     videoQuality: 'medium',  // medium = CRF 23
@@ -700,6 +750,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate preferredSubtitleLanguage if provided
+    if (update.preferredSubtitleLanguage !== undefined) {
+      if (!this.isValidPreferredSubtitleLanguage(update.preferredSubtitleLanguage)) {
+        console.warn(`[SettingsManager] Invalid preferred subtitle language: ${update.preferredSubtitleLanguage}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -711,6 +769,7 @@ export class SettingsManager {
         skipDuration: update.skipDuration ?? this.settings.playback.skipDuration,
         videoAspectMode: update.videoAspectMode ?? this.settings.playback.videoAspectMode,
         preferredAudioLanguage: update.preferredAudioLanguage ?? this.settings.playback.preferredAudioLanguage,
+        preferredSubtitleLanguage: update.preferredSubtitleLanguage ?? this.settings.playback.preferredSubtitleLanguage,
       },
     };
 
@@ -1313,6 +1372,7 @@ export class SettingsManager {
     const skipDuration: unknown = playbackObj['skipDuration'];
     const videoAspectMode: unknown = playbackObj['videoAspectMode'];
     const preferredAudioLanguage: unknown = playbackObj['preferredAudioLanguage'];
+    const preferredSubtitleLanguage: unknown = playbackObj['preferredSubtitleLanguage'];
 
     return {
       defaultVolume: this.isValidVolume(defaultVolume)
@@ -1333,6 +1393,9 @@ export class SettingsManager {
       preferredAudioLanguage: this.isValidPreferredAudioLanguage(preferredAudioLanguage)
         ? preferredAudioLanguage
         : DEFAULT_SETTINGS.playback.preferredAudioLanguage,
+      preferredSubtitleLanguage: this.isValidPreferredSubtitleLanguage(preferredSubtitleLanguage)
+        ? preferredSubtitleLanguage
+        : DEFAULT_SETTINGS.playback.preferredSubtitleLanguage,
     };
   }
 
@@ -1749,6 +1812,18 @@ export class SettingsManager {
    */
   private isValidPreferredAudioLanguage(value: unknown): value is PreferredAudioLanguage {
     return typeof value === 'string' && VALID_PREFERRED_AUDIO_LANGUAGES.includes(value as PreferredAudioLanguage);
+  }
+
+  /**
+   * Type guard to check if a value is a valid preferred subtitle language.
+   *
+   * Valid values include 'off', 'default', and ISO 639-2/B language codes.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid preferred subtitle language
+   */
+  private isValidPreferredSubtitleLanguage(value: unknown): value is PreferredSubtitleLanguage {
+    return typeof value === 'string' && VALID_PREFERRED_SUBTITLE_LANGUAGES.includes(value as PreferredSubtitleLanguage);
   }
 
   /**

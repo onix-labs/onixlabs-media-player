@@ -24,7 +24,7 @@ import {DOCUMENT} from '@angular/common';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
-import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS, SubtitleFontFamily, PreferredAudioLanguage} from '../../../services/settings.service';
+import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS, SubtitleFontFamily, PreferredAudioLanguage, PreferredSubtitleLanguage} from '../../../services/settings.service';
 import type {PlaylistItem, SubtitleTrack, AudioTrack} from '../../../services/electron.service';
 
 /**
@@ -136,8 +136,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Currently playing track */
   public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
 
-  /** Whether files are being dragged over this component */
+  /** Whether files are being dragged over this component (valid files) */
   public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /** Whether invalid files are being dragged over this component */
+  public readonly isDragInvalid: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** Current video aspect mode */
   public readonly aspectMode: ReturnType<typeof computed<VideoAspectMode>> = computed(
@@ -260,7 +263,10 @@ export class VideoOutlet implements OnInit, OnDestroy {
       }
 
       if (track?.type === 'video' && track.filePath !== this.currentFilePath) {
-        void this.loadVideo(track.filePath);
+        // Use server's current time to resume playback position (handles view mode changes
+        // where the component is recreated but the same track is playing)
+        const serverTime: number = this.mediaPlayer.currentTime();
+        void this.loadVideo(track.filePath, serverTime);
       }
     });
 
@@ -684,12 +690,19 @@ export class VideoOutlet implements OnInit, OnDestroy {
   }
 
   /**
-   * Handles dragover to enable drop target.
+   * Handles dragover to enable drop target with visual validation feedback.
    */
   public onDragOver(event: DragEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    this.isDragOver.set(true);
+
+    const hasValid: boolean = this.fileDrop.hasValidFiles(event);
+    this.isDragOver.set(hasValid);
+    this.isDragInvalid.set(!hasValid);
+
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = hasValid ? 'copy' : 'none';
+    }
   }
 
   /**
@@ -699,6 +712,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.isDragOver.set(false);
+    this.isDragInvalid.set(false);
   }
 
   /**
@@ -713,6 +727,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.isDragOver.set(false);
+    this.isDragInvalid.set(false);
 
     const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
     if (filePaths.length === 0) return;
@@ -1065,7 +1080,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
       }
     }
 
-    // Check for a cached selection (persists across view mode changes)
+    // Check for a cached selection (persists across view mode changes - user's manual choice takes precedence)
     const cachedSelection: number | undefined = this.electron.getSubtitleSelection(filePath);
     const video: HTMLVideoElement = this.videoRef.nativeElement;
 
@@ -1076,9 +1091,36 @@ export class VideoOutlet implements OnInit, OnDestroy {
         this.updateSubtitleDisplay(video.currentTime);
       }
     } else {
-      // No cached selection - default to subtitles off
-      this.selectedSubtitleTrack.set(-1);
-      this.electron.setSubtitleSelection(filePath, -1);
+      // No cached selection - apply preferred subtitle language setting
+      //
+      // Selection priority:
+      // 1. If 'off' → subtitles disabled
+      // 2. Track matching the user's preferred language
+      // 3. Track marked as default in the container
+      // 4. Fall back to subtitles off
+      const preferredLang: PreferredSubtitleLanguage = this.settings.preferredSubtitleLanguage();
+      let selectedIndex: number = -1; // Default to off
+
+      if (preferredLang === 'off') {
+        // User prefers no subtitles - already set to -1
+      } else if (preferredLang === 'default') {
+        // Use the file's default track if one exists
+        const defaultTrack: SubtitleTrack | undefined = tracks.find((t: SubtitleTrack): boolean => t.default);
+        selectedIndex = defaultTrack?.index ?? -1;
+      } else {
+        // Look for a track matching the preferred language
+        const preferredTrack: SubtitleTrack | undefined = tracks.find((t: SubtitleTrack): boolean => t.language === preferredLang);
+        const defaultTrack: SubtitleTrack | undefined = tracks.find((t: SubtitleTrack): boolean => t.default);
+        selectedIndex = preferredTrack?.index ?? defaultTrack?.index ?? -1;
+      }
+
+      this.selectedSubtitleTrack.set(selectedIndex);
+      this.electron.setSubtitleSelection(filePath, selectedIndex);
+
+      if (selectedIndex !== -1) {
+        console.log(`[Subtitles] Auto-selected track ${selectedIndex} based on preferred language '${preferredLang}'`);
+        this.updateSubtitleDisplay(video.currentTime);
+      }
     }
   }
 

@@ -134,6 +134,11 @@
     background: rgba(255, 255, 255, 0.025);
   }
 
+  &.drag-invalid {
+    background: rgba(239, 68, 68, 0.05);
+    cursor: not-allowed;
+  }
+
   img {
     width: clamp(0px, 50%, 320px);
   }

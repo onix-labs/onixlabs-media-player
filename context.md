@@ -123,6 +123,10 @@ Based on independent review with all 31 action items resolved:
     - 25 language options (ISO 639-2/B codes) plus "File Default"
     - Selection priority: 1) Track matching preferred language, 2) File's default track, 3) First track
     - Manual track selection via media bar overrides the preference for that file
+  - **Preferred subtitle language setting** (Settings > Playback): Auto-selects subtitle track matching user's preferred language
+    - 25 language options (ISO 639-2/B codes) plus "File Default" and "Subtitles Off"
+    - Selection priority: 1) Cached selection, 2) 'off' → no subtitles, 3) 'default' → file's default track, 4) Track matching preferred language, 5) File's default track, 6) Off
+    - Manual track selection via media bar overrides the preference for that file
   - Selection persists across view mode changes (desktop ↔ miniplayer) via ElectronService cache
   - FFmpeg uses `-map 0:v:0 -map 0:a:{index}` for stream selection during transcoding
 - **Subtitle support**:
@@ -167,6 +171,8 @@ Based on independent review with all 31 action items resolved:
   - Multiple files + empty playlist: appends all and plays from beginning
   - Multiple files + existing playlist: appends without interrupting current playback
 - Drag-and-drop supported on: visualization surface, video surface, playlist panel, layout outlet
+  - **Visual validation feedback**: Valid files show green glow, invalid files show red glow with "not-allowed" cursor
+  - Uses `FileDropService.hasValidFiles()` to validate during dragover (before drop)
 - Tab key toggles playlist panel in desktop mode (disabled in fullscreen and miniplayer modes)
 - Default Tab navigation is disabled to prevent accidental UI traversal
 
@@ -210,9 +216,9 @@ Based on independent review with all 31 action items resolved:
 ### UI Layout
 
 - **Header**: Draggable area for window movement (macOS traffic lights region)
-- **Media bar** (bottom of outlet): Visualization switcher (audio) or aspect ratio + audio + subtitle selects (video) + playlist toggle
+- **Media bar** (bottom of outlet): Visualization switcher (audio) or aspect ratio + subtitle + audio selects (video) + playlist toggle
   - Audio mode: Left/right buttons cycle visualizations, name displayed
-  - Video mode: Aspect ratio select dropdown, audio track select dropdown (when 2+ tracks), subtitle track select dropdown
+  - Video mode: Aspect ratio select dropdown, subtitle track select dropdown, audio track select dropdown (only when 2+ tracks — appears last to avoid layout shift)
   - Always visible when not in fullscreen (even with no media loaded)
 - **Playback controls**: Media title, transport controls, volume, fullscreen toggle
 - Track title displayed in playback controls (format: "Artist - Title" or just title)
@@ -720,6 +726,7 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 | Skip Duration | 1-60s | 10s | Shift+click skip amount |
 | Video Aspect Ratio | Default/4:3/16:9/Fit | Default | Video display aspect mode |
 | Preferred Audio Language | 25 languages + File Default | English | Auto-selects audio track matching preferred language (ISO 639-2/B codes) |
+| Preferred Subtitle Language | 25 languages + File Default + Subtitles Off | Subtitles Off | Auto-selects subtitle track matching preferred language (ISO 639-2/B codes) |
 | Controls Auto-Hide | 0-30s | 5s | Fullscreen control bar auto-hide delay |
 
 #### Transcoding Category
@@ -899,12 +906,13 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | Subtitles Desync After Seeking | video-outlet.ts | Browser's native TextTrack API failed to sync subtitles after seeking — cues continued from the beginning regardless of video position. Toggling track mode, pre-fetching as Blob URLs, and FFmpeg `-copyts` flag all failed. **Fix**: Implemented custom subtitle rendering that bypasses TextTrack entirely: (1) WebVTT parser extracts all cues with start/end times into memory, (2) `timeupdate` event handler finds active cues for current video time, (3) Overlay `<div>` displays cue text instead of `<track>` element, (4) For transcoded videos, adjusts time by `transcodeSeekOffset`. Subtitle appearance settings (font size, color, etc.) target the overlay div via injected CSS. |
 | Subtitle Selection Lost on View Mode Change | video-outlet.ts, electron.service.ts | Switching between desktop and miniplayer modes created a new VideoOutlet instance, causing subtitle tracks to reload and auto-select the default track — user's "Subtitles Off" selection was lost. **Fix**: Added subtitle selection cache (`Map<string, number>`) in ElectronService (singleton) that persists per file path. `selectSubtitleTrack()` now caches selection; `loadSubtitleTracks()` checks cache before using default. |
 | Default Aspect Ratio Video Stretching | video-outlet.scss | When playlist panel opened, video would stretch to fill available space instead of preserving native aspect ratio. Original CSS used `width: 100%; height: 100%` which forced the video to fill the container. **Fix**: Changed to `max-width: 100%; max-height: 100%` so the video scales proportionally within the container while maintaining its native aspect ratio. |
+| UHD Video Restarts on Mini-Player Toggle | video-outlet.ts | UHD/transcoded videos would restart from the beginning when switching between desktop and mini-player modes. **Root cause**: Component destruction/recreation during view mode switch caused `loadVideo()` to be called with `seekTime=0` instead of the server's current position. **Fix**: Track change effect now passes `mediaPlayer.currentTime()` to `loadVideo()`, ensuring playback resumes from the correct position for both native and transcoded formats. |
 
 ### Code Duplication Eliminated
 
 | Pattern | Fix Applied | Lines Saved |
 |---------|-------------|-------------|
-| Drag-and-Drop File Handling | Created `FileDropService` with `extractMediaFilePaths()` method | ~120 |
+| Drag-and-Drop File Handling | Created `FileDropService` with `extractMediaFilePaths()` and `hasValidFiles()` methods | ~120 |
 | MEDIA_EXTENSIONS Constant | Created shared constant in `media.constants.ts` | ~40 |
 | Waveform Drawing Pattern | Added `drawPathWithLayers()` and `drawPointsWithLayers()` to base class | ~450 |
 | Settings Service HTTP Pattern | Added generic `updateSetting<T>()` helper and `clamp()` utility | ~400 |

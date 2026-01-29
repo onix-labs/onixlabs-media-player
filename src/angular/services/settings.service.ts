@@ -120,6 +120,26 @@ export type PreferredAudioLanguage =
   | 'dut' | 'swe' | 'nor' | 'dan' | 'fin' | 'tur' | 'heb' | 'cze' | 'hun';
 
 /**
+ * Preferred subtitle language codes (ISO 639-2/B).
+ *
+ * Used by the video-outlet to auto-select a subtitle track when loading
+ * videos with embedded subtitles.
+ *
+ * Selection priority:
+ * 1. If 'off' → disable subtitles
+ * 2. Track matching the user's preferred language
+ * 3. Track marked as default in the container
+ * 4. Fall back to subtitles off
+ *
+ * 'off' disables subtitles by default.
+ * 'default' uses the file's default track if one exists.
+ */
+export type PreferredSubtitleLanguage =
+  | 'off' | 'default' | 'eng' | 'spa' | 'fre' | 'ger' | 'ita' | 'por' | 'rus'
+  | 'jpn' | 'kor' | 'chi' | 'ara' | 'hin' | 'tha' | 'vie' | 'pol'
+  | 'dut' | 'swe' | 'nor' | 'dan' | 'fin' | 'tur' | 'heb' | 'cze' | 'hun';
+
+/**
  * Subtitle font family options.
  */
 export type SubtitleFontFamily = 'sans-serif' | 'serif' | 'monospace' | 'Arial';
@@ -190,6 +210,8 @@ export interface PlaybackSettings {
   readonly videoAspectMode: VideoAspectMode;
   /** Preferred audio language (ISO 639-2/B code, or 'default' for file default) */
   readonly preferredAudioLanguage: PreferredAudioLanguage;
+  /** Preferred subtitle language (ISO 639-2/B code, 'default' for file default, or 'off' to disable) */
+  readonly preferredSubtitleLanguage: PreferredSubtitleLanguage;
 }
 
 /**
@@ -326,6 +348,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     skipDuration: 10,
     videoAspectMode: 'default',
     preferredAudioLanguage: 'eng',
+    preferredSubtitleLanguage: 'off',
   },
   transcoding: {
     videoQuality: 'medium',
@@ -412,6 +435,51 @@ export interface AudioLanguageOption {
  * 'File Default' (value: 'default') defers to the container's default track.
  */
 export const AUDIO_LANGUAGE_OPTIONS: readonly AudioLanguageOption[] = [
+  {value: 'default', label: 'File Default'},
+  {value: 'eng', label: 'English'},
+  {value: 'spa', label: 'Spanish'},
+  {value: 'fre', label: 'French'},
+  {value: 'ger', label: 'German'},
+  {value: 'ita', label: 'Italian'},
+  {value: 'por', label: 'Portuguese'},
+  {value: 'rus', label: 'Russian'},
+  {value: 'jpn', label: 'Japanese'},
+  {value: 'kor', label: 'Korean'},
+  {value: 'chi', label: 'Chinese'},
+  {value: 'ara', label: 'Arabic'},
+  {value: 'hin', label: 'Hindi'},
+  {value: 'tha', label: 'Thai'},
+  {value: 'vie', label: 'Vietnamese'},
+  {value: 'pol', label: 'Polish'},
+  {value: 'dut', label: 'Dutch'},
+  {value: 'swe', label: 'Swedish'},
+  {value: 'nor', label: 'Norwegian'},
+  {value: 'dan', label: 'Danish'},
+  {value: 'fin', label: 'Finnish'},
+  {value: 'tur', label: 'Turkish'},
+  {value: 'heb', label: 'Hebrew'},
+  {value: 'cze', label: 'Czech'},
+  {value: 'hun', label: 'Hungarian'},
+];
+
+/**
+ * Display information for a subtitle language option.
+ */
+export interface SubtitleLanguageOption {
+  /** The ISO 639-2/B language code, or 'off'/'default' */
+  readonly value: PreferredSubtitleLanguage;
+  /** Human-readable display label */
+  readonly label: string;
+}
+
+/**
+ * Available subtitle language options for the settings UI.
+ *
+ * Includes 'Subtitles Off' as a selectable preference to disable subtitles by default.
+ * Languages use ISO 639-2/B codes which FFprobe returns in stream metadata.
+ */
+export const SUBTITLE_LANGUAGE_OPTIONS: readonly SubtitleLanguageOption[] = [
+  {value: 'off', label: 'Subtitles Off'},
   {value: 'default', label: 'File Default'},
   {value: 'eng', label: 'English'},
   {value: 'spa', label: 'Spanish'},
@@ -597,6 +665,17 @@ export class SettingsService implements OnDestroy {
    */
   public readonly preferredAudioLanguage: ReturnType<typeof computed<PreferredAudioLanguage>> = computed(
     (): PreferredAudioLanguage => this.settings().playback?.preferredAudioLanguage ?? 'eng'
+  );
+
+  /**
+   * Preferred subtitle language for video playback.
+   *
+   * Used by video-outlet to auto-select subtitle tracks in videos with embedded subtitles.
+   * Defaults to 'off' to disable subtitles by default. Users can set a language preference
+   * or use 'default' to always use the container's default subtitle track if one exists.
+   */
+  public readonly preferredSubtitleLanguage: ReturnType<typeof computed<PreferredSubtitleLanguage>> = computed(
+    (): PreferredSubtitleLanguage => this.settings().playback?.preferredSubtitleLanguage ?? 'off'
   );
 
   /** Whether glass effect is enabled (requires restart to apply) */
@@ -1050,6 +1129,26 @@ export class SettingsService implements OnDestroy {
       return;
     }
     await this.updateSetting('playback', 'preferredAudioLanguage', language);
+  }
+
+  /**
+   * Sets the preferred subtitle language for video playback.
+   *
+   * The setting takes effect on the next video load - it does not affect
+   * currently playing videos. Users can still manually switch subtitle tracks
+   * via the media bar dropdown, which overrides the preference for that file.
+   *
+   * @param language - ISO 639-2/B language code, 'default' for file default, or 'off' to disable
+   */
+  public async setPreferredSubtitleLanguage(language: PreferredSubtitleLanguage): Promise<void> {
+    const validLanguages: readonly PreferredSubtitleLanguage[] = SUBTITLE_LANGUAGE_OPTIONS.map(
+      (opt: SubtitleLanguageOption): PreferredSubtitleLanguage => opt.value
+    );
+    if (!validLanguages.includes(language)) {
+      console.error(`[SettingsService] Invalid subtitle language: ${language}`);
+      return;
+    }
+    await this.updateSetting('playback', 'preferredSubtitleLanguage', language);
   }
 
   // ============================================================================

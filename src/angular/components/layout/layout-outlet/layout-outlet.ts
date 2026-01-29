@@ -122,8 +122,11 @@ export class LayoutOutlet {
   /** Whether the application is in miniplayer mode */
   public readonly isMiniplayer: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.viewMode() === 'miniplayer');
 
-  /** Whether files are being dragged over this component */
+  /** Whether files are being dragged over this component (valid files) */
   public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /** Whether invalid files are being dragged over this component */
+  public readonly isDragInvalid: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** Whether any required dependencies are missing */
   public readonly hasMissingDependencies: ReturnType<typeof computed<boolean>> = computed((): boolean => this.deps.hasMissingDependencies());
@@ -283,15 +286,22 @@ export class LayoutOutlet {
   // ============================================================================
 
   /**
-   * Handles dragover event to enable drop.
-   * Prevents default to indicate this is a valid drop target.
+   * Handles dragover event to enable drop with visual validation feedback.
+   * Sets isDragOver for valid files, isDragInvalid for invalid files.
    *
    * @param event - The drag event
    */
   public onDragOver(event: DragEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    this.isDragOver.set(true);
+
+    const hasValid: boolean = this.fileDrop.hasValidFiles(event);
+    this.isDragOver.set(hasValid);
+    this.isDragInvalid.set(!hasValid);
+
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = hasValid ? 'copy' : 'none';
+    }
   }
 
   /**
@@ -303,6 +313,7 @@ export class LayoutOutlet {
     event.preventDefault();
     event.stopPropagation();
     this.isDragOver.set(false);
+    this.isDragInvalid.set(false);
   }
 
   /**
@@ -319,6 +330,7 @@ export class LayoutOutlet {
     event.preventDefault();
     event.stopPropagation();
     this.isDragOver.set(false);
+    this.isDragInvalid.set(false);
 
     const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
     if (filePaths.length === 0) return;

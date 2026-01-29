@@ -100,6 +100,7 @@ function createMockElectronService(): Record<string, unknown> {
 function createMockFileDropService(): Record<string, unknown> {
   return {
     extractMediaFilePaths: vi.fn().mockReturnValue([]),
+    hasValidFiles: vi.fn().mockReturnValue(true),
   };
 }
 
