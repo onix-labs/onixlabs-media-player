@@ -105,6 +105,8 @@ const mockApi: {
   openExternal: ReturnType<typeof vi.fn>;
   getVersionInfo: ReturnType<typeof vi.fn>;
   getLogFilePath: ReturnType<typeof vi.fn>;
+  onOSOpenFile: ReturnType<typeof vi.fn>;
+  onOSOpenPlaylist: ReturnType<typeof vi.fn>;
 } = {
   getServerPort: vi.fn().mockResolvedValue(12345),
   getPlatformInfo: vi.fn().mockResolvedValue({platform: 'darwin', supportsGlass: true, systemTheme: 'dark'}),
@@ -131,6 +133,8 @@ const mockApi: {
   openExternal: vi.fn().mockResolvedValue(undefined),
   getVersionInfo: vi.fn().mockReturnValue({electron: '1', node: '1', chrome: '1', v8: '1'}),
   getLogFilePath: vi.fn().mockResolvedValue('/tmp/test.log'),
+  onOSOpenFile: vi.fn().mockReturnValue((): void => {}),
+  onOSOpenPlaylist: vi.fn().mockReturnValue((): void => {}),
 };
 
 /**
