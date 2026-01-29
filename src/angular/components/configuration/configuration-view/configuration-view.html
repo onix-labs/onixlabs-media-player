@@ -1,10 +1,12 @@
 <div class="configuration-container" [class.standalone-window]="isStandaloneWindow()">
-  <!-- Header (drag region, shows title in standalone mode) -->
-  <div class="configuration-header">
-    @if (isStandaloneWindow()) {
-      <span class="header-title">ONIXPlayer Configuration</span>
-    }
-  </div>
+  <!-- Header (drag region for macOS traffic lights, shows title in standalone mode) -->
+  @if (isMacOS()) {
+    <div class="configuration-header">
+      @if (isStandaloneWindow()) {
+        <span class="header-title">ONIXPlayer Configuration</span>
+      }
+    </div>
+  }
 
   <!-- Content area with sidebar and panel -->
   <div class="configuration-content">

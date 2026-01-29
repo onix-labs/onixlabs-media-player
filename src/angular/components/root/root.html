@@ -19,7 +19,7 @@
     </div>
   } @else {
     <div class="media-player-view" [class.hidden]="isAboutMode() || isHelpMode()">
-      @if (!isFullscreen()) {
+      @if (!isFullscreen() && isMacOS()) {
         <app-layout-header/>
       }
       <app-layout-outlet/>
