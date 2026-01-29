@@ -557,6 +557,24 @@ export interface MediaPlayerAPI {
    * @returns Promise resolving to the absolute path of the log file
    */
   getLogFilePath: () => Promise<string>;
+
+  /**
+   * Registers a callback for when a file is opened from the OS.
+   * Called when a user double-clicks a media file in the file manager,
+   * or when a file is passed via command line arguments.
+   * @param callback - Function called with the file path
+   * @returns Cleanup function to unregister the listener
+   */
+  onOSOpenFile: (callback: (filePath: string) => void) => () => void;
+
+  /**
+   * Registers a callback for when a playlist is opened from the OS.
+   * Called when a user double-clicks a .opp playlist file in the file manager,
+   * or when a playlist is passed via command line arguments.
+   * @param callback - Function called with the playlist path
+   * @returns Cleanup function to unregister the listener
+   */
+  onOSOpenPlaylist: (callback: (playlistPath: string) => void) => () => void;
 }
 
 /**
@@ -574,8 +592,29 @@ declare global {
 }
 
 /**
- * Empty export to make this a module (required for global augmentation).
- * Without this, TypeScript treats the file as a script and the declare
- * global block would fail.
+ * Represents a recently opened file or playlist.
+ *
+ * Used for the Recent Items menu to track recently accessed media files
+ * and playlists. Items are stored with timestamp for ordering by recency.
+ *
+ * @example
+ * const recentFile: RecentItem = {
+ *   path: '/music/song.mp3',
+ *   displayName: 'song',
+ *   timestamp: '2024-01-15T10:30:00.000Z',
+ *   type: 'file'
+ * };
  */
-export {};
+export interface RecentItem {
+  /** Absolute path to the file or playlist */
+  readonly path: string;
+
+  /** Display name (filename without extension) */
+  readonly displayName: string;
+
+  /** ISO 8601 timestamp of when the item was last opened */
+  readonly timestamp: string;
+
+  /** Whether this is a media file or a playlist */
+  readonly type: 'file' | 'playlist';
+}

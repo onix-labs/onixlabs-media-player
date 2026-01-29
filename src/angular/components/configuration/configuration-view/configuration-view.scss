@@ -986,4 +986,83 @@
       gap: 0.375rem;
     }
   }
+
+  // File Associations Section
+  .setting-group-header {
+    margin-bottom: 0.75rem;
+
+    h3 {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: $white-80;
+      margin: 0 0 0.25rem;
+    }
+
+    .setting-group-description {
+      font-size: 0.75rem;
+      color: $white-40;
+      margin: 0;
+    }
+  }
+
+  .file-associations-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .extension-category {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+
+    .extension-category-label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: $white-50;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .extension-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.375rem;
+    }
+  }
+
+  .extension-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    background: $white-8;
+    border: 1px solid $white-15;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    color: $white-70;
+  }
+
+  .file-associations-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: $white-5;
+    border-radius: 6px;
+    margin-top: 0.25rem;
+
+    > i {
+      color: $white-40;
+      font-size: 0.75rem;
+      margin-top: 0.125rem;
+      flex-shrink: 0;
+    }
+
+    > span {
+      font-size: 0.75rem;
+      color: $white-50;
+      line-height: 1.4;
+    }
+  }
 }

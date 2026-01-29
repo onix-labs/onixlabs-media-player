@@ -19,9 +19,29 @@ import * as path from "path";
 import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.js';
 import {createApplicationMenu, updateMenuState} from './application-menu.js';
-import type {WindowBounds, MacOSVisualEffectState, AppearanceSettings} from './settings-manager.js';
+import type {WindowBounds, MacOSVisualEffectState, AppearanceSettings, RecentItem, RecentItemsSettings} from './settings-manager.js';
+import type {SettingsManager} from './settings-manager.js';
 import type {DependencyState} from './dependency-manager.js';
 import {initializeLogger, mainLogger, ipcLogger, windowLogger, getLogFilePath} from './logger.js';
+import {existsSync} from 'fs';
+
+/**
+ * Supported audio file extensions for file association handling.
+ * Used to determine if a file opened from the OS should be treated as a media file.
+ */
+const AUDIO_EXTENSIONS: readonly string[] = ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'wma', 'mid', 'midi'];
+
+/**
+ * Supported video file extensions for file association handling.
+ * Used to determine if a file opened from the OS should be treated as a media file.
+ */
+const VIDEO_EXTENSIONS: readonly string[] = ['mp4', 'm4v', 'mkv', 'avi', 'webm', 'mov'];
+
+/**
+ * Files passed to the app before it was ready.
+ * These are queued and processed after the window is created.
+ */
+let pendingFilesToOpen: string[] = [];
 
 // Set app name (shows in dock/menu bar during development)
 app.setName('ONIXPlayer');
@@ -154,10 +174,46 @@ class Program {
 
   /**
    * Private constructor - use Program.run() to start the application.
-   * Waits for Electron's app ready event before initializing.
+   * Sets up single-instance lock and waits for Electron's app ready event.
    */
   private constructor() {
-    app.whenReady().then(this.initialize.bind(this))
+    // Request single instance lock - ensures only one instance of the app runs
+    const gotTheLock: boolean = app.requestSingleInstanceLock();
+    if (!gotTheLock) {
+      // Another instance is already running - it will receive our files via second-instance event
+      app.quit();
+      return;
+    }
+
+    // Handle second instance launch (Windows/Linux - when user opens file while app is running)
+    app.on('second-instance', (_event: Electron.Event, argv: string[]): void => {
+      // Extract file paths from command line arguments (skip Electron flags)
+      const files: string[] = argv.slice(1).filter((arg: string): boolean =>
+        !arg.startsWith('-') && !arg.startsWith('--') && existsSync(arg)
+      );
+      files.forEach((f: string): void => this.handleFileFromOS(f));
+
+      // Focus the existing window
+      if (this.window) {
+        if (this.window.isMinimized()) {
+          this.window.restore();
+        }
+        this.window.focus();
+      }
+    });
+
+    // Handle open-file event (macOS - when user double-clicks a file or drops on dock icon)
+    app.on('open-file', (event: Electron.Event, filePath: string): void => {
+      event.preventDefault();
+      if (this.window) {
+        this.handleFileFromOS(filePath);
+      } else {
+        // App not ready yet - queue for later
+        pendingFilesToOpen.push(filePath);
+      }
+    });
+
+    app.whenReady().then(this.initialize.bind(this));
   }
 
   /**
@@ -237,6 +293,12 @@ class Program {
       updateMenuState({openEnabled: ffmpeg || fluidsynth});
     });
 
+    // Register callback to update menu when recent items change
+    this.mediaServer.onRecentItemsChange((recentFiles: readonly RecentItem[], recentPlaylists: readonly RecentItem[]): void => {
+      mainLogger.debug(`Recent items changed: ${recentFiles.length} files, ${recentPlaylists.length} playlists`);
+      updateMenuState({recentFiles, recentPlaylists});
+    });
+
     // Set initial openEnabled state based on current dependency detection
     const depState: DependencyState = this.mediaServer.getDependencyManager().getState();
     updateMenuState({openEnabled: depState.ffmpeg.installed || depState.fluidsynth.installed});
@@ -257,6 +319,12 @@ class Program {
       mainLogger.info(`Loading production build: ${prodUrl}`);
       void this.window.loadURL(prodUrl);
     }
+
+    // Process pending files after the renderer is ready
+    this.window.webContents.once('did-finish-load', (): void => {
+      mainLogger.debug('Renderer loaded - processing pending files');
+      this.processPendingFiles();
+    });
 
     this.window.on("closed", this.onClosed.bind(this));
     app.on("activate", this.onActivate.bind(this));
@@ -952,6 +1020,23 @@ class Program {
       onOpenPlaylist: (): void => {
         this.window?.webContents.send('menu:openPlaylist');
       },
+      onOpenRecentFile: (filePath: string): void => {
+        this.window?.webContents.send('menu:openRecentFile', filePath);
+      },
+      onOpenRecentPlaylist: (playlistPath: string): void => {
+        this.window?.webContents.send('menu:openRecentPlaylist', playlistPath);
+      },
+      onClearRecent: (): void => {
+        const settingsManager: SettingsManager | undefined = this.mediaServer?.getSettingsManager();
+        if (settingsManager) {
+          settingsManager.clearRecentItems();
+          const recentItems: RecentItemsSettings = settingsManager.getRecentItems();
+          updateMenuState({
+            recentFiles: recentItems.recentFiles,
+            recentPlaylists: recentItems.recentPlaylists,
+          });
+        }
+      },
       onSavePlaylist: (): void => {
         this.window?.webContents.send('menu:savePlaylist');
       },
@@ -987,7 +1072,70 @@ class Program {
       onSelectAspectMode: (mode: string): void => {
         this.window?.webContents.send('menu:selectAspectMode', mode);
       }
-    });
+    }, this.getInitialMenuState());
+  }
+
+  /**
+   * Gets the initial menu state including recent items from settings.
+   *
+   * @returns Partial menu state with recent items
+   */
+  private getInitialMenuState(): {recentFiles: readonly RecentItem[]; recentPlaylists: readonly RecentItem[]} {
+    const settingsManager: SettingsManager | undefined = this.mediaServer?.getSettingsManager();
+    if (settingsManager) {
+      const recentItems: RecentItemsSettings = settingsManager.getRecentItems();
+      return {
+        recentFiles: recentItems.recentFiles,
+        recentPlaylists: recentItems.recentPlaylists,
+      };
+    }
+    return {recentFiles: [], recentPlaylists: []};
+  }
+
+  /**
+   * Handles a file opened from the OS (via double-click, drag to dock, etc.).
+   * Routes the file to the appropriate handler based on extension.
+   *
+   * @param filePath - The absolute path to the file to open
+   */
+  private handleFileFromOS(filePath: string): void {
+    if (!existsSync(filePath)) {
+      mainLogger.warn(`handleFileFromOS - file does not exist: ${filePath}`);
+      return;
+    }
+
+    const ext: string = filePath.split('.').pop()?.toLowerCase() ?? '';
+    mainLogger.info(`handleFileFromOS - opening ${ext} file: ${filePath}`);
+
+    if (ext === 'opp') {
+      // Playlist file
+      this.window?.webContents.send('os:openPlaylist', filePath);
+    } else if ([...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS].includes(ext)) {
+      // Media file
+      this.window?.webContents.send('os:openFile', filePath);
+    } else {
+      mainLogger.warn(`handleFileFromOS - unsupported extension: ${ext}`);
+    }
+  }
+
+  /**
+   * Processes any files that were passed to the app before it was ready.
+   * Also processes files passed via command line arguments on launch.
+   */
+  private processPendingFiles(): void {
+    // Get files from launch command line arguments (skip Electron flags)
+    const launchArgs: string[] = process.argv.slice(1).filter((arg: string): boolean =>
+      !arg.startsWith('-') && !arg.startsWith('--') && existsSync(arg)
+    );
+
+    // Combine pending files (from open-file events) with launch args
+    const allFiles: string[] = [...pendingFilesToOpen, ...launchArgs];
+    pendingFilesToOpen = [];
+
+    if (allFiles.length > 0) {
+      mainLogger.info(`processPendingFiles - processing ${allFiles.length} file(s)`);
+      allFiles.forEach((f: string): void => this.handleFileFromOS(f));
+    }
   }
 
   /**

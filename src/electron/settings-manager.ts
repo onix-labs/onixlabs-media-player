@@ -329,6 +329,35 @@ export interface WindowStateSettings {
 }
 
 /**
+ * A recently opened file or playlist.
+ */
+export interface RecentItem {
+  /** Absolute file path */
+  readonly path: string;
+  /** Display name (filename without path, with extension) */
+  readonly displayName: string;
+  /** When this item was last opened (ISO timestamp) */
+  readonly timestamp: string;
+  /** Type: 'file' for media files, 'playlist' for .opp files */
+  readonly type: 'file' | 'playlist';
+}
+
+/**
+ * Recent items settings category.
+ * Tracks recently opened files and playlists for the File menu.
+ */
+export interface RecentItemsSettings {
+  /** Recently opened files (media) - most recent first */
+  readonly recentFiles: readonly RecentItem[];
+  /** Recently opened playlists (.opp) - most recent first */
+  readonly recentPlaylists: readonly RecentItem[];
+  /** Maximum number of files to track (default 10) */
+  readonly maxFiles: number;
+  /** Maximum number of playlists to track (default 5) */
+  readonly maxPlaylists: number;
+}
+
+/**
  * Complete application settings structure.
  *
  * Version field enables future migrations when the schema changes.
@@ -350,6 +379,8 @@ export interface AppSettings {
   readonly subtitles: SubtitleSettings;
   /** Window state settings (not exposed in UI) */
   readonly windowState: WindowStateSettings;
+  /** Recent items (files and playlists) */
+  readonly recentItems: RecentItemsSettings;
 }
 
 /**
@@ -420,6 +451,16 @@ export interface SubtitleSettingsUpdate {
   readonly shadowSpread?: number;
   readonly shadowBlur?: number;
   readonly shadowColor?: string;
+}
+
+/**
+ * Partial recent items settings for updates.
+ */
+export interface RecentItemsSettingsUpdate {
+  readonly recentFiles?: readonly RecentItem[];
+  readonly recentPlaylists?: readonly RecentItem[];
+  readonly maxFiles?: number;
+  readonly maxPlaylists?: number;
 }
 
 // ============================================================================
@@ -523,6 +564,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   windowState: {
     miniplayerBounds: null,  // no saved position initially
+  },
+  recentItems: {
+    recentFiles: [],      // no recent files initially
+    recentPlaylists: [],  // no recent playlists initially
+    maxFiles: 10,         // max 10 recent files
+    maxPlaylists: 5,      // max 5 recent playlists
   },
 };
 
@@ -1059,6 +1106,176 @@ export class SettingsManager {
   }
 
   // ==========================================================================
+  // Recent Items Methods
+  // ==========================================================================
+
+  /**
+   * Adds a file to the recent files list.
+   * If the file already exists in the list, it is moved to the front.
+   * The list is trimmed to maxFiles items (FIFO eviction).
+   *
+   * @param filePath - Absolute path to the file
+   * @returns The updated complete settings object
+   */
+  public addRecentFile(filePath: string): AppSettings {
+    const displayName: string = path.basename(filePath);
+    const item: RecentItem = {
+      path: filePath,
+      displayName,
+      timestamp: new Date().toISOString(),
+      type: 'file',
+    };
+
+    // Remove existing entry with same path (case-insensitive on Windows)
+    const filtered: RecentItem[] = this.settings.recentItems.recentFiles.filter(
+      (f: RecentItem): boolean =>
+        process.platform === 'win32'
+          ? f.path.toLowerCase() !== filePath.toLowerCase()
+          : f.path !== filePath
+    );
+
+    // Add to front, trim to max
+    const updated: readonly RecentItem[] = [item, ...filtered].slice(
+      0,
+      this.settings.recentItems.maxFiles
+    );
+
+    this.settings = {
+      ...this.settings,
+      recentItems: {
+        ...this.settings.recentItems,
+        recentFiles: updated,
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
+  /**
+   * Adds a playlist to the recent playlists list.
+   * If the playlist already exists in the list, it is moved to the front.
+   * The list is trimmed to maxPlaylists items (FIFO eviction).
+   *
+   * @param playlistPath - Absolute path to the playlist file
+   * @returns The updated complete settings object
+   */
+  public addRecentPlaylist(playlistPath: string): AppSettings {
+    const displayName: string = path.basename(playlistPath);
+    const item: RecentItem = {
+      path: playlistPath,
+      displayName,
+      timestamp: new Date().toISOString(),
+      type: 'playlist',
+    };
+
+    // Remove existing entry with same path (case-insensitive on Windows)
+    const filtered: RecentItem[] = this.settings.recentItems.recentPlaylists.filter(
+      (f: RecentItem): boolean =>
+        process.platform === 'win32'
+          ? f.path.toLowerCase() !== playlistPath.toLowerCase()
+          : f.path !== playlistPath
+    );
+
+    // Add to front, trim to max
+    const updated: readonly RecentItem[] = [item, ...filtered].slice(
+      0,
+      this.settings.recentItems.maxPlaylists
+    );
+
+    this.settings = {
+      ...this.settings,
+      recentItems: {
+        ...this.settings.recentItems,
+        recentPlaylists: updated,
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
+  /**
+   * Removes a file from the recent files list.
+   *
+   * @param filePath - Absolute path to the file to remove
+   * @returns The updated complete settings object
+   */
+  public removeRecentFile(filePath: string): AppSettings {
+    const filtered: RecentItem[] = this.settings.recentItems.recentFiles.filter(
+      (f: RecentItem): boolean =>
+        process.platform === 'win32'
+          ? f.path.toLowerCase() !== filePath.toLowerCase()
+          : f.path !== filePath
+    );
+
+    this.settings = {
+      ...this.settings,
+      recentItems: {
+        ...this.settings.recentItems,
+        recentFiles: filtered,
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
+  /**
+   * Removes a playlist from the recent playlists list.
+   *
+   * @param playlistPath - Absolute path to the playlist to remove
+   * @returns The updated complete settings object
+   */
+  public removeRecentPlaylist(playlistPath: string): AppSettings {
+    const filtered: RecentItem[] = this.settings.recentItems.recentPlaylists.filter(
+      (f: RecentItem): boolean =>
+        process.platform === 'win32'
+          ? f.path.toLowerCase() !== playlistPath.toLowerCase()
+          : f.path !== playlistPath
+    );
+
+    this.settings = {
+      ...this.settings,
+      recentItems: {
+        ...this.settings.recentItems,
+        recentPlaylists: filtered,
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
+  /**
+   * Clears all recent items (both files and playlists).
+   *
+   * @returns The updated complete settings object
+   */
+  public clearRecentItems(): AppSettings {
+    this.settings = {
+      ...this.settings,
+      recentItems: {
+        ...this.settings.recentItems,
+        recentFiles: [],
+        recentPlaylists: [],
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
+  /**
+   * Gets the current recent items settings.
+   *
+   * @returns The recent items settings
+   */
+  public getRecentItems(): RecentItemsSettings {
+    return this.settings.recentItems;
+  }
+
+  // ==========================================================================
   // Private Methods
   // ==========================================================================
 
@@ -1174,6 +1391,11 @@ export class SettingsManager {
       obj['windowState']
     );
 
+    // Extract and validate recent items settings
+    const recentItemsSettings: RecentItemsSettings = this.validateRecentItemsSettings(
+      obj['recentItems']
+    );
+
     return {
       version: typeof obj['version'] === 'number' ? obj['version'] : SETTINGS_VERSION,
       visualization: vizSettings,
@@ -1183,6 +1405,7 @@ export class SettingsManager {
       appearance: appearanceSettings,
       subtitles: subtitleSettings,
       windowState: windowStateSettings,
+      recentItems: recentItemsSettings,
     };
   }
 
@@ -1504,6 +1727,69 @@ export class SettingsManager {
     return {
       miniplayerBounds: this.isValidWindowBounds(miniplayerBounds) ? miniplayerBounds : null,
     };
+  }
+
+  /**
+   * Validates recent items settings object.
+   *
+   * @param recentItems - The recent items settings to validate (unknown type)
+   * @returns Valid recent items settings with defaults for invalid values
+   */
+  private validateRecentItemsSettings(recentItems: unknown): RecentItemsSettings {
+    if (!recentItems || typeof recentItems !== 'object') {
+      return DEFAULT_SETTINGS.recentItems;
+    }
+
+    const obj: Record<string, unknown> = recentItems as Record<string, unknown>;
+    const recentFiles: unknown = obj['recentFiles'];
+    const recentPlaylists: unknown = obj['recentPlaylists'];
+    const maxFiles: unknown = obj['maxFiles'];
+    const maxPlaylists: unknown = obj['maxPlaylists'];
+
+    return {
+      recentFiles: this.isValidRecentItemArray(recentFiles)
+        ? recentFiles
+        : DEFAULT_SETTINGS.recentItems.recentFiles,
+      recentPlaylists: this.isValidRecentItemArray(recentPlaylists)
+        ? recentPlaylists
+        : DEFAULT_SETTINGS.recentItems.recentPlaylists,
+      maxFiles: this.isValidMaxRecentItems(maxFiles)
+        ? maxFiles
+        : DEFAULT_SETTINGS.recentItems.maxFiles,
+      maxPlaylists: this.isValidMaxRecentItems(maxPlaylists)
+        ? maxPlaylists
+        : DEFAULT_SETTINGS.recentItems.maxPlaylists,
+    };
+  }
+
+  /**
+   * Validates an array of recent items.
+   *
+   * @param arr - The array to validate
+   * @returns True if valid array of recent items
+   */
+  private isValidRecentItemArray(arr: unknown): arr is readonly RecentItem[] {
+    if (!Array.isArray(arr)) return false;
+    return arr.every(
+      (item: unknown): boolean =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as Record<string, unknown>)['path'] === 'string' &&
+        typeof (item as Record<string, unknown>)['displayName'] === 'string' &&
+        typeof (item as Record<string, unknown>)['timestamp'] === 'string' &&
+        ((item as Record<string, unknown>)['type'] === 'file' ||
+          (item as Record<string, unknown>)['type'] === 'playlist')
+    );
+  }
+
+  /**
+   * Validates max recent items count.
+   *
+   * @param value - The value to validate
+   * @returns True if valid positive integer
+   */
+  private isValidMaxRecentItems(value: unknown): value is number {
+    return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 50;
   }
 
   /**

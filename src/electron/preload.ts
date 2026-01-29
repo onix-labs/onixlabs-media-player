@@ -271,6 +271,26 @@ export interface MediaPlayerAPI {
    * @returns Promise resolving to the absolute path of the log file
    */
   readonly getLogFilePath: () => Promise<string>;
+
+  /**
+   * Registers a callback for when a file is opened from the OS.
+   * Called when a user double-clicks a media file in the file manager,
+   * or when a file is passed via command line arguments.
+   *
+   * @param callback - Function called with the file path
+   * @returns Cleanup function to remove the listener
+   */
+  readonly onOSOpenFile: (callback: (filePath: string) => void) => () => void;
+
+  /**
+   * Registers a callback for when a playlist is opened from the OS.
+   * Called when a user double-clicks a .opp playlist file in the file manager,
+   * or when a playlist is passed via command line arguments.
+   *
+   * @param callback - Function called with the playlist path
+   * @returns Cleanup function to remove the listener
+   */
+  readonly onOSOpenPlaylist: (callback: (playlistPath: string) => void) => () => void;
 }
 
 /**
@@ -344,6 +364,16 @@ const api: MediaPlayerAPI = {
     return (): void => { ipcRenderer.removeListener('app:exitConfigurationMode', listener); };
   },
   getLogFilePath: (): Promise<string> => ipcRenderer.invoke('app:getLogFilePath'),
+  onOSOpenFile: (callback: (filePath: string) => void): () => void => {
+    const listener: (_event: Electron.IpcRendererEvent, filePath: string) => void = (_event: Electron.IpcRendererEvent, filePath: string): void => callback(filePath);
+    ipcRenderer.on('os:openFile', listener);
+    return (): void => { ipcRenderer.removeListener('os:openFile', listener); };
+  },
+  onOSOpenPlaylist: (callback: (playlistPath: string) => void): () => void => {
+    const listener: (_event: Electron.IpcRendererEvent, playlistPath: string) => void = (_event: Electron.IpcRendererEvent, playlistPath: string): void => callback(playlistPath);
+    ipcRenderer.on('os:openPlaylist', listener);
+    return (): void => { ipcRenderer.removeListener('os:openPlaylist', listener); };
+  },
 };
 
 /**

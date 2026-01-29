@@ -40,6 +40,20 @@ export const SUBTITLE_FONT_FAMILY_OPTIONS: readonly {value: SubtitleFontFamily; 
 ];
 
 /**
+ * Supported audio file extensions for file association display.
+ */
+export const SUPPORTED_AUDIO_EXTENSIONS: readonly string[] = [
+  'mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'wma', 'mid', 'midi'
+];
+
+/**
+ * Supported video file extensions for file association display.
+ */
+export const SUPPORTED_VIDEO_EXTENSIONS: readonly string[] = [
+  'mp4', 'm4v', 'mkv', 'avi', 'webm', 'mov'
+];
+
+/**
  * Safely extracts value from an input element event target.
  *
  * @param event - The DOM event
@@ -523,6 +537,12 @@ export class ConfigurationView {
 
   /** Subtitle font family options for select dropdown */
   public readonly subtitleFontFamilyOptions: typeof SUBTITLE_FONT_FAMILY_OPTIONS = SUBTITLE_FONT_FAMILY_OPTIONS;
+
+  /** Supported audio extensions for file associations display */
+  public readonly supportedAudioExtensions: typeof SUPPORTED_AUDIO_EXTENSIONS = SUPPORTED_AUDIO_EXTENSIONS;
+
+  /** Supported video extensions for file associations display */
+  public readonly supportedVideoExtensions: typeof SUPPORTED_VIDEO_EXTENSIONS = SUPPORTED_VIDEO_EXTENSIONS;
 
   /** Current subtitle font size (50-200) */
   public readonly currentSubtitleFontSize: ReturnType<typeof computed<number>> = computed(
