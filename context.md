@@ -238,7 +238,8 @@ Based on independent review with all 31 action items resolved:
 
 ### UI Layout
 
-- **Header**: Draggable area for window movement (macOS traffic lights region)
+- **Header**: Draggable area for window movement (macOS only — provides space for traffic lights)
+  - Windows/Linux: Header hidden; native title bar provides drag and window controls
 - **Media bar** (bottom of outlet): Visualization switcher (audio) or aspect ratio + subtitle + audio selects (video) + playlist toggle
   - Audio mode: Left/right buttons cycle visualizations, name displayed
   - Video mode: Aspect ratio select dropdown, subtitle track select dropdown, audio track select dropdown (only when 2+ tracks — appears last to avoid layout shift)
@@ -259,6 +260,7 @@ Based on independent review with all 31 action items resolved:
 ### Application Menu
 
 - Native menu bar for macOS (app menu), Windows/Linux (File menu)
+- **Windows/Linux**: Menu bar auto-hides for cleaner appearance; press Alt to show
 - **File menu**:
   - Open (Cmd+O) - disabled when no dependencies installed
   - Open Playlist (Cmd+Shift+O) - loads .opp playlist file, disabled when no dependencies
@@ -567,8 +569,19 @@ AudioContext.destination (speakers)
 
 | File | Purpose |
 |------|---------|
+| `src/styles.scss` | Global styles including custom scrollbars |
 | `src/styles/_variables.scss` | Shared SCSS variables (colors, spacing, dimensions) |
 | `src/styles/_mixins.scss` | Shared SCSS mixins (layout patterns, responsive helpers) |
+
+### Custom Scrollbar Styles
+
+Custom scrollbar styling in `src/styles.scss` provides consistent appearance across platforms:
+
+- **Dimensions**: 8px width/height with 4px border radius
+- **Colors**: Semi-transparent white (track: 5% opacity, thumb: 20%/35%/50% for normal/hover/active)
+- **Webkit** (Chrome, Edge, Safari, Electron): `::-webkit-scrollbar-*` pseudo-elements
+- **Firefox**: `scrollbar-width: thin` and `scrollbar-color` properties
+- Works with both glass/transparent and solid backgrounds
 
 ---
 
@@ -694,7 +707,11 @@ The `Canvas2DVisualization` base class provides:
 - Atomic file writes (write to temp, then rename) prevent corruption
 - Real-time sync via SSE (`settings:updated` event)
 - Settings fetched on service init (handles missed initial SSE event)
-- **Configuration window**: Opens in a separate 800x600 frameless window (non-resizable) with hidden title bar and traffic lights (macOS). Window is draggable by custom header showing "ONIXPlayer Configuration". When opened, main window repositions side-by-side with 32px gutters; original position restored on close.
+- **Configuration window**: Opens in a separate 800x600 non-resizable window. Platform-specific appearance:
+  - **macOS**: Hidden inset title bar with traffic lights, custom draggable header showing "ONIXPlayer Configuration", vibrancy effect when glass enabled
+  - **Windows**: Native title bar with window controls, acrylic blur effect when glass enabled, custom header hidden
+  - **Linux**: Native title bar with window controls, solid background (no glass support), custom header hidden
+  - When opened, main window repositions side-by-side with 32px gutters; original position restored on close
 
 ### Available Settings
 
@@ -1226,7 +1243,7 @@ protected resizeCanvasPreserving(
 
 ```bash
 npm run lint                 # Run ESLint on all TypeScript files
-npm run dev                  # Lint + Development mode with hot reload
+npm run dev                  # Lint + Development mode with hot reload (cross-platform)
 npm run build:all            # Lint + Build Angular + Electron (with tree shaking)
 npm run obfuscate            # Obfuscate production code (Angular only)
 npm run package              # Lint + Build + Obfuscate + Package with electron-builder
@@ -1241,6 +1258,8 @@ npm run test:electron:watch  # Run Electron tests in watch mode
 ```
 
 **Note**: ESLint runs automatically before every build. The build will fail if there are any linting errors, ensuring code quality is enforced consistently.
+
+**Cross-platform development**: The `npm run dev` script uses `cross-env` for environment variable compatibility across macOS, Windows, and Linux. The `NODE_OPTIONS=--import=tsx` flag uses `=` syntax (not space) for Windows compatibility.
 
 ### CI/CD Pipeline
 
@@ -1381,6 +1400,7 @@ ffprobe -v quiet -print_format json -show_format -show_streams <file>
 | Dependency | Purpose |
 |------------|---------|
 | tsx | Running TypeScript directly in development |
+| cross-env | Cross-platform environment variable setting (Windows compatibility) |
 | esbuild | Electron production bundling with tree shaking |
 | javascript-obfuscator | Angular code obfuscation for production |
 | ESLint + @typescript-eslint | Strict type safety rules |

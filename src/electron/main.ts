@@ -423,12 +423,15 @@ class Program {
       };
     } else if (process.platform === 'win32') {
       // Windows 11: acrylic blur effect when glass enabled
+      // Note: Do NOT use transparent:true with backgroundMaterial - it removes the native frame
+      // Auto-hide menu bar for cleaner look (press Alt to show)
       platformOptions = glassEnabled
-        ? { transparent: true, backgroundMaterial: 'acrylic' as const }
-        : { backgroundColor };
+        ? { backgroundMaterial: 'acrylic' as const, autoHideMenuBar: true }
+        : { backgroundColor, autoHideMenuBar: true };
     } else {
       // Linux: no native blur support, always use background color
-      platformOptions = { backgroundColor };
+      // Auto-hide menu bar for cleaner look (press Alt to show)
+      platformOptions = { backgroundColor, autoHideMenuBar: true };
     }
 
     const window: BrowserWindow = new BrowserWindow({
@@ -473,15 +476,31 @@ class Program {
     const configWindowWidth: number = 800;
     const configWindowHeight: number = 600;
 
-    // Platform-specific options for hidden title bar with traffic lights
-    const platformOptions: Electron.BrowserWindowConstructorOptions = process.platform === 'darwin'
-      ? {
-          titleBarStyle: 'hiddenInset',
-          trafficLightPosition: {x: 12, y: 13}
-        }
-      : {
-          frame: false
-        };
+    // Platform-specific options for hidden title bar with traffic lights (macOS only)
+    // Windows/Linux use the default window frame with title bar and controls
+    // Also apply glass/vibrancy/acrylic effects to match main window
+    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
+    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? true;
+    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
+    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
+
+    let configPlatformOptions: Electron.BrowserWindowConstructorOptions = {};
+    if (process.platform === 'darwin') {
+      configPlatformOptions = {
+        titleBarStyle: 'hiddenInset',
+        trafficLightPosition: {x: 12, y: 13},
+        ...(glassEnabled
+          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
+          : { backgroundColor }
+        )
+      };
+    } else if (process.platform === 'win32') {
+      configPlatformOptions = glassEnabled
+        ? { backgroundMaterial: 'acrylic' as const }
+        : { backgroundColor };
+    } else {
+      configPlatformOptions = { backgroundColor };
+    }
 
     // Determine if we should do side-by-side positioning
     // Only in normal windowed mode (not fullscreen, not miniplayer)
@@ -541,8 +560,7 @@ class Program {
       modal: false,
       show: false,
       title: 'ONIXPlayer Configuration',
-      backgroundColor: '#1e1e1e',
-      ...platformOptions,
+      ...configPlatformOptions,
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
