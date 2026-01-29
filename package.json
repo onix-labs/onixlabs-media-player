@@ -29,7 +29,8 @@
     "package": "npm run build:all && npm run obfuscate && electron-builder",
     "package:mac": "npm run build:all && npm run obfuscate && electron-builder --mac",
     "package:win": "npm run build:all && npm run obfuscate && electron-builder --win",
-    "package:linux": "npm run build:all && npm run obfuscate && electron-builder --linux"
+    "package:linux": "npm run build:all && npm run obfuscate && electron-builder --linux",
+    "package:all": "npm run build:all && npm run obfuscate && electron-builder -mwl"
   },
   "prettier": {
     "printWidth": 100,
