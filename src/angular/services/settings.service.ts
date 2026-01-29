@@ -5,7 +5,12 @@
  * Settings are synchronized via SSE events and persisted to disk.
  *
  * Current settings:
- * - Visualization: default visualization type for audio playback
+ * - Application: server port, controls auto-hide delay
+ * - Appearance: glass effects, background/tint colors
+ * - Playback: volume, crossfade, skip duration, aspect mode, preferred audio language
+ * - Subtitles: font size, colors, shadow effects
+ * - Transcoding: video quality, audio bitrate
+ * - Visualization: default type, frame rate, FFT size, per-visualization settings
  *
  * @module app/services/settings.service
  */
@@ -97,6 +102,24 @@ export type AudioBitrate = 128 | 192 | 256 | 320;
 export type VideoAspectMode = 'default' | '4:3' | '16:9' | 'fit';
 
 /**
+ * Preferred audio language codes (ISO 639-2/B).
+ *
+ * Used by the video-outlet to auto-select an audio track when loading
+ * videos with multiple audio streams (e.g., anime with Japanese/English).
+ *
+ * Selection priority:
+ * 1. Track matching the user's preferred language
+ * 2. Track marked as default in the container
+ * 3. First track (index 0)
+ *
+ * 'default' means use the file's default track (skip step 1).
+ */
+export type PreferredAudioLanguage =
+  | 'default' | 'eng' | 'spa' | 'fre' | 'ger' | 'ita' | 'por' | 'rus'
+  | 'jpn' | 'kor' | 'chi' | 'ara' | 'hin' | 'tha' | 'vie' | 'pol'
+  | 'dut' | 'swe' | 'nor' | 'dan' | 'fin' | 'tur' | 'heb' | 'cze' | 'hun';
+
+/**
  * Subtitle font family options.
  */
 export type SubtitleFontFamily = 'sans-serif' | 'serif' | 'monospace' | 'Arial';
@@ -165,6 +188,8 @@ export interface PlaybackSettings {
   readonly skipDuration: number;
   /** Video aspect mode (default, 4:3, 16:9, fit) */
   readonly videoAspectMode: VideoAspectMode;
+  /** Preferred audio language (ISO 639-2/B code, or 'default' for file default) */
+  readonly preferredAudioLanguage: PreferredAudioLanguage;
 }
 
 /**
@@ -300,6 +325,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     previousTrackThreshold: 3,
     skipDuration: 10,
     videoAspectMode: 'default',
+    preferredAudioLanguage: 'eng',
   },
   transcoding: {
     videoQuality: 'medium',
@@ -366,6 +392,51 @@ export const VIDEO_ASPECT_OPTIONS: readonly VideoAspectOption[] = [
   {value: '4:3', label: 'Forced (4:3)'},
   {value: '16:9', label: 'Forced (16:9)'},
   {value: 'fit', label: 'Fit to Screen'},
+];
+
+/**
+ * Display information for an audio language option.
+ */
+export interface AudioLanguageOption {
+  /** The ISO 639-2/B language code */
+  readonly value: PreferredAudioLanguage;
+  /** Human-readable display label */
+  readonly label: string;
+}
+
+/**
+ * Available audio language options for the settings UI.
+ *
+ * Languages use ISO 639-2/B codes which FFprobe returns in stream metadata.
+ * The list prioritizes commonly used languages in media distribution.
+ * 'File Default' (value: 'default') defers to the container's default track.
+ */
+export const AUDIO_LANGUAGE_OPTIONS: readonly AudioLanguageOption[] = [
+  {value: 'default', label: 'File Default'},
+  {value: 'eng', label: 'English'},
+  {value: 'spa', label: 'Spanish'},
+  {value: 'fre', label: 'French'},
+  {value: 'ger', label: 'German'},
+  {value: 'ita', label: 'Italian'},
+  {value: 'por', label: 'Portuguese'},
+  {value: 'rus', label: 'Russian'},
+  {value: 'jpn', label: 'Japanese'},
+  {value: 'kor', label: 'Korean'},
+  {value: 'chi', label: 'Chinese'},
+  {value: 'ara', label: 'Arabic'},
+  {value: 'hin', label: 'Hindi'},
+  {value: 'tha', label: 'Thai'},
+  {value: 'vie', label: 'Vietnamese'},
+  {value: 'pol', label: 'Polish'},
+  {value: 'dut', label: 'Dutch'},
+  {value: 'swe', label: 'Swedish'},
+  {value: 'nor', label: 'Norwegian'},
+  {value: 'dan', label: 'Danish'},
+  {value: 'fin', label: 'Finnish'},
+  {value: 'tur', label: 'Turkish'},
+  {value: 'heb', label: 'Hebrew'},
+  {value: 'cze', label: 'Czech'},
+  {value: 'hun', label: 'Hungarian'},
 ];
 
 // ============================================================================
@@ -514,6 +585,18 @@ export class SettingsService implements OnDestroy {
   /** Video aspect mode for video playback */
   public readonly videoAspectMode: ReturnType<typeof computed<VideoAspectMode>> = computed(
     (): VideoAspectMode => this.settings().playback?.videoAspectMode ?? 'default'
+  );
+
+  /**
+   * Preferred audio language for video playback.
+   *
+   * Used by video-outlet to auto-select audio tracks in multi-track videos.
+   * Defaults to 'eng' (English) for new installations to provide sensible
+   * behavior for the majority of users. Users can change to 'default' to
+   * always use the container's default track, or select another language.
+   */
+  public readonly preferredAudioLanguage: ReturnType<typeof computed<PreferredAudioLanguage>> = computed(
+    (): PreferredAudioLanguage => this.settings().playback?.preferredAudioLanguage ?? 'eng'
   );
 
   /** Whether glass effect is enabled (requires restart to apply) */
@@ -947,6 +1030,26 @@ export class SettingsService implements OnDestroy {
       return;
     }
     await this.updateSetting('playback', 'videoAspectMode', mode);
+  }
+
+  /**
+   * Sets the preferred audio language for video playback.
+   *
+   * The setting takes effect on the next video load - it does not affect
+   * currently playing videos. Users can still manually switch audio tracks
+   * via the media bar dropdown, which overrides the preference for that file.
+   *
+   * @param language - ISO 639-2/B language code or 'default' for file default
+   */
+  public async setPreferredAudioLanguage(language: PreferredAudioLanguage): Promise<void> {
+    const validLanguages: readonly PreferredAudioLanguage[] = AUDIO_LANGUAGE_OPTIONS.map(
+      (opt: AudioLanguageOption): PreferredAudioLanguage => opt.value
+    );
+    if (!validLanguages.includes(language)) {
+      console.error(`[SettingsService] Invalid audio language: ${language}`);
+      return;
+    }
+    await this.updateSetting('playback', 'preferredAudioLanguage', language);
   }
 
   // ============================================================================
