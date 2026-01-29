@@ -1,4 +1,5 @@
 @use 'variables' as *;
+@use 'mixins' as *;
 
 :host {
   display: flex;
@@ -13,6 +14,10 @@
     border: 0.0625rem solid $black-50;
     outline: 0.0625rem solid $white-15;
     backdrop-filter: blur(16px);
+
+    @include light-mode {
+      outline-color: $white-30;
+    }
   }
 
   button {
@@ -20,7 +25,7 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    color: $white-75;
+    color: var(--text-75);
     background: $btn-glass;
     border: none;
     border-left: 0.0625rem solid $white-15;
@@ -28,6 +33,10 @@
     outline: none;
     font-size: 0.75rem;
     padding: 0.5rem;
+
+    @include light-mode {
+      border-left-color: $white-30;
+    }
 
     &:first-of-type {
       border-left: none;
@@ -42,7 +51,7 @@
     }
 
     &:hover:not(:disabled) {
-      color: white;
+      color: var(--text-primary);
       background: $btn-glass-hover;
     }
 
@@ -56,7 +65,7 @@
     }
 
     &:disabled {
-      color: $white-30;
+      color: var(--text-30);
       cursor: not-allowed;
     }
   }

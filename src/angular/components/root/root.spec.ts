@@ -90,6 +90,7 @@ function createMockSettingsService(): Record<string, unknown> {
     windowTintSaturation: signal(0),
     windowTintLightness: signal(0),
     windowTintAlpha: signal(0),
+    colorScheme: signal('system' as 'system' | 'dark' | 'light'),
   };
 }
 

@@ -53,7 +53,7 @@
     margin: 0;
     font-size: 1.75rem;
     font-weight: 600;
-    color: white;
+    color: var(--text-primary);
   }
 
   .version-table {
@@ -64,12 +64,12 @@
       padding: 0.125rem 0.5rem;
 
       &:first-child {
-        color: $white-50;
+        color: var(--text-50);
         text-align: left;
       }
 
       &:last-child {
-        color: $white-70;
+        color: var(--text-70);
         text-align: right;
         font-family: ui-monospace, monospace;
       }
@@ -79,7 +79,7 @@
   .license {
     margin: 0;
     font-size: 0.8125rem;
-    color: $white-40;
+    color: var(--text-40);
   }
 }
 
@@ -92,7 +92,7 @@
     margin: 0 0 1rem;
     font-size: 0.875rem;
     font-weight: 600;
-    color: $white-50;
+    color: var(--text-50);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -106,8 +106,8 @@
 }
 
 .format-group {
-  background: $white-3;
-  border: 1px solid $white-8;
+  background: var(--text-3);
+  border: 1px solid var(--text-8);
   border-radius: 8px;
   padding: 1rem;
 
@@ -115,14 +115,14 @@
     margin: 0 0 0.75rem;
     font-size: 0.8125rem;
     font-weight: 500;
-    color: $white-70;
+    color: var(--text-70);
     display: flex;
     align-items: center;
     gap: 0.5rem;
 
     i {
       font-size: 0.75rem;
-      color: $white-50;
+      color: var(--text-50);
     }
   }
 }
@@ -135,11 +135,11 @@
 
 .format-tag {
   padding: 0.25rem 0.5rem;
-  background: $white-8;
+  background: var(--text-8);
   border-radius: 4px;
   font-size: 0.6875rem;
   font-weight: 500;
-  color: $white-70;
+  color: var(--text-70);
   font-family: ui-monospace, monospace;
 }
 
@@ -156,38 +156,38 @@
   gap: 1rem;
   width: 100%;
   padding: 0.875rem 1rem;
-  background: $white-3;
-  border: 1px solid $white-8;
+  background: var(--text-3);
+  border: 1px solid var(--text-8);
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s ease, border-color 0.2s ease;
   text-align: left;
 
   &:hover {
-    background: $white-6;
-    border-color: $white-12;
+    background: var(--text-5);
+    border-color: var(--text-12);
   }
 
   .dep-name {
     font-size: 0.9375rem;
     font-weight: 500;
-    color: white;
+    color: var(--text-primary);
   }
 
   .dep-description {
     flex: 1;
     font-size: 0.8125rem;
-    color: $white-50;
+    color: var(--text-50);
   }
 
   i {
     font-size: 0.75rem;
-    color: $white-30;
+    color: var(--text-30);
     transition: color 0.2s ease;
   }
 
   &:hover i {
-    color: $white-60;
+    color: var(--text-60);
   }
 }
 
@@ -204,21 +204,21 @@
   gap: 0.75rem;
   width: 100%;
   padding: 0.875rem 1rem;
-  background: $white-3;
-  border: 1px solid $white-8;
+  background: var(--text-3);
+  border: 1px solid var(--text-8);
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s ease, border-color 0.2s ease;
   text-align: left;
 
   &:hover {
-    background: $white-6;
-    border-color: $white-12;
+    background: var(--text-5);
+    border-color: var(--text-12);
   }
 
   i:first-child {
     font-size: 1.125rem;
-    color: $white-60;
+    color: var(--text-60);
     width: 1.5rem;
     text-align: center;
   }
@@ -226,17 +226,17 @@
   span {
     flex: 1;
     font-size: 0.9375rem;
-    color: white;
+    color: var(--text-primary);
   }
 
   i:last-child {
     font-size: 0.75rem;
-    color: $white-30;
+    color: var(--text-30);
     transition: color 0.2s ease;
   }
 
   &:hover i:last-child {
-    color: $white-60;
+    color: var(--text-60);
   }
 }
 
@@ -248,6 +248,6 @@
   p {
     margin: 0;
     font-size: 0.75rem;
-    color: $white-30;
+    color: var(--text-30);
   }
 }

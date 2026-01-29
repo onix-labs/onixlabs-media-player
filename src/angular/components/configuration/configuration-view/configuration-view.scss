@@ -29,7 +29,7 @@
   .header-title {
     font-size: 0.875rem;
     font-weight: 500;
-    color: $white-70;
+    color: var(--text-70);
     pointer-events: none;
     user-select: none;
   }
@@ -50,7 +50,7 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  border-right: 0.0625rem solid $white-25;
+  border-right: 0.0625rem solid var(--text-20);
   padding-right: 1rem;
   overflow-y: auto;
 
@@ -68,20 +68,20 @@
     background: none;
     border: none;
     border-radius: 4px;
-    color: $white-70;
+    color: var(--text-70);
     font-size: 0.875rem;
     cursor: pointer;
     transition: background 0.2s ease, color 0.2s ease;
     text-align: left;
 
     &:hover {
-      background: $white-8;
-      color: white;
+      background: var(--text-8);
+      color: var(--text-primary);
     }
 
     &.active {
-      background: $white-10;
-      color: white;
+      background: var(--text-10);
+      color: var(--text-primary);
     }
 
     &.has-accordion {
@@ -104,7 +104,7 @@
     background: none;
     border: none;
     border-radius: 4px;
-    color: $white-40;
+    color: var(--text-40);
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease, transform 0.2s ease;
 
@@ -114,8 +114,8 @@
     }
 
     &:hover {
-      background: $white-10;
-      color: $white-80;
+      background: var(--text-10);
+      color: var(--text-80);
     }
 
     &.expanded i {
@@ -137,20 +137,20 @@
     background: none;
     border: none;
     border-radius: 4px;
-    color: $white-50;
+    color: var(--text-50);
     font-size: 0.8125rem;
     cursor: pointer;
     text-align: left;
     transition: background 0.15s ease, color 0.15s ease;
 
     &:hover {
-      background: $white-5;
-      color: $white-80;
+      background: var(--text-5);
+      color: var(--text-80);
     }
 
     &.active {
-      background: $white-8;
-      color: white;
+      background: var(--text-8);
+      color: var(--text-primary);
     }
   }
 
@@ -171,13 +171,13 @@
       margin: 0 0 0.5rem;
       font-size: 1.5rem;
       font-weight: 600;
-      color: white;
+      color: var(--text-primary);
     }
 
     .panel-description {
       margin: 0;
       font-size: 0.875rem;
-      color: $white-50;
+      color: var(--text-50);
     }
   }
 
@@ -195,14 +195,14 @@
 
   // Boxed setting with nested sliders inside
   .setting-box {
-    background: $white-3;
-    border: 1px solid $white-8;
+    background: var(--text-3);
+    border: 1px solid var(--text-8);
     border-radius: 8px;
     transition: background 0.2s ease, border-color 0.2s ease;
 
     &:hover {
-      background: $white-5;
-      border-color: $white-12;
+      background: var(--text-5);
+      border-color: var(--text-12);
     }
 
     .setting-box-header {
@@ -217,14 +217,14 @@
 
         label {
           display: block;
-          color: white;
+          color: var(--text-primary);
           font-size: 0.9375rem;
           font-weight: 500;
           margin-bottom: 0.25rem;
         }
 
         .setting-description {
-          color: $white-50;
+          color: var(--text-50);
           font-size: 0.8125rem;
           line-height: 1.4;
           margin: 0;
@@ -244,20 +244,20 @@
       align-items: center;
       gap: 0.75rem;
       padding: 0.5rem 0.75rem;
-      background: $white-3;
+      background: var(--text-3);
       border-radius: 6px;
 
       label {
         font-size: 0.8125rem;
         font-weight: 400;
-        color: $white-70;
+        color: var(--text-70);
         min-width: 70px;
       }
 
       input[type='range'] {
         flex: 1;
         height: 4px;
-        background: $white-15;
+        background: var(--text-15);
         border-radius: 2px;
         appearance: none;
         cursor: pointer;
@@ -282,7 +282,7 @@
         min-width: 45px;
         text-align: right;
         font-size: 0.8125rem;
-        color: $white-70;
+        color: var(--text-70);
         font-variant-numeric: tabular-nums;
       }
     }
@@ -294,14 +294,14 @@
     align-items: center;
     gap: 2rem;
     padding: 1rem;
-    background: $white-3;
-    border: 1px solid $white-8;
+    background: var(--text-3);
+    border: 1px solid var(--text-8);
     border-radius: 8px;
     transition: background 0.2s ease, border-color 0.2s ease;
 
     &:hover {
-      background: $white-5;
-      border-color: $white-12;
+      background: var(--text-5);
+      border-color: var(--text-12);
     }
 
     // Compact HSL/HSLA sub-slider rows
@@ -312,7 +312,7 @@
       .setting-label label {
         font-size: 0.8125rem;
         font-weight: 400;
-        color: $white-70;
+        color: var(--text-70);
         margin-bottom: 0;
       }
     }
@@ -322,7 +322,7 @@
 
       label {
         display: block;
-        color: white;
+        color: var(--text-primary);
         font-size: 0.9375rem;
         font-weight: 500;
         margin-bottom: 0.25rem;
@@ -331,7 +331,7 @@
       .setting-description {
         margin: 0;
         font-size: 0.8125rem;
-        color: $white-50;
+        color: var(--text-50);
         line-height: 1.4;
       }
     }
@@ -345,10 +345,10 @@
       select {
         min-width: 180px;
         padding: 0.5rem 2rem 0.5rem 0.75rem;
-        background: $white-8;
-        border: 1px solid $white-15;
+        background: var(--text-8);
+        border: 1px solid var(--text-15);
         border-radius: 6px;
-        color: white;
+        color: var(--text-primary);
         font-size: 0.875rem;
         cursor: pointer;
         appearance: none;
@@ -357,13 +357,17 @@
         background-position: right 0.75rem center;
         transition: border-color 0.2s ease, background 0.2s ease;
 
+        @include light-mode {
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(0,0,0,0.5)' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+        }
+
         &:hover {
-          border-color: $white-25;
+          border-color: var(--text-20);
         }
 
         &:focus {
           outline: none;
-          border-color: $white-50;
+          border-color: var(--text-50);
         }
 
         option {
@@ -374,10 +378,10 @@
 
       > .reset-button {
         padding: 0.5rem;
-        background: $white-5;
-        border: 1px solid $white-10;
+        background: var(--text-5);
+        border: 1px solid var(--text-10);
         border-radius: 4px;
-        color: $white-40;
+        color: var(--text-40);
         cursor: pointer;
         transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 
@@ -386,9 +390,9 @@
         }
 
         &:hover {
-          color: $white-80;
-          background: $white-10;
-          border-color: $white-20;
+          color: var(--text-80);
+          background: var(--text-10);
+          border-color: var(--text-20);
         }
       }
 
@@ -402,7 +406,7 @@
         input[type="range"] {
           flex: 1;
           height: 4px;
-          background: $white-15;
+          background: var(--text-15);
           border-radius: 2px;
           appearance: none;
           cursor: pointer;
@@ -426,7 +430,7 @@
         .slider-value {
           min-width: 3rem;
           text-align: right;
-          color: $white-70;
+          color: var(--text-70);
           font-size: 0.875rem;
           font-variant-numeric: tabular-nums;
         }
@@ -436,7 +440,7 @@
       .color-preview {
         width: 40px;
         height: 28px;
-        border: 2px solid $white-30;
+        border: 2px solid var(--text-30);
         border-radius: 4px;
         transition: background 0.1s ease;
       }
@@ -455,6 +459,10 @@
 
           &:checked + .toggle-slider {
             background: rgba(74, 222, 128, 0.6);
+
+            @include light-mode {
+              background: rgba(34, 197, 94, 0.9);
+            }
           }
 
           &:checked + .toggle-slider::before {
@@ -474,7 +482,7 @@
           left: 0;
           right: 0;
           bottom: 0;
-          background: $white-15;
+          background: var(--text-15);
           border-radius: 24px;
           transition: background 0.2s ease;
 
@@ -494,7 +502,7 @@
 
       // Color value with optional monospace
       .color-value {
-        color: $white-70;
+        color: var(--text-70);
         font-size: 0.875rem;
 
         &.mono {
@@ -512,25 +520,25 @@
         input[type="number"] {
           width: 100px;
           padding: 0.5rem 0.75rem;
-          background: $white-8;
-          border: 1px solid $white-15;
+          background: var(--text-8);
+          border: 1px solid var(--text-15);
           border-radius: 6px;
-          color: white;
+          color: var(--text-primary);
           font-size: 0.875rem;
           font-variant-numeric: tabular-nums;
           transition: border-color 0.2s ease, background 0.2s ease;
 
           &::placeholder {
-            color: $white-40;
+            color: var(--text-40);
           }
 
           &:hover {
-            border-color: $white-25;
+            border-color: var(--text-20);
           }
 
           &:focus {
             outline: none;
-            border-color: $white-50;
+            border-color: var(--text-50);
           }
 
           // Hide spinner buttons
@@ -544,17 +552,17 @@
 
         .reset-button {
           padding: 0.5rem;
-          background: $white-5;
-          border: 1px solid $white-10;
+          background: var(--text-5);
+          border: 1px solid var(--text-10);
           border-radius: 4px;
-          color: $white-50;
+          color: var(--text-50);
           cursor: pointer;
           transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 
           &:hover {
-            color: $white-80;
-            background: $white-10;
-            border-color: $white-20;
+            color: var(--text-80);
+            background: var(--text-10);
+            border-color: var(--text-20);
           }
         }
       }
@@ -573,6 +581,12 @@
     color: rgba(251, 191, 36, 0.9);
     font-size: 0.8125rem;
 
+    @include light-mode {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: rgba(245, 158, 11, 0.5);
+      color: #b45309;
+    }
+
     i {
       font-size: 0.875rem;
     }
@@ -590,6 +604,12 @@
     color: rgba(96, 165, 250, 0.9);
     font-size: 0.8125rem;
 
+    @include light-mode {
+      background: rgba(59, 130, 246, 0.12);
+      border-color: rgba(59, 130, 246, 0.5);
+      color: #1d4ed8;
+    }
+
     i {
       font-size: 0.875rem;
     }
@@ -597,7 +617,7 @@
 
   // Expandable section for per-visualization settings
   .expandable-section {
-    border: 1px solid $white-8;
+    border: 1px solid var(--text-8);
     border-radius: 8px;
     overflow: hidden;
 
@@ -607,25 +627,25 @@
       gap: 0.75rem;
       width: 100%;
       padding: 1rem;
-      background: $white-2;
+      background: var(--text-2);
       border: none;
-      color: $white-80;
+      color: var(--text-80);
       font-size: 0.9375rem;
       font-weight: 500;
       cursor: pointer;
       transition: background 0.2s ease;
 
       &:hover {
-        background: $white-5;
+        background: var(--text-5);
       }
 
       &.expanded {
-        border-bottom: 1px solid $white-8;
+        border-bottom: 1px solid var(--text-8);
       }
 
       i {
         font-size: 0.75rem;
-        color: $white-50;
+        color: var(--text-50);
         transition: transform 0.2s ease;
       }
 
@@ -633,7 +653,7 @@
         margin-left: auto;
         font-size: 0.8125rem;
         font-weight: 400;
-        color: $white-40;
+        color: var(--text-40);
       }
     }
 
@@ -653,7 +673,7 @@
     transition: background 0.15s ease;
 
     &:hover {
-      background: $white-3;
+      background: var(--text-3);
     }
 
     .per-viz-label {
@@ -663,7 +683,7 @@
       min-width: 140px;
 
       .per-viz-name {
-        color: $white-70;
+        color: var(--text-70);
         font-size: 0.8125rem;
       }
 
@@ -671,15 +691,15 @@
         padding: 0.25rem;
         background: none;
         border: none;
-        color: $white-30;
+        color: var(--text-30);
         font-size: 0.6875rem;
         cursor: pointer;
         border-radius: 3px;
         transition: color 0.15s ease, background 0.15s ease;
 
         &:hover {
-          color: $white-70;
-          background: $white-10;
+          color: var(--text-70);
+          background: var(--text-10);
         }
       }
     }
@@ -693,7 +713,7 @@
       input[type="range"] {
         flex: 1;
         height: 3px;
-        background: $white-12;
+        background: var(--text-12);
         border-radius: 2px;
         appearance: none;
         cursor: pointer;
@@ -703,7 +723,7 @@
       .slider-value {
         min-width: 2.5rem;
         text-align: right;
-        color: $white-50;
+        color: var(--text-50);
         font-size: 0.75rem;
         font-variant-numeric: tabular-nums;
 
@@ -737,8 +757,8 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    background: $white-2;
-    border: 1px solid $white-8;
+    background: var(--text-2);
+    border: 1px solid var(--text-8);
     border-radius: 6px;
 
     .dependency-indicator {
@@ -747,6 +767,10 @@
 
       &.installed {
         color: $color-success;
+
+        @include light-mode {
+          color: #22c55e; // Vibrant green for light mode
+        }
       }
 
       &.missing {
@@ -764,17 +788,17 @@
       .dependency-name {
         font-size: 0.875rem;
         font-weight: 600;
-        color: $white-90;
+        color: var(--text-90);
       }
 
       .dependency-description {
         font-size: 0.75rem;
-        color: $white-50;
+        color: var(--text-50);
       }
 
       .dependency-path {
         font-size: 0.6875rem;
-        color: $white-30;
+        color: var(--text-30);
         font-family: monospace;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -804,8 +828,18 @@
       border-color: rgba(74, 222, 128, 0.3);
       color: $color-success;
 
+      @include light-mode {
+        background: rgba(34, 197, 94, 0.2);
+        border-color: rgba(34, 197, 94, 0.6);
+        color: #16a34a;
+      }
+
       &:hover:not(:disabled) {
         background: rgba(74, 222, 128, 0.25);
+
+        @include light-mode {
+          background: rgba(34, 197, 94, 0.3);
+        }
       }
     }
 
@@ -831,17 +865,17 @@
     justify-content: center;
     width: 1.75rem;
     height: 1.75rem;
-    background: $white-5;
-    border: 1px solid $white-10;
+    background: var(--text-5);
+    border: 1px solid var(--text-10);
     border-radius: 4px;
-    color: $white-40;
+    color: var(--text-40);
     font-size: 0.75rem;
     cursor: pointer;
     transition: background 0.2s ease, color 0.2s ease;
 
     &:hover {
-      background: $white-10;
-      color: $white-70;
+      background: var(--text-10);
+      color: var(--text-70);
     }
   }
 
@@ -856,12 +890,24 @@
     color: rgba(251, 191, 36, 0.9);
     font-size: 0.8125rem;
 
+    @include light-mode {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: rgba(245, 158, 11, 0.5);
+      color: #b45309;
+    }
+
     &.success {
       background: rgba(74, 222, 128, 0.08);
       border-color: rgba(74, 222, 128, 0.2);
       color: rgba(74, 222, 128, 0.9);
       flex-direction: row;
       align-items: center;
+
+      @include light-mode {
+        background: rgba(34, 197, 94, 0.15);
+        border-color: rgba(34, 197, 94, 0.5);
+        color: #16a34a;
+      }
     }
 
     &.error {
@@ -884,7 +930,7 @@
     border-radius: 4px;
     font-size: 0.6875rem;
     font-family: monospace;
-    color: $white-60;
+    color: var(--text-60);
     max-height: 12rem;
     overflow-y: auto;
     white-space: pre-wrap;
@@ -896,7 +942,7 @@
     flex-direction: column;
     gap: 0.75rem;
     padding-top: 0.5rem;
-    border-top: 1px solid $white-8;
+    border-top: 1px solid var(--text-8);
     margin-top: 0.5rem;
 
     .soundfont-header {
@@ -908,12 +954,12 @@
     .soundfont-title {
       font-size: 0.875rem;
       font-weight: 600;
-      color: $white-80;
+      color: var(--text-80);
     }
 
     .soundfont-subtitle {
       font-size: 0.75rem;
-      color: $white-40;
+      color: var(--text-40);
     }
 
     .soundfont-list {
@@ -927,19 +973,19 @@
       align-items: center;
       gap: 0.5rem;
       padding: 0.5rem 0.75rem;
-      background: $white-2;
-      border: 1px solid $white-8;
+      background: var(--text-2);
+      border: 1px solid var(--text-8);
       border-radius: 4px;
 
       > i {
-        color: $white-30;
+        color: var(--text-30);
         font-size: 0.75rem;
       }
 
       .soundfont-name {
         flex: 1;
         font-size: 0.8125rem;
-        color: $white-70;
+        color: var(--text-70);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -947,7 +993,7 @@
 
       .soundfont-size {
         font-size: 0.6875rem;
-        color: $white-30;
+        color: var(--text-30);
         font-variant-numeric: tabular-nums;
       }
 
@@ -959,7 +1005,7 @@
         height: 1.5rem;
         background: none;
         border: none;
-        color: $white-30;
+        color: var(--text-30);
         font-size: 0.6875rem;
         cursor: pointer;
         border-radius: 3px;
@@ -974,7 +1020,7 @@
 
     .soundfont-empty {
       font-size: 0.75rem;
-      color: $white-30;
+      color: var(--text-30);
       margin: 0;
       padding: 0.5rem 0;
     }
@@ -994,13 +1040,13 @@
     h3 {
       font-size: 0.875rem;
       font-weight: 600;
-      color: $white-80;
+      color: var(--text-80);
       margin: 0 0 0.25rem;
     }
 
     .setting-group-description {
       font-size: 0.75rem;
-      color: $white-40;
+      color: var(--text-40);
       margin: 0;
     }
   }
@@ -1019,7 +1065,7 @@
     .extension-category-label {
       font-size: 0.75rem;
       font-weight: 500;
-      color: $white-50;
+      color: var(--text-50);
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
@@ -1035,12 +1081,12 @@
     display: inline-flex;
     align-items: center;
     padding: 0.25rem 0.5rem;
-    background: $white-8;
-    border: 1px solid $white-15;
+    background: var(--text-8);
+    border: 1px solid var(--text-15);
     border-radius: 4px;
     font-size: 0.75rem;
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-    color: $white-70;
+    color: var(--text-70);
   }
 
   .file-associations-hint {
@@ -1048,12 +1094,12 @@
     align-items: flex-start;
     gap: 0.5rem;
     padding: 0.75rem;
-    background: $white-5;
+    background: var(--text-5);
     border-radius: 6px;
     margin-top: 0.25rem;
 
     > i {
-      color: $white-40;
+      color: var(--text-40);
       font-size: 0.75rem;
       margin-top: 0.125rem;
       flex-shrink: 0;
@@ -1061,7 +1107,7 @@
 
     > span {
       font-size: 0.75rem;
-      color: $white-50;
+      color: var(--text-50);
       line-height: 1.4;
     }
   }

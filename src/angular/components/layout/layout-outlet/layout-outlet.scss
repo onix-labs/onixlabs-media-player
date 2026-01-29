@@ -1,4 +1,5 @@
 @use 'variables' as *;
+@use 'mixins' as *;
 
 :host {
   display: flex;
@@ -18,6 +19,10 @@
     border-radius: 3px;
     outline: 0.0625rem solid $white-25;
     overflow: hidden;
+
+    @include light-mode {
+      outline-color: $white-40;
+    }
   }
 
   &.fullscreen,
@@ -40,6 +45,7 @@
   gap: 0.25rem;
   border-top: 0.0625rem solid $white-10;
 
+  // Always use dark mode colors since background is always dark
   button {
     display: flex;
     justify-content: center;
@@ -124,6 +130,7 @@
   justify-content: center;
   flex: 1;
   position: relative;
+  // Always use dark mode colors since background is always dark
   color: $white-30;
   text-align: center;
   gap: 1rem;
@@ -219,6 +226,7 @@
   align-items: center;
   justify-content: center;
   background: $black-70;
+  // Always use dark mode colors since background is always dark
   color: $white-70;
   gap: 1rem;
   z-index: 10;

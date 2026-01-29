@@ -230,6 +230,14 @@ export interface TranscodingSettings {
 export type MacOSVisualEffectState = 'followWindow' | 'active' | 'inactive';
 
 /**
+ * Color scheme preference.
+ * - system: Follow system preference
+ * - dark: Force dark mode
+ * - light: Force light mode
+ */
+export type ColorScheme = 'system' | 'dark' | 'light';
+
+/**
  * Appearance settings (cross-platform).
  * Supports glass effects (vibrancy on macOS, acrylic on Windows) and background color.
  */
@@ -238,6 +246,8 @@ export interface AppearanceSettings {
   readonly glassEnabled: boolean;
   /** macOS visual effect state - only used on macOS when glassEnabled */
   readonly macOSVisualEffectState: MacOSVisualEffectState;
+  /** Color scheme preference (system, dark, light) */
+  readonly colorScheme: ColorScheme;
   /** Background color when glass is disabled or unsupported (hex format, derived from HSL) */
   readonly backgroundColor: string;
   /** Background hue (0-360) when glass is disabled */
@@ -357,6 +367,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   appearance: {
     glassEnabled: true,
     macOSVisualEffectState: 'active',
+    colorScheme: 'system',
     backgroundColor: '#1e1e1e',
     backgroundHue: 0,
     backgroundSaturation: 0,
@@ -686,6 +697,11 @@ export class SettingsService implements OnDestroy {
   /** macOS visual effect state (requires restart to apply) */
   public readonly macOSVisualEffectState: ReturnType<typeof computed<MacOSVisualEffectState>> = computed(
     (): MacOSVisualEffectState => this.settings().appearance?.macOSVisualEffectState ?? 'active'
+  );
+
+  /** Color scheme preference (system, dark, light) */
+  public readonly colorScheme: ReturnType<typeof computed<ColorScheme>> = computed(
+    (): ColorScheme => this.settings().appearance?.colorScheme ?? 'system'
   );
 
   /** Background color when glass is disabled (hex, derived from HSL) */
@@ -1178,6 +1194,20 @@ export class SettingsService implements OnDestroy {
       return;
     }
     await this.updateSetting('appearance', 'macOSVisualEffectState', state);
+  }
+
+  /**
+   * Sets the color scheme preference.
+   *
+   * @param scheme - Color scheme ('system', 'dark', 'light')
+   */
+  public async setColorScheme(scheme: ColorScheme): Promise<void> {
+    const validSchemes: readonly ColorScheme[] = ['system', 'dark', 'light'];
+    if (!validSchemes.includes(scheme)) {
+      console.error(`[SettingsService] Invalid color scheme: ${scheme}`);
+      return;
+    }
+    await this.updateSetting('appearance', 'colorScheme', scheme);
   }
 
   /**

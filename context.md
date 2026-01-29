@@ -252,6 +252,7 @@ Based on independent review with all 31 action items resolved:
     - Windows 11: Uses acrylic blur via `backgroundMaterial`
     - Linux: Glass not supported (toggle disabled)
   - **Visual Effect State** (macOS only, when glass enabled): Follow Window, Always Active (default), Always Inactive
+  - **Color Scheme**: Follow System (default), Dark Mode, Light Mode - controls light/dark appearance of UI elements; some components (playlist, idle state, media bar, loading overlay) always use dark mode colors since they sit on dark backgrounds
   - **Window Color** unified HSL(A) sliders: controls background color when glass disabled, tint color when glass enabled; Alpha slider only shown when glass enabled; live preview swatch, updates immediately without restart
   - Default background color auto-detects system light/dark mode (#1e1e1e dark, #e0e0e0 light)
   - HSL hue sliders display a rainbow gradient for visual feedback
@@ -787,6 +788,7 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 |---------|---------|---------|-------------|------------------|
 | Glass Effect | On/Off | On | Enables window transparency with blur | Yes |
 | Visual Effect State | Follow Window/Always Active/Always Inactive | Always Active | macOS vibrancy state (shown when glass enabled on macOS); restart notice shown when changed | Yes |
+| Color Scheme | Follow System/Dark Mode/Light Mode | Follow System | Controls light/dark mode; can follow OS preference or force a specific mode | No |
 | Window Color | HSL(A) sliders in boxed container (Hue 0-360, Saturation 0-100, Lightness 0-100, Alpha 0-1) | H:0 S:0 L:12 (glass off) or H:0 S:0 L:0 A:0 (glass on) | Unified color control: background color when glass disabled, tint color when glass enabled; Alpha slider only shown when glass enabled | No |
 
 #### Subtitles Category

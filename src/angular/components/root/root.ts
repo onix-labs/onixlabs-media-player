@@ -218,6 +218,13 @@ export class Root implements OnDestroy {
       }
     });
 
+    // React to color scheme setting changes
+    // Applies data-color-scheme attribute to document root for CSS styling
+    effect((): void => {
+      const scheme: string = this.settings.colorScheme();
+      document.documentElement.setAttribute('data-color-scheme', scheme);
+    });
+
     // React to "Open File" menu event
     effect((): void => {
       const trigger: number = this.electron.menuOpenFile();

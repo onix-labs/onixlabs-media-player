@@ -115,6 +115,14 @@ export type SubtitleFontFamily = 'sans-serif' | 'serif' | 'monospace' | 'Arial';
 export type MacOSVisualEffectState = 'followWindow' | 'active' | 'inactive';
 
 /**
+ * Color scheme preference.
+ * - system: Follow system preference (default)
+ * - dark: Force dark mode
+ * - light: Force light mode
+ */
+export type ColorScheme = 'system' | 'dark' | 'light';
+
+/**
  * Preferred audio language codes (ISO 639-2/B).
  * 'default' means use the file's default track.
  */
@@ -263,6 +271,8 @@ export interface AppearanceSettings {
   readonly glassEnabled: boolean;
   /** macOS visual effect state (followWindow, active, inactive, default active) - only used on macOS when glassEnabled */
   readonly macOSVisualEffectState: MacOSVisualEffectState;
+  /** Color scheme preference (system, dark, light) - default system */
+  readonly colorScheme: ColorScheme;
   /** Background color when glass is disabled or unsupported (hex format, e.g., '#1e1e1e') — derived from HSL values */
   readonly backgroundColor: string;
   /** Background hue (0-360) when glass is disabled */
@@ -428,6 +438,7 @@ export interface TranscodingSettingsUpdate {
 export interface AppearanceSettingsUpdate {
   readonly glassEnabled?: boolean;
   readonly macOSVisualEffectState?: MacOSVisualEffectState;
+  readonly colorScheme?: ColorScheme;
   readonly backgroundColor?: string;
   readonly backgroundHue?: number;
   readonly backgroundSaturation?: number;
@@ -504,6 +515,9 @@ const VALID_VIDEO_ASPECT_MODES: readonly VideoAspectMode[] = ['default', '4:3', 
 /** Valid macOS visual effect state values */
 const VALID_MACOS_VISUAL_EFFECT_STATE: readonly MacOSVisualEffectState[] = ['followWindow', 'active', 'inactive'];
 
+/** Valid color scheme values */
+const VALID_COLOR_SCHEME: readonly ColorScheme[] = ['system', 'dark', 'light'];
+
 /** Valid subtitle font family values */
 const VALID_SUBTITLE_FONT_FAMILIES: readonly SubtitleFontFamily[] = ['sans-serif', 'serif', 'monospace', 'Arial'];
 
@@ -542,6 +556,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   appearance: {
     glassEnabled: true,  // glass effect enabled by default (vibrancy on macOS, acrylic on Windows)
     macOSVisualEffectState: 'active',  // always active (even when window inactive)
+    colorScheme: 'system',  // follow system preference by default
     backgroundColor: '#1e1e1e',  // derived from HSL values for BrowserWindow creation
     backgroundHue: 0,  // HSL hue (0-360) — #1e1e1e is achromatic
     backgroundSaturation: 0,  // HSL saturation (0-100) — #1e1e1e has no saturation
@@ -893,6 +908,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate colorScheme if provided
+    if (update.colorScheme !== undefined) {
+      if (!this.isValidColorScheme(update.colorScheme)) {
+        console.warn(`[SettingsManager] Invalid color scheme: ${update.colorScheme}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Validate backgroundColor if provided
     if (update.backgroundColor !== undefined) {
       if (!this.isValidHexColor(update.backgroundColor)) {
@@ -950,6 +973,7 @@ export class SettingsManager {
         ...this.settings.appearance,
         glassEnabled: update.glassEnabled ?? this.settings.appearance.glassEnabled,
         macOSVisualEffectState: update.macOSVisualEffectState ?? this.settings.appearance.macOSVisualEffectState,
+        colorScheme: update.colorScheme ?? this.settings.appearance.colorScheme,
         backgroundColor: derivedBgColor,
         backgroundHue: bgHue,
         backgroundSaturation: bgSat,
@@ -1672,6 +1696,7 @@ export class SettingsManager {
     }
 
     const macOSVisualEffectState: unknown = appearanceObj['macOSVisualEffectState'];
+    const colorScheme: unknown = appearanceObj['colorScheme'];
     const backgroundColor: unknown = appearanceObj['backgroundColor'];
 
     // Validate HSL fields (use defaults if missing — backward compat with old settings)
@@ -1697,6 +1722,9 @@ export class SettingsManager {
       macOSVisualEffectState: this.isValidMacOSVisualEffectState(macOSVisualEffectState)
         ? macOSVisualEffectState
         : DEFAULT_SETTINGS.appearance.macOSVisualEffectState,
+      colorScheme: this.isValidColorScheme(colorScheme)
+        ? colorScheme
+        : DEFAULT_SETTINGS.appearance.colorScheme,
       backgroundColor: this.isValidHexColor(backgroundColor)
         ? backgroundColor
         : DEFAULT_SETTINGS.appearance.backgroundColor,
@@ -2122,6 +2150,16 @@ export class SettingsManager {
    */
   private isValidMacOSVisualEffectState(value: unknown): value is MacOSVisualEffectState {
     return typeof value === 'string' && VALID_MACOS_VISUAL_EFFECT_STATE.includes(value as MacOSVisualEffectState);
+  }
+
+  /**
+   * Type guard to check if a value is a valid color scheme.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid color scheme
+   */
+  private isValidColorScheme(value: unknown): value is ColorScheme {
+    return typeof value === 'string' && VALID_COLOR_SCHEME.includes(value as ColorScheme);
   }
 
   /**

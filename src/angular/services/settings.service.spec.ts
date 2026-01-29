@@ -74,6 +74,7 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       windowTintSaturation: 0,
       windowTintLightness: 0,
       windowTintAlpha: 0,
+      colorScheme: 'system',
     },
     subtitles: {
       fontSize: 100,
@@ -240,7 +241,7 @@ describe('SettingsService', (): void => {
 
     it('glassEnabled reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        appearance: {glassEnabled: false, macOSVisualEffectState: 'active', backgroundColor: '#1e1e1e', backgroundHue: 0, backgroundSaturation: 0, backgroundLightness: 12, windowTintHue: 0, windowTintSaturation: 0, windowTintLightness: 0, windowTintAlpha: 0},
+        appearance: {glassEnabled: false, macOSVisualEffectState: 'active', backgroundColor: '#1e1e1e', backgroundHue: 0, backgroundSaturation: 0, backgroundLightness: 12, windowTintHue: 0, windowTintSaturation: 0, windowTintLightness: 0, windowTintAlpha: 0, colorScheme: 'system'},
       });
       service.updateFromSSE(testSettings);
 
@@ -250,7 +251,7 @@ describe('SettingsService', (): void => {
 
     it('macOSVisualEffectState reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        appearance: {glassEnabled: true, macOSVisualEffectState: 'followWindow', backgroundColor: '#1e1e1e', backgroundHue: 0, backgroundSaturation: 0, backgroundLightness: 12, windowTintHue: 0, windowTintSaturation: 0, windowTintLightness: 0, windowTintAlpha: 0},
+        appearance: {glassEnabled: true, macOSVisualEffectState: 'followWindow', backgroundColor: '#1e1e1e', backgroundHue: 0, backgroundSaturation: 0, backgroundLightness: 12, windowTintHue: 0, windowTintSaturation: 0, windowTintLightness: 0, windowTintAlpha: 0, colorScheme: 'system'},
       });
       service.updateFromSSE(testSettings);
 
@@ -260,7 +261,7 @@ describe('SettingsService', (): void => {
 
     it('backgroundColor reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        appearance: {glassEnabled: true, macOSVisualEffectState: 'active', backgroundColor: '#ff0000', backgroundHue: 0, backgroundSaturation: 0, backgroundLightness: 12, windowTintHue: 0, windowTintSaturation: 0, windowTintLightness: 0, windowTintAlpha: 0},
+        appearance: {glassEnabled: true, macOSVisualEffectState: 'active', backgroundColor: '#ff0000', backgroundHue: 0, backgroundSaturation: 0, backgroundLightness: 12, windowTintHue: 0, windowTintSaturation: 0, windowTintLightness: 0, windowTintAlpha: 0, colorScheme: 'system'},
       });
       service.updateFromSSE(testSettings);
 
