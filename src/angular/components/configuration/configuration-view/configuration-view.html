@@ -612,6 +612,25 @@
 
                 <div class="setting-row">
                   <div class="setting-label">
+                    <label for="preferred-audio-language">Preferred Audio Language</label>
+                    <p class="setting-description">
+                      Default audio track for videos with multiple audio streams.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="preferred-audio-language"
+                      (change)="onPreferredAudioLanguageChange($event)"
+                    >
+                      @for (option of audioLanguageOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentPreferredAudioLanguage()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
                     <label for="auto-hide-delay">Controls Auto-Hide</label>
                     <p class="setting-description">
                       Time before playback controls hide in fullscreen mode. Set to 0 to disable.

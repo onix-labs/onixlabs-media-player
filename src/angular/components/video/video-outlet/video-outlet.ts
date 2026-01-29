@@ -24,7 +24,7 @@ import {DOCUMENT} from '@angular/common';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
-import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS, SubtitleFontFamily} from '../../../services/settings.service';
+import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS, SubtitleFontFamily, PreferredAudioLanguage} from '../../../services/settings.service';
 import type {PlaylistItem, SubtitleTrack, AudioTrack} from '../../../services/electron.service';
 
 /**
@@ -406,6 +406,66 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
       this.updateSubtitleStyles(fontSize, fontColor, bgColor, bgOpacity, fontFamily, textShadow, shadowSpread, shadowBlur, shadowColor);
     });
+
+    // React to audioTracks becoming available (SSE arrives after initial load).
+    //
+    // RACE CONDITION FIX:
+    // When a video is loaded, loadVideo() runs immediately and tries to select
+    // the correct audio track based on the user's preferred language setting.
+    // However, at this point, the MediaInfo (containing audioTracks) hasn't
+    // arrived yet via SSE - the server probes the file asynchronously and sends
+    // the info later. This means loadVideo() falls back to track index 0.
+    //
+    // This effect watches for audioTracks to become available (via SSE) and
+    // re-applies the preferred language setting, reloading the video stream
+    // with the correct audio track if needed. Guards prevent unnecessary reloads:
+    // - User has a cached selection (manual override takes precedence)
+    // - Already selected something other than index 0
+    // - Preferred track IS index 0 (no change needed)
+    effect((): void => {
+      const audioTracks: readonly AudioTrack[] = this.audioTracks();
+      const filePath: string | null = this.currentFilePath;
+
+      // Only proceed if we have tracks and a current file
+      if (!filePath || audioTracks.length === 0) return;
+
+      // Guard: User has a cached selection for this file (manual override takes precedence)
+      const cachedSelection: number | undefined = this.electron.getAudioSelection(filePath);
+      if (cachedSelection !== undefined) return;
+
+      // Guard: Check if we're still on index 0 (the fallback from initial load)
+      const currentSelection: number = untracked((): number => this.selectedAudioTrack());
+      if (currentSelection !== 0) return;
+
+      // Apply the preferred language setting now that we have track metadata
+      const preferredLang: PreferredAudioLanguage = this.settings.preferredAudioLanguage();
+
+      let selectedTrack: AudioTrack | undefined;
+      if (preferredLang === 'default') {
+        selectedTrack = audioTracks.find((t: AudioTrack): boolean => t.default) ?? audioTracks[0];
+      } else {
+        const preferredTrack: AudioTrack | undefined = audioTracks.find((t: AudioTrack): boolean => t.language === preferredLang);
+        const defaultTrack: AudioTrack | undefined = audioTracks.find((t: AudioTrack): boolean => t.default);
+        selectedTrack = preferredTrack ?? defaultTrack ?? audioTracks[0];
+      }
+
+      const newIndex: number = selectedTrack?.index ?? 0;
+
+      // Guard: Only reload if we need to switch to a different track
+      if (newIndex !== 0) {
+        console.log(`[Audio] Applying preferred language '${preferredLang}': switching from track 0 to ${newIndex}`);
+        const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
+        if (video) {
+          const currentTime: number = this.isTranscoded
+            ? this.transcodeSeekOffset + video.currentTime
+            : video.currentTime;
+          const wasPlaying: boolean = !video.paused;
+
+          untracked((): void => this.selectedAudioTrack.set(newIndex));
+          this.reloadVideoWithAudioTrack(currentTime, wasPlaying);
+        }
+      }
+    });
   }
 
   // ============================================================================
@@ -492,9 +552,15 @@ export class VideoOutlet implements OnInit, OnDestroy {
    * Pass -1 to disable subtitles.
    * Pass EXTERNAL_SUBTITLE_TRACK_INDEX (-2) to select the external subtitle track.
    *
+   * Debug logging shows which track was selected and lists all loaded tracks
+   * with their cue counts. This helps diagnose issues like "Forced" subtitles
+   * appearing empty (forced tracks have very few cues by design - only foreign
+   * language dialogue moments are subtitled).
+   *
    * @param trackIndex - The track index to select, or -1 to disable, or -2 for external
    */
   public selectSubtitleTrack(trackIndex: number): void {
+    console.log(`[Subtitles] Selecting track ${trackIndex}, loaded tracks: [${this.loadedSubtitleTracks.map((t: LoadedSubtitleTrack): string => `${t.index}(${t.cues.length} cues)`).join(', ')}]`);
     this.selectedSubtitleTrack.set(trackIndex);
 
     // Cache the selection so it persists across view mode changes
@@ -526,7 +592,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
     }
 
     const video: HTMLVideoElement = this.videoRef.nativeElement;
-    const currentTime: number = video.currentTime;
+    // For transcoded videos, video.currentTime is relative to the transcode stream
+    // We need to add transcodeSeekOffset to get the actual media time
+    const currentTime: number = this.isTranscoded
+      ? this.transcodeSeekOffset + video.currentTime
+      : video.currentTime;
     const wasPlaying: boolean = !video.paused;
 
     this.selectedAudioTrack.set(trackIndex);
@@ -543,7 +613,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /**
    * Reloads the video with the selected audio track and seeks to the specified time.
    *
-   * @param seekTime - Time to seek to after reload
+   * @param seekTime - Time to seek to after reload (absolute media time)
    * @param autoPlay - Whether to auto-play after seeking
    */
   private reloadVideoWithAudioTrack(seekTime: number, autoPlay: boolean): void {
@@ -555,9 +625,15 @@ export class VideoOutlet implements OnInit, OnDestroy {
     const audioTrack: number = this.selectedAudioTrack();
 
     // Build stream URL with audio track parameter
+    // Note: canRemux is now determined server-side based on the selected track's codec
     const streamUrl: string = this.isTranscoded
       ? `${this.electron.serverUrl()}/media/stream?path=${encodeURIComponent(this.currentFilePath)}&t=${seekTime}&audioTrack=${audioTrack}`
       : `${this.electron.serverUrl()}/media/stream?path=${encodeURIComponent(this.currentFilePath)}&audioTrack=${audioTrack}`;
+
+    // Update transcodeSeekOffset for the new stream position
+    if (this.isTranscoded) {
+      this.transcodeSeekOffset = seekTime;
+    }
 
     video.src = streamUrl;
     video.load();
@@ -830,32 +906,58 @@ export class VideoOutlet implements OnInit, OnDestroy {
     const ext: string = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
     this.isTranscoded = !NATIVE_VIDEO_FORMATS.has(ext);
 
-    // Initialize audio track selection from cache or default
-    // Use untracked() to prevent signal reads from being tracked by the calling effect,
-    // which would cause double-loading when currentMedia() updates
+    // Initialize audio track selection from cache or default.
+    // Uses untracked() to prevent signal reads from being tracked by the calling effect,
+    // which would cause double-loading when currentMedia() updates.
+    //
+    // IMPORTANT: audioTracks may be empty here due to race condition - MediaInfo arrives
+    // via SSE after this method runs. The effect watching audioTracks() (see constructor)
+    // handles applying the preferred language once tracks are available. Here we just set
+    // index 0 as fallback if tracks aren't available yet.
     const cachedAudioSelection: number | undefined = this.electron.getAudioSelection(filePath);
     if (cachedAudioSelection !== undefined) {
+      // User manually selected a track for this file - honor that choice
       untracked((): void => this.selectedAudioTrack.set(cachedAudioSelection));
     } else {
-      // Default to first audio track (or track marked as default)
+      // No cached selection - apply preferred language setting.
+      // Track selection priority:
+      // 1. Track matching the user's preferred audio language setting
+      // 2. Track explicitly marked as default in the container
+      // 3. First track (index 0)
       const audioTracks: readonly AudioTrack[] = untracked((): readonly AudioTrack[] => this.electron.currentMedia()?.audioTracks ?? []);
-      const defaultTrack: AudioTrack | undefined = audioTracks.find((t: AudioTrack): boolean => t.default);
-      const defaultIndex: number = defaultTrack?.index ?? 0;
+      const preferredLang: PreferredAudioLanguage = untracked((): PreferredAudioLanguage => this.settings.preferredAudioLanguage());
+
+      let selectedTrack: AudioTrack | undefined;
+      if (preferredLang === 'default') {
+        // Use the file's default track
+        selectedTrack = audioTracks.find((t: AudioTrack): boolean => t.default) ?? audioTracks[0];
+      } else {
+        // Look for a track matching the preferred language
+        const preferredTrack: AudioTrack | undefined = audioTracks.find((t: AudioTrack): boolean => t.language === preferredLang);
+        const defaultTrack: AudioTrack | undefined = audioTracks.find((t: AudioTrack): boolean => t.default);
+        selectedTrack = preferredTrack ?? defaultTrack ?? audioTracks[0];
+      }
+      // Falls back to 0 if tracks aren't available yet (race condition handled by effect)
+      const defaultIndex: number = selectedTrack?.index ?? 0;
       untracked((): void => this.selectedAudioTrack.set(defaultIndex));
     }
 
     const audioTrack: number = untracked((): number => this.selectedAudioTrack());
+    const canRemux: boolean = untracked((): boolean => this.electron.currentMedia()?.canRemux ?? false);
 
     // Build the stream URL
     let url: string = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}`;
 
-    // For transcoded files, track the offset and include audio track
+    // For transcoded files, track the offset and include audio track and remux flag
     if (this.isTranscoded) {
       this.transcodeSeekOffset = seekTime;
       if (seekTime > 0) {
         url += `&t=${seekTime}`;
       }
       url += `&audioTrack=${audioTrack}`;
+      if (canRemux) {
+        url += '&canRemux=true';
+      }
     } else {
       this.transcodeSeekOffset = 0;
       // For native formats, audio track is not used (browser plays all tracks)
@@ -889,6 +991,15 @@ export class VideoOutlet implements OnInit, OnDestroy {
       // Clear seekPending now that the video has loaded and is ready to play
       // This allows the seek effect to trigger new seeks if needed
       this.seekPending = false;
+
+      // For transcoded videos, sync the seek offset with current server time
+      // This prevents immediate re-seeking due to time that passed while loading
+      // (e.g., if FFmpeg took 10s to start, server time advanced 10s, but video
+      // is at position 0 - without this sync, the effect would see a 10s diff)
+      if (this.isTranscoded) {
+        this.transcodeSeekOffset = this.mediaPlayer.currentTime();
+      }
+
       if (this.mediaPlayer.isPlaying()) {
         video.play().catch(console.error);
       }
@@ -929,6 +1040,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     serverUrl: string,
     filePath: string
   ): Promise<void> {
+    console.log(`[Subtitles] Loading ${tracks.length} tracks: ${tracks.map((t: SubtitleTrack): string => `${t.index}="${t.title}" (${t.codec})`).join(', ')}`);
     for (const track of tracks) {
       try {
         const url: string = `${serverUrl}/media/subtitles?path=${encodeURIComponent(filePath)}&track=${track.index}`;
@@ -1118,6 +1230,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     );
 
     if (!track) {
+      console.warn(`[Subtitles] Track ${selectedIndex} not found in loaded tracks (available: [${this.loadedSubtitleTracks.map((t: LoadedSubtitleTrack): number => t.index).join(', ')}])`);
       this.subtitleText.set('');
       return;
     }

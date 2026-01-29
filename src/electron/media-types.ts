@@ -104,6 +104,12 @@ export interface MediaInfo {
   readonly width?: number;
   /** Video height in pixels (video only) */
   readonly height?: number;
+  /** Video codec name from FFprobe (e.g., 'h264', 'hevc', 'vp9') */
+  readonly videoCodec?: string;
+  /** Primary audio codec name from FFprobe (e.g., 'aac', 'ac3', 'dts') */
+  readonly audioCodec?: string;
+  /** Whether the file can be remuxed to MP4 without re-encoding */
+  readonly canRemux?: boolean;
   /** Embedded audio tracks (video only, when multiple exist) */
   readonly audioTracks?: readonly AudioTrack[];
   /** Embedded subtitle tracks (video only) */

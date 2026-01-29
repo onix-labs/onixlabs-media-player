@@ -119,7 +119,10 @@ Based on independent review with all 31 action items resolved:
   - Audio track selector via media bar select dropdown (only shown when 2+ tracks exist)
   - Displays language name with channel info (e.g., "English (5.1)" for 6-channel surround)
   - Switching audio tracks reloads the stream and seeks back to current position
-  - Default track auto-selected based on FFprobe `default` flag
+  - **Preferred audio language setting** (Settings > Playback): Auto-selects audio track matching user's preferred language
+    - 25 language options (ISO 639-2/B codes) plus "File Default"
+    - Selection priority: 1) Track matching preferred language, 2) File's default track, 3) First track
+    - Manual track selection via media bar overrides the preference for that file
   - Selection persists across view mode changes (desktop ↔ miniplayer) via ElectronService cache
   - FFmpeg uses `-map 0:v:0 -map 0:a:{index}` for stream selection during transcoding
 - **Subtitle support**:
@@ -716,6 +719,7 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 | Previous Track Threshold | 0-10s | 3s | Time before restart vs previous track |
 | Skip Duration | 1-60s | 10s | Shift+click skip amount |
 | Video Aspect Ratio | Default/4:3/16:9/Fit | Default | Video display aspect mode |
+| Preferred Audio Language | 25 languages + File Default | English | Auto-selects audio track matching preferred language (ISO 639-2/B codes) |
 | Controls Auto-Hide | 0-30s | 5s | Fullscreen control bar auto-hide delay |
 
 #### Transcoding Category
@@ -861,6 +865,7 @@ logProcessExit(logger: ScopedLogger, command: string, code: number | null, signa
 | Window Recreation Race | main.ts:499-500 | Added full re-initialization in onActivate. |
 | Crossfade Race Condition | audio-outlet.ts | When stepping between tracks, the server transitions `paused→playing` within ~3ms. The pause crossfade's deferred `setTimeout(audio.pause)` hadn't fired yet, so `audio.paused` was still `false` when the play effect ran — causing it to skip `audio.play()`. The stale timeout then fired and paused audio with nothing to restart it. **Fix**: (1) Added `fadeTimeoutId` field to track pending crossfade callbacks, (2) `fadeToVolume()` cancels any stale pending callback before scheduling a new one, (3) Removed `audio.paused` guard in play effect so `audio.play()` is always called when state is `playing`, (4) Added auto-play in `loadAudioSource()` when server is already in `playing` state (handles cached MIDI where loading→playing transition completes before source is set). |
 | Same-Track Re-Selection Not Reloading | audio-outlet.ts, video-outlet.ts | Re-selecting the same track didn't reload the audio/video source because `currentFilePath` was never cleared between selection cycles. **Fix**: Track change effects now always clear `currentFilePath` when server enters `loading` state, ensuring the same file gets reloaded on re-selection. |
+| Audio Track SSE Race Condition | video-outlet.ts | When a video loads, `loadVideo()` runs immediately but MediaInfo (containing audioTracks) hasn't arrived via SSE yet, causing the preferred audio language setting to be ignored and defaulting to track 0. **Fix**: Added an effect that watches for `audioTracks()` to become available and re-applies the preferred language setting, reloading the video stream with the correct audio track if needed. Guards prevent unnecessary reloads when user has a cached selection or preferred track IS index 0. |
 
 #### Other Issues
 

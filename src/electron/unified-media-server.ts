@@ -206,6 +206,12 @@ export class UnifiedMediaServer {
   /** In-progress MIDI renders for deduplication (original path → completion promise) */
   private readonly midiRenderInProgress: Map<string, Promise<string>> = new Map<string, Promise<string>>();
 
+  /** Cache of MediaInfo by file path for stream handler codec lookup */
+  private readonly mediaInfoCache: Map<string, MediaInfo> = new Map();
+
+  /** Audio codecs compatible with fragmented MP4 remuxing */
+  private static readonly REMUXABLE_AUDIO_CODECS: Set<string> = new Set(['aac', 'mp3', 'opus', 'flac']);
+
   /**
    * Creates a new unified media server.
    * Call start() to begin listening for connections.
@@ -789,6 +795,21 @@ export class UnifiedMediaServer {
     const audioTrackIndex: number = audioTrackParam !== null ? parseInt(audioTrackParam, 10) : 0;
     const ext: string = path.extname(filePath).toLowerCase();
 
+    // Determine canRemux based on the SELECTED audio track's codec
+    // Use cached MediaInfo (populated by probeMedia during playlist add/select)
+    const cachedInfo: MediaInfo | undefined = this.mediaInfoCache.get(filePath);
+    const videoCodec: string | undefined = cachedInfo?.videoCodec;
+    const selectedAudioTrack: AudioTrack | undefined = cachedInfo?.audioTracks?.[audioTrackIndex];
+    const audioCodec: string | undefined = selectedAudioTrack?.codec ?? cachedInfo?.audioCodec;
+
+    // Video codecs compatible with MP4 container and browser playback
+    const remuxableVideoCodecs: Set<string> = new Set(['h264', 'hevc', 'vp9', 'av1']);
+    const canRemuxVideo: boolean = videoCodec !== undefined && remuxableVideoCodecs.has(videoCodec);
+    const canRemuxAudio: boolean = audioCodec !== undefined && UnifiedMediaServer.REMUXABLE_AUDIO_CODECS.has(audioCodec);
+    const canRemux: boolean = canRemuxVideo && canRemuxAudio;
+
+    ffmpegLogger.debug(`Remux check: video=${videoCodec} (${canRemuxVideo}), audio[${audioTrackIndex}]=${audioCodec} (${canRemuxAudio}), canRemux=${canRemux}`);
+
     // Determine if this is audio-only transcoding
     const isAudioTranscode: boolean = ['.wma', '.ape', '.tak'].includes(ext);
 
@@ -805,7 +826,7 @@ export class UnifiedMediaServer {
     // Convert audio bitrate to FFmpeg format
     const audioBitrateStr: string = `${transcodingSettings.audioBitrate}k`;
 
-    ffmpegLogger.info(`Transcoding: ${path.basename(filePath)} (seek: ${seekTime}s, audio-only: ${isAudioTranscode}, audioTrack: ${audioTrackIndex}, crf: ${crfValue}, audio: ${audioBitrateStr})`);
+    ffmpegLogger.info(`Transcoding: ${path.basename(filePath)} (seek: ${seekTime}s, audio-only: ${isAudioTranscode}, audioTrack: ${audioTrackIndex}/${audioCodec}, canRemux: ${canRemux}, crf: ${crfValue}, audio: ${audioBitrateStr})`);
 
     let ffmpegArgs: string[];
 
@@ -828,8 +849,32 @@ export class UnifiedMediaServer {
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'no-cache',
       });
+    } else if (canRemux) {
+      // Remux mode: stream copy (no re-encoding) for compatible codecs
+      // This is I/O-bound, not CPU-bound, so playback starts instantly
+      // IMPORTANT: Always use explicit stream mapping to avoid copying incompatible
+      // audio tracks (e.g., AC3/DTS) that may exist alongside the primary AAC track
+      ffmpegArgs = [
+        '-hide_banner',
+        '-loglevel', 'warning',
+        '-ss', seekTime,            // Seek before input (fast seek to nearest keyframe)
+        '-i', filePath,
+        '-map', '0:v:0',            // Map first video stream
+        '-map', `0:a:${audioTrackIndex}`, // Map selected audio stream only
+        '-c:v', 'copy',             // Copy video stream without re-encoding
+        '-c:a', 'copy',             // Copy audio stream without re-encoding
+        '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
+        '-f', 'mp4',
+        'pipe:1'
+      ];
+      res.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Transfer-Encoding': 'chunked',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache',
+      });
     } else {
-      // Video transcoding optimized for real-time 4K/UHD playback
+      // Full transcode mode: re-encode video and audio for incompatible codecs
       // Only add explicit stream mapping when selecting a non-default audio track
       // For default (audioTrackIndex=0), let FFmpeg use its default stream selection
       const streamMapping: string[] = audioTrackIndex > 0
@@ -1266,6 +1311,7 @@ export class UnifiedMediaServer {
     // -copyts preserves original timestamps from the container
     // -map 0:{trackNum} selects the specific stream index
     // -f webvtt outputs WebVTT format
+    ffmpegLogger.debug(`Extracting subtitle: stream ${trackNum} from ${path.basename(filePath)}`);
     const ffmpeg: ChildProcess = spawn(ffmpegBin, [
       '-copyts',
       '-i', filePath,
@@ -1491,11 +1537,27 @@ export class UnifiedMediaServer {
           const hasVideo: boolean = !!videoStream;
 
           // Extract subtitle tracks (only for video files)
-          const subtitleTracks: SubtitleTrack[] | undefined = hasVideo ? streams
-            .filter((s: Readonly<Record<string, unknown>>): boolean => s.codec_type === 'subtitle')
+          // Filter out bitmap-based subtitles (PGS, VOBSUB, DVB) as they can't be converted to WebVTT
+          const textSubtitleCodecs: Set<string> = new Set(['subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text', 'srt']);
+          const allSubtitleStreams: Array<Record<string, unknown>> = streams
+            .filter((s: Readonly<Record<string, unknown>>): boolean => s.codec_type === 'subtitle');
+
+          // Log all subtitle streams for debugging
+          if (allSubtitleStreams.length > 0) {
+            const codecList: string = allSubtitleStreams
+              .map((s: Readonly<Record<string, unknown>>): string => `${s.index}:${s.codec_name}`)
+              .join(', ');
+            ffmpegLogger.debug(`Subtitle streams: ${codecList}`);
+          }
+
+          const subtitleTracks: SubtitleTrack[] | undefined = hasVideo ? allSubtitleStreams
+            .filter((s: Readonly<Record<string, unknown>>): boolean =>
+              textSubtitleCodecs.has(s.codec_name as string)
+            )
             .map((s: Readonly<Record<string, unknown>>): SubtitleTrack => {
               const streamTags: Record<string, string> = (s.tags as Record<string, string>) || {};
               const disposition: Record<string, number> = (s.disposition as Record<string, number>) || {};
+              ffmpegLogger.debug(`Text subtitle found: index=${s.index}, codec=${s.codec_name}, lang=${streamTags.language || 'und'}, forced=${disposition.forced === 1}`);
               return {
                 index: s.index as number,
                 language: streamTags.language || 'und',
@@ -1523,10 +1585,29 @@ export class UnifiedMediaServer {
               };
             }) : undefined;
 
+          // Extract codec names for remux detection
+          const videoCodec: string | undefined = videoStream?.codec_name as string | undefined;
+          const primaryAudioStream: Record<string, unknown> | undefined = audioStreams[0];
+          const audioCodec: string | undefined = primaryAudioStream?.codec_name as string | undefined;
+
+          // Determine if file can be remuxed (stream-copied) to fragmented MP4
+          // Video codecs compatible with MP4 container and browser playback
+          const remuxableVideoCodecs: Set<string> = new Set(['h264', 'hevc', 'vp9', 'av1']);
+          // Audio codecs compatible with MP4 container and browser playback
+          const remuxableAudioCodecs: Set<string> = new Set(['aac', 'mp3', 'opus', 'flac']);
+
+          const canRemux: boolean = hasVideo &&
+            videoCodec !== undefined && remuxableVideoCodecs.has(videoCodec) &&
+            audioCodec !== undefined && remuxableAudioCodecs.has(audioCodec);
+
+          if (hasVideo) {
+            ffmpegLogger.debug(`Codecs: video=${videoCodec}, audio=${audioCodec}, canRemux=${canRemux}`);
+          }
+
           // Extract metadata tags (handle various case conventions)
           const tags: Record<string, string> = (format.tags as Record<string, string>) || {};
 
-          resolve({
+          const mediaInfo: MediaInfo = {
             duration: parseFloat(format.duration as string) || 0,
             type: hasVideo ? 'video' : 'audio',
             title: tags.title || tags.TITLE || path.basename(filePath, path.extname(filePath)),
@@ -1535,9 +1616,17 @@ export class UnifiedMediaServer {
             filePath,
             width: videoStream?.width as number | undefined,
             height: videoStream?.height as number | undefined,
+            videoCodec: hasVideo ? videoCodec : undefined,
+            audioCodec: hasVideo ? audioCodec : undefined,
+            canRemux: hasVideo ? canRemux : undefined,
             audioTracks: audioTracks && audioTracks.length > 0 ? audioTracks : undefined,
             subtitleTracks: subtitleTracks && subtitleTracks.length > 0 ? subtitleTracks : undefined,
-          });
+          };
+
+          // Cache MediaInfo for stream handler codec lookup
+          this.mediaInfoCache.set(filePath, mediaInfo);
+
+          resolve(mediaInfo);
         } catch (e) {
           reject(new Error(`Failed to parse ffprobe output: ${e}`));
         }

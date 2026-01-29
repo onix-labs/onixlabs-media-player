@@ -172,6 +172,15 @@ export interface MediaInfo {
   /** Video height in pixels (only for video files) */
   height?: number;
 
+  /** Video codec name from FFprobe (e.g., 'h264', 'hevc', 'vp9') */
+  videoCodec?: string;
+
+  /** Primary audio codec name from FFprobe (e.g., 'aac', 'ac3', 'dts') */
+  audioCodec?: string;
+
+  /** Whether the file can be remuxed to MP4 without re-encoding */
+  canRemux?: boolean;
+
   /** Embedded audio tracks (only for video files with multiple audio streams) */
   audioTracks?: AudioTrack[];
 

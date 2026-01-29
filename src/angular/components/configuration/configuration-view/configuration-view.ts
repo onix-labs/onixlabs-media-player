@@ -15,7 +15,7 @@
 import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
 import type {InputSignal, EffectRef} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, MacOSVisualEffectState, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, MacOSVisualEffectState, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import type {DependencyId, DependencyState, DependencyStatus, SoundFontInfo, InstallProgress} from '../../../services/dependency.service';
@@ -356,6 +356,25 @@ export class ConfigurationView {
   /** Current video aspect mode */
   public readonly currentVideoAspectMode: ReturnType<typeof computed<VideoAspectMode>> = computed(
     (): VideoAspectMode => this.settingsService.videoAspectMode()
+  );
+
+  /**
+   * Available audio language options for the dropdown.
+   *
+   * Provides ISO 639-2/B language codes for common languages used in media.
+   * 'File Default' defers to the container's default track setting.
+   */
+  public readonly audioLanguageOptions: typeof AUDIO_LANGUAGE_OPTIONS = AUDIO_LANGUAGE_OPTIONS;
+
+  /**
+   * Current preferred audio language setting.
+   *
+   * This setting determines which audio track is auto-selected when loading
+   * videos with multiple audio streams (e.g., anime with JP/EN audio).
+   * Manual track selection via the media bar overrides this preference.
+   */
+  public readonly currentPreferredAudioLanguage: ReturnType<typeof computed<PreferredAudioLanguage>> = computed(
+    (): PreferredAudioLanguage => this.settingsService.preferredAudioLanguage()
   );
 
   // ============================================================================
@@ -718,6 +737,19 @@ export class ConfigurationView {
   public async onVideoAspectModeChange(event: Event): Promise<void> {
     const mode: string = getSelectValue(event);
     await this.settingsService.setVideoAspectMode(mode as VideoAspectMode);
+  }
+
+  /**
+   * Handles preferred audio language selection change.
+   *
+   * The new language preference is persisted and will be applied on the
+   * next video load. Currently playing videos are not affected.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onPreferredAudioLanguageChange(event: Event): Promise<void> {
+    const language: string = getSelectValue(event);
+    await this.settingsService.setPreferredAudioLanguage(language as PreferredAudioLanguage);
   }
 
   // ============================================================================

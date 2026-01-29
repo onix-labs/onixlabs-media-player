@@ -115,6 +115,46 @@ export type SubtitleFontFamily = 'sans-serif' | 'serif' | 'monospace' | 'Arial';
 export type MacOSVisualEffectState = 'followWindow' | 'active' | 'inactive';
 
 /**
+ * Preferred audio language codes (ISO 639-2/B).
+ * 'default' means use the file's default track.
+ */
+export type PreferredAudioLanguage =
+  | 'default' | 'eng' | 'spa' | 'fre' | 'ger' | 'ita' | 'por' | 'rus'
+  | 'jpn' | 'kor' | 'chi' | 'ara' | 'hin' | 'tha' | 'vie' | 'pol'
+  | 'dut' | 'swe' | 'nor' | 'dan' | 'fin' | 'tur' | 'heb' | 'cze' | 'hun';
+
+/**
+ * Display names for preferred audio languages.
+ */
+export const AUDIO_LANGUAGE_OPTIONS: readonly { value: PreferredAudioLanguage; label: string }[] = [
+  { value: 'default', label: 'File Default' },
+  { value: 'eng', label: 'English' },
+  { value: 'spa', label: 'Spanish' },
+  { value: 'fre', label: 'French' },
+  { value: 'ger', label: 'German' },
+  { value: 'ita', label: 'Italian' },
+  { value: 'por', label: 'Portuguese' },
+  { value: 'rus', label: 'Russian' },
+  { value: 'jpn', label: 'Japanese' },
+  { value: 'kor', label: 'Korean' },
+  { value: 'chi', label: 'Chinese' },
+  { value: 'ara', label: 'Arabic' },
+  { value: 'hin', label: 'Hindi' },
+  { value: 'tha', label: 'Thai' },
+  { value: 'vie', label: 'Vietnamese' },
+  { value: 'pol', label: 'Polish' },
+  { value: 'dut', label: 'Dutch' },
+  { value: 'swe', label: 'Swedish' },
+  { value: 'nor', label: 'Norwegian' },
+  { value: 'dan', label: 'Danish' },
+  { value: 'fin', label: 'Finnish' },
+  { value: 'tur', label: 'Turkish' },
+  { value: 'heb', label: 'Hebrew' },
+  { value: 'cze', label: 'Czech' },
+  { value: 'hun', label: 'Hungarian' },
+];
+
+/**
  * Visualization settings.
  *
  * Global settings apply to all visualizations.
@@ -155,6 +195,8 @@ export interface PlaybackSettings {
   readonly skipDuration: number;
   /** Video aspect mode (default, 4:3, 16:9, fit) */
   readonly videoAspectMode: VideoAspectMode;
+  /** Preferred audio language (ISO 639-2/B code, or 'default' for file default) */
+  readonly preferredAudioLanguage: PreferredAudioLanguage;
 }
 
 /**
@@ -292,6 +334,7 @@ export interface PlaybackSettingsUpdate {
   readonly previousTrackThreshold?: number;
   readonly skipDuration?: number;
   readonly videoAspectMode?: VideoAspectMode;
+  readonly preferredAudioLanguage?: PreferredAudioLanguage;
 }
 
 /**
@@ -377,6 +420,9 @@ const VALID_MACOS_VISUAL_EFFECT_STATE: readonly MacOSVisualEffectState[] = ['fol
 /** Valid subtitle font family values */
 const VALID_SUBTITLE_FONT_FAMILIES: readonly SubtitleFontFamily[] = ['sans-serif', 'serif', 'monospace', 'Arial'];
 
+/** Valid preferred audio language values (derived from AUDIO_LANGUAGE_OPTIONS) */
+const VALID_PREFERRED_AUDIO_LANGUAGES: readonly PreferredAudioLanguage[] = AUDIO_LANGUAGE_OPTIONS.map((opt: { value: PreferredAudioLanguage; label: string }): PreferredAudioLanguage => opt.value);
+
 /** Default settings used when no file exists or on parse error */
 const DEFAULT_SETTINGS: AppSettings = {
   version: SETTINGS_VERSION,
@@ -396,6 +442,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     previousTrackThreshold: 3,  // 3 seconds default
     skipDuration: 10,  // 10 seconds default skip
     videoAspectMode: 'default',  // use video's native aspect ratio
+    preferredAudioLanguage: 'eng',  // prefer English audio if available
   },
   transcoding: {
     videoQuality: 'medium',  // medium = CRF 23
@@ -645,6 +692,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate preferredAudioLanguage if provided
+    if (update.preferredAudioLanguage !== undefined) {
+      if (!this.isValidPreferredAudioLanguage(update.preferredAudioLanguage)) {
+        console.warn(`[SettingsManager] Invalid preferred audio language: ${update.preferredAudioLanguage}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -655,6 +710,7 @@ export class SettingsManager {
         previousTrackThreshold: update.previousTrackThreshold ?? this.settings.playback.previousTrackThreshold,
         skipDuration: update.skipDuration ?? this.settings.playback.skipDuration,
         videoAspectMode: update.videoAspectMode ?? this.settings.playback.videoAspectMode,
+        preferredAudioLanguage: update.preferredAudioLanguage ?? this.settings.playback.preferredAudioLanguage,
       },
     };
 
@@ -1256,6 +1312,7 @@ export class SettingsManager {
     const previousTrackThreshold: unknown = playbackObj['previousTrackThreshold'];
     const skipDuration: unknown = playbackObj['skipDuration'];
     const videoAspectMode: unknown = playbackObj['videoAspectMode'];
+    const preferredAudioLanguage: unknown = playbackObj['preferredAudioLanguage'];
 
     return {
       defaultVolume: this.isValidVolume(defaultVolume)
@@ -1273,6 +1330,9 @@ export class SettingsManager {
       videoAspectMode: this.isValidVideoAspectMode(videoAspectMode)
         ? videoAspectMode
         : DEFAULT_SETTINGS.playback.videoAspectMode,
+      preferredAudioLanguage: this.isValidPreferredAudioLanguage(preferredAudioLanguage)
+        ? preferredAudioLanguage
+        : DEFAULT_SETTINGS.playback.preferredAudioLanguage,
     };
   }
 
@@ -1677,6 +1737,18 @@ export class SettingsManager {
    */
   private isValidVideoAspectMode(value: unknown): value is VideoAspectMode {
     return typeof value === 'string' && VALID_VIDEO_ASPECT_MODES.includes(value as VideoAspectMode);
+  }
+
+  /**
+   * Type guard to check if a value is a valid preferred audio language.
+   *
+   * Valid values include 'default' and ISO 639-2/B language codes.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid preferred audio language
+   */
+  private isValidPreferredAudioLanguage(value: unknown): value is PreferredAudioLanguage {
+    return typeof value === 'string' && VALID_PREFERRED_AUDIO_LANGUAGES.includes(value as PreferredAudioLanguage);
   }
 
   /**
