@@ -1313,10 +1313,23 @@ const log = esmRequire('electron-log/main');
 
 ### Platform Icons
 
-| File | Platforms | Usage |
-|------|-----------|-------|
-| `public/icon-macos.png` | macOS | electron-builder mac icon |
-| `public/icon-windows-linux.png` | Windows, Linux | electron-builder win/linux icon, BrowserWindow icon, dock icon (dev) |
+**App Icons:**
+
+| File | Platform | Usage |
+|------|----------|-------|
+| `public/icon-macos.png` | macOS | Application icon |
+| `public/icon-windows.ico` | Windows | Application icon |
+| `public/icon-windows-linux.png` | Linux | Application icon, BrowserWindow icon, dock icon (dev) |
+
+**File Association Icons:**
+
+| File | Platform | Usage |
+|------|----------|-------|
+| `public/icon-file.icns` | macOS | Icon for associated media files |
+| `public/icon-file.ico` | Windows | Icon for associated media files |
+| `public/icon-file.png` | Linux | Icon for associated media files (fallback) |
+
+File associations use `"icon": "public/icon-file"` without extension; electron-builder auto-selects the correct format per platform.
 
 ### Build Output
 

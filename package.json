@@ -92,7 +92,11 @@
       "dist/**/*",
       "src/electron/dist/**/*",
       "public/icon-macos.png",
+      "public/icon-windows.ico",
       "public/icon-windows-linux.png",
+      "public/icon-file.icns",
+      "public/icon-file.ico",
+      "public/icon-file.png",
       "node_modules/electron-log/**/*"
     ],
     "mac": {
@@ -104,7 +108,7 @@
       ]
     },
     "win": {
-      "icon": "public/icon-windows-linux.png",
+      "icon": "public/icon-windows.ico",
       "target": [
         "nsis",
         "portable"
@@ -122,82 +126,98 @@
       {
         "ext": "mp3",
         "name": "MP3 Audio",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "flac",
         "name": "FLAC Audio",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "wav",
         "name": "WAV Audio",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "ogg",
         "name": "OGG Audio",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "m4a",
         "name": "M4A Audio",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "aac",
         "name": "AAC Audio",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "wma",
         "name": "WMA Audio",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "mp4",
         "name": "MP4 Video",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "m4v",
         "name": "M4V Video",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "mkv",
         "name": "MKV Video",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "avi",
         "name": "AVI Video",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "webm",
         "name": "WebM Video",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "mov",
         "name": "MOV Video",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "mid",
         "name": "MIDI File",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "midi",
         "name": "MIDI File",
-        "role": "Viewer"
+        "role": "Viewer",
+        "icon": "public/icon-file"
       },
       {
         "ext": "opp",
         "name": "ONIXPlayer Playlist",
-        "role": "Editor"
+        "role": "Editor",
+        "icon": "public/icon-file"
       }
     ]
   }
