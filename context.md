@@ -116,6 +116,11 @@ Based on independent review with all 31 action items resolved:
 - **Browser audio codec compatibility**: Files with AC3, DTS, TrueHD, or EAC3 audio are automatically transcoded
   - Fixes "video plays but no audio" issue common with movie rips containing surround sound codecs
   - Hybrid mode preserves original video quality while only transcoding audio
+  - Client detects transcoding need via `canRemux` flag in `PlaylistItem` (populated from server probe)
+  - `BROWSER_COMPATIBLE_AUDIO_CODECS` constant defined in both server and client for consistency
+- **Hybrid mode A/V sync**: Uses `-async 1` FFmpeg flag to synchronize audio timestamps with video
+  - When seeking with `-ss` before input, video starts at nearest keyframe but audio starts at exact time
+  - The `-async 1` flag pads/trims audio to match video start position, preventing sync drift
 - Video aspect ratio modes via media bar select dropdown:
   - **Default**: Preserves video's native aspect ratio
   - **Forced (4:3)**: Stretches video to 4:3 aspect ratio
