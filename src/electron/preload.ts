@@ -82,6 +82,13 @@ export interface MediaPlayerAPI {
   readonly openSubtitleDialog: () => Promise<string | null>;
 
   /**
+   * Opens a native dialog to select SoundFont files for MIDI playback.
+   *
+   * @returns Promise resolving to array of selected file paths
+   */
+  readonly openSoundFontDialog: () => Promise<string[]>;
+
+  /**
    * Gets the absolute file system path for a File object.
    * Used for drag-and-drop where we receive File objects but need paths.
    *
