@@ -44,6 +44,7 @@ export interface DependencyState {
   readonly fluidsynth: DependencyStatus;
   readonly soundfonts: SoundFontInfo[];
   readonly activeSoundFont: string | null;
+  readonly hardwareEncoders: HardwareEncoderInfo;
 }
 
 /**
@@ -53,6 +54,14 @@ export interface SoundFontInfo {
   readonly fileName: string;
   readonly filePath: string;
   readonly sizeBytes: number;
+}
+
+/**
+ * Information about available hardware encoders.
+ */
+export interface HardwareEncoderInfo {
+  readonly available: boolean;
+  readonly encoders: readonly string[];
 }
 
 /**
@@ -152,6 +161,11 @@ export class DependencyService implements OnDestroy {
   /** Active SoundFont path */
   public readonly activeSoundFont: ReturnType<typeof computed<string | null>> = computed(
     (): string | null => this.dependencyState()?.activeSoundFont ?? null
+  );
+
+  /** Available hardware encoders */
+  public readonly hardwareEncoders: ReturnType<typeof computed<HardwareEncoderInfo>> = computed(
+    (): HardwareEncoderInfo => this.dependencyState()?.hardwareEncoders ?? {available: false, encoders: []}
   );
 
   /** Whether at least one dependency is installed */

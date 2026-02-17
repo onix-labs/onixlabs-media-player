@@ -965,6 +965,32 @@
                     </select>
                   </div>
                 </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="hardware-acceleration">Hardware Acceleration</label>
+                    <p class="setting-description">
+                      Use GPU for video encoding. Auto selects the best available encoder for your system.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="hardware-acceleration"
+                      (change)="onHardwareAccelerationChange($event)"
+                    >
+                      @for (option of hardwareAccelerationOptions(); track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentHardwareAcceleration()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                @if (!availableHardwareEncoders().available) {
+                  <div class="info-notice">
+                    <i class="fa-solid fa-info-circle"></i>
+                    <span>No hardware encoders detected. Video transcoding will use software encoding.</span>
+                  </div>
+                }
               </div>
             }
 
