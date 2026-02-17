@@ -79,6 +79,10 @@ export interface PlaylistItem {
   readonly width?: number;
   /** Video height in pixels (video only) */
   readonly height?: number;
+  /** Primary audio codec name (e.g., 'aac', 'ac3', 'dts') - needed for transcoding detection */
+  readonly audioCodec?: string;
+  /** Whether the file can be remuxed without re-encoding - false means transcoding needed */
+  readonly canRemux?: boolean;
 }
 
 /**
