@@ -47,6 +47,10 @@
         background: $gradient-primary;
         border-radius: 0.25rem;
       }
+
+      &:not([value="0"])::-webkit-progress-value {
+        box-shadow: 0 0 8px 1px $color-primary-dark;
+      }
     }
   }
 

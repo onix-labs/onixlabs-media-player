@@ -22,7 +22,7 @@
  * @module app/components/layout/layout-controls
  */
 
-import {Component, inject, computed, ChangeDetectionStrategy} from '@angular/core';
+import {Component, inject, computed, ChangeDetectionStrategy, OnDestroy} from '@angular/core';
 import {DependencyService} from '../../../services/dependency.service';
 import {TransportControlsBase} from '../../shared/transport-controls-base';
 import type {PlaylistItem} from '../../../types/electron';
@@ -65,7 +65,7 @@ function getInputValue(event: Event): string {
   styleUrl: './layout-controls.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LayoutControls extends TransportControlsBase {
+export class LayoutControls extends TransportControlsBase implements OnDestroy {
   /** Dependency service for checking installed dependencies */
   private readonly deps: DependencyService = inject(DependencyService);
 
@@ -183,32 +183,102 @@ export class LayoutControls extends TransportControlsBase {
   }
 
   // ============================================================================
+  // Seek Bar Drag State
+  // ============================================================================
+
+  /** Whether the seek bar is currently being dragged */
+  private isDraggingSeek: boolean = false;
+
+  /** Reference to the progress element being dragged */
+  private seekBarElement: HTMLElement | null = null;
+
+  /** Bound handler for mousemove during drag (stored for cleanup) */
+  private readonly boundOnSeekMouseMove: (e: MouseEvent) => void = this.onSeekMouseMove.bind(this);
+
+  /** Bound handler for mouseup during drag (stored for cleanup) */
+  private readonly boundOnSeekMouseUp: (e: MouseEvent) => void = this.onSeekMouseUp.bind(this);
+
+  // ============================================================================
   // Event Handlers - Seek Control
   // ============================================================================
 
   /**
-   * Handles seek slider changes (drag seeking).
+   * Handles mousedown on the progress bar to start drag seeking.
+   * Also handles single clicks by immediately seeking to the clicked position.
    *
-   * @param event - Input event from the progress range slider
+   * @param event - Mouse down event on the progress bar
    */
-  public async onSeek(event: Event): Promise<void> {
-    const value: number = parseFloat(getInputValue(event));
-    if (!isNaN(value)) await this.mediaPlayer.seekToProgress(value);
+  public onProgressMouseDown(event: MouseEvent): void {
+    const target: EventTarget | null = event.currentTarget;
+    if (!(target instanceof HTMLElement)) return;
+
+    event.preventDefault();
+    this.isDraggingSeek = true;
+    this.seekBarElement = target;
+
+    // Seek to clicked position immediately
+    this.seekToPosition(event.clientX);
+
+    // Add document-level listeners for drag tracking
+    document.addEventListener('mousemove', this.boundOnSeekMouseMove);
+    document.addEventListener('mouseup', this.boundOnSeekMouseUp);
   }
 
   /**
-   * Handles click-to-seek on the progress bar background.
+   * Handles mousemove during seek bar drag.
+   * Updates the seek position as the user drags.
    *
-   * Calculates the target position based on click position relative
-   * to the progress bar width, enabling precise seeking.
-   *
-   * @param event - Mouse click event on the progress bar
+   * @param event - Mouse move event
    */
-  public async onProgressClick(event: MouseEvent): Promise<void> {
-    const target: EventTarget | null = event.currentTarget;
-    if (!(target instanceof HTMLElement)) return;
-    const rect: DOMRect = target.getBoundingClientRect();
-    const percent: number = ((event.clientX - rect.left) / rect.width) * 100;
-    await this.mediaPlayer.seekToProgress(percent);
+  private onSeekMouseMove(event: MouseEvent): void {
+    if (!this.isDraggingSeek || !this.seekBarElement) return;
+    this.seekToPosition(event.clientX);
+  }
+
+  /**
+   * Handles mouseup to end seek bar drag.
+   * Cleans up document event listeners.
+   *
+   * @param event - Mouse up event
+   */
+  private onSeekMouseUp(event: MouseEvent): void {
+    if (!this.isDraggingSeek) return;
+
+    // Final seek to release position
+    if (this.seekBarElement) {
+      this.seekToPosition(event.clientX);
+    }
+
+    this.isDraggingSeek = false;
+    this.seekBarElement = null;
+
+    // Remove document-level listeners
+    document.removeEventListener('mousemove', this.boundOnSeekMouseMove);
+    document.removeEventListener('mouseup', this.boundOnSeekMouseUp);
+  }
+
+  /**
+   * Calculates and seeks to a position based on mouse X coordinate.
+   *
+   * @param clientX - The mouse X position relative to the viewport
+   */
+  private seekToPosition(clientX: number): void {
+    if (!this.seekBarElement) return;
+    const rect: DOMRect = this.seekBarElement.getBoundingClientRect();
+    const percent: number = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    void this.mediaPlayer.seekToProgress(percent);
+  }
+
+  // ============================================================================
+  // Lifecycle
+  // ============================================================================
+
+  /**
+   * Cleanup when component is destroyed.
+   * Removes any active document event listeners.
+   */
+  public ngOnDestroy(): void {
+    document.removeEventListener('mousemove', this.boundOnSeekMouseMove);
+    document.removeEventListener('mouseup', this.boundOnSeekMouseUp);
   }
 }

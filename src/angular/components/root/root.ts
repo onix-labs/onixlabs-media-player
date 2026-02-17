@@ -381,6 +381,11 @@ export class Root implements OnDestroy {
    * Tab key:
    * - Prevents default tab navigation (disables tabbing through UI elements)
    * - In desktop mode (not fullscreen/miniplayer): toggles playlist visibility
+   *
+   * Ctrl/Cmd + D (Discreet mode):
+   * - Stops current media playback
+   * - Clears the playlist
+   * - Minimizes the window
    */
   @HostListener('document:keydown', ['$event'])
   public onKeyDown(event: KeyboardEvent): void {
@@ -394,6 +399,25 @@ export class Root implements OnDestroy {
         this.layoutOutlet?.togglePlaylist();
       }
     }
+
+    // Discreet mode: Ctrl/Cmd + D
+    if (event.key === 'd' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      void this.activateDiscreetMode();
+    }
+  }
+
+  /**
+   * Activates discreet mode: stops playback, clears playlist, and minimizes window.
+   * This provides a quick way to hide media content.
+   */
+  private async activateDiscreetMode(): Promise<void> {
+    // Stop playback
+    await this.electron.stop();
+    // Clear the playlist
+    await this.electron.clearPlaylist();
+    // Minimize the window
+    await this.electron.minimizeWindow();
   }
 
   /**

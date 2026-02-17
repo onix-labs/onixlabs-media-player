@@ -575,6 +575,12 @@ export interface MediaPlayerAPI {
    * @returns Cleanup function to unregister the listener
    */
   onOSOpenPlaylist: (callback: (playlistPath: string) => void) => () => void;
+
+  /**
+   * Minimizes the window to the taskbar/dock.
+   * @returns Promise that resolves when the window is minimized
+   */
+  minimizeWindow: () => Promise<void>;
 }
 
 /**
