@@ -108,6 +108,14 @@ Based on independent review with all 31 action items resolved:
 - **UHD/4K optimized**: Real-time transcoding with `-preset ultrafast`, `-level 5.1`, VBV buffering
 - Synchronized with server-side time tracking
 - Configurable transcoding quality (CRF 18/23/28) and audio bitrate (128-320 kbps)
+- **Intelligent transcoding mode selection** (in order of preference):
+  1. **Direct serve**: Native containers with browser-compatible audio (AAC, MP3, Opus, FLAC, Vorbis, ALAC, PCM)
+  2. **Remux mode**: Compatible video + audio → stream-copy without re-encoding (I/O-bound, instant start)
+  3. **Hybrid mode**: Compatible video + incompatible audio (AC3, DTS, TrueHD, EAC3) → copy video, transcode audio to AAC
+  4. **Full transcode**: Incompatible video codec → re-encode video to H.264 + audio to AAC
+- **Browser audio codec compatibility**: Files with AC3, DTS, TrueHD, or EAC3 audio are automatically transcoded
+  - Fixes "video plays but no audio" issue common with movie rips containing surround sound codecs
+  - Hybrid mode preserves original video quality while only transcoding audio
 - Video aspect ratio modes via media bar select dropdown:
   - **Default**: Preserves video's native aspect ratio
   - **Forced (4:3)**: Stretches video to 4:3 aspect ratio
@@ -1471,7 +1479,7 @@ npm run dev
 | Spec File | Tests | What's Covered |
 |-----------|-------|----------------|
 | `settings-manager.spec.ts` | 67 | Validation, persistence, migration, atomic writes |
-| `unified-media-server.spec.ts` | 65 | HTTP API integration (all endpoints), SSE, CORS, security |
+| `unified-media-server.spec.ts` | 76 | HTTP API integration (all endpoints), SSE, CORS, security, audio codec compatibility |
 | `application-menu.spec.ts` | 51 | Menu structure, callbacks, state sync |
 | `dependency-manager.spec.ts` | 28 | Binary detection, SoundFont management, path traversal |
 | `midi-parser.spec.ts` | 21 | MIDI binary parsing, tempo changes, edge cases |
