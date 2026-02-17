@@ -152,7 +152,9 @@ Based on independent review with all 31 action items resolved:
   - **Paused**: Orange background with orange pause icon
   - **Stopped**: Red background with red stop icon
 - Header shows item count that transforms into "Clear" button on hover (solid red pill with white text), stops playback and clears playlist
-- Play/pause, next/previous, seek (click or drag), volume all responsive
+- Play/pause, next/previous, seek (click or drag), volume (click or drag) all responsive
+  - Both seek bar and volume slider use `<progress>` elements with custom drag handling
+  - Volume slider includes visible thumb grabber, styled to match seek bar
 - Shift+click on previous/next buttons skips backward/forward by configurable duration
   - Works in both main controls and miniplayer controls
   - Button icons change dynamically when Shift is held (step → skip icons)

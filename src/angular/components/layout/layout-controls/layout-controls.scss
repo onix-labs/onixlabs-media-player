@@ -185,36 +185,55 @@
 
   .volume-container {
     display: inherit;
+    align-items: center;
     justify-content: center;
     background: $btn-glass;
     width: 4rem;
     border-top-right-radius: 0.175rem;
     border-bottom-right-radius: 0.175rem;
 
-    input[type=range] {
+    .volume-slider {
+      position: relative;
       width: 3rem;
-      appearance: none;
-      background: transparent;
-      outline: none;
+      height: 0.5rem;
+      cursor: pointer;
 
-      &::-webkit-slider-runnable-track {
+      progress {
+        width: 100%;
         height: 0.5rem;
-        background-color: $black-50;
+        appearance: none;
+        -webkit-appearance: none;
         border-radius: 0.25rem;
-        border: 0.0625rem solid $black-50;
+        border: 0.0625rem solid $black-75;
         outline: 0.0625rem solid $white-15;
+
+        &::-webkit-progress-bar {
+          background-color: $black-50;
+          border-radius: 0.25rem;
+        }
+
+        &::-webkit-progress-value {
+          background: $gradient-primary;
+          border-radius: 0.25rem;
+        }
+
+        &:not([value="0"])::-webkit-progress-value {
+          box-shadow: 0 0 8px 1px $color-primary-dark;
+        }
       }
 
-      &::-webkit-slider-thumb {
-        appearance: none;
+      .volume-thumb {
+        position: absolute;
+        top: 50%;
         width: 0.8rem;
         height: 0.8rem;
-        margin-top: -0.2rem;
+        margin-left: -0.4rem;
+        margin-top: -0.4rem;
         border-radius: 50%;
         background: $gradient-primary;
         border: 0.1rem solid $color-primary-light;
         outline: 0.0625rem solid black;
-        cursor: pointer;
+        pointer-events: none;
       }
     }
   }

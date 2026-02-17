@@ -38,13 +38,10 @@
       : 'fa-solid fa-volume-high')"></i>
       </button>
       <div class="volume-container">
-        <input
-          type="range"
-          min="0"
-          max="100"
-          [value]="volume()"
-          (input)="onVolumeChange($event)"
-        />
+        <div class="volume-slider" (mousedown)="onVolumeMouseDown($event)">
+          <progress [value]="volume()" max="100"></progress>
+          <div class="volume-thumb" [style.left.%]="volume()"></div>
+        </div>
       </div>
     </div>
   </div>

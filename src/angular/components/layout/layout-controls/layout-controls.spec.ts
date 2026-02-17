@@ -475,13 +475,27 @@ describe('LayoutControls', (): void => {
     });
   });
 
-  describe('onVolumeChange', (): void => {
-    it('should call setVolume with normalized value', async (): Promise<void> => {
-      const input: HTMLInputElement = document.createElement('input');
-      input.value = '75';
-      const event: Event = new Event('input');
-      Object.defineProperty(event, 'target', {value: input, writable: false});
-      await component.onVolumeChange(event);
+  describe('onVolumeMouseDown', (): void => {
+    it('should call setVolume with calculated percentage on mousedown', (): void => {
+      const target: HTMLDivElement = document.createElement('div');
+      Object.defineProperty(target, 'getBoundingClientRect', {
+        value: (): DOMRect => ({
+          left: 0,
+          width: 100,
+          top: 0,
+          right: 100,
+          bottom: 10,
+          height: 10,
+          x: 0,
+          y: 0,
+          toJSON: (): string => '',
+        }),
+      });
+
+      const event: MouseEvent = new MouseEvent('mousedown', {clientX: 75, bubbles: true});
+      Object.defineProperty(event, 'currentTarget', {value: target, writable: false});
+
+      component.onVolumeMouseDown(event);
       expect(mockMediaPlayer['setVolume']).toHaveBeenCalledWith(0.75);
     });
   });

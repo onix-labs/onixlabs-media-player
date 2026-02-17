@@ -28,14 +28,6 @@ import {TransportControlsBase} from '../../shared/transport-controls-base';
 import type {PlaylistItem} from '../../../types/electron';
 
 /**
- * Safely extracts value from an input element event target.
- */
-function getInputValue(event: Event): string {
-  const target: EventTarget | null = event.target;
-  return target instanceof HTMLInputElement ? target.value : '';
-}
-
-/**
  * Control bar component with playback controls, seek bar, and volume.
  *
  * Features:
@@ -147,20 +139,93 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
   // ============================================================================
 
   /**
-   * Handles volume slider changes.
-   *
-   * @param event - Input event from the volume range slider
-   */
-  public async onVolumeChange(event: Event): Promise<void> {
-    const value: number = parseFloat(getInputValue(event));
-    if (!isNaN(value)) await this.mediaPlayer.setVolume(value / 100);
-  }
-
-  /**
    * Toggles mute state while preserving volume level.
    */
   public async onMuteToggle(): Promise<void> {
     await this.mediaPlayer.toggleMute();
+  }
+
+  // ============================================================================
+  // Volume Slider Drag State
+  // ============================================================================
+
+  /** Whether the volume slider is currently being dragged */
+  private isDraggingVolume: boolean = false;
+
+  /** Reference to the volume slider element being dragged */
+  private volumeSliderElement: HTMLElement | null = null;
+
+  /** Bound handler for mousemove during volume drag (stored for cleanup) */
+  private readonly boundOnVolumeMouseMove: (e: MouseEvent) => void = this.onVolumeMouseMove.bind(this);
+
+  /** Bound handler for mouseup during volume drag (stored for cleanup) */
+  private readonly boundOnVolumeMouseUp: (e: MouseEvent) => void = this.onVolumeMouseUp.bind(this);
+
+  /**
+   * Handles mousedown on the volume slider to start drag.
+   * Also handles single clicks by immediately setting volume to the clicked position.
+   *
+   * @param event - Mouse down event on the volume slider
+   */
+  public onVolumeMouseDown(event: MouseEvent): void {
+    const target: EventTarget | null = event.currentTarget;
+    if (!(target instanceof HTMLElement)) return;
+
+    event.preventDefault();
+    this.isDraggingVolume = true;
+    this.volumeSliderElement = target;
+
+    // Set volume to clicked position immediately
+    this.setVolumeFromPosition(event.clientX);
+
+    // Add document-level listeners for drag tracking
+    document.addEventListener('mousemove', this.boundOnVolumeMouseMove);
+    document.addEventListener('mouseup', this.boundOnVolumeMouseUp);
+  }
+
+  /**
+   * Handles mousemove during volume slider drag.
+   * Updates the volume as the user drags.
+   *
+   * @param event - Mouse move event
+   */
+  private onVolumeMouseMove(event: MouseEvent): void {
+    if (!this.isDraggingVolume || !this.volumeSliderElement) return;
+    this.setVolumeFromPosition(event.clientX);
+  }
+
+  /**
+   * Handles mouseup to end volume slider drag.
+   * Cleans up document event listeners.
+   *
+   * @param event - Mouse up event
+   */
+  private onVolumeMouseUp(event: MouseEvent): void {
+    if (!this.isDraggingVolume) return;
+
+    // Final volume set to release position
+    if (this.volumeSliderElement) {
+      this.setVolumeFromPosition(event.clientX);
+    }
+
+    this.isDraggingVolume = false;
+    this.volumeSliderElement = null;
+
+    // Remove document-level listeners
+    document.removeEventListener('mousemove', this.boundOnVolumeMouseMove);
+    document.removeEventListener('mouseup', this.boundOnVolumeMouseUp);
+  }
+
+  /**
+   * Calculates and sets volume based on mouse X coordinate.
+   *
+   * @param clientX - The mouse X position relative to the viewport
+   */
+  private setVolumeFromPosition(clientX: number): void {
+    if (!this.volumeSliderElement) return;
+    const rect: DOMRect = this.volumeSliderElement.getBoundingClientRect();
+    const percent: number = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    void this.mediaPlayer.setVolume(percent / 100);
   }
 
   // ============================================================================
@@ -280,5 +345,7 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
   public ngOnDestroy(): void {
     document.removeEventListener('mousemove', this.boundOnSeekMouseMove);
     document.removeEventListener('mouseup', this.boundOnSeekMouseUp);
+    document.removeEventListener('mousemove', this.boundOnVolumeMouseMove);
+    document.removeEventListener('mouseup', this.boundOnVolumeMouseUp);
   }
 }
