@@ -282,10 +282,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
       }
 
       if (track?.type === 'video' && track.filePath !== this.currentFilePath) {
-        // Use server's current time to resume playback position (handles view mode changes
-        // where the component is recreated but the same track is playing)
-        const serverTime: number = this.mediaPlayer.currentTime();
-        void this.loadVideo(track.filePath, serverTime);
+        // Determine start time based on whether this is a view mode change or a track switch:
+        // - View mode change: currentFilePath is null (component just mounted), resume at server time
+        // - Track switch: currentFilePath is set to a different path, start from 0
+        const isViewModeChange: boolean = this.currentFilePath === null;
+        const startTime: number = isViewModeChange ? this.mediaPlayer.currentTime() : 0;
+        void this.loadVideo(track.filePath, startTime);
       }
     });
 

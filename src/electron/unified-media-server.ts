@@ -1003,6 +1003,8 @@ export class UnifiedMediaServer {
       // Remux mode: stream copy (no re-encoding) for compatible codecs
       // This is I/O-bound, not CPU-bound, so playback starts instantly
       // IMPORTANT: Always use explicit stream mapping to select specific tracks
+      // Note: Stream copy preserves original A/V sync, but -avoid_negative_ts helps
+      // with timestamp normalization for fragmented MP4 output
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
@@ -1012,6 +1014,7 @@ export class UnifiedMediaServer {
         '-map', `0:a:${audioTrackIndex}`, // Map selected audio stream only
         '-c:v', 'copy',             // Copy video stream without re-encoding
         '-c:a', 'copy',             // Copy audio stream without re-encoding
+        '-avoid_negative_ts', 'make_zero', // Normalize timestamps to start at zero
         '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
         '-f', 'mp4',
         'pipe:1'
@@ -1027,15 +1030,15 @@ export class UnifiedMediaServer {
       // Much faster than full transcode when video is already H.264/HEVC
       // Common case: MP4/MKV with H.264 video + AC3/DTS/TrueHD audio
       //
-      // IMPORTANT: When seeking with -ss before -i:
-      // - Video (copy) starts from nearest keyframe BEFORE the seek time
-      // - Audio (transcode) starts from the exact seek time
-      // This creates A/V sync issues. The -async 1 flag tells FFmpeg to
-      // adjust audio timestamps to sync with video (pads/trims as needed).
+      // A/V sync strategy for hybrid mode (video copy + audio transcode):
+      // - Input seeking for fast keyframe-based positioning
+      // - Video is copied as-is (timestamps preserved in stream)
+      // - Audio is transcoded and synced to video using aresample filter
+      // - The async parameter stretches/compresses audio to match video timing
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
-        '-ss', seekTime,            // Seek before input (fast seek to nearest keyframe)
+        '-ss', seekTime,            // Input seeking (fast seek to nearest keyframe)
         '-i', filePath,
         '-map', '0:v:0',            // Map first video stream
         '-map', `0:a:${audioTrackIndex}`, // Map selected audio stream
@@ -1043,7 +1046,8 @@ export class UnifiedMediaServer {
         '-c:a', 'aac',              // Transcode audio to AAC
         '-b:a', audioBitrateStr,    // Audio bitrate from settings
         '-ar', '48000',             // Sample rate
-        '-async', '1',              // Sync audio to video timestamps (fixes A/V sync after seek)
+        '-af', 'aresample=async=1:min_hard_comp=0.100000:first_pts=0', // Sync audio to video
+        '-avoid_negative_ts', 'make_zero', // Normalize negative timestamps
         '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
         '-f', 'mp4',
         'pipe:1'
@@ -1070,13 +1074,17 @@ export class UnifiedMediaServer {
       const encoderConfig: {encoder: string; extraArgs: string[]} = this.selectVideoEncoder();
       ffmpegLogger.info(`Using encoder: ${encoderConfig.encoder}`);
 
+      // A/V sync strategy for full transcode mode:
+      // - Input seeking (-ss before -i) for fast approximate positioning
+      // - Both streams re-encoded with setpts/asetpts to reset PTS to 0
+      // - This ensures perfect A/V sync since both streams start fresh
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
         '-threads', '0',            // Use all available CPU cores
         '-probesize', '10M',        // Analyze 10MB for stream detection
         '-analyzeduration', '5000000', // Analyze 5 seconds for timestamps
-        '-ss', seekTime,            // Seek before input (fast seek)
+        '-ss', seekTime,            // Input seeking (fast seek)
         '-i', filePath,
         '-map', '0:v:0',            // Map first video stream explicitly
         '-map', `0:a:${audioTrackIndex}`, // Map selected audio stream explicitly
@@ -1091,10 +1099,12 @@ export class UnifiedMediaServer {
         '-g', '30',                 // GOP size: keyframe every 30 frames (~1s at 30fps)
         '-bf', '0',                 // No B-frames for low latency
         '-sc_threshold', '0',       // Disable scene change keyframes for consistent timing
+        '-vf', 'setpts=PTS-STARTPTS', // Reset video timestamps to start at 0
         '-c:a', 'aac',
         '-b:a', audioBitrateStr,    // Audio bitrate from settings
         '-ar', '48000',
-        '-async', '1',              // Sync audio to video timestamps (fixes A/V sync after seek)
+        '-af', 'asetpts=PTS-STARTPTS', // Reset audio timestamps to start at 0
+        '-avoid_negative_ts', 'make_zero', // Normalize negative timestamps
         '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
         '-f', 'mp4',
         'pipe:1'
