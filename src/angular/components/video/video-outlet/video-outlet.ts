@@ -30,8 +30,27 @@ import type {PlaylistItem, SubtitleTrack, AudioTrack} from '../../../services/el
 /**
  * Video formats that Chromium can play natively.
  * These formats support HTTP range requests for efficient seeking.
+ * Note: Even native containers may need transcoding if audio codec is incompatible.
  */
 const NATIVE_VIDEO_FORMATS: Set<string> = new Set(['.mp4', '.m4v', '.webm', '.ogg']);
+
+/**
+ * Audio codecs that browsers can decode natively.
+ * Files with other audio codecs must be transcoded even if the container is "native".
+ * Must match BROWSER_COMPATIBLE_AUDIO_CODECS in unified-media-server.ts.
+ */
+const BROWSER_COMPATIBLE_AUDIO_CODECS: Set<string> = new Set([
+  'aac',       // Advanced Audio Coding - most common
+  'mp3',       // MPEG Audio Layer III
+  'opus',      // Opus - modern, efficient
+  'flac',      // Free Lossless Audio Codec
+  'vorbis',    // Ogg Vorbis
+  'pcm_s16le', // PCM signed 16-bit little-endian (WAV)
+  'pcm_s24le', // PCM signed 24-bit little-endian (WAV)
+  'pcm_s32le', // PCM signed 32-bit little-endian (WAV)
+  'pcm_f32le', // PCM 32-bit floating-point little-endian
+  'alac',      // Apple Lossless - Safari/Chrome support
+]);
 
 /**
  * Track index indicating an external subtitle file is selected.
@@ -917,9 +936,21 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     this.currentFilePath = filePath;
 
-    // Determine if this format needs transcoding
+    // Determine if this format needs transcoding based on container AND audio codec
     const ext: string = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
-    this.isTranscoded = !NATIVE_VIDEO_FORMATS.has(ext);
+    const isNativeContainer: boolean = NATIVE_VIDEO_FORMATS.has(ext);
+
+    // Check if audio codec is browser-compatible (from MediaInfo)
+    const audioCodec: string | undefined = untracked((): string | undefined => this.electron.currentMedia()?.audioCodec);
+    const hasIncompatibleAudio: boolean = audioCodec !== undefined && !BROWSER_COMPATIBLE_AUDIO_CODECS.has(audioCodec);
+
+    // Transcoding is required if container is non-native OR audio codec is incompatible
+    // This ensures proper seeking behavior for files like MP4 with AC3/DTS audio
+    this.isTranscoded = !isNativeContainer || hasIncompatibleAudio;
+
+    if (hasIncompatibleAudio && isNativeContainer) {
+      console.log(`Native container ${ext} has incompatible audio codec "${audioCodec}" - using transcoded seek`);
+    }
 
     // Initialize audio track selection from cache or default.
     // Uses untracked() to prevent signal reads from being tracked by the calling effect,
