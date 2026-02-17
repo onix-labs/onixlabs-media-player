@@ -212,8 +212,26 @@ export class UnifiedMediaServer {
   /** Cache of MediaInfo by file path for stream handler codec lookup */
   private readonly mediaInfoCache: Map<string, MediaInfo> = new Map();
 
-  /** Audio codecs compatible with fragmented MP4 remuxing */
+  /** Audio codecs compatible with fragmented MP4 remuxing (can be stream-copied) */
   private static readonly REMUXABLE_AUDIO_CODECS: Set<string> = new Set(['aac', 'mp3', 'opus', 'flac']);
+
+  /**
+   * Audio codecs that browsers can decode natively.
+   * Files with other audio codecs must be transcoded even if the container is "native".
+   * Note: vorbis is browser-compatible but typically in WebM/Ogg containers which are already handled.
+   */
+  private static readonly BROWSER_COMPATIBLE_AUDIO_CODECS: Set<string> = new Set([
+    'aac',      // Advanced Audio Coding - most common
+    'mp3',      // MPEG Audio Layer III
+    'opus',     // Opus - modern, efficient
+    'flac',     // Free Lossless Audio Codec
+    'vorbis',   // Ogg Vorbis
+    'pcm_s16le', // PCM signed 16-bit little-endian (WAV)
+    'pcm_s24le', // PCM signed 24-bit little-endian (WAV)
+    'pcm_s32le', // PCM signed 32-bit little-endian (WAV)
+    'pcm_f32le', // PCM 32-bit floating-point little-endian
+    'alac',     // Apple Lossless - Safari/Chrome support
+  ]);
 
   /**
    * Creates a new unified media server.
@@ -622,12 +640,15 @@ export class UnifiedMediaServer {
   }
 
   /**
-   * Routes media stream requests based on file type.
+   * Routes media stream requests based on file type and codec compatibility.
    *
    * Determines whether the file needs:
-   * - Direct serving (native formats with range request support)
-   * - Transcoding (non-native video/audio formats via FFmpeg)
+   * - Direct serving (native formats with browser-compatible audio)
+   * - Transcoding (non-native formats OR native containers with incompatible audio)
    * - MIDI synthesis (MIDI files via FluidSynth)
+   *
+   * IMPORTANT: Even "native" containers like MP4 may contain audio codecs that
+   * browsers cannot decode (e.g., AC3, DTS, TrueHD). These must be transcoded.
    *
    * @param req - Incoming HTTP request
    * @param res - HTTP response to write to
@@ -656,7 +677,24 @@ export class UnifiedMediaServer {
 
     if (isMidi) {
       this.serveMidiFile(req, res, filePath);
-    } else if (isNativeVideo || isNativeAudio) {
+      return;
+    }
+
+    // Check if audio codec is browser-compatible (from cached probe data)
+    const cachedInfo: MediaInfo | undefined = this.mediaInfoCache.get(filePath);
+    const audioCodec: string | undefined = cachedInfo?.audioCodec;
+
+    // For video files, check if audio codec requires transcoding
+    if (isNativeVideo && audioCodec) {
+      const needsAudioTranscode: boolean = !UnifiedMediaServer.BROWSER_COMPATIBLE_AUDIO_CODECS.has(audioCodec);
+      if (needsAudioTranscode) {
+        serverLogger.info(`Native container ${ext} has incompatible audio codec "${audioCodec}" - routing to transcoder`);
+        this.serveTranscodedFile(req, res, filePath, url);
+        return;
+      }
+    }
+
+    if (isNativeVideo || isNativeAudio) {
       this.serveDirectFile(req, res, filePath, ext);
     } else {
       this.serveTranscodedFile(req, res, filePath, url);
@@ -786,15 +824,19 @@ export class UnifiedMediaServer {
   /**
    * Serves a non-native format via FFmpeg transcoding.
    *
-   * For video files (.mkv, .avi, .mov):
-   * - Transcodes to H.264 video in fragmented MP4 container
-   * - Uses fast preset with zero latency tuning for streaming
-   * - Supports seeking via the 't' query parameter
+   * Transcoding modes (in order of preference):
    *
-   * For audio files (.wma, .ape, .tak):
-   * - Transcodes to AAC in ADTS container
+   * 1. **Remux mode** (fastest, I/O-bound): When both video and audio codecs are
+   *    compatible, stream-copies without re-encoding. Used for MKV with H.264+AAC.
    *
-   * The transcoded stream is piped directly to the HTTP response.
+   * 2. **Hybrid mode** (fast): When video is compatible but audio isn't (e.g.,
+   *    MP4 with H.264+AC3), copies video and transcodes only audio to AAC.
+   *
+   * 3. **Full transcode** (slowest, CPU-bound): When video codec is incompatible,
+   *    re-encodes both video (H.264) and audio (AAC).
+   *
+   * 4. **Audio-only transcode**: For audio files (.wma, .ape, .tak) that need
+   *    conversion to AAC.
    *
    * @param req - Incoming HTTP request
    * @param res - HTTP response to write to
@@ -807,7 +849,7 @@ export class UnifiedMediaServer {
     const audioTrackIndex: number = audioTrackParam !== null ? parseInt(audioTrackParam, 10) : 0;
     const ext: string = path.extname(filePath).toLowerCase();
 
-    // Determine canRemux based on the SELECTED audio track's codec
+    // Determine codec compatibility based on the SELECTED audio track
     // Use cached MediaInfo (populated by probeMedia during playlist add/select)
     const cachedInfo: MediaInfo | undefined = this.mediaInfoCache.get(filePath);
     const videoCodec: string | undefined = cachedInfo?.videoCodec;
@@ -820,7 +862,10 @@ export class UnifiedMediaServer {
     const canRemuxAudio: boolean = audioCodec !== undefined && UnifiedMediaServer.REMUXABLE_AUDIO_CODECS.has(audioCodec);
     const canRemux: boolean = canRemuxVideo && canRemuxAudio;
 
-    ffmpegLogger.debug(`Remux check: video=${videoCodec} (${canRemuxVideo}), audio[${audioTrackIndex}]=${audioCodec} (${canRemuxAudio}), canRemux=${canRemux}`);
+    // Hybrid mode: video can be copied but audio needs transcoding
+    const needsHybridTranscode: boolean = canRemuxVideo && !canRemuxAudio && audioCodec !== undefined;
+
+    ffmpegLogger.debug(`Codec check: video=${videoCodec} (remuxable=${canRemuxVideo}), audio[${audioTrackIndex}]=${audioCodec} (remuxable=${canRemuxAudio}), canRemux=${canRemux}, hybrid=${needsHybridTranscode}`);
 
     // Determine if this is audio-only transcoding
     const isAudioTranscode: boolean = ['.wma', '.ape', '.tak'].includes(ext);
@@ -838,7 +883,9 @@ export class UnifiedMediaServer {
     // Convert audio bitrate to FFmpeg format
     const audioBitrateStr: string = `${transcodingSettings.audioBitrate}k`;
 
-    ffmpegLogger.info(`Transcoding: ${path.basename(filePath)} (seek: ${seekTime}s, audio-only: ${isAudioTranscode}, audioTrack: ${audioTrackIndex}/${audioCodec}, canRemux: ${canRemux}, crf: ${crfValue}, audio: ${audioBitrateStr})`);
+    // Determine transcoding mode for logging
+    const mode: string = isAudioTranscode ? 'audio-only' : canRemux ? 'remux' : needsHybridTranscode ? 'hybrid' : 'full';
+    ffmpegLogger.info(`Transcoding: ${path.basename(filePath)} (mode: ${mode}, seek: ${seekTime}s, audioTrack: ${audioTrackIndex}/${audioCodec}, crf: ${crfValue}, audio: ${audioBitrateStr})`);
 
     let ffmpegArgs: string[];
 
@@ -864,8 +911,7 @@ export class UnifiedMediaServer {
     } else if (canRemux) {
       // Remux mode: stream copy (no re-encoding) for compatible codecs
       // This is I/O-bound, not CPU-bound, so playback starts instantly
-      // IMPORTANT: Always use explicit stream mapping to avoid copying incompatible
-      // audio tracks (e.g., AC3/DTS) that may exist alongside the primary AAC track
+      // IMPORTANT: Always use explicit stream mapping to select specific tracks
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
@@ -885,14 +931,34 @@ export class UnifiedMediaServer {
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'no-cache',
       });
+    } else if (needsHybridTranscode) {
+      // Hybrid mode: copy video, transcode audio only
+      // Much faster than full transcode when video is already H.264/HEVC
+      // Common case: MP4/MKV with H.264 video + AC3/DTS/TrueHD audio
+      ffmpegArgs = [
+        '-hide_banner',
+        '-loglevel', 'warning',
+        '-ss', seekTime,            // Seek before input (fast seek)
+        '-i', filePath,
+        '-map', '0:v:0',            // Map first video stream
+        '-map', `0:a:${audioTrackIndex}`, // Map selected audio stream
+        '-c:v', 'copy',             // Copy video without re-encoding
+        '-c:a', 'aac',              // Transcode audio to AAC
+        '-b:a', audioBitrateStr,    // Audio bitrate from settings
+        '-ar', '48000',             // Sample rate
+        '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
+        '-f', 'mp4',
+        'pipe:1'
+      ];
+      res.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Transfer-Encoding': 'chunked',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache',
+      });
     } else {
       // Full transcode mode: re-encode video and audio for incompatible codecs
-      // Only add explicit stream mapping when selecting a non-default audio track
-      // For default (audioTrackIndex=0), let FFmpeg use its default stream selection
-      const streamMapping: string[] = audioTrackIndex > 0
-        ? ['-map', '0:v:0', '-map', `0:a:${audioTrackIndex}`]
-        : [];
-
+      // IMPORTANT: Always use explicit stream mapping for predictable results
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
@@ -901,7 +967,8 @@ export class UnifiedMediaServer {
         '-analyzeduration', '5000000', // Analyze 5 seconds for timestamps
         '-ss', seekTime,            // Seek before input (fast seek)
         '-i', filePath,
-        ...streamMapping,           // Stream mapping (only for non-default audio track)
+        '-map', '0:v:0',            // Map first video stream explicitly
+        '-map', `0:a:${audioTrackIndex}`, // Map selected audio stream explicitly
         '-c:v', 'libx264',
         '-preset', 'ultrafast',     // Fastest encoding for real-time 4K
         '-tune', 'zerolatency',     // Minimize latency
@@ -1612,9 +1679,8 @@ export class UnifiedMediaServer {
             videoCodec !== undefined && remuxableVideoCodecs.has(videoCodec) &&
             audioCodec !== undefined && remuxableAudioCodecs.has(audioCodec);
 
-          if (hasVideo) {
-            ffmpegLogger.debug(`Codecs: video=${videoCodec}, audio=${audioCodec}, canRemux=${canRemux}`);
-          }
+          // Log codec info for debugging
+          ffmpegLogger.debug(`Codecs: video=${videoCodec ?? 'none'}, audio=${audioCodec ?? 'none'}, canRemux=${canRemux}`);
 
           // Extract metadata tags (handle various case conventions)
           const tags: Record<string, string> = (format.tags as Record<string, string>) || {};
@@ -1629,7 +1695,8 @@ export class UnifiedMediaServer {
             width: videoStream?.width as number | undefined,
             height: videoStream?.height as number | undefined,
             videoCodec: hasVideo ? videoCodec : undefined,
-            audioCodec: hasVideo ? audioCodec : undefined,
+            // Always store audio codec - needed for browser compatibility check
+            audioCodec,
             canRemux: hasVideo ? canRemux : undefined,
             audioTracks: audioTracks && audioTracks.length > 0 ? audioTracks : undefined,
             subtitleTracks: subtitleTracks && subtitleTracks.length > 0 ? subtitleTracks : undefined,
