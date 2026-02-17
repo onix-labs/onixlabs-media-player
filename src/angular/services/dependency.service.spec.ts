@@ -69,6 +69,7 @@ function createDependencyState(
     fluidsynth: createDependencyStatus('fluidsynth', fluidsynthInstalled),
     soundfonts: [],
     activeSoundFont: null,
+    hardwareEncoders: {available: false, encoders: []},
   };
 }
 
