@@ -52,7 +52,7 @@ Based on independent review with all 31 action items resolved:
 ### Key Architectural Decisions
 
 1. **Unified HTTP Server** - All media streaming, playback control, and settings managed through a single HTTP server with SSE for real-time updates
-2. **Minimal IPC** - Only 18 IPC channels (vs typical 50+ in Electron apps) by routing most communication through HTTP
+2. **Minimal IPC** - Only 22 IPC channels (vs typical 50+ in Electron apps) by routing most communication through HTTP
 3. **Signal-Based State** - Angular signals throughout for reactive, predictable state flow
 4. **OnPush Change Detection** - All components use OnPush strategy for optimal performance
 5. **Type-Safe Event Handling** - Helper functions with instanceof checks for runtime safety
@@ -152,7 +152,7 @@ Based on independent review with all 31 action items resolved:
   - **Paused**: Orange background with orange pause icon
   - **Stopped**: Red background with red stop icon
 - Header shows item count that transforms into "Clear" button on hover (solid red pill with white text), stops playback and clears playlist
-- Play/pause, next/previous, seek, volume all responsive
+- Play/pause, next/previous, seek (click or drag), volume all responsive
 - Shift+click on previous/next buttons skips backward/forward by configurable duration
   - Works in both main controls and miniplayer controls
   - Button icons change dynamically when Shift is held (step → skip icons)
@@ -175,6 +175,9 @@ Based on independent review with all 31 action items resolved:
   - Uses `FileDropService.hasValidFiles()` to validate during dragover (before drop)
 - Tab key toggles playlist panel in desktop mode (disabled in fullscreen and miniplayer modes)
 - Default Tab navigation is disabled to prevent accidental UI traversal
+- **Discreet mode** (Ctrl/Cmd+D): Instantly stops playback, clears playlist, and minimizes window
+  - Works from any window mode (desktop, fullscreen, miniplayer)
+  - Provides quick way to hide media content
 
 ### Fullscreen Mode
 
@@ -438,7 +441,7 @@ Based on independent review with all 31 action items resolved:
 │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
-│  IPC (minimal - 21 channels):                                          │
+│  IPC (minimal - 22 channels):                                          │
 │  ├── dialog:openFile         (native file picker)                      │
 │  ├── dialog:openPlaylist     (playlist file picker for .opp files)     │
 │  ├── dialog:savePlaylist     (save dialog for .opp files)              │
@@ -459,7 +462,8 @@ Based on independent review with all 31 action items resolved:
 │  ├── window:getWindowPosition (get window position for drag)           │
 │  ├── window:setWindowPosition (set position with magnetic snapping)    │
 │  ├── window:setTrafficLightVisibility (macOS traffic light control)    │
-│  └── window:saveMiniplayerBounds (persist miniplayer position/size)    │
+│  ├── window:saveMiniplayerBounds (persist miniplayer position/size)    │
+│  └── window:minimize         (minimize window to taskbar/dock)         │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -491,7 +495,7 @@ AudioContext.destination (speakers)
 ### Architecture Benefits
 
 1. **Unified playback** - Audio and video use same HTTP streaming approach
-2. **Minimal IPC** - Only 18 channels vs typical 50+ in Electron apps
+2. **Minimal IPC** - Only 22 channels vs typical 50+ in Electron apps
 3. **Server as source of truth** - Playlist and playback state managed centrally
 4. **Instant volume** - Client-side control via GainNode, no FFmpeg restart needed
 5. **Native browser decoding** - Leverages Chromium's optimized media stack

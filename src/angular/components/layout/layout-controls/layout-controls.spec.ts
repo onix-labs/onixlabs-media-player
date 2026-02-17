@@ -8,7 +8,7 @@
  *   backwardIcon, forwardIcon, playPauseIcon)
  * - Event handlers (onEject, onShuffle, onRepeat, onBackward, onPlayPause,
  *   onForward, onMuteToggle, onVolumeChange, onToggleFullscreen,
- *   onEnterMiniplayer, onSeek, onProgressClick)
+ *   onEnterMiniplayer, onProgressMouseDown)
  * - Shift key state tracking for icon and behavior changes
  *
  * Dependencies (MediaPlayerService, ElectronService, DependencyService) are
@@ -508,20 +508,9 @@ describe('LayoutControls', (): void => {
   // Event Handlers - Seek Control
   // ==========================================================================
 
-  describe('onSeek', (): void => {
-    it('should call seekToProgress with parsed value', async (): Promise<void> => {
-      const input: HTMLInputElement = document.createElement('input');
-      input.value = '50';
-      const event: Event = new Event('input');
-      Object.defineProperty(event, 'target', {value: input, writable: false});
-      await component.onSeek(event);
-      expect(mockMediaPlayer['seekToProgress']).toHaveBeenCalledWith(50);
-    });
-  });
-
-  describe('onProgressClick', (): void => {
-    it('should call seekToProgress with calculated percentage', async (): Promise<void> => {
-      const target: HTMLDivElement = document.createElement('div');
+  describe('onProgressMouseDown', (): void => {
+    it('should call seekToProgress with calculated percentage on mousedown', (): void => {
+      const target: HTMLProgressElement = document.createElement('progress');
       Object.defineProperty(target, 'getBoundingClientRect', {
         value: (): DOMRect => ({
           left: 0,
@@ -535,10 +524,39 @@ describe('LayoutControls', (): void => {
           toJSON: (): void => {},
         }),
       });
-      const event: MouseEvent = new MouseEvent('click', {clientX: 100});
+      const event: MouseEvent = new MouseEvent('mousedown', {clientX: 100});
       Object.defineProperty(event, 'currentTarget', {value: target, writable: false});
-      await component.onProgressClick(event);
+      component.onProgressMouseDown(event);
       expect(mockMediaPlayer['seekToProgress']).toHaveBeenCalledWith(50);
+    });
+
+    it('should clamp percentage to 0-100 range', (): void => {
+      const target: HTMLProgressElement = document.createElement('progress');
+      Object.defineProperty(target, 'getBoundingClientRect', {
+        value: (): DOMRect => ({
+          left: 100,
+          width: 200,
+          top: 0,
+          right: 300,
+          bottom: 10,
+          height: 10,
+          x: 100,
+          y: 0,
+          toJSON: (): void => {},
+        }),
+      });
+
+      // Click before the progress bar (should clamp to 0)
+      const eventBefore: MouseEvent = new MouseEvent('mousedown', {clientX: 50});
+      Object.defineProperty(eventBefore, 'currentTarget', {value: target, writable: false});
+      component.onProgressMouseDown(eventBefore);
+      expect(mockMediaPlayer['seekToProgress']).toHaveBeenCalledWith(0);
+
+      // Click after the progress bar (should clamp to 100)
+      const eventAfter: MouseEvent = new MouseEvent('mousedown', {clientX: 400});
+      Object.defineProperty(eventAfter, 'currentTarget', {value: target, writable: false});
+      component.onProgressMouseDown(eventAfter);
+      expect(mockMediaPlayer['seekToProgress']).toHaveBeenCalledWith(100);
     });
   });
 

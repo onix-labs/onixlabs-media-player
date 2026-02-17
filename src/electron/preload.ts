@@ -291,6 +291,13 @@ export interface MediaPlayerAPI {
    * @returns Cleanup function to remove the listener
    */
   readonly onOSOpenPlaylist: (callback: (playlistPath: string) => void) => () => void;
+
+  /**
+   * Minimizes the window to the taskbar/dock.
+   *
+   * @returns Promise that resolves when the window is minimized
+   */
+  readonly minimizeWindow: () => Promise<void>;
 }
 
 /**
@@ -374,6 +381,7 @@ const api: MediaPlayerAPI = {
     ipcRenderer.on('os:openPlaylist', listener);
     return (): void => { ipcRenderer.removeListener('os:openPlaylist', listener); };
   },
+  minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
 };
 
 /**

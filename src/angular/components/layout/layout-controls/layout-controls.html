@@ -1,6 +1,6 @@
 <div class="seek-bar-container">
   <span class="time-display current">{{ currentTime() }}</span>
-  <progress [value]="progress()" max="100" (click)="onProgressClick($event)"></progress>
+  <progress [value]="progress()" max="100" (mousedown)="onProgressMouseDown($event)"></progress>
   <span class="time-display total">{{ totalDuration() }}</span>
 </div>
 <div class="control-groups-container">

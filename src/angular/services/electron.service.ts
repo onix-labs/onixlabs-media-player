@@ -1077,6 +1077,14 @@ export class ElectronService implements OnDestroy {
     await this.api.setConfigurationMode(enabled);
   }
 
+  /**
+   * Minimizes the window to the taskbar/dock.
+   */
+  public async minimizeWindow(): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.minimizeWindow();
+  }
+
   // ============================================================================
   // HTTP API Methods - Playback Control
   // ============================================================================

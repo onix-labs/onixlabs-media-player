@@ -964,6 +964,12 @@ class Program {
     ipcMain.handle("app:setConfigurationMode", (_: Readonly<Electron.IpcMainInvokeEvent>, enabled: boolean): void => {
       this.isInConfigurationMode = enabled;
     });
+
+    // Minimize window
+    ipcMain.handle("window:minimize", (): void => {
+      windowLogger.debug('Minimizing window');
+      this.window?.minimize();
+    });
   }
 
   /**
