@@ -62,6 +62,7 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     transcoding: {
       videoQuality: 'medium',
       audioBitrate: 192,
+      hardwareAcceleration: 'auto',
     },
     appearance: {
       glassEnabled: true,
@@ -221,7 +222,7 @@ describe('SettingsService', (): void => {
 
     it('videoQuality reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        transcoding: {videoQuality: 'high', audioBitrate: 192},
+        transcoding: {videoQuality: 'high', audioBitrate: 192, hardwareAcceleration: 'auto'},
       });
       service.updateFromSSE(testSettings);
 
@@ -231,7 +232,7 @@ describe('SettingsService', (): void => {
 
     it('audioBitrate reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        transcoding: {videoQuality: 'medium', audioBitrate: 320},
+        transcoding: {videoQuality: 'medium', audioBitrate: 320, hardwareAcceleration: 'auto'},
       });
       service.updateFromSSE(testSettings);
 
