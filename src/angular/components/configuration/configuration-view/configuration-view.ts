@@ -15,10 +15,10 @@
 import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
 import type {InputSignal, EffectRef} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
-import type {DependencyId, DependencyState, DependencyStatus, SoundFontInfo, InstallProgress} from '../../../services/dependency.service';
+import type {DependencyId, DependencyState, DependencyStatus, SoundFontInfo, InstallProgress, HardwareEncoderInfo} from '../../../services/dependency.service';
 
 /**
  * macOS visual effect state options for the settings UI.
@@ -372,6 +372,44 @@ export class ConfigurationView {
     {value: 256, label: '256 kbps'},
     {value: 320, label: '320 kbps'},
   ];
+
+  /** Hardware encoder display names */
+  private readonly hardwareEncoderLabels: Record<string, string> = {
+    'h264_videotoolbox': 'VideoToolbox (macOS)',
+    'h264_nvenc': 'NVENC (NVIDIA)',
+    'h264_qsv': 'Quick Sync (Intel)',
+    'h264_amf': 'AMF (AMD)',
+    'h264_vaapi': 'VAAPI (Linux)',
+  };
+
+  /** Available hardware encoders from system */
+  public readonly availableHardwareEncoders: ReturnType<typeof computed<HardwareEncoderInfo>> = computed(
+    (): HardwareEncoderInfo => this.dependencyService.hardwareEncoders()
+  );
+
+  /** Hardware acceleration options computed from available encoders */
+  public readonly hardwareAccelerationOptions: ReturnType<typeof computed<readonly {value: HardwareAcceleration; label: string}[]>> = computed(
+    (): readonly {value: HardwareAcceleration; label: string}[] => {
+      const encoders: HardwareEncoderInfo = this.availableHardwareEncoders();
+      const options: {value: HardwareAcceleration; label: string}[] = [
+        {value: 'auto', label: 'Auto (Recommended)'},
+        {value: 'disabled', label: 'Disabled (Software Only)'},
+      ];
+
+      // Add detected hardware encoders
+      for (const encoder of encoders.encoders) {
+        const label: string = this.hardwareEncoderLabels[encoder] ?? encoder;
+        options.push({value: encoder as HardwareAcceleration, label});
+      }
+
+      return options;
+    }
+  );
+
+  /** Current hardware acceleration setting */
+  public readonly currentHardwareAcceleration: ReturnType<typeof computed<HardwareAcceleration>> = computed(
+    (): HardwareAcceleration => this.settingsService.hardwareAcceleration()
+  );
 
   /** Available video aspect mode options for the dropdown */
   public readonly videoAspectOptions: typeof VIDEO_ASPECT_OPTIONS = VIDEO_ASPECT_OPTIONS;
@@ -782,6 +820,16 @@ export class ConfigurationView {
   public async onAudioBitrateChange(event: Event): Promise<void> {
     const bitrate: number = parseInt(getSelectValue(event), 10);
     if (!isNaN(bitrate)) await this.settingsService.setAudioBitrate(bitrate as AudioBitrate);
+  }
+
+  /**
+   * Handles hardware acceleration selection change.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onHardwareAccelerationChange(event: Event): Promise<void> {
+    const mode: HardwareAcceleration = getSelectValue(event) as HardwareAcceleration;
+    await this.settingsService.setHardwareAcceleration(mode);
   }
 
   /**

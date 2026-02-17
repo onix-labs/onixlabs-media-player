@@ -93,6 +93,18 @@ export type VideoQuality = 'low' | 'medium' | 'high';
 export type AudioBitrate = 128 | 192 | 256 | 320;
 
 /**
+ * Hardware acceleration options for video transcoding.
+ * - auto: Automatically select the best available hardware encoder
+ * - disabled: Always use software encoding (libx264)
+ * - h264_videotoolbox: macOS VideoToolbox (Apple Silicon & Intel)
+ * - h264_nvenc: NVIDIA NVENC
+ * - h264_qsv: Intel Quick Sync Video
+ * - h264_amf: AMD AMF (Windows)
+ * - h264_vaapi: Linux VA-API
+ */
+export type HardwareAcceleration = 'auto' | 'disabled' | 'h264_videotoolbox' | 'h264_nvenc' | 'h264_qsv' | 'h264_amf' | 'h264_vaapi';
+
+/**
  * Video aspect mode options.
  * - default: Use the video's native aspect ratio
  * - 4:3: Force 4:3 aspect ratio
@@ -260,6 +272,8 @@ export interface TranscodingSettings {
   readonly videoQuality: VideoQuality;
   /** Audio bitrate in kbps (128, 192, 256, 320, default 192) */
   readonly audioBitrate: AudioBitrate;
+  /** Hardware acceleration mode for video encoding (default 'auto') */
+  readonly hardwareAcceleration: HardwareAcceleration;
 }
 
 /**
@@ -430,6 +444,7 @@ export interface PlaybackSettingsUpdate {
 export interface TranscodingSettingsUpdate {
   readonly videoQuality?: VideoQuality;
   readonly audioBitrate?: AudioBitrate;
+  readonly hardwareAcceleration?: HardwareAcceleration;
 }
 
 /**
@@ -509,6 +524,11 @@ const VALID_VIDEO_QUALITIES: readonly VideoQuality[] = ['low', 'medium', 'high']
 /** Valid audio bitrate values */
 const VALID_AUDIO_BITRATES: readonly AudioBitrate[] = [128, 192, 256, 320];
 
+/** Valid hardware acceleration values */
+const VALID_HARDWARE_ACCELERATION: readonly HardwareAcceleration[] = [
+  'auto', 'disabled', 'h264_videotoolbox', 'h264_nvenc', 'h264_qsv', 'h264_amf', 'h264_vaapi'
+];
+
 /** Valid video aspect mode values */
 const VALID_VIDEO_ASPECT_MODES: readonly VideoAspectMode[] = ['default', '4:3', '16:9', 'fit'];
 
@@ -552,6 +572,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   transcoding: {
     videoQuality: 'medium',  // medium = CRF 23
     audioBitrate: 192,  // 192 kbps
+    hardwareAcceleration: 'auto',  // auto-detect best encoder
   },
   appearance: {
     glassEnabled: true,  // glass effect enabled by default (vibrancy on macOS, acrylic on Windows)
@@ -865,6 +886,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate hardwareAcceleration if provided
+    if (update.hardwareAcceleration !== undefined) {
+      if (!this.isValidHardwareAcceleration(update.hardwareAcceleration)) {
+        console.warn(`[SettingsManager] Invalid hardware acceleration: ${update.hardwareAcceleration}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -872,6 +901,7 @@ export class SettingsManager {
         ...this.settings.transcoding,
         videoQuality: update.videoQuality ?? this.settings.transcoding.videoQuality,
         audioBitrate: update.audioBitrate ?? this.settings.transcoding.audioBitrate,
+        hardwareAcceleration: update.hardwareAcceleration ?? this.settings.transcoding.hardwareAcceleration,
       },
     };
 
@@ -1660,6 +1690,7 @@ export class SettingsManager {
     const transcodingObj: Record<string, unknown> = transcoding as Record<string, unknown>;
     const videoQuality: unknown = transcodingObj['videoQuality'];
     const audioBitrate: unknown = transcodingObj['audioBitrate'];
+    const hardwareAcceleration: unknown = transcodingObj['hardwareAcceleration'];
 
     return {
       videoQuality: this.isValidVideoQuality(videoQuality)
@@ -1668,6 +1699,9 @@ export class SettingsManager {
       audioBitrate: this.isValidAudioBitrate(audioBitrate)
         ? audioBitrate
         : DEFAULT_SETTINGS.transcoding.audioBitrate,
+      hardwareAcceleration: this.isValidHardwareAcceleration(hardwareAcceleration)
+        ? hardwareAcceleration
+        : DEFAULT_SETTINGS.transcoding.hardwareAcceleration,
     };
   }
 
@@ -2102,6 +2136,18 @@ export class SettingsManager {
    */
   private isValidAudioBitrate(value: unknown): value is AudioBitrate {
     return typeof value === 'number' && VALID_AUDIO_BITRATES.includes(value as AudioBitrate);
+  }
+
+  /**
+   * Type guard to check if a value is a valid hardware acceleration setting.
+   *
+   * Valid values are 'auto', 'disabled', or specific encoder names.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid hardware acceleration setting
+   */
+  private isValidHardwareAcceleration(value: unknown): value is HardwareAcceleration {
+    return typeof value === 'string' && VALID_HARDWARE_ACCELERATION.includes(value as HardwareAcceleration);
   }
 
   /**

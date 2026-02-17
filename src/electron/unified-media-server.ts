@@ -28,8 +28,8 @@ import { SettingsManager } from './settings-manager.js';
 import { serverLogger, playlistLogger, playbackLogger, ffmpegLogger, midiLogger, logHttpRequest, logProcessSpawn, logProcessOutput, logProcessExit } from './logger.js';
 import { app } from 'electron';
 import { DependencyManager } from './dependency-manager.js';
-import type { DependencyId, DependencyState, InstallProgress, SoundFontInfo } from './dependency-manager.js';
-import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate, SubtitleSettingsUpdate, RecentItemsSettings } from './settings-manager.js';
+import type { DependencyId, DependencyState, InstallProgress, SoundFontInfo, HardwareEncoderInfo } from './dependency-manager.js';
+import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate, SubtitleSettingsUpdate, RecentItemsSettings, HardwareAcceleration } from './settings-manager.js';
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
 import { SSEManager } from './sse-manager.js';
 import { PlaylistManager } from './playlist-manager.js';
@@ -232,6 +232,97 @@ export class UnifiedMediaServer {
     'pcm_f32le', // PCM 32-bit floating-point little-endian
     'alac',     // Apple Lossless - Safari/Chrome support
   ]);
+
+  // ==========================================================================
+  // Hardware Encoder Selection
+  // ==========================================================================
+
+  /**
+   * Selects the video encoder based on user settings and available hardware.
+   *
+   * @returns Object containing encoder name and encoder-specific extra args
+   */
+  private selectVideoEncoder(): {encoder: string; extraArgs: string[]} {
+    const setting: HardwareAcceleration = this.settings.getSettings().transcoding.hardwareAcceleration;
+    const available: readonly string[] = this.deps.getHardwareEncoders().encoders;
+
+    // Disabled: always use software encoding
+    if (setting === 'disabled') {
+      return {encoder: 'libx264', extraArgs: ['-preset', 'ultrafast', '-tune', 'zerolatency']};
+    }
+
+    // User explicitly selected a specific encoder
+    if (setting !== 'auto') {
+      if (available.includes(setting)) {
+        return this.getEncoderConfig(setting);
+      }
+      // Requested encoder not available - fall back to software
+      serverLogger.warn(`Requested encoder ${setting} not available, falling back to libx264`);
+      return {encoder: 'libx264', extraArgs: ['-preset', 'ultrafast', '-tune', 'zerolatency']};
+    }
+
+    // Auto mode: prefer platform-native encoder
+    const preferenceOrder: string[] = this.getEncoderPreference();
+    for (const encoder of preferenceOrder) {
+      if (available.includes(encoder)) {
+        return this.getEncoderConfig(encoder);
+      }
+    }
+
+    // No hardware encoder available - use software
+    return {encoder: 'libx264', extraArgs: ['-preset', 'ultrafast', '-tune', 'zerolatency']};
+  }
+
+  /**
+   * Gets the platform-specific encoder preference order.
+   *
+   * @returns Array of encoder names in preference order
+   */
+  private getEncoderPreference(): string[] {
+    if (process.platform === 'darwin') {
+      return ['h264_videotoolbox'];
+    }
+    // Windows/Linux: NVENC > Quick Sync > AMF > VAAPI > software
+    return ['h264_nvenc', 'h264_qsv', 'h264_amf', 'h264_vaapi'];
+  }
+
+  /**
+   * Gets encoder-specific configuration arguments.
+   *
+   * @param encoder - The encoder name
+   * @returns Object containing encoder name and encoder-specific extra args
+   */
+  private getEncoderConfig(encoder: string): {encoder: string; extraArgs: string[]} {
+    switch (encoder) {
+      case 'h264_videotoolbox':
+        // VideoToolbox: Apple's hardware encoder for macOS
+        // -allow_sw 1: Allow fallback to software if hardware is busy
+        // -realtime 1: Optimize for real-time encoding
+        return {encoder, extraArgs: ['-allow_sw', '1', '-realtime', '1']};
+      case 'h264_nvenc':
+        // NVENC: NVIDIA's hardware encoder
+        // -preset p4: Balanced preset (p1=fastest, p7=slowest/best)
+        // -tune ll: Low-latency tuning
+        return {encoder, extraArgs: ['-preset', 'p4', '-tune', 'll']};
+      case 'h264_qsv':
+        // Quick Sync: Intel's hardware encoder
+        // -preset veryfast: Fast encoding preset
+        return {encoder, extraArgs: ['-preset', 'veryfast']};
+      case 'h264_amf':
+        // AMF: AMD's hardware encoder (Windows only)
+        // -quality speed: Optimize for encoding speed
+        return {encoder, extraArgs: ['-quality', 'speed']};
+      case 'h264_vaapi':
+        // VA-API: Linux generic hardware acceleration
+        // Note: May need -vaapi_device /dev/dri/renderD128 for full support
+        return {encoder, extraArgs: []};
+      default:
+        // Software encoding fallback: libx264 with low-latency settings
+        // -preset ultrafast: Fastest encoding (lowest quality per bitrate)
+        // -tune zerolatency: Optimize for streaming (no B-frames, faster start)
+        return {encoder: 'libx264', extraArgs: ['-preset', 'ultrafast', '-tune', 'zerolatency']};
+    }
+  }
 
   /**
    * Creates a new unified media server.
@@ -966,6 +1057,19 @@ export class UnifiedMediaServer {
     } else {
       // Full transcode mode: re-encode video and audio for incompatible codecs
       // IMPORTANT: Always use explicit stream mapping for predictable results
+      //
+      // Hardware acceleration significantly reduces CPU usage:
+      // - VideoToolbox (macOS): Uses Apple's hardware encoder
+      // - NVENC (NVIDIA): Uses GPU encoder on NVIDIA cards
+      // - Quick Sync (Intel): Uses Intel iGPU encoder
+      // - AMF (AMD): Uses AMD GPU encoder (Windows only)
+      // - VAAPI (Linux): Generic Linux hardware acceleration
+      // Falls back to libx264 software encoding if no hardware encoder available
+
+      // Select video encoder based on settings and available hardware
+      const encoderConfig: {encoder: string; extraArgs: string[]} = this.selectVideoEncoder();
+      ffmpegLogger.info(`Using encoder: ${encoderConfig.encoder}`);
+
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
@@ -976,13 +1080,12 @@ export class UnifiedMediaServer {
         '-i', filePath,
         '-map', '0:v:0',            // Map first video stream explicitly
         '-map', `0:a:${audioTrackIndex}`, // Map selected audio stream explicitly
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',     // Fastest encoding for real-time 4K
-        '-tune', 'zerolatency',     // Minimize latency
+        '-c:v', encoderConfig.encoder,
+        ...encoderConfig.extraArgs, // Encoder-specific arguments
         '-profile:v', 'high',
         '-level', '5.1',            // Level 5.1 supports 4K (level 4.1 only supports 1080p)
         '-pix_fmt', 'yuv420p',      // Maximum compatibility
-        '-crf', crfValue,           // Quality level from settings
+        '-crf', crfValue,           // Quality level from settings (may be ignored by some hw encoders)
         '-maxrate', '20M',          // Max bitrate for VBV buffering
         '-bufsize', '8M',           // VBV buffer size for smooth delivery
         '-g', '30',                 // GOP size: keyframe every 30 frames (~1s at 30fps)
@@ -991,6 +1094,7 @@ export class UnifiedMediaServer {
         '-c:a', 'aac',
         '-b:a', audioBitrateStr,    // Audio bitrate from settings
         '-ar', '48000',
+        '-async', '1',              // Sync audio to video timestamps (fixes A/V sync after seek)
         '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
         '-f', 'mp4',
         'pipe:1'

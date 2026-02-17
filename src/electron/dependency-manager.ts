@@ -55,6 +55,8 @@ export interface DependencyState {
   readonly soundfonts: SoundFontInfo[];
   /** Path to the active SoundFont (first available) */
   readonly activeSoundFont: string | null;
+  /** Available hardware video encoders */
+  readonly hardwareEncoders: HardwareEncoderInfo;
 }
 
 /**
@@ -67,6 +69,16 @@ export interface SoundFontInfo {
   readonly filePath: string;
   /** File size in bytes */
   readonly sizeBytes: number;
+}
+
+/**
+ * Information about available hardware video encoders.
+ */
+export interface HardwareEncoderInfo {
+  /** Whether any hardware encoders are available */
+  readonly available: boolean;
+  /** List of available encoder names (e.g., ['h264_videotoolbox', 'h264_nvenc']) */
+  readonly encoders: readonly string[];
 }
 
 /**
@@ -148,6 +160,9 @@ export class DependencyManager {
   /** Resolved path to fluidsynth binary (mutable, refreshed after install) */
   private fluidsynthPath: string | null = null;
 
+  /** Detected hardware video encoders (populated after detectBinaries) */
+  private hardwareEncoders: HardwareEncoderInfo = {available: false, encoders: []};
+
   /**
    * Creates a new DependencyManager instance.
    *
@@ -165,6 +180,7 @@ export class DependencyManager {
     }
 
     this.detectBinaries();
+    this.detectHardwareEncoders();
   }
 
   // ============================================================================
@@ -183,6 +199,60 @@ export class DependencyManager {
     depsLogger.info(`FFmpeg: ${this.ffmpegPath ?? 'not found'}`);
     depsLogger.info(`FFprobe: ${this.ffprobePath ?? 'not found'}`);
     depsLogger.info(`FluidSynth: ${this.fluidsynthPath ?? 'not found'}`);
+
+    // Re-detect hardware encoders when binaries are re-scanned
+    this.detectHardwareEncoders();
+  }
+
+  /**
+   * Detects available hardware video encoders by querying FFmpeg.
+   * Called after detectBinaries() to ensure ffmpegPath is set.
+   */
+  private detectHardwareEncoders(): void {
+    if (!this.ffmpegPath) {
+      this.hardwareEncoders = {available: false, encoders: []};
+      return;
+    }
+
+    // Known hardware encoders to look for
+    const knownHwEncoders: readonly string[] = [
+      'h264_videotoolbox',  // macOS (Apple Silicon & Intel)
+      'h264_nvenc',         // NVIDIA GPUs
+      'h264_qsv',           // Intel Quick Sync
+      'h264_amf',           // AMD GPUs (Windows)
+      'h264_vaapi',         // Linux VA-API
+    ];
+
+    try {
+      // Run ffmpeg -encoders and parse output
+      const result: string = execSync(`"${this.ffmpegPath}" -encoders 2>/dev/null`, {
+        encoding: 'utf-8',
+        timeout: 10000,
+      });
+
+      const detectedEncoders: string[] = [];
+      for (const encoder of knownHwEncoders) {
+        // Encoders are listed with format: " V..... h264_videotoolbox" (video encoders start with V)
+        if (result.includes(encoder)) {
+          detectedEncoders.push(encoder);
+        }
+      }
+
+      this.hardwareEncoders = {
+        available: detectedEncoders.length > 0,
+        encoders: detectedEncoders,
+      };
+
+      if (detectedEncoders.length > 0) {
+        depsLogger.info(`Hardware encoders: ${detectedEncoders.join(', ')}`);
+      } else {
+        depsLogger.info('Hardware encoders: none detected');
+      }
+    } catch {
+      // FFmpeg command failed - no hardware encoders available
+      this.hardwareEncoders = {available: false, encoders: []};
+      depsLogger.info('Hardware encoders: detection failed');
+    }
   }
 
   /**
@@ -219,7 +289,16 @@ export class DependencyManager {
       fluidsynth: this.getDependencyStatus('fluidsynth'),
       soundfonts: this.getSoundFonts(),
       activeSoundFont: this.findSoundFont() ?? null,
+      hardwareEncoders: this.hardwareEncoders,
     };
+  }
+
+  /**
+   * Gets information about available hardware encoders.
+   * @returns Hardware encoder info including list of available encoders
+   */
+  public getHardwareEncoders(): HardwareEncoderInfo {
+    return this.hardwareEncoders;
   }
 
   // ============================================================================

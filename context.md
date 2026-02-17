@@ -105,9 +105,15 @@ Based on independent review with all 31 action items resolved:
 - Native `<video>` element with HTTP streaming
 - Native formats (.mp4, .m4v, .webm, .ogg) use HTTP range requests for seeking
 - Non-native formats (.mkv, .avi, .mov) transcoded to fragmented MP4 on-the-fly
-- **UHD/4K optimized**: Real-time transcoding with `-preset ultrafast`, `-level 5.1`, VBV buffering
+- **UHD/4K optimized**: Real-time transcoding with `-level 5.1`, VBV buffering
 - Synchronized with server-side time tracking
 - Configurable transcoding quality (CRF 18/23/28) and audio bitrate (128-320 kbps)
+- **Hardware acceleration**: GPU-accelerated video encoding when available
+  - Auto-detects available hardware encoders at startup via `ffmpeg -encoders`
+  - Platform-specific encoder preference: VideoToolbox (macOS), NVENC (NVIDIA), Quick Sync (Intel), AMF (AMD), VAAPI (Linux)
+  - Falls back to software encoding (libx264 ultrafast) when no hardware encoder available
+  - Configurable in Settings > Transcoding: Auto (recommended), Disabled, or specific encoder
+  - Significantly reduces CPU usage and improves transcoding performance for full transcode mode
 - **Intelligent transcoding mode selection** (in order of preference):
   1. **Direct serve**: Native containers with browser-compatible audio (AAC, MP3, Opus, FLAC, Vorbis, ALAC, PCM)
   2. **Remux mode**: Compatible video + audio → stream-copy without re-encoding (I/O-bound, instant start)
@@ -800,6 +806,7 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 |---------|---------|---------|-------------|
 | Video Quality | Low/Medium/High | Medium | CRF 28/23/18 |
 | Audio Bitrate | 128/192/256/320 kbps | 192 | Transcoding audio bitrate |
+| Hardware Acceleration | Auto/Disabled/[detected encoders] | Auto | GPU-accelerated encoding; Auto selects best available encoder for platform |
 
 #### Appearance Category
 

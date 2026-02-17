@@ -93,6 +93,18 @@ export type VideoQuality = 'low' | 'medium' | 'high';
 export type AudioBitrate = 128 | 192 | 256 | 320;
 
 /**
+ * Hardware acceleration options for video transcoding.
+ * - auto: Automatically select the best available hardware encoder
+ * - disabled: Always use software encoding (libx264)
+ * - h264_videotoolbox: macOS VideoToolbox (Apple Silicon & Intel)
+ * - h264_nvenc: NVIDIA NVENC
+ * - h264_qsv: Intel Quick Sync Video
+ * - h264_amf: AMD AMF (Windows)
+ * - h264_vaapi: Linux VA-API
+ */
+export type HardwareAcceleration = 'auto' | 'disabled' | 'h264_videotoolbox' | 'h264_nvenc' | 'h264_qsv' | 'h264_amf' | 'h264_vaapi';
+
+/**
  * Video aspect mode options.
  * - default: Use the video's native aspect ratio
  * - 4:3: Force 4:3 aspect ratio
@@ -222,6 +234,8 @@ export interface TranscodingSettings {
   readonly videoQuality: VideoQuality;
   /** Audio bitrate in kbps (128, 192, 256, 320, default 192) */
   readonly audioBitrate: AudioBitrate;
+  /** Hardware acceleration mode for video encoding (default 'auto') */
+  readonly hardwareAcceleration: HardwareAcceleration;
 }
 
 /**
@@ -363,6 +377,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   transcoding: {
     videoQuality: 'medium',
     audioBitrate: 192,
+    hardwareAcceleration: 'auto',
   },
   appearance: {
     glassEnabled: true,
@@ -659,6 +674,11 @@ export class SettingsService implements OnDestroy {
   /** Audio bitrate for transcoding in kbps */
   public readonly audioBitrate: ReturnType<typeof computed<AudioBitrate>> = computed(
     (): AudioBitrate => this.settings().transcoding?.audioBitrate ?? 192
+  );
+
+  /** Hardware acceleration mode for video transcoding */
+  public readonly hardwareAcceleration: ReturnType<typeof computed<HardwareAcceleration>> = computed(
+    (): HardwareAcceleration => this.settings().transcoding?.hardwareAcceleration ?? 'auto'
   );
 
   /** Video aspect mode for video playback */
@@ -1111,6 +1131,22 @@ export class SettingsService implements OnDestroy {
       return;
     }
     await this.updateSetting('transcoding', 'audioBitrate', bitrate);
+  }
+
+  /**
+   * Sets the hardware acceleration mode for video transcoding.
+   *
+   * @param mode - Hardware acceleration mode ('auto', 'disabled', or specific encoder)
+   */
+  public async setHardwareAcceleration(mode: HardwareAcceleration): Promise<void> {
+    const validModes: readonly HardwareAcceleration[] = [
+      'auto', 'disabled', 'h264_videotoolbox', 'h264_nvenc', 'h264_qsv', 'h264_amf', 'h264_vaapi'
+    ];
+    if (!validModes.includes(mode)) {
+      console.error(`[SettingsService] Invalid hardware acceleration mode: ${mode}`);
+      return;
+    }
+    await this.updateSetting('transcoding', 'hardwareAcceleration', mode);
   }
 
   /**
