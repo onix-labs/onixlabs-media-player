@@ -935,10 +935,16 @@ export class UnifiedMediaServer {
       // Hybrid mode: copy video, transcode audio only
       // Much faster than full transcode when video is already H.264/HEVC
       // Common case: MP4/MKV with H.264 video + AC3/DTS/TrueHD audio
+      //
+      // IMPORTANT: When seeking with -ss before -i:
+      // - Video (copy) starts from nearest keyframe BEFORE the seek time
+      // - Audio (transcode) starts from the exact seek time
+      // This creates A/V sync issues. The -async 1 flag tells FFmpeg to
+      // adjust audio timestamps to sync with video (pads/trims as needed).
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
-        '-ss', seekTime,            // Seek before input (fast seek)
+        '-ss', seekTime,            // Seek before input (fast seek to nearest keyframe)
         '-i', filePath,
         '-map', '0:v:0',            // Map first video stream
         '-map', `0:a:${audioTrackIndex}`, // Map selected audio stream
@@ -946,6 +952,7 @@ export class UnifiedMediaServer {
         '-c:a', 'aac',              // Transcode audio to AAC
         '-b:a', audioBitrateStr,    // Audio bitrate from settings
         '-ar', '48000',             // Sample rate
+        '-async', '1',              // Sync audio to video timestamps (fixes A/V sync after seek)
         '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
         '-f', 'mp4',
         'pipe:1'
