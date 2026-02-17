@@ -124,9 +124,14 @@ Based on independent review with all 31 action items resolved:
   - Hybrid mode preserves original video quality while only transcoding audio
   - Client detects transcoding need via `canRemux` flag in `PlaylistItem` (populated from server probe)
   - `BROWSER_COMPATIBLE_AUDIO_CODECS` constant defined in both server and client for consistency
-- **Hybrid mode A/V sync**: Uses `-async 1` FFmpeg flag to synchronize audio timestamps with video
-  - When seeking with `-ss` before input, video starts at nearest keyframe but audio starts at exact time
-  - The `-async 1` flag pads/trims audio to match video start position, preventing sync drift
+- **A/V sync for transcoded modes**: Ensures audio and video stay synchronized after seeking
+  - **Hybrid mode**: Uses `aresample=async=1:min_hard_comp=0.1:first_pts=0` audio filter
+    - `async=1` enables continuous audio sync to video timestamps
+    - `min_hard_comp=0.1` allows hard compensation (silence/skip) when drift exceeds 100ms
+    - `first_pts=0` resets audio start time to match video
+  - **Full transcode mode**: Uses `setpts=PTS-STARTPTS` (video) and `asetpts=PTS-STARTPTS` (audio)
+    - Both streams re-encoded with timestamps reset to 0 for perfect alignment
+  - Both modes use `-avoid_negative_ts make_zero` for timestamp normalization
 - Video aspect ratio modes via media bar select dropdown:
   - **Default**: Preserves video's native aspect ratio
   - **Forced (4:3)**: Stretches video to 4:3 aspect ratio
@@ -166,6 +171,8 @@ Based on independent review with all 31 action items resolved:
 ### Playlist & Controls
 
 - Server-managed playlist with shuffle (Fisher-Yates) and repeat modes
+- Track switching starts new videos from the beginning (not previous video's position)
+  - View mode changes (desktop ↔ miniplayer) correctly resume at current position
 - Current track highlighted with color-coded playback state:
   - **Playing**: Green background with green play icon
   - **Paused**: Orange background with orange pause icon
