@@ -1962,6 +1962,9 @@ export class UnifiedMediaServer {
           type: info.type,
           width: info.width,
           height: info.height,
+          // Include codec info for client-side transcoding detection
+          audioCodec: info.audioCodec,
+          canRemux: info.canRemux,
         });
       } else {
         playlistLogger.error(`Failed to probe ${(paths as string[])[i]}: ${result.reason}`);

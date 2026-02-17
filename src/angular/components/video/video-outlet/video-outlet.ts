@@ -936,20 +936,24 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     this.currentFilePath = filePath;
 
-    // Determine if this format needs transcoding based on container AND audio codec
+    // Determine if this format needs transcoding based on container AND canRemux flag
     const ext: string = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
     const isNativeContainer: boolean = NATIVE_VIDEO_FORMATS.has(ext);
 
-    // Check if audio codec is browser-compatible (from MediaInfo)
-    const audioCodec: string | undefined = untracked((): string | undefined => this.electron.currentMedia()?.audioCodec);
-    const hasIncompatibleAudio: boolean = audioCodec !== undefined && !BROWSER_COMPATIBLE_AUDIO_CODECS.has(audioCodec);
+    // Check canRemux flag from server - if false, transcoding will occur (hybrid or full)
+    // The server sets canRemux=false when either video OR audio codec is incompatible
+    // This is more reliable than checking audioCodec directly due to race conditions
+    const canRemux: boolean | undefined = untracked((): boolean | undefined => this.electron.currentMedia()?.canRemux);
 
-    // Transcoding is required if container is non-native OR audio codec is incompatible
-    // This ensures proper seeking behavior for files like MP4 with AC3/DTS audio
-    this.isTranscoded = !isNativeContainer || hasIncompatibleAudio;
+    // Transcoding is required if:
+    // 1. Container is non-native (MKV, AVI, MOV) - always needs transcoding
+    // 2. Container is native BUT canRemux is explicitly false (e.g., MP4 with AC3/DTS audio)
+    // Note: If canRemux is undefined (race condition), assume native seeking will work
+    this.isTranscoded = !isNativeContainer || canRemux === false;
 
-    if (hasIncompatibleAudio && isNativeContainer) {
-      console.log(`Native container ${ext} has incompatible audio codec "${audioCodec}" - using transcoded seek`);
+    if (isNativeContainer && canRemux === false) {
+      const audioCodec: string | undefined = untracked((): string | undefined => this.electron.currentMedia()?.audioCodec);
+      console.log(`Native container ${ext} has canRemux=false (audio: ${audioCodec}) - using transcoded seek`);
     }
 
     // Initialize audio track selection from cache or default.
@@ -989,7 +993,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
     }
 
     const audioTrack: number = untracked((): number => this.selectedAudioTrack());
-    const canRemux: boolean = untracked((): boolean => this.electron.currentMedia()?.canRemux ?? false);
 
     // Build the stream URL
     let url: string = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}`;
