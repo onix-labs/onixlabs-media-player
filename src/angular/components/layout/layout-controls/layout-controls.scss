@@ -199,6 +199,7 @@
       cursor: pointer;
 
       progress {
+        position: absolute;
         width: 100%;
         height: 0.5rem;
         appearance: none;
@@ -216,19 +217,15 @@
           background: $gradient-primary;
           border-radius: 0.25rem;
         }
-
-        &:not([value="0"])::-webkit-progress-value {
-          box-shadow: 0 0 8px 1px $color-primary-dark;
-        }
       }
 
       .volume-thumb {
         position: absolute;
         top: 50%;
-        width: 0.8rem;
-        height: 0.8rem;
+        width: 0.5rem;
+        height: 0.5rem;
+        margin-top: -0.35rem;
         margin-left: -0.4rem;
-        margin-top: -0.4rem;
         border-radius: 50%;
         background: $gradient-primary;
         border: 0.1rem solid $color-primary-light;
