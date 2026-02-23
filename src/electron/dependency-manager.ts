@@ -321,7 +321,7 @@ export class DependencyManager {
 
     const cmd: {command: string; args: string[]} | null = this.getInstallCommand(id);
     if (!cmd) {
-      const errorMsg: string = `No package manager found for ${this.platform}`;
+      const errorMsg: string = this.getPackageManagerErrorMessage(id, 'install');
       depsLogger.error(errorMsg);
       onProgress({dependencyId: id, status: 'error', message: errorMsg});
       return false;
@@ -352,7 +352,7 @@ export class DependencyManager {
 
     const cmd: {command: string; args: string[]} | null = this.getUninstallCommand(id);
     if (!cmd) {
-      const errorMsg: string = `No package manager found for ${this.platform}`;
+      const errorMsg: string = this.getPackageManagerErrorMessage(id, 'uninstall');
       depsLogger.error(errorMsg);
       onProgress({dependencyId: id, status: 'error', message: errorMsg});
       return false;
@@ -558,12 +558,16 @@ export class DependencyManager {
         const localAppData: string = process.env['LOCALAPPDATA'] ?? '';
         const programFiles: string = process.env['ProgramFiles'] ?? 'C:\\Program Files';
         const programFilesX86: string = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
+        const chocoToolsDir: string = process.env['ChocolateyToolsLocation'] ?? path.join(programFiles, 'Tools');
         const exe: string = `${binary}.exe`;
 
         return [
+          // FFmpeg paths (winget and manual installs)
           path.join(programFiles, 'FFmpeg', 'bin', exe),
           path.join(programFilesX86, 'FFmpeg', 'bin', exe),
           path.join(localAppData, 'Microsoft', 'WinGet', 'Links', exe),
+          // FluidSynth paths (Chocolatey installs to tools directory)
+          path.join(chocoToolsDir, 'fluidsynth', 'bin', exe),
           path.join(programFiles, 'FluidSynth', 'bin', exe),
         ];
       }
@@ -608,10 +612,7 @@ export class DependencyManager {
         return this.getLinuxInstallCommand(packageName);
 
       case 'win32':
-        return {
-          command: 'winget',
-          args: ['install', this.getWingetId(id), '--accept-source-agreements', '--accept-package-agreements'],
-        };
+        return this.getWindowsInstallCommand(id);
 
       default:
         return null;
@@ -634,10 +635,7 @@ export class DependencyManager {
         return this.getLinuxUninstallCommand(packageName);
 
       case 'win32':
-        return {
-          command: 'winget',
-          args: ['uninstall', this.getWingetId(id)],
-        };
+        return this.getWindowsUninstallCommand(id);
 
       default:
         return null;
@@ -662,6 +660,69 @@ export class DependencyManager {
       case 'ffmpeg': return 'Gyan.FFmpeg';
       case 'fluidsynth': return 'FluidSynth.FluidSynth';
     }
+  }
+
+  /**
+   * Gets the Windows install command for a dependency.
+   * FFmpeg uses winget, FluidSynth uses Chocolatey (not available on winget).
+   */
+  private getWindowsInstallCommand(id: DependencyId): {command: string; args: string[]} | null {
+    if (id === 'fluidsynth') {
+      // FluidSynth is not available on winget, use Chocolatey
+      // Check if Chocolatey is available first
+      if (!this.isChocoAvailable()) {
+        return null; // Will trigger "no package manager found" error with helpful message
+      }
+      return {command: 'choco', args: ['install', 'fluidsynth', '-y']};
+    }
+    // FFmpeg available on winget
+    return {
+      command: 'winget',
+      args: ['install', this.getWingetId(id), '--accept-source-agreements', '--accept-package-agreements'],
+    };
+  }
+
+  /**
+   * Checks if Chocolatey is available on the system.
+   */
+  private isChocoAvailable(): boolean {
+    try {
+      execSync('where choco', {encoding: 'utf-8', timeout: 5000});
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Gets a helpful error message when no package manager is available.
+   */
+  private getPackageManagerErrorMessage(id: DependencyId, operation: 'install' | 'uninstall'): string {
+    // Special case: FluidSynth on Windows requires Chocolatey
+    if (this.platform === 'win32' && id === 'fluidsynth') {
+      return `Cannot ${operation} FluidSynth: Chocolatey is required but not installed. ` +
+        'Please install Chocolatey (https://chocolatey.org/install) or use the Manual Download link.';
+    }
+    return `No package manager found for ${this.platform}`;
+  }
+
+  /**
+   * Gets the Windows uninstall command for a dependency.
+   * FFmpeg uses winget, FluidSynth uses Chocolatey.
+   */
+  private getWindowsUninstallCommand(id: DependencyId): {command: string; args: string[]} | null {
+    if (id === 'fluidsynth') {
+      // FluidSynth installed via Chocolatey
+      if (!this.isChocoAvailable()) {
+        return null;
+      }
+      return {command: 'choco', args: ['uninstall', 'fluidsynth', '-y']};
+    }
+    // FFmpeg via winget
+    return {
+      command: 'winget',
+      args: ['uninstall', this.getWingetId(id)],
+    };
   }
 
   /**

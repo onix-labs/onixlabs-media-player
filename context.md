@@ -376,7 +376,8 @@ Based on independent review with all 31 action items resolved:
 ### Dependency Management
 
 - Automatic detection of FFmpeg, FFprobe, and FluidSynth binaries across platform-specific search paths
-- Install/uninstall via platform package manager (Homebrew on macOS, apt/dnf/pacman on Linux, winget on Windows)
+- Install/uninstall via platform package manager (Homebrew on macOS, apt/dnf/pacman on Linux, winget/Chocolatey on Windows)
+  - Windows: FFmpeg via winget (`Gyan.FFmpeg`), FluidSynth via Chocolatey (`choco install fluidsynth`) since FluidSynth is not available on winget
 - Real-time progress streaming via SSE during install/uninstall operations
 - SoundFont (.sf2) file management: install from file dialog, remove, auto-detect from common system paths
 - SoundFonts stored in app userData directory (`soundfonts/` subdirectory)
@@ -400,7 +401,7 @@ Based on independent review with all 31 action items resolved:
 - Cross-platform binary search paths:
   - macOS: `/opt/homebrew/bin/`, `/usr/local/bin/`, `/usr/bin/`
   - Linux: `/usr/bin/`, `/usr/local/bin/`, `/snap/bin/`
-  - Windows: `C:\Program Files\FFmpeg\bin\`, `%LOCALAPPDATA%\Microsoft\WinGet\Links\`, PATH via `where.exe`
+  - Windows: `C:\Program Files\FFmpeg\bin\`, `%LOCALAPPDATA%\Microsoft\WinGet\Links\`, `%ChocolateyToolsLocation%\fluidsynth\bin\`, PATH via `where.exe`
 
 ### Idle State
 
@@ -1469,6 +1470,16 @@ ffprobe -v quiet -print_format json -show_format -show_streams <file>
 # Install system dependencies (macOS)
 brew install ffmpeg
 brew install fluid-synth
+
+# Install system dependencies (Windows)
+# FFmpeg via winget
+winget install Gyan.FFmpeg --accept-source-agreements --accept-package-agreements
+# FluidSynth via Chocolatey (not available on winget)
+# First install Chocolatey if not already installed: https://chocolatey.org/install
+choco install fluidsynth -y
+
+# Install system dependencies (Linux - Debian/Ubuntu)
+sudo apt install -y ffmpeg fluidsynth
 
 # Install npm dependencies
 npm install
