@@ -7,6 +7,16 @@ name: Dependency Integration Tests
 # - It tests external package managers, not our code logic
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/electron/dependency-manager.ts'
+      - '.github/workflows/dependency-integration.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/electron/dependency-manager.ts'
+      - '.github/workflows/dependency-integration.yml'
   workflow_dispatch:  # Manual trigger
   schedule:
     - cron: '0 0 * * 0'  # Weekly on Sunday at midnight UTC
