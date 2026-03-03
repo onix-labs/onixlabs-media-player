@@ -1,0 +1,239 @@
+name: Dependency Integration Tests
+
+# This workflow tests real installation/uninstallation of FFmpeg and FluidSynth
+# across all platforms. It's separate from the main CI because:
+# - Package installation is slow
+# - It consumes CI minutes
+# - It tests external package managers, not our code logic
+
+on:
+  workflow_dispatch:  # Manual trigger
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday at midnight UTC
+
+jobs:
+  test-macos:
+    name: macOS (Homebrew)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Ensure Homebrew is available
+        run: brew --version
+
+      - name: Install FFmpeg
+        run: brew install ffmpeg
+
+      - name: Verify FFmpeg installed
+        run: |
+          which ffmpeg
+          ffmpeg -version
+
+      - name: Install FluidSynth
+        run: brew install fluid-synth
+
+      - name: Verify FluidSynth installed
+        run: |
+          which fluidsynth
+          fluidsynth --version
+
+      - name: Uninstall FluidSynth
+        run: brew uninstall fluid-synth
+
+      - name: Verify FluidSynth uninstalled
+        run: |
+          if which fluidsynth 2>/dev/null; then
+            echo "ERROR: fluidsynth still found after uninstall"
+            exit 1
+          fi
+          echo "FluidSynth successfully uninstalled"
+
+      - name: Uninstall FFmpeg
+        run: brew uninstall ffmpeg
+
+      - name: Verify FFmpeg uninstalled
+        run: |
+          if which ffmpeg 2>/dev/null; then
+            echo "ERROR: ffmpeg still found after uninstall"
+            exit 1
+          fi
+          echo "FFmpeg successfully uninstalled"
+
+  test-ubuntu:
+    name: Ubuntu (apt)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Update package lists
+        run: sudo apt-get update
+
+      - name: Install FFmpeg
+        run: sudo apt-get install -y ffmpeg
+
+      - name: Verify FFmpeg installed
+        run: |
+          which ffmpeg
+          ffmpeg -version
+
+      - name: Install FluidSynth
+        run: sudo apt-get install -y fluidsynth
+
+      - name: Verify FluidSynth installed
+        run: |
+          which fluidsynth
+          fluidsynth --version
+
+      - name: Uninstall FluidSynth
+        run: sudo apt-get remove -y fluidsynth
+
+      - name: Verify FluidSynth uninstalled
+        run: |
+          if which fluidsynth 2>/dev/null; then
+            echo "ERROR: fluidsynth still found after uninstall"
+            exit 1
+          fi
+          echo "FluidSynth successfully uninstalled"
+
+      - name: Uninstall FFmpeg
+        run: sudo apt-get remove -y ffmpeg
+
+      - name: Verify FFmpeg uninstalled
+        run: |
+          if which ffmpeg 2>/dev/null; then
+            echo "ERROR: ffmpeg still found after uninstall"
+            exit 1
+          fi
+          echo "FFmpeg successfully uninstalled"
+
+  test-windows:
+    name: Windows (winget + Chocolatey)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install FFmpeg via winget
+        run: winget install Gyan.FFmpeg --accept-source-agreements --accept-package-agreements
+
+      - name: Refresh environment (FFmpeg)
+        shell: pwsh
+        run: |
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          echo "Path refreshed"
+
+      - name: Verify FFmpeg installed
+        shell: pwsh
+        run: |
+          # Refresh path and check
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          $ffmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
+          if ($ffmpeg) {
+            Write-Host "FFmpeg found at: $($ffmpeg.Source)"
+            ffmpeg -version
+          } else {
+            # Check common installation paths
+            $paths = @(
+              "C:\Program Files\FFmpeg\bin\ffmpeg.exe",
+              "$env:LOCALAPPDATA\Microsoft\WinGet\Links\ffmpeg.exe"
+            )
+            foreach ($p in $paths) {
+              if (Test-Path $p) {
+                Write-Host "FFmpeg found at: $p"
+                & $p -version
+                exit 0
+              }
+            }
+            Write-Error "FFmpeg not found"
+            exit 1
+          }
+
+      - name: Install Chocolatey (if not present)
+        shell: pwsh
+        run: |
+          if (!(Get-Command choco -ErrorAction SilentlyContinue)) {
+            Write-Host "Installing Chocolatey..."
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          } else {
+            Write-Host "Chocolatey already installed"
+            choco --version
+          }
+
+      - name: Install FluidSynth via Chocolatey
+        shell: pwsh
+        run: |
+          # Use full path in case PATH not refreshed
+          $choco = "C:\ProgramData\chocolatey\bin\choco.exe"
+          if (Test-Path $choco) {
+            & $choco install fluidsynth -y
+          } else {
+            choco install fluidsynth -y
+          }
+
+      - name: Verify FluidSynth installed
+        shell: pwsh
+        run: |
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          $fluidsynth = Get-Command fluidsynth -ErrorAction SilentlyContinue
+          if ($fluidsynth) {
+            Write-Host "FluidSynth found at: $($fluidsynth.Source)"
+            fluidsynth --version
+          } else {
+            # Check common installation paths
+            $paths = @(
+              "C:\ProgramData\chocolatey\bin\fluidsynth.exe",
+              "C:\Program Files\FluidSynth\bin\fluidsynth.exe"
+            )
+            foreach ($p in $paths) {
+              if (Test-Path $p) {
+                Write-Host "FluidSynth found at: $p"
+                & $p --version
+                exit 0
+              }
+            }
+            Write-Error "FluidSynth not found"
+            exit 1
+          }
+
+      - name: Uninstall FluidSynth
+        shell: pwsh
+        run: |
+          $choco = "C:\ProgramData\chocolatey\bin\choco.exe"
+          if (Test-Path $choco) {
+            & $choco uninstall fluidsynth -y
+          } else {
+            choco uninstall fluidsynth -y
+          }
+
+      - name: Verify FluidSynth uninstalled
+        shell: pwsh
+        run: |
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          $paths = @(
+            "C:\ProgramData\chocolatey\bin\fluidsynth.exe",
+            "C:\Program Files\FluidSynth\bin\fluidsynth.exe"
+          )
+          foreach ($p in $paths) {
+            if (Test-Path $p) {
+              Write-Error "FluidSynth still found at: $p"
+              exit 1
+            }
+          }
+          Write-Host "FluidSynth successfully uninstalled"
+
+      - name: Uninstall FFmpeg
+        run: winget uninstall Gyan.FFmpeg --accept-source-agreements
+
+      - name: Verify FFmpeg uninstalled
+        shell: pwsh
+        run: |
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          $paths = @(
+            "C:\Program Files\FFmpeg\bin\ffmpeg.exe",
+            "$env:LOCALAPPDATA\Microsoft\WinGet\Links\ffmpeg.exe"
+          )
+          foreach ($p in $paths) {
+            if (Test-Path $p) {
+              Write-Error "FFmpeg still found at: $p"
+              exit 1
+            }
+          }
+          Write-Host "FFmpeg successfully uninstalled"
