@@ -101,6 +101,7 @@ const mockApi: {
   onPrepareForClose: ReturnType<typeof vi.fn>;
   notifyFadeOutComplete: ReturnType<typeof vi.fn>;
   setConfigurationMode: ReturnType<typeof vi.fn>;
+  showConfigurationWindow: ReturnType<typeof vi.fn>;
   onExitConfigurationMode: ReturnType<typeof vi.fn>;
   openExternal: ReturnType<typeof vi.fn>;
   getVersionInfo: ReturnType<typeof vi.fn>;
@@ -129,6 +130,7 @@ const mockApi: {
   onPrepareForClose: vi.fn().mockReturnValue((): void => {}),
   notifyFadeOutComplete: vi.fn(),
   setConfigurationMode: vi.fn().mockResolvedValue(undefined),
+  showConfigurationWindow: vi.fn().mockResolvedValue(undefined),
   onExitConfigurationMode: vi.fn().mockReturnValue((): void => {}),
   openExternal: vi.fn().mockResolvedValue(undefined),
   getVersionInfo: vi.fn().mockReturnValue({electron: '1', node: '1', chrome: '1', v8: '1'}),
@@ -1078,6 +1080,16 @@ describe('ElectronService', (): void => {
       it('should delegate setConfigurationMode to the preload API', async (): Promise<void> => {
         await service.setConfigurationMode(true);
         expect(mockApi.setConfigurationMode).toHaveBeenCalledWith(true);
+      });
+
+      it('should delegate showConfigurationWindow to the preload API', async (): Promise<void> => {
+        await service.showConfigurationWindow('dependencies');
+        expect(mockApi.showConfigurationWindow).toHaveBeenCalledWith('dependencies');
+      });
+
+      it('should delegate showConfigurationWindow without category to the preload API', async (): Promise<void> => {
+        await service.showConfigurationWindow();
+        expect(mockApi.showConfigurationWindow).toHaveBeenCalledWith(undefined);
       });
     });
 

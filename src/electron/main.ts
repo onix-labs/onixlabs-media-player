@@ -461,8 +461,10 @@ class Program {
    * indicate it should show only the configuration view.
    *
    * If the window already exists, it will be focused instead of creating a new one.
+   *
+   * @param initialCategory - Optional category ID to select on open (e.g., 'dependencies')
    */
-  private showConfigurationWindow(): void {
+  private showConfigurationWindow(initialCategory?: string): void {
     // If window already exists, focus it
     if (this.configWindow && !this.configWindow.isDestroyed()) {
       this.configWindow.focus();
@@ -578,7 +580,8 @@ class Program {
     const baseUrl: string = app.isPackaged
       ? `http://127.0.0.1:${this.serverPort}/`
       : Program.DEVELOPMENT_SERVER_URL;
-    const configUrl: string = `${baseUrl}?window=configuration`;
+    const categoryParam: string = initialCategory ? `&category=${initialCategory}` : '';
+    const configUrl: string = `${baseUrl}?window=configuration${categoryParam}`;
 
     void this.configWindow.loadURL(configUrl);
 
@@ -963,6 +966,11 @@ class Program {
     // Configuration mode tracking (for close button behavior)
     ipcMain.handle("app:setConfigurationMode", (_: Readonly<Electron.IpcMainInvokeEvent>, enabled: boolean): void => {
       this.isInConfigurationMode = enabled;
+    });
+
+    // Show configuration window (can be called from renderer)
+    ipcMain.handle("window:showConfigurationWindow", (_: Readonly<Electron.IpcMainInvokeEvent>, initialCategory?: string): void => {
+      this.showConfigurationWindow(initialCategory);
     });
 
     // Minimize window

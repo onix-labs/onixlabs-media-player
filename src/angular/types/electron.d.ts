@@ -550,6 +550,13 @@ export interface MediaPlayerAPI {
   setConfigurationMode: (enabled: boolean) => Promise<void>;
 
   /**
+   * Opens the configuration window with an optional initial category.
+   * If the window is already open, it will be focused.
+   * @param initialCategory - Optional category ID to select on open (e.g., 'dependencies')
+   */
+  showConfigurationWindow: (initialCategory?: string) => Promise<void>;
+
+  /**
    * Registers a callback for when the close button is pressed in configuration mode.
    * The main process intercepts the close and tells the renderer to exit config mode instead.
    * @param callback - Function called when close is pressed in configuration mode

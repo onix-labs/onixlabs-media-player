@@ -55,6 +55,7 @@ function createMockElectronService(): Record<string, unknown> {
     addFilesWithAutoPlay: vi.fn().mockResolvedValue(undefined),
     setTrafficLightVisibility: vi.fn().mockResolvedValue(undefined),
     setConfigurationMode: vi.fn().mockResolvedValue(undefined),
+    showConfigurationWindow: vi.fn().mockResolvedValue(undefined),
     getWindowPosition: vi.fn().mockResolvedValue({x: 0, y: 0}),
     setWindowPosition: vi.fn().mockResolvedValue({x: 0, y: 0}),
     saveMiniplayerBounds: vi.fn().mockResolvedValue(undefined),
@@ -643,6 +644,18 @@ describe('Root', (): void => {
 
       expect(component.isHelpMode()).toBe(false);
       expect(mockElectron['setConfigurationMode']).toHaveBeenCalledWith(false);
+    });
+  });
+
+  // ============================================================================
+  // Configuration Window
+  // ============================================================================
+
+  describe('onOpenDependencySettings', (): void => {
+    it('opens configuration window with dependencies category', (): void => {
+      component.onOpenDependencySettings();
+
+      expect(mockElectron['showConfigurationWindow']).toHaveBeenCalledWith('dependencies');
     });
   });
 

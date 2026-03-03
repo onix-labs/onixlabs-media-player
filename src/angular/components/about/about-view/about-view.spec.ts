@@ -55,9 +55,9 @@ describe('AboutView', (): void => {
   // ===========================================================================
 
   describe('template data', (): void => {
-    it('version should be 2026.0.0', (): void => {
+    it('version should be 2026.0.1', (): void => {
       const value: string = component.version;
-      expect(value).toBe('2026.0.0');
+      expect(value).toBe('2026.0.1');
     });
 
     it('versionInfo should be null when window.mediaPlayer is not defined', (): void => {

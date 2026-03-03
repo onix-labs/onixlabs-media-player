@@ -222,11 +222,20 @@ export class ConfigurationView {
   /** Whether the visualisations accordion is expanded */
   public readonly isVisualisationsExpanded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
-  /** Effect to apply initialCategory input */
+  /** Effect to apply initialCategory input or URL param for standalone windows */
   private readonly initialCategoryEffect: EffectRef = effect((): void => {
+    // First priority: input binding
     const category: string = this.initialCategory();
     if (category) {
       this.selectedCategory.set(category);
+      return;
+    }
+    // Second priority: URL param for standalone windows
+    if (this.isStandaloneWindow()) {
+      const urlCategory: string | null = new URLSearchParams(window.location.search).get('category');
+      if (urlCategory) {
+        this.selectedCategory.set(urlCategory);
+      }
     }
   });
 

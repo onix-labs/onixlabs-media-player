@@ -576,6 +576,18 @@ export class Root implements OnDestroy {
   }
 
   // ============================================================================
+  // Public Methods - Configuration Window
+  // ============================================================================
+
+  /**
+   * Opens the configuration window directly to the Dependencies panel.
+   * Called when the "Open Settings" button is clicked in a dependency warning banner.
+   */
+  public onOpenDependencySettings(): void {
+    void this.electron.showConfigurationWindow('dependencies');
+  }
+
+  // ============================================================================
   // Public Methods - Miniplayer Controls Visibility
   // ============================================================================
 
