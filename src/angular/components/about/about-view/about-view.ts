@@ -16,7 +16,7 @@ import {Component, ChangeDetectionStrategy} from '@angular/core';
 /**
  * Application version (CalVer format).
  */
-const APP_VERSION: string = '2026.0.0';
+const APP_VERSION: string = '2026.0.1';
 
 /**
  * Version information for Electron and its components.

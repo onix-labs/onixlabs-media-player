@@ -372,6 +372,7 @@ const api: MediaPlayerAPI = {
     ipcRenderer.invoke('app:fadeOutComplete');
   },
   setConfigurationMode: (enabled: boolean): Promise<void> => ipcRenderer.invoke('app:setConfigurationMode', enabled),
+  showConfigurationWindow: (initialCategory?: string): Promise<void> => ipcRenderer.invoke('window:showConfigurationWindow', initialCategory),
   onExitConfigurationMode: (callback: () => void): () => void => {
     const listener: () => void = (): void => callback();
     ipcRenderer.on('app:exitConfigurationMode', listener);

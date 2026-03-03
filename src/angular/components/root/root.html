@@ -14,7 +14,7 @@
          [class.hidden]="isAboutMode() || isHelpMode()"
          (mouseenter)="onMiniplayerMouseEnter()"
          (mouseleave)="onMiniplayerMouseLeave()">
-      <app-layout-outlet class="miniplayer-content"/>
+      <app-layout-outlet class="miniplayer-content" (openDependencySettings)="onOpenDependencySettings()"/>
       <app-miniplayer-controls class="miniplayer-overlay" [class.controls-visible]="showControls()"/>
     </div>
   } @else {
@@ -22,7 +22,7 @@
       @if (!isFullscreen() && isMacOS()) {
         <app-layout-header/>
       }
-      <app-layout-outlet/>
+      <app-layout-outlet (openDependencySettings)="onOpenDependencySettings()"/>
       @if (!isFullscreen() || showControls()) {
         <app-layout-controls [class.fullscreen-overlay]="isFullscreen()"/>
       }

@@ -1078,6 +1078,17 @@ export class ElectronService implements OnDestroy {
   }
 
   /**
+   * Opens the configuration window with an optional initial category.
+   * If the window is already open, it will be focused.
+   *
+   * @param initialCategory - Optional category ID to select on open (e.g., 'dependencies')
+   */
+  public async showConfigurationWindow(initialCategory?: string): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.showConfigurationWindow(initialCategory);
+  }
+
+  /**
    * Minimizes the window to the taskbar/dock.
    */
   public async minimizeWindow(): Promise<void> {
