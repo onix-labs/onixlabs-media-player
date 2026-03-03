@@ -75,6 +75,15 @@ import { UnifiedMediaServer } from './unified-media-server.js';
 
 let baseUrl: string = '';
 
+/** Returns a platform-appropriate non-existent absolute path for testing. */
+function nonExistentPath(filename: string): string {
+  // On Windows, Unix paths like /nonexistent/file.mp3 get normalized to \nonexistent\file.mp3
+  // which triggers path normalization security checks. Use a Windows-style path instead.
+  return process.platform === 'win32'
+    ? `C:\\nonexistent\\${filename}`
+    : `/nonexistent/${filename}`;
+}
+
 /** Sends an HTTP request and returns { status, body } */
 async function request(
   method: string,
@@ -697,7 +706,7 @@ describe('UnifiedMediaServer', () => {
     });
 
     it('returns 404 for non-existent file', async () => {
-      const { status, body } = await request('GET', '/media/stream?path=/nonexistent/file.mp3');
+      const { status, body } = await request('GET', `/media/stream?path=${encodeURIComponent(nonExistentPath('file.mp3'))}`);
       expect(status).toBe(404);
       expect(body.error).toBe('File not found');
     });
@@ -721,7 +730,7 @@ describe('UnifiedMediaServer', () => {
     });
 
     it('returns 404 for non-existent file', async () => {
-      const { status, body } = await request('GET', '/media/info?path=/nonexistent/file.mp3');
+      const { status, body } = await request('GET', `/media/info?path=${encodeURIComponent(nonExistentPath('file.mp3'))}`);
       expect(status).toBe(404);
       expect(body.error).toBe('File not found');
     });
@@ -976,7 +985,7 @@ describe('UnifiedMediaServer', () => {
 
     it('returns 404 for native container with non-existent file', async () => {
       // Even with codec checks, non-existent files should 404
-      const { status, body } = await request('GET', '/media/stream?path=/nonexistent/video.mp4');
+      const { status, body } = await request('GET', `/media/stream?path=${encodeURIComponent(nonExistentPath('video.mp4'))}`);
       expect(status).toBe(404);
       expect(body.error).toBe('File not found');
     });
@@ -993,28 +1002,28 @@ describe('UnifiedMediaServer', () => {
 
     it('rejects stream request for non-existent MKV file', async () => {
       // MKV files always go through transcoding - verify path validation works
-      const { status, body } = await request('GET', '/media/stream?path=/nonexistent/video.mkv');
+      const { status, body } = await request('GET', `/media/stream?path=${encodeURIComponent(nonExistentPath('video.mkv'))}`);
       expect(status).toBe(404);
       expect(body.error).toBe('File not found');
     });
 
     it('rejects stream request for non-existent AVI file', async () => {
       // AVI files always go through transcoding
-      const { status, body } = await request('GET', '/media/stream?path=/nonexistent/video.avi');
+      const { status, body } = await request('GET', `/media/stream?path=${encodeURIComponent(nonExistentPath('video.avi'))}`);
       expect(status).toBe(404);
       expect(body.error).toBe('File not found');
     });
 
     it('rejects stream request for non-existent MOV file', async () => {
       // MOV files always go through transcoding
-      const { status, body } = await request('GET', '/media/stream?path=/nonexistent/video.mov');
+      const { status, body } = await request('GET', `/media/stream?path=${encodeURIComponent(nonExistentPath('video.mov'))}`);
       expect(status).toBe(404);
       expect(body.error).toBe('File not found');
     });
 
     it('rejects stream request for non-existent WMA file', async () => {
       // WMA files go through audio-only transcoding
-      const { status, body } = await request('GET', '/media/stream?path=/nonexistent/audio.wma');
+      const { status, body } = await request('GET', `/media/stream?path=${encodeURIComponent(nonExistentPath('audio.wma'))}`);
       expect(status).toBe(404);
       expect(body.error).toBe('File not found');
     });
@@ -1022,14 +1031,14 @@ describe('UnifiedMediaServer', () => {
     it('accepts audioTrack query parameter', async () => {
       // The audioTrack parameter should be accepted even if file doesn't exist
       // (validation happens before codec check)
-      const { status, body } = await request('GET', '/media/stream?path=/nonexistent/video.mkv&audioTrack=1');
+      const { status, body } = await request('GET', `/media/stream?path=${encodeURIComponent(nonExistentPath('video.mkv'))}&audioTrack=1`);
       expect(status).toBe(404);
       expect(body.error).toBe('File not found');
     });
 
     it('accepts seek time parameter', async () => {
       // The t parameter for seeking should be accepted
-      const { status, body } = await request('GET', '/media/stream?path=/nonexistent/video.mkv&t=30');
+      const { status, body } = await request('GET', `/media/stream?path=${encodeURIComponent(nonExistentPath('video.mkv'))}&t=30`);
       expect(status).toBe(404);
       expect(body.error).toBe('File not found');
     });
@@ -1041,7 +1050,7 @@ describe('UnifiedMediaServer', () => {
 
   describe('media info caching', () => {
     it('returns 404 for non-existent file when getting media info', async () => {
-      const { status, body } = await request('GET', '/media/info?path=/nonexistent/file.mp4');
+      const { status, body } = await request('GET', `/media/info?path=${encodeURIComponent(nonExistentPath('file.mp4'))}`);
       expect(status).toBe(404);
       expect(body.error).toBe('File not found');
     });
