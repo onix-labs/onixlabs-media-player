@@ -615,6 +615,370 @@ describe('DependencyManager', (): void => {
   });
 
   // ==========================================================================
+  // Windows package manager checks
+  // ==========================================================================
+
+  describe('Windows package manager availability', (): void => {
+    it('returns error when winget is not available for FFmpeg install', async (): Promise<void> => {
+      // Setup: Windows without winget
+      mockedExistsSync.mockReturnValue(false);
+      mockedReaddirSync.mockReturnValue([]);
+      mockedExecSync.mockImplementation((cmd: string): never => {
+        throw new Error(`Command failed: ${cmd}`);
+      });
+
+      const manager: DependencyManager = createManager('win32');
+      const progressCalls: Array<{status: string; message: string}> = [];
+
+      const result: boolean = await manager.installDependency('ffmpeg', (progress): void => {
+        progressCalls.push({status: progress.status, message: progress.message});
+      });
+
+      expect(result).toBe(false);
+      expect(progressCalls).toHaveLength(1);
+      expect(progressCalls[0].status).toBe('error');
+      expect(progressCalls[0].message).toContain('winget');
+      expect(progressCalls[0].message).toContain('Microsoft Store');
+    });
+
+    it('returns error when neither Chocolatey nor winget is available for FluidSynth install', async (): Promise<void> => {
+      // Setup: Windows without Chocolatey AND without winget
+      mockedExistsSync.mockReturnValue(false);
+      mockedReaddirSync.mockReturnValue([]);
+      mockedExecSync.mockImplementation((cmd: string): never => {
+        throw new Error(`Command failed: ${cmd}`);
+      });
+
+      const manager: DependencyManager = createManager('win32');
+      const progressCalls: Array<{status: string; message: string}> = [];
+
+      const result: boolean = await manager.installDependency('fluidsynth', (progress): void => {
+        progressCalls.push({status: progress.status, message: progress.message});
+      });
+
+      expect(result).toBe(false);
+      expect(progressCalls).toHaveLength(1);
+      expect(progressCalls[0].status).toBe('error');
+      expect(progressCalls[0].message).toContain('Neither Chocolatey nor winget');
+    });
+
+    it('chains Chocolatey install via winget when Chocolatey is missing but winget is available', async (): Promise<void> => {
+      // Setup: Windows with winget but without Chocolatey initially
+      mockedExistsSync.mockReturnValue(false);
+      mockedReaddirSync.mockReturnValue([]);
+      mockedExecSync.mockImplementation((cmd: string): string => {
+        if (cmd === 'where winget') return 'C:\\Windows\\winget.exe\n';
+        if (cmd === 'where choco') throw new Error('Command failed: where choco');
+        throw new Error(`Command failed: ${cmd}`);
+      });
+
+      const manager: DependencyManager = createManager('win32');
+      const progressCalls: Array<{status: string; message: string}> = [];
+
+      const { spawn } = await import('child_process');
+      const mockedSpawn: ReturnType<typeof vi.fn> = vi.mocked(spawn);
+      let spawnCallCount: number = 0;
+      const mockProcess: {
+        stdout: { on: ReturnType<typeof vi.fn> };
+        stderr: { on: ReturnType<typeof vi.fn> };
+        on: ReturnType<typeof vi.fn>;
+      } = {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, callback: (code: number) => void): void => {
+          if (event === 'close') {
+            setTimeout((): void => callback(0), 0);
+          }
+        }),
+      };
+      mockedSpawn.mockImplementation((): ReturnType<typeof spawn> => {
+        spawnCallCount++;
+        return mockProcess as ReturnType<typeof spawn>;
+      });
+
+      await manager.installDependency('fluidsynth', (progress): void => {
+        progressCalls.push({status: progress.status, message: progress.message});
+      });
+
+      // Should have called spawn twice: once for winget (Chocolatey), once for choco (FluidSynth)
+      expect(spawnCallCount).toBe(2);
+
+      // First call: install Chocolatey via winget
+      expect(mockedSpawn).toHaveBeenNthCalledWith(
+        1,
+        'winget',
+        ['install', 'Chocolatey.Chocolatey', '--accept-source-agreements', '--accept-package-agreements'],
+        expect.any(Object)
+      );
+
+      // Second call: install FluidSynth via choco (using full path)
+      expect(mockedSpawn).toHaveBeenNthCalledWith(
+        2,
+        'C:\\ProgramData\\chocolatey\\bin\\choco.exe',
+        ['install', 'fluidsynth', '-y'],
+        expect.any(Object)
+      );
+    });
+
+    it('uses winget when available for FFmpeg', async (): Promise<void> => {
+      // Setup: Windows with winget available
+      mockedExistsSync.mockReturnValue(false);
+      mockedReaddirSync.mockReturnValue([]);
+      mockedExecSync.mockImplementation((cmd: string): string => {
+        if (cmd === 'where winget') return 'C:\\Windows\\winget.exe\n';
+        throw new Error(`Command failed: ${cmd}`);
+      });
+
+      const manager: DependencyManager = createManager('win32');
+
+      const { spawn } = await import('child_process');
+      const mockedSpawn: ReturnType<typeof vi.fn> = vi.mocked(spawn);
+      const mockProcess: {
+        stdout: { on: ReturnType<typeof vi.fn> };
+        stderr: { on: ReturnType<typeof vi.fn> };
+        on: ReturnType<typeof vi.fn>;
+      } = {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, callback: (code: number) => void): void => {
+          if (event === 'close') {
+            setTimeout((): void => callback(0), 0);
+          }
+        }),
+      };
+      mockedSpawn.mockReturnValue(mockProcess as ReturnType<typeof spawn>);
+
+      await manager.installDependency('ffmpeg', vi.fn());
+
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        'winget',
+        ['install', 'Gyan.FFmpeg', '--accept-source-agreements', '--accept-package-agreements'],
+        expect.any(Object)
+      );
+    });
+
+    it('uses Chocolatey when available for FluidSynth', async (): Promise<void> => {
+      // Setup: Windows with Chocolatey available
+      mockedExistsSync.mockReturnValue(false);
+      mockedReaddirSync.mockReturnValue([]);
+      mockedExecSync.mockImplementation((cmd: string): string => {
+        if (cmd === 'where choco') return 'C:\\ProgramData\\chocolatey\\bin\\choco.exe\n';
+        throw new Error(`Command failed: ${cmd}`);
+      });
+
+      const manager: DependencyManager = createManager('win32');
+
+      const { spawn } = await import('child_process');
+      const mockedSpawn: ReturnType<typeof vi.fn> = vi.mocked(spawn);
+      const mockProcess: {
+        stdout: { on: ReturnType<typeof vi.fn> };
+        stderr: { on: ReturnType<typeof vi.fn> };
+        on: ReturnType<typeof vi.fn>;
+      } = {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, callback: (code: number) => void): void => {
+          if (event === 'close') {
+            setTimeout((): void => callback(0), 0);
+          }
+        }),
+      };
+      mockedSpawn.mockReturnValue(mockProcess as ReturnType<typeof spawn>);
+
+      await manager.installDependency('fluidsynth', vi.fn());
+
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        'choco',
+        ['install', 'fluidsynth', '-y'],
+        expect.any(Object)
+      );
+    });
+  });
+
+  // ==========================================================================
+  // Linux pkexec privilege elevation
+  // ==========================================================================
+
+  describe('Linux pkexec privilege elevation', (): void => {
+    it('uses pkexec for apt install when available', async (): Promise<void> => {
+      // Setup: Linux with apt and pkexec available
+      mockedExistsSync.mockImplementation((p: string): boolean => {
+        if (p === '/usr/bin/apt') return true;
+        if (p === '/usr/bin/pkexec') return true;
+        return false;
+      });
+      mockedReaddirSync.mockReturnValue([]);
+
+      const manager: DependencyManager = createManager('linux');
+      const progressCalls: Array<{status: string; message: string}> = [];
+
+      // Mock spawn to capture the command
+      const { spawn } = await import('child_process');
+      const mockedSpawn: ReturnType<typeof vi.fn> = vi.mocked(spawn);
+      const mockProcess: {
+        stdout: { on: ReturnType<typeof vi.fn> };
+        stderr: { on: ReturnType<typeof vi.fn> };
+        on: ReturnType<typeof vi.fn>;
+      } = {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, callback: (code: number) => void): void => {
+          if (event === 'close') {
+            // Simulate successful completion
+            setTimeout((): void => callback(0), 0);
+          }
+        }),
+      };
+      mockedSpawn.mockReturnValue(mockProcess as ReturnType<typeof spawn>);
+
+      await manager.installDependency('ffmpeg', (progress): void => {
+        progressCalls.push({status: progress.status, message: progress.message});
+      });
+
+      // Verify pkexec was used, not sudo
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        'pkexec',
+        ['apt', 'install', '-y', 'ffmpeg'],
+        expect.any(Object)
+      );
+    });
+
+    it('uses pkexec for apt uninstall when available', async (): Promise<void> => {
+      // Setup: Linux with apt and pkexec available
+      mockedExistsSync.mockImplementation((p: string): boolean => {
+        if (p === '/usr/bin/apt') return true;
+        if (p === '/usr/bin/pkexec') return true;
+        return false;
+      });
+      mockedReaddirSync.mockReturnValue([]);
+
+      const manager: DependencyManager = createManager('linux');
+
+      const { spawn } = await import('child_process');
+      const mockedSpawn: ReturnType<typeof vi.fn> = vi.mocked(spawn);
+      const mockProcess: {
+        stdout: { on: ReturnType<typeof vi.fn> };
+        stderr: { on: ReturnType<typeof vi.fn> };
+        on: ReturnType<typeof vi.fn>;
+      } = {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, callback: (code: number) => void): void => {
+          if (event === 'close') {
+            setTimeout((): void => callback(0), 0);
+          }
+        }),
+      };
+      mockedSpawn.mockReturnValue(mockProcess as ReturnType<typeof spawn>);
+
+      await manager.uninstallDependency('ffmpeg', vi.fn());
+
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        'pkexec',
+        ['apt', 'remove', '-y', 'ffmpeg'],
+        expect.any(Object)
+      );
+    });
+
+    it('returns error when pkexec is not available on Linux', async (): Promise<void> => {
+      // Setup: Linux with apt but NO pkexec
+      mockedExistsSync.mockImplementation((p: string): boolean => {
+        if (p === '/usr/bin/apt') return true;
+        if (p === '/usr/bin/pkexec') return false;
+        return false;
+      });
+      mockedReaddirSync.mockReturnValue([]);
+
+      const manager: DependencyManager = createManager('linux');
+      const progressCalls: Array<{status: string; message: string}> = [];
+
+      const result: boolean = await manager.installDependency('ffmpeg', (progress): void => {
+        progressCalls.push({status: progress.status, message: progress.message});
+      });
+
+      expect(result).toBe(false);
+      expect(progressCalls).toHaveLength(1);
+      expect(progressCalls[0].status).toBe('error');
+      expect(progressCalls[0].message).toContain('pkexec is required');
+      expect(progressCalls[0].message).toContain('sudo apt install -y ffmpeg');
+    });
+
+    it('uses pkexec for dnf on Fedora', async (): Promise<void> => {
+      // Setup: Linux with dnf (no apt) and pkexec available
+      mockedExistsSync.mockImplementation((p: string): boolean => {
+        if (p === '/usr/bin/dnf') return true;
+        if (p === '/usr/bin/pkexec') return true;
+        return false;
+      });
+      mockedReaddirSync.mockReturnValue([]);
+
+      const manager: DependencyManager = createManager('linux');
+
+      const { spawn } = await import('child_process');
+      const mockedSpawn: ReturnType<typeof vi.fn> = vi.mocked(spawn);
+      const mockProcess: {
+        stdout: { on: ReturnType<typeof vi.fn> };
+        stderr: { on: ReturnType<typeof vi.fn> };
+        on: ReturnType<typeof vi.fn>;
+      } = {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, callback: (code: number) => void): void => {
+          if (event === 'close') {
+            setTimeout((): void => callback(0), 0);
+          }
+        }),
+      };
+      mockedSpawn.mockReturnValue(mockProcess as ReturnType<typeof spawn>);
+
+      await manager.installDependency('fluidsynth', vi.fn());
+
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        'pkexec',
+        ['dnf', 'install', '-y', 'fluidsynth'],
+        expect.any(Object)
+      );
+    });
+
+    it('uses pkexec for pacman on Arch', async (): Promise<void> => {
+      // Setup: Linux with pacman (no apt, no dnf) and pkexec available
+      mockedExistsSync.mockImplementation((p: string): boolean => {
+        if (p === '/usr/bin/pacman') return true;
+        if (p === '/usr/bin/pkexec') return true;
+        return false;
+      });
+      mockedReaddirSync.mockReturnValue([]);
+
+      const manager: DependencyManager = createManager('linux');
+
+      const { spawn } = await import('child_process');
+      const mockedSpawn: ReturnType<typeof vi.fn> = vi.mocked(spawn);
+      const mockProcess: {
+        stdout: { on: ReturnType<typeof vi.fn> };
+        stderr: { on: ReturnType<typeof vi.fn> };
+        on: ReturnType<typeof vi.fn>;
+      } = {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, callback: (code: number) => void): void => {
+          if (event === 'close') {
+            setTimeout((): void => callback(0), 0);
+          }
+        }),
+      };
+      mockedSpawn.mockReturnValue(mockProcess as ReturnType<typeof spawn>);
+
+      await manager.uninstallDependency('ffmpeg', vi.fn());
+
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        'pkexec',
+        ['pacman', '-R', '--noconfirm', 'ffmpeg'],
+        expect.any(Object)
+      );
+    });
+  });
+
+  // ==========================================================================
   // detectBinaries re-scan
   // ==========================================================================
 

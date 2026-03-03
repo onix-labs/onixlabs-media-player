@@ -1488,6 +1488,103 @@ npm install
 npm run dev
 ```
 
+### Dependency Manager
+
+The application includes a built-in dependency manager (`src/electron/dependency-manager.ts`) that handles detection, installation, and uninstallation of FFmpeg and FluidSynth across all platforms.
+
+#### Architecture
+
+| Component | Path | Purpose |
+|-----------|------|---------|
+| `DependencyManager` | `src/electron/dependency-manager.ts` | Core logic for detection, install, uninstall |
+| `DependencyService` | `src/angular/services/dependency.service.ts` | Angular frontend service |
+| `ConfigurationView` | `src/angular/components/configuration/configuration-view/` | UI implementation |
+| Test Suite | `src/electron/dependency-manager.spec.ts` | Unit tests |
+
+#### Platform-Specific Commands
+
+**Installation:**
+
+| Platform | FFmpeg | FluidSynth |
+|----------|--------|------------|
+| **macOS** | `brew install ffmpeg` | `brew install fluid-synth` |
+| **Windows** | `winget install Gyan.FFmpeg` | `choco install fluidsynth -y` |
+| **Linux (apt)** | `pkexec apt install -y ffmpeg` | `pkexec apt install -y fluidsynth` |
+| **Linux (dnf)** | `pkexec dnf install -y ffmpeg` | `pkexec dnf install -y fluidsynth` |
+| **Linux (pacman)** | `pkexec pacman -S --noconfirm ffmpeg` | `pkexec pacman -S --noconfirm fluidsynth` |
+
+**Uninstallation:**
+
+| Platform | FFmpeg | FluidSynth |
+|----------|--------|------------|
+| **macOS** | `brew uninstall ffmpeg` | `brew uninstall fluid-synth` |
+| **Windows** | `winget uninstall Gyan.FFmpeg` | `choco uninstall fluidsynth -y` |
+| **Linux (apt)** | `pkexec apt remove -y ffmpeg` | `pkexec apt remove -y fluidsynth` |
+| **Linux (dnf)** | `pkexec dnf remove -y ffmpeg` | `pkexec dnf remove -y fluidsynth` |
+| **Linux (pacman)** | `pkexec pacman -R --noconfirm ffmpeg` | `pkexec pacman -R --noconfirm fluidsynth` |
+
+#### Binary Detection Paths
+
+**macOS:**
+- `/opt/homebrew/bin/{binary}` — Homebrew Apple Silicon
+- `/usr/local/bin/{binary}` — Homebrew Intel
+- `/usr/bin/{binary}` — System
+
+**Linux:**
+- `/usr/bin/{binary}` — System (most common)
+- `/usr/local/bin/{binary}` — Local installs
+- `/snap/bin/{binary}` — Snap packages
+
+**Windows:**
+- `C:\Program Files\FFmpeg\bin\{binary}.exe`
+- `C:\Program Files (x86)\FFmpeg\bin\{binary}.exe`
+- `%LOCALAPPDATA%\Microsoft\WinGet\Links\{binary}.exe`
+- `%ChocolateyToolsLocation%\fluidsynth\bin\{binary}.exe`
+- `C:\Program Files\FluidSynth\bin\{binary}.exe`
+- Falls back to `where` command if paths don't exist
+
+#### Privilege Elevation
+
+| Platform | Elevation Required | Implementation |
+|----------|-------------------|----------------|
+| **macOS** | No | Homebrew installs to user-writable directories |
+| **Linux** | Yes | `pkexec` for graphical password prompt |
+| **Windows** | Varies | UAC handles elevation automatically |
+
+**Linux `pkexec`:** PolicyKit's `pkexec` provides a native graphical password dialog on Linux desktop environments (GNOME, KDE, XFCE). If `pkexec` is unavailable, the app shows an error directing users to install manually via terminal.
+
+**Windows Package Manager Chaining:** When installing FluidSynth on Windows, if Chocolatey is not installed but winget is available, the app automatically:
+1. Installs Chocolatey via winget (`winget install Chocolatey.Chocolatey`)
+2. Installs FluidSynth via Chocolatey using full path (`C:\ProgramData\chocolatey\bin\choco.exe`)
+
+This avoids PATH issues since newly-installed `choco` won't be in the current session's PATH.
+
+#### Cross-Platform CI Testing
+
+The CI workflow (`.github/workflows/ci.yml`) uses a matrix strategy to run Electron tests on all platforms:
+
+```yaml
+test-electron:
+  name: Electron Tests (${{ matrix.os }})
+  runs-on: ${{ matrix.os }}
+  strategy:
+    fail-fast: false
+    matrix:
+      os: [ubuntu-latest, macos-latest, windows-latest]
+```
+
+**Testing approaches:**
+1. **Unit tests with mocks** — Fast, deterministic, no external dependencies (runs on every commit)
+2. **GitHub Actions matrix** — Real package manager testing across platforms (automated)
+3. **Manual VM testing** — UI and integration testing before releases
+
+**Linux display handling:** Linux CI runners are headless. For tests requiring a display, use `xvfb-run --auto-servernum npm test` or Playwright (which handles display setup automatically).
+
+**Practical CI tips:**
+- `fail-fast: false` ensures all platforms complete even if one fails
+- Cache the Electron binary and node_modules to save time
+- macOS runners are slower and cost more — consider limiting full E2E to release branches
+
 ---
 
 ## Future Considerations
@@ -1502,16 +1599,16 @@ npm run dev
 
 ### Testing Coverage
 
-**738 tests** across 20 spec files — all passing, enforced by CI on every push/PR.
+**759 tests** across 20 spec files — all passing, enforced by CI on every push/PR.
 
-**Electron tests** (253 tests, 6 spec files — Vitest with Node environment):
+**Electron tests** (274 tests, 6 spec files — Vitest with Node environment):
 
 | Spec File | Tests | What's Covered |
 |-----------|-------|----------------|
 | `settings-manager.spec.ts` | 67 | Validation, persistence, migration, atomic writes |
 | `unified-media-server.spec.ts` | 76 | HTTP API integration (all endpoints), SSE, CORS, security, audio codec compatibility |
 | `application-menu.spec.ts` | 51 | Menu structure, callbacks, state sync |
-| `dependency-manager.spec.ts` | 28 | Binary detection, SoundFont management, path traversal |
+| `dependency-manager.spec.ts` | 38 | Binary detection, SoundFont management, path traversal, pkexec elevation, Windows chained installation |
 | `midi-parser.spec.ts` | 21 | MIDI binary parsing, tempo changes, edge cases |
 | `logger.spec.ts` | 21 | Log formatting, scoped loggers, helper functions |
 

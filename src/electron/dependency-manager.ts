@@ -131,6 +131,12 @@ const SYSTEM_SOUNDFONT_PATHS: readonly string[] = [
   '/usr/local/share/soundfonts/default.sf2',
 ];
 
+/**
+ * Windows-specific constants for Chocolatey package manager.
+ */
+const CHOCOLATEY_WINGET_ID: string = 'Chocolatey.Chocolatey';
+const CHOCOLATEY_EXE_PATH: string = 'C:\\ProgramData\\chocolatey\\bin\\choco.exe';
+
 // ============================================================================
 // DependencyManager Class
 // ============================================================================
@@ -308,6 +314,10 @@ export class DependencyManager {
   /**
    * Installs a dependency using the platform-specific package manager.
    *
+   * On Windows, FluidSynth requires Chocolatey. If Chocolatey is not installed
+   * but winget is available, this method will automatically install Chocolatey
+   * first via winget, then install FluidSynth.
+   *
    * @param id - The dependency to install
    * @param onProgress - Callback for progress updates (streamed to SSE)
    * @returns True if installation succeeded
@@ -318,6 +328,11 @@ export class DependencyManager {
   ): Promise<boolean> {
     const name: string = DEPENDENCY_NAMES[id];
     depsLogger.info(`Installing ${name}...`);
+
+    // Windows FluidSynth: chain install Chocolatey via winget if needed
+    if (this.platform === 'win32' && id === 'fluidsynth' && !this.isChocoAvailable()) {
+      return this.installFluidSynthWithChocolateyChain(onProgress);
+    }
 
     const cmd: {command: string; args: string[]} | null = this.getInstallCommand(id);
     if (!cmd) {
@@ -334,6 +349,80 @@ export class DependencyManager {
     });
 
     return this.runCommand(cmd.command, cmd.args, id, 'installing', onProgress);
+  }
+
+  /**
+   * Installs FluidSynth on Windows by first installing Chocolatey via winget,
+   * then installing FluidSynth via Chocolatey.
+   *
+   * This handles the case where Chocolatey is not yet installed. After winget
+   * installs Chocolatey, we use the full path to choco.exe since it won't be
+   * in the current session's PATH yet.
+   *
+   * @param onProgress - Callback for progress updates
+   * @returns True if both installations succeeded
+   */
+  private async installFluidSynthWithChocolateyChain(
+    onProgress: (progress: InstallProgress) => void
+  ): Promise<boolean> {
+    // Check if winget is available for installing Chocolatey
+    if (!this.isWingetAvailable()) {
+      const errorMsg: string = 'Cannot install FluidSynth: Neither Chocolatey nor winget is available. ' +
+        'Please install "App Installer" from the Microsoft Store, or install Chocolatey manually.';
+      depsLogger.error(errorMsg);
+      onProgress({dependencyId: 'fluidsynth', status: 'error', message: errorMsg});
+      return false;
+    }
+
+    depsLogger.info('Chocolatey not found. Installing via winget first...');
+
+    // Step 1: Install Chocolatey via winget
+    onProgress({
+      dependencyId: 'fluidsynth',
+      status: 'installing',
+      message: 'Installing Chocolatey (required for FluidSynth)...',
+    });
+
+    const chocoInstallSuccess: boolean = await this.runCommand(
+      'winget',
+      ['install', CHOCOLATEY_WINGET_ID, '--accept-source-agreements', '--accept-package-agreements'],
+      'fluidsynth',
+      'installing',
+      (progress: InstallProgress): void => {
+        // Override the message to indicate we're installing Chocolatey
+        onProgress({
+          ...progress,
+          message: progress.status === 'success'
+            ? 'Chocolatey installed successfully. Now installing FluidSynth...'
+            : 'Installing Chocolatey (required for FluidSynth)...',
+        });
+      }
+    );
+
+    if (!chocoInstallSuccess) {
+      const errorMsg: string = 'Failed to install Chocolatey via winget. Please install Chocolatey manually.';
+      depsLogger.error(errorMsg);
+      onProgress({dependencyId: 'fluidsynth', status: 'error', message: errorMsg});
+      return false;
+    }
+
+    depsLogger.info('Chocolatey installed. Now installing FluidSynth...');
+
+    // Step 2: Install FluidSynth using the full path to choco.exe
+    // (PATH won't be updated in the current session)
+    onProgress({
+      dependencyId: 'fluidsynth',
+      status: 'installing',
+      message: 'Installing FluidSynth...',
+    });
+
+    return this.runCommand(
+      CHOCOLATEY_EXE_PATH,
+      ['install', 'fluidsynth', '-y'],
+      'fluidsynth',
+      'installing',
+      onProgress
+    );
   }
 
   /**
@@ -669,13 +758,15 @@ export class DependencyManager {
   private getWindowsInstallCommand(id: DependencyId): {command: string; args: string[]} | null {
     if (id === 'fluidsynth') {
       // FluidSynth is not available on winget, use Chocolatey
-      // Check if Chocolatey is available first
       if (!this.isChocoAvailable()) {
-        return null; // Will trigger "no package manager found" error with helpful message
+        return null; // Will trigger error with helpful message
       }
       return {command: 'choco', args: ['install', 'fluidsynth', '-y']};
     }
-    // FFmpeg available on winget
+    // FFmpeg uses winget
+    if (!this.isWingetAvailable()) {
+      return null; // Will trigger error with helpful message
+    }
     return {
       command: 'winget',
       args: ['install', this.getWingetId(id), '--accept-source-agreements', '--accept-package-agreements'],
@@ -695,14 +786,43 @@ export class DependencyManager {
   }
 
   /**
+   * Checks if winget (Windows Package Manager) is available on the system.
+   * winget is built into Windows 11 and Windows 10 (1809+) via App Installer.
+   */
+  private isWingetAvailable(): boolean {
+    try {
+      execSync('where winget', {encoding: 'utf-8', timeout: 5000});
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Gets a helpful error message when no package manager is available.
    */
   private getPackageManagerErrorMessage(id: DependencyId, operation: 'install' | 'uninstall'): string {
-    // Special case: FluidSynth on Windows requires Chocolatey
-    if (this.platform === 'win32' && id === 'fluidsynth') {
-      return `Cannot ${operation} FluidSynth: Chocolatey is required but not installed. ` +
-        'Please install Chocolatey (https://chocolatey.org/install) or use the Manual Download link.';
+    // Windows: FFmpeg requires winget
+    if (this.platform === 'win32' && id === 'ffmpeg' && !this.isWingetAvailable()) {
+      return `Cannot ${operation} FFmpeg: winget (Windows Package Manager) is required but not installed. ` +
+        'Please install "App Installer" from the Microsoft Store or use the Manual Download link.';
     }
+
+    // Windows: FluidSynth requires Chocolatey (for uninstall only - install can chain via winget)
+    if (this.platform === 'win32' && id === 'fluidsynth' && !this.isChocoAvailable() && operation === 'uninstall') {
+      return `Cannot ${operation} FluidSynth: Chocolatey is required but not installed. ` +
+        'FluidSynth may have been installed manually. Please uninstall via Control Panel or use the Manual Download link.';
+    }
+
+    // Linux: requires pkexec for GUI privilege elevation
+    if (this.platform === 'linux') {
+      const pkgMgr: 'apt' | 'dnf' | 'pacman' | null = this.detectLinuxPackageManager();
+      if (pkgMgr && !this.isPkexecAvailable()) {
+        return `Cannot ${operation} ${DEPENDENCY_NAMES[id]}: pkexec is required for graphical authentication. ` +
+          `Please install via terminal: sudo ${pkgMgr} ${operation === 'install' ? 'install' : 'remove'} -y ${this.getPackageName(id)}`;
+      }
+    }
+
     return `No package manager found for ${this.platform}`;
   }
 
@@ -718,7 +838,10 @@ export class DependencyManager {
       }
       return {command: 'choco', args: ['uninstall', 'fluidsynth', '-y']};
     }
-    // FFmpeg via winget
+    // FFmpeg uses winget
+    if (!this.isWingetAvailable()) {
+      return null;
+    }
     return {
       command: 'winget',
       args: ['uninstall', this.getWingetId(id)],
@@ -727,17 +850,22 @@ export class DependencyManager {
 
   /**
    * Gets the Linux install command using the detected package manager.
+   * Uses pkexec for graphical privilege elevation (shows native password dialog).
    */
   private getLinuxInstallCommand(packageName: string): {command: string; args: string[]} | null {
     const pkgMgr: 'apt' | 'dnf' | 'pacman' | null = this.detectLinuxPackageManager();
+    if (!pkgMgr) return null;
+
+    // Require pkexec for GUI privilege elevation
+    if (!this.isPkexecAvailable()) return null;
 
     switch (pkgMgr) {
       case 'apt':
-        return {command: 'sudo', args: ['apt', 'install', '-y', packageName]};
+        return {command: 'pkexec', args: ['apt', 'install', '-y', packageName]};
       case 'dnf':
-        return {command: 'sudo', args: ['dnf', 'install', '-y', packageName]};
+        return {command: 'pkexec', args: ['dnf', 'install', '-y', packageName]};
       case 'pacman':
-        return {command: 'sudo', args: ['pacman', '-S', '--noconfirm', packageName]};
+        return {command: 'pkexec', args: ['pacman', '-S', '--noconfirm', packageName]};
       default:
         return null;
     }
@@ -745,17 +873,22 @@ export class DependencyManager {
 
   /**
    * Gets the Linux uninstall command using the detected package manager.
+   * Uses pkexec for graphical privilege elevation (shows native password dialog).
    */
   private getLinuxUninstallCommand(packageName: string): {command: string; args: string[]} | null {
     const pkgMgr: 'apt' | 'dnf' | 'pacman' | null = this.detectLinuxPackageManager();
+    if (!pkgMgr) return null;
+
+    // Require pkexec for GUI privilege elevation
+    if (!this.isPkexecAvailable()) return null;
 
     switch (pkgMgr) {
       case 'apt':
-        return {command: 'sudo', args: ['apt', 'remove', '-y', packageName]};
+        return {command: 'pkexec', args: ['apt', 'remove', '-y', packageName]};
       case 'dnf':
-        return {command: 'sudo', args: ['dnf', 'remove', '-y', packageName]};
+        return {command: 'pkexec', args: ['dnf', 'remove', '-y', packageName]};
       case 'pacman':
-        return {command: 'sudo', args: ['pacman', '-R', '--noconfirm', packageName]};
+        return {command: 'pkexec', args: ['pacman', '-R', '--noconfirm', packageName]};
       default:
         return null;
     }
@@ -770,6 +903,16 @@ export class DependencyManager {
     if (existsSync('/usr/bin/dnf')) return 'dnf';
     if (existsSync('/usr/bin/pacman')) return 'pacman';
     return null;
+  }
+
+  /**
+   * Checks if pkexec is available for graphical privilege elevation on Linux.
+   * pkexec is part of PolicyKit and provides a native password dialog.
+   *
+   * @returns True if pkexec is available
+   */
+  private isPkexecAvailable(): boolean {
+    return existsSync('/usr/bin/pkexec');
   }
 
   /**
