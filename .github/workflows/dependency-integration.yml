@@ -185,8 +185,9 @@ jobs:
           $fluidsynth = Get-Command fluidsynth -ErrorAction SilentlyContinue
           if ($fluidsynth) {
             Write-Host "FluidSynth found at: $($fluidsynth.Source)"
-            # FluidSynth uses -v not --version on Windows
-            fluidsynth -v
+            # Use --version which prints version and exits cleanly
+            # (-v is verbose mode which tries to start the synth)
+            fluidsynth --version
           } else {
             # Check common installation paths
             $paths = @(
@@ -196,7 +197,7 @@ jobs:
             foreach ($p in $paths) {
               if (Test-Path $p) {
                 Write-Host "FluidSynth found at: $p"
-                & $p -v
+                & $p --version
                 exit 0
               }
             }
