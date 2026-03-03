@@ -232,7 +232,20 @@ jobs:
           Write-Host "FluidSynth successfully uninstalled"
 
       - name: Uninstall FFmpeg
-        run: winget uninstall Gyan.FFmpeg --accept-source-agreements
+        shell: pwsh
+        run: |
+          # List installed packages to find FFmpeg
+          Write-Host "Searching for installed FFmpeg packages..."
+          $packages = winget list --accept-source-agreements | Select-String -Pattern "ffmpeg" -CaseSensitive:$false
+          Write-Host "Found packages: $packages"
+
+          # Try uninstall with --id flag (more reliable)
+          winget uninstall --id Gyan.FFmpeg --accept-source-agreements --silent
+          if ($LASTEXITCODE -ne 0) {
+            # Fallback: try without --id
+            Write-Host "Trying alternative uninstall method..."
+            winget uninstall FFmpeg --accept-source-agreements --silent
+          }
 
       - name: Verify FFmpeg uninstalled
         shell: pwsh
