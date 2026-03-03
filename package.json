@@ -88,6 +88,11 @@
     "directories": {
       "output": "release"
     },
+    "publish": {
+      "provider": "github",
+      "owner": "onix-labs",
+      "repo": "onixlabs-media-player"
+    },
     "files": [
       "dist/**/*",
       "src/electron/dist/**/*",
