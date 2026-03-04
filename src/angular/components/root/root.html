@@ -4,6 +4,9 @@
 } @else if (isAboutWindow) {
   <!-- Standalone about window -->
   <app-about-view/>
+} @else if (isSetupWizardWindow) {
+  <!-- Setup wizard window -->
+  <app-setup-wizard/>
 } @else {
   <!-- Main application window -->
   @if (isHelpMode()) {

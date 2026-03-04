@@ -131,6 +131,9 @@ class Program {
   /** The about window instance, null when closed */
   private aboutWindow: BrowserWindow | null = null;
 
+  /** The setup wizard window instance, null when closed */
+  private setupWizardWindow: BrowserWindow | null = null;
+
   /** The unified HTTP media server instance */
   private mediaServer: UnifiedMediaServer | null = null;
 
@@ -305,6 +308,19 @@ class Program {
     // Set initial openEnabled state based on current dependency detection
     const depState: DependencyState = this.mediaServer.getDependencyManager().getState();
     updateMenuState({openEnabled: depState.ffmpeg.installed || depState.fluidsynth.installed});
+
+    // Setup core IPC handlers needed by any window (including setup wizard)
+    this.setupCoreIpcHandlers();
+
+    // Check if this is a first run or if --first-run flag was passed
+    const isFirstRun: boolean = !this.mediaServer.getSettingsManager().isSetupComplete();
+    const forceFirstRun: boolean = process.argv.includes('--first-run');
+
+    if (isFirstRun || forceFirstRun) {
+      mainLogger.info(`Showing setup wizard (firstRun=${isFirstRun}, forceFirstRun=${forceFirstRun})`);
+      this.setupSetupWizardIpcHandlers();
+      await this.showSetupWizard();
+    }
 
     mainLogger.debug('Creating browser window');
     this.window = this.createBrowserWindow();
@@ -712,6 +728,108 @@ class Program {
   }
 
   /**
+   * Shows the setup wizard window.
+   *
+   * The setup wizard guides users through initial application configuration
+   * on first run or when launched with the --first-run flag.
+   *
+   * Steps include:
+   * 1. Welcome
+   * 2. Server port configuration
+   * 3. Dependencies (FFmpeg, FluidSynth)
+   * 4. File type associations (Windows/Linux only)
+   * 5. Complete
+   *
+   * @returns Promise that resolves when the wizard is closed
+   */
+  private async showSetupWizard(): Promise<void> {
+    // If wizard already exists, wait for it to close
+    if (this.setupWizardWindow && !this.setupWizardWindow.isDestroyed()) {
+      return new Promise((resolve: () => void): void => {
+        this.setupWizardWindow?.once('closed', resolve);
+      });
+    }
+
+    const projectRoot: string = Program.getProjectRoot();
+    const preloadPath: string = path.join(projectRoot, "src", "electron", "dist", "preload.js");
+    const iconPath: string = path.join(projectRoot, "public", "icon-windows-linux.png");
+
+    // Fixed size wizard dialog
+    const wizardWidth: number = 700;
+    const wizardHeight: number = 500;
+
+    // Get appearance settings for consistent styling
+    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
+    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? true;
+    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
+    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
+
+    let wizardPlatformOptions: Electron.BrowserWindowConstructorOptions = {};
+    if (process.platform === 'darwin') {
+      wizardPlatformOptions = {
+        titleBarStyle: 'hiddenInset',
+        trafficLightPosition: {x: 12, y: 13},
+        ...(glassEnabled
+          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
+          : { backgroundColor }
+        )
+      };
+    } else if (process.platform === 'win32') {
+      wizardPlatformOptions = glassEnabled
+        ? { backgroundMaterial: 'acrylic' as const }
+        : { backgroundColor };
+    } else {
+      wizardPlatformOptions = { backgroundColor };
+    }
+
+    this.setupWizardWindow = new BrowserWindow({
+      width: wizardWidth,
+      height: wizardHeight,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      center: true,
+      icon: iconPath,
+      modal: false,
+      show: false,
+      title: 'ONIXPlayer Setup',
+      ...wizardPlatformOptions,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        preload: preloadPath,
+        zoomFactor: 1.0,
+        webSecurity: true
+      }
+    });
+
+    // Hide menu bar on Windows/Linux
+    this.setupWizardWindow.setMenuBarVisibility(false);
+
+    // Load the Angular app with setup wizard parameter
+    const baseUrl: string = app.isPackaged
+      ? `http://127.0.0.1:${this.serverPort}/`
+      : Program.DEVELOPMENT_SERVER_URL;
+    const wizardUrl: string = `${baseUrl}?window=setup-wizard`;
+
+    mainLogger.info(`Loading setup wizard: ${wizardUrl}`);
+    await this.setupWizardWindow.loadURL(wizardUrl);
+
+    // Show when ready
+    this.setupWizardWindow.show();
+
+    // Wait for wizard completion
+    return new Promise((resolve: () => void): void => {
+      this.setupWizardWindow?.on('closed', (): void => {
+        this.setupWizardWindow = null;
+        resolve();
+      });
+    });
+  }
+
+  /**
    * Sets up IPC handlers for communication with the renderer process.
    *
    * Handlers registered:
@@ -834,25 +952,6 @@ class Program {
 
       ipcLogger.info(`dialog:openSubtitle - selected: ${result.filePaths[0]}`);
       return result.filePaths[0];
-    });
-
-    // Get server port - needed for renderer to connect to HTTP API
-    ipcMain.handle("app:getServerPort", (): number => {
-      const port: number = this.mediaServer?.getPort() || 0;
-      ipcLogger.debug(`app:getServerPort - returning ${port}`);
-      return port;
-    });
-
-    // Get platform info - needed for renderer to show platform-specific settings
-    ipcMain.handle("app:getPlatformInfo", (): {platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'} => {
-      const systemTheme: 'dark' | 'light' = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-      const info: {platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'} = {
-        platform: process.platform as string,
-        supportsGlass: process.platform === 'darwin' || process.platform === 'win32',
-        systemTheme
-      };
-      ipcLogger.debug(`app:getPlatformInfo - ${JSON.stringify(info)}`);
-      return info;
     });
 
     // Get log file path - for debugging/support
@@ -1112,6 +1211,122 @@ class Program {
     ipcMain.handle("window:minimize", (): void => {
       windowLogger.debug('Minimizing window');
       this.window?.minimize();
+    });
+
+  }
+
+  /**
+   * Sets up core IPC handlers needed by any window.
+   * Must be called early in initialization, before any windows are created.
+   */
+  private setupCoreIpcHandlers(): void {
+    ipcLogger.debug('Setting up core IPC handlers');
+
+    // Get server port - needed for renderer to connect to HTTP API
+    ipcMain.handle("app:getServerPort", (): number => {
+      const port: number = this.mediaServer?.getPort() || 0;
+      ipcLogger.debug(`app:getServerPort - returning ${port}`);
+      return port;
+    });
+
+    // Get platform info - needed for renderer to show platform-specific UI
+    ipcMain.handle("app:getPlatformInfo", (): {platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'} => {
+      const systemTheme: 'dark' | 'light' = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+      const info: {platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'} = {
+        platform: process.platform as string,
+        supportsGlass: process.platform === 'darwin' || process.platform === 'win32',
+        systemTheme
+      };
+      ipcLogger.debug(`app:getPlatformInfo - ${JSON.stringify(info)}`);
+      return info;
+    });
+  }
+
+  /**
+   * Sets up IPC handlers for the setup wizard.
+   * Must be called before showing the setup wizard window.
+   */
+  private setupSetupWizardIpcHandlers(): void {
+    ipcLogger.debug('Setting up setup wizard IPC handlers');
+
+    // Get current server port setting
+    ipcMain.handle("setup:getPort", (): number => {
+      return this.mediaServer?.getSettingsManager().getSettings().application.serverPort ?? 0;
+    });
+
+    // Set server port setting
+    ipcMain.handle("setup:setPort", (_: Readonly<Electron.IpcMainInvokeEvent>, port: number): void => {
+      this.mediaServer?.getSettingsManager().updateApplicationSettings({serverPort: port});
+    });
+
+    // Validate if a port is available for use
+    ipcMain.handle("setup:validatePort", async (_: Readonly<Electron.IpcMainInvokeEvent>, port: number): Promise<boolean> => {
+      // 0 means auto-assign, which is always valid
+      if (port === 0) return true;
+      // Check port range
+      if (port < 1024 || port > 65535) return false;
+      // Check if port is available by trying to listen on it
+      return new Promise((resolve: (available: boolean) => void): void => {
+        const net: typeof import('net') = require('net');
+        const server: import('net').Server = net.createServer();
+        server.once('error', (): void => resolve(false));
+        server.once('listening', (): void => {
+          server.close();
+          resolve(true);
+        });
+        server.listen(port, '127.0.0.1');
+      });
+    });
+
+    // Get platform for conditional UI
+    ipcMain.handle("setup:getPlatform", (): string => {
+      return process.platform;
+    });
+
+    // Complete the setup wizard
+    ipcMain.handle("setup:complete", (): void => {
+      ipcLogger.info('Setup wizard completed');
+      this.mediaServer?.getSettingsManager().markSetupComplete();
+      this.setupWizardWindow?.close();
+    });
+
+    // Skip the setup wizard (will show again next launch)
+    ipcMain.handle("setup:skip", (): void => {
+      ipcLogger.info('Setup wizard skipped');
+      this.setupWizardWindow?.close();
+    });
+
+    // Install the bundled OPL3 soundfont
+    ipcMain.handle("setup:installBundledSoundFont", async (): Promise<boolean> => {
+      ipcLogger.info('Installing bundled OPL3 soundfont');
+      try {
+        const depManager: import('./dependency-manager.js').DependencyManager | undefined = this.mediaServer?.getDependencyManager();
+        if (!depManager) {
+          ipcLogger.error('DependencyManager not available');
+          return false;
+        }
+
+        // Get the path to the bundled soundfont
+        const bundledPath: string = path.join(Program.getProjectRoot(), 'dist', 'onixlabs-media-player', 'browser', 'soundfonts', 'OPL3-FM-128M.sf2');
+
+        // Check if the bundled soundfont exists
+        if (!fs.existsSync(bundledPath)) {
+          ipcLogger.error(`Bundled soundfont not found at: ${bundledPath}`);
+          return false;
+        }
+
+        // Install it using the dependency manager
+        const result: {success: boolean} = depManager.installSoundFont(bundledPath);
+        if (result.success) {
+          ipcLogger.info('Bundled OPL3 soundfont installed successfully');
+          // Broadcast the updated state
+          this.mediaServer?.broadcastDependencyState();
+        }
+        return result.success;
+      } catch (error) {
+        ipcLogger.error(`Failed to install bundled soundfont: ${error}`);
+        return false;
+      }
     });
   }
 

@@ -1,0 +1,336 @@
+<div class="wizard-container">
+  <!-- Header with drag region -->
+  <div class="wizard-header">
+    <span class="header-title">ONIXPlayer</span>
+  </div>
+
+  <!-- Step content -->
+  <div class="wizard-content">
+    @switch (currentStep()) {
+      <!-- Welcome Step -->
+      @case ('welcome') {
+        <div class="step-content welcome-step">
+          <img src="logo.png" alt="ONIXPlayer" class="welcome-logo">
+          <h1>Let's get started</h1>
+          <p class="welcome-subtitle">
+            Your new media player for audio and video files.
+          </p>
+          <p class="welcome-description">
+            This wizard will help you configure the essential settings to get started.
+            You can change these settings later in the Configuration panel.
+          </p>
+        </div>
+      }
+
+      <!-- Port Configuration Step -->
+      @case ('port') {
+        <div class="step-content port-step">
+          <h2>Server Port Configuration</h2>
+          <p class="step-description">
+            ONIXPlayer runs a local server for media streaming. You can use an automatically
+            assigned port or specify a fixed port number.
+          </p>
+
+          <div class="port-options">
+            <div class="port-option" [class.selected]="serverPort() === 0">
+              <button class="port-option-button" (click)="setAutoPort()">
+                <div class="option-radio"></div>
+                <div class="option-content">
+                  <span class="option-label">Automatic</span>
+                  <span class="option-description">Let the system assign an available port (recommended)</span>
+                </div>
+              </button>
+            </div>
+
+            <div class="port-option" [class.selected]="serverPort() !== 0">
+              <div class="port-option-header">
+                <div class="option-radio"></div>
+                <div class="option-content">
+                  <span class="option-label">Fixed Port</span>
+                  <span class="option-description">Use a specific port number (1024-65535)</span>
+                </div>
+              </div>
+              <div class="port-input-container">
+                <input type="number"
+                       [value]="serverPort() || ''"
+                       (input)="onPortChange($event)"
+                       placeholder="e.g., 8080"
+                       min="1024"
+                       max="65535"
+                       class="port-input"
+                       [class.invalid]="!portValid() && serverPort() !== 0">
+                @if (validatingPort()) {
+                  <span class="port-status validating">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                  </span>
+                } @else if (!portValid() && serverPort() !== 0) {
+                  <span class="port-status invalid">
+                    <i class="fa-solid fa-xmark"></i>
+                  </span>
+                } @else if (serverPort() !== 0 && portValid()) {
+                  <span class="port-status valid">
+                    <i class="fa-solid fa-check"></i>
+                  </span>
+                }
+              </div>
+              @if (portValidationMessage()) {
+                <span class="port-error">{{ portValidationMessage() }}</span>
+              }
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Dependencies Step -->
+      @case ('dependencies') {
+        <div class="step-content dependencies-step">
+          <h2>Dependencies</h2>
+          <p class="step-description">
+            ONIXPlayer requires FFmpeg for media playback. FluidSynth is optional but
+            enables MIDI file playback.
+          </p>
+
+          <div class="dependency-list">
+            <!-- FFmpeg -->
+            <div class="dependency-card" [class.installed]="ffmpegStatus().installed">
+              <div class="dependency-header">
+                <div class="dependency-indicator" [class.installed]="ffmpegStatus().installed" [class.missing]="!ffmpegStatus().installed">
+                  <i [class]="ffmpegStatus().installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
+                </div>
+                <div class="dependency-info">
+                  <span class="dependency-name">FFmpeg</span>
+                  <span class="dependency-status-text">
+                    @if (ffmpegStatus().installed) {
+                      Installed
+                    } @else {
+                      Not installed (required)
+                    }
+                  </span>
+                  @if (ffmpegStatus().installed && ffmpegStatus().path) {
+                    <span class="dependency-path">{{ ffmpegStatus().path }}</span>
+                  }
+                </div>
+                <div class="dependency-actions">
+                  @if (!ffmpegStatus().installed) {
+                    <button class="dep-button install" [disabled]="isOperationInProgress()" (click)="installDependency('ffmpeg')">
+                      Install
+                    </button>
+                  }
+                  <button class="dep-button link" (click)="openExternalUrl('https://ffmpeg.org/download.html')" title="FFmpeg website">
+                    <i class="fa-solid fa-external-link-alt"></i>
+                  </button>
+                </div>
+              </div>
+              <p class="dependency-description">
+                Required for audio and video playback. Handles media decoding, format conversion, and streaming.
+              </p>
+              @if (!ffmpegStatus().installed) {
+                <div class="manual-install">
+                  <span class="manual-label">Manual install:</span>
+                  <code>{{ getManualInstallCommand('ffmpeg') }}</code>
+                </div>
+              }
+            </div>
+
+            <!-- FluidSynth -->
+            <div class="dependency-card" [class.installed]="fluidsynthStatus().installed">
+              <div class="dependency-header">
+                <div class="dependency-indicator" [class.installed]="fluidsynthStatus().installed" [class.missing]="!fluidsynthStatus().installed">
+                  <i [class]="fluidsynthStatus().installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
+                </div>
+                <div class="dependency-info">
+                  <span class="dependency-name">FluidSynth</span>
+                  <span class="dependency-status-text">
+                    @if (fluidsynthStatus().installed) {
+                      Installed
+                    } @else {
+                      Not installed (optional)
+                    }
+                  </span>
+                  @if (fluidsynthStatus().installed && fluidsynthStatus().path) {
+                    <span class="dependency-path">{{ fluidsynthStatus().path }}</span>
+                  }
+                </div>
+                <div class="dependency-actions">
+                  @if (!fluidsynthStatus().installed) {
+                    <button class="dep-button install" [disabled]="isOperationInProgress()" (click)="installDependency('fluidsynth')">
+                      Install
+                    </button>
+                  }
+                  <button class="dep-button link" (click)="openExternalUrl('https://www.fluidsynth.org/download/')" title="FluidSynth website">
+                    <i class="fa-solid fa-external-link-alt"></i>
+                  </button>
+                </div>
+              </div>
+              <p class="dependency-description">
+                Optional. Enables MIDI file playback with software synthesis using SoundFont files.
+              </p>
+              @if (!fluidsynthStatus().installed) {
+                <div class="manual-install">
+                  <span class="manual-label">Manual install:</span>
+                  <code>{{ getManualInstallCommand('fluidsynth') }}</code>
+                </div>
+              }
+            </div>
+
+            <!-- Install Progress -->
+            @if (installProgress(); as progress) {
+              @if (progress.status === 'installing') {
+                <div class="install-progress">
+                  <div class="install-progress-header">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>{{ progress.message }}</span>
+                  </div>
+                  @if (progress.output) {
+                    <pre class="install-output">{{ progress.output }}</pre>
+                  }
+                </div>
+              } @else if (progress.status === 'error') {
+                <div class="install-progress error">
+                  <i class="fa-solid fa-circle-xmark"></i>
+                  <span>{{ progress.message }}</span>
+                  @if (progress.output) {
+                    <pre class="install-output">{{ progress.output }}</pre>
+                  }
+                </div>
+              }
+            }
+
+            <!-- SoundFont Section -->
+            @if (fluidsynthStatus().installed) {
+              <div class="soundfont-section">
+                <div class="soundfont-header">
+                  <span class="soundfont-title">SoundFonts</span>
+                  <span class="soundfont-subtitle">SoundFont files are required for MIDI playback synthesis.</span>
+                </div>
+                @if (soundFonts().length > 0) {
+                  <div class="soundfont-list">
+                    @for (sf of soundFonts(); track sf.fileName) {
+                      <div class="soundfont-item">
+                        <i class="fa-solid fa-music"></i>
+                        <span class="soundfont-name">{{ sf.fileName }}</span>
+                        <span class="soundfont-size">{{ formatFileSize(sf.sizeBytes) }}</span>
+                        <button class="soundfont-remove" (click)="removeSoundFont(sf.fileName)" title="Remove SoundFont">
+                          <i class="fa-solid fa-trash"></i>
+                        </button>
+                      </div>
+                    }
+                  </div>
+                } @else {
+                  <p class="soundfont-empty">No SoundFonts installed. Install a .sf2 file for MIDI playback.</p>
+                }
+                <div class="soundfont-actions">
+                  <button class="dep-button install" (click)="installBundledSoundFont()">
+                    <i class="fa-solid fa-download"></i>
+                    Install OPL3 SoundFont
+                  </button>
+                  <button class="dep-button secondary" (click)="installSoundFont()">
+                    <i class="fa-solid fa-folder-open"></i>
+                    Browse...
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+
+          <div class="info-notice">
+            <i class="fa-solid fa-info-circle"></i>
+            <span>You can manage dependencies later from the Configuration panel.</span>
+          </div>
+        </div>
+      }
+
+      <!-- Complete Step -->
+      @case ('complete') {
+        <div class="step-content complete-step">
+          <div class="complete-icon">
+            <i class="fa-solid fa-circle-check"></i>
+          </div>
+          <h2>Setup Complete</h2>
+          <p class="complete-description">
+            ONIXPlayer is ready to use. Click Finish to start using the application.
+          </p>
+
+          <div class="summary">
+            <h3>Configuration Summary</h3>
+            <div class="summary-item">
+              <span class="summary-label">Server Port:</span>
+              <span class="summary-value">
+                @if (serverPort() === 0) {
+                  Automatic
+                } @else {
+                  {{ serverPort() }}
+                }
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">FFmpeg:</span>
+              <span class="summary-value" [class.installed]="deps.ffmpegInstalled()" [class.missing]="!deps.ffmpegInstalled()">
+                @if (deps.ffmpegInstalled()) {
+                  Installed
+                } @else {
+                  Not installed
+                }
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">FluidSynth:</span>
+              <span class="summary-value" [class.installed]="deps.fluidsynthInstalled()" [class.missing]="!deps.fluidsynthInstalled()">
+                @if (deps.fluidsynthInstalled()) {
+                  Installed
+                } @else {
+                  Not installed
+                }
+              </span>
+            </div>
+          </div>
+        </div>
+      }
+    }
+  </div>
+
+  <!-- Footer with navigation -->
+  <div class="wizard-footer">
+    <!-- Progress indicator -->
+    <div class="wizard-progress">
+      @for (step of steps; track step; let i = $index) {
+        <div class="progress-pill"
+             [class.completed]="isStepCompleted(step)"
+             [class.current]="isCurrentStep(step)">
+          @if (isStepCompleted(step)) {
+            <i class="fa-solid fa-check"></i>
+          }
+          <span>
+            @switch (step) {
+              @case ('welcome') { Welcome }
+              @case ('port') { Port }
+              @case ('dependencies') { Dependencies }
+              @case ('complete') { Complete }
+            }
+          </span>
+        </div>
+        @if (i < steps.length - 1) {
+          <div class="progress-connector" [class.completed]="isStepCompleted(steps[i + 1])"></div>
+        }
+      }
+    </div>
+    <div class="nav-buttons">
+      @if (!isFirstStep) {
+        <button class="nav-button back" (click)="back()">
+          <i class="fa-solid fa-chevron-left"></i>
+          Back
+        </button>
+      }
+      @if (isLastStep) {
+        <button class="nav-button primary" (click)="finish()">
+          Finish
+        </button>
+      } @else {
+        <button class="nav-button primary" (click)="next()" [disabled]="currentStep() === 'port' && !portValid()">
+          Next
+          <i class="fa-solid fa-chevron-right"></i>
+        </button>
+      }
+    </div>
+  </div>
+</div>

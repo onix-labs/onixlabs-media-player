@@ -1321,4 +1321,132 @@ describe('SettingsManager', () => {
       expect(fs.existsSync(settingsFilePath())).toBe(true);
     });
   });
+
+  // ===========================================================================
+  // Setup Wizard Tests
+  // ===========================================================================
+
+  describe('Setup Wizard', () => {
+    beforeEach(() => {
+      mockUserDataPath = path.join(os.tmpdir(), `onixplayer-test-${Date.now()}`);
+      createTempDir();
+    });
+
+    afterEach(() => {
+      removeTempDir();
+    });
+
+    describe('isSetupComplete', () => {
+      it('should return false by default (fresh install)', () => {
+        const manager: SettingsManager = new SettingsManager();
+        expect(manager.isSetupComplete()).toBe(false);
+      });
+
+      it('should return true if setupCompleted is true in settings file', () => {
+        writeSettingsFile({
+          version: 2,
+          application: { setupCompleted: true },
+        });
+        const manager: SettingsManager = new SettingsManager();
+        expect(manager.isSetupComplete()).toBe(true);
+      });
+
+      it('should return false if setupCompleted is false in settings file', () => {
+        writeSettingsFile({
+          version: 2,
+          application: { setupCompleted: false },
+        });
+        const manager: SettingsManager = new SettingsManager();
+        expect(manager.isSetupComplete()).toBe(false);
+      });
+
+      it('should return false if setupCompleted is missing from settings file', () => {
+        writeSettingsFile({
+          version: 2,
+          application: { serverPort: 0 },
+        });
+        const manager: SettingsManager = new SettingsManager();
+        expect(manager.isSetupComplete()).toBe(false);
+      });
+    });
+
+    describe('markSetupComplete', () => {
+      it('should set setupCompleted to true', () => {
+        const manager: SettingsManager = new SettingsManager();
+        expect(manager.isSetupComplete()).toBe(false);
+
+        manager.markSetupComplete();
+        expect(manager.isSetupComplete()).toBe(true);
+      });
+
+      it('should persist setupCompleted to disk', () => {
+        const manager1: SettingsManager = new SettingsManager();
+        manager1.markSetupComplete();
+
+        // Create a new manager to reload from disk
+        const manager2: SettingsManager = new SettingsManager();
+        expect(manager2.isSetupComplete()).toBe(true);
+      });
+
+      it('should return updated settings', () => {
+        const manager: SettingsManager = new SettingsManager();
+        const result: AppSettings = manager.markSetupComplete();
+        expect(result.application.setupCompleted).toBe(true);
+      });
+
+      it('should not affect other application settings', () => {
+        const manager: SettingsManager = new SettingsManager();
+        manager.updateApplicationSettings({ serverPort: 8080 });
+
+        const result: AppSettings = manager.markSetupComplete();
+        expect(result.application.serverPort).toBe(8080);
+        expect(result.application.setupCompleted).toBe(true);
+      });
+    });
+
+    describe('setupCompleted default value', () => {
+      it('should default to false in DEFAULT_SETTINGS', () => {
+        const manager: SettingsManager = new SettingsManager();
+        const settings: AppSettings = manager.getSettings();
+        expect(settings.application.setupCompleted).toBe(false);
+      });
+    });
+
+    describe('serverPort for setup wizard', () => {
+      it('should allow setting serverPort via updateApplicationSettings', () => {
+        const manager: SettingsManager = new SettingsManager();
+        const result: AppSettings = manager.updateApplicationSettings({ serverPort: 8080 });
+        expect(result.application.serverPort).toBe(8080);
+      });
+
+      it('should persist serverPort across reload', () => {
+        const manager1: SettingsManager = new SettingsManager();
+        manager1.updateApplicationSettings({ serverPort: 9999 });
+
+        const manager2: SettingsManager = new SettingsManager();
+        expect(manager2.getSettings().application.serverPort).toBe(9999);
+      });
+
+      it('should default serverPort to 0 (auto-assign)', () => {
+        const manager: SettingsManager = new SettingsManager();
+        expect(manager.getSettings().application.serverPort).toBe(0);
+      });
+
+      it('should accept port 0 (auto-assign)', () => {
+        const manager: SettingsManager = new SettingsManager();
+        manager.updateApplicationSettings({ serverPort: 8080 });
+        const result: AppSettings = manager.updateApplicationSettings({ serverPort: 0 });
+        expect(result.application.serverPort).toBe(0);
+      });
+
+      it('should accept valid port numbers (1024-65535)', () => {
+        const validPorts: readonly number[] = [1024, 3000, 8080, 49152, 65535];
+        for (const port of validPorts) {
+          const manager: SettingsManager = new SettingsManager();
+          const result: AppSettings = manager.updateApplicationSettings({ serverPort: port });
+          expect(result.application.serverPort).toBe(port);
+        }
+      });
+    });
+  });
 });

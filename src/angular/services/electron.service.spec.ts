@@ -110,6 +110,17 @@ const mockApi: {
   getLogFilePath: ReturnType<typeof vi.fn>;
   onOSOpenFile: ReturnType<typeof vi.fn>;
   onOSOpenPlaylist: ReturnType<typeof vi.fn>;
+  minimizeWindow: ReturnType<typeof vi.fn>;
+  openPlaylistDialog: ReturnType<typeof vi.fn>;
+  savePlaylistDialog: ReturnType<typeof vi.fn>;
+  openSubtitleDialog: ReturnType<typeof vi.fn>;
+  setupGetPort: ReturnType<typeof vi.fn>;
+  setupSetPort: ReturnType<typeof vi.fn>;
+  setupValidatePort: ReturnType<typeof vi.fn>;
+  setupGetPlatform: ReturnType<typeof vi.fn>;
+  setupComplete: ReturnType<typeof vi.fn>;
+  setupSkip: ReturnType<typeof vi.fn>;
+  setupInstallBundledSoundFont: ReturnType<typeof vi.fn>;
 } = {
   getServerPort: vi.fn().mockResolvedValue(12345),
   getPlatformInfo: vi.fn().mockResolvedValue({platform: 'darwin', supportsGlass: true, systemTheme: 'dark'}),
@@ -141,6 +152,17 @@ const mockApi: {
   getLogFilePath: vi.fn().mockResolvedValue('/tmp/test.log'),
   onOSOpenFile: vi.fn().mockReturnValue((): void => {}),
   onOSOpenPlaylist: vi.fn().mockReturnValue((): void => {}),
+  minimizeWindow: vi.fn().mockResolvedValue(undefined),
+  openPlaylistDialog: vi.fn().mockResolvedValue(null),
+  savePlaylistDialog: vi.fn().mockResolvedValue(null),
+  openSubtitleDialog: vi.fn().mockResolvedValue(null),
+  setupGetPort: vi.fn().mockResolvedValue(0),
+  setupSetPort: vi.fn().mockResolvedValue(undefined),
+  setupValidatePort: vi.fn().mockResolvedValue(true),
+  setupGetPlatform: vi.fn().mockResolvedValue('darwin'),
+  setupComplete: vi.fn().mockResolvedValue(undefined),
+  setupSkip: vi.fn().mockResolvedValue(undefined),
+  setupInstallBundledSoundFont: vi.fn().mockResolvedValue(true),
 };
 
 /**

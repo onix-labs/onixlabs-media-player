@@ -242,6 +242,8 @@ export interface ApplicationSettings {
   readonly serverPort: number;
   /** Controls auto-hide delay in seconds (0 = disabled, 1-30 seconds, default 5) */
   readonly controlsAutoHideDelay: number;
+  /** Whether the setup wizard has been completed (default false) */
+  readonly setupCompleted: boolean;
 }
 
 /**
@@ -423,6 +425,7 @@ export interface VisualizationSettingsUpdate {
 export interface ApplicationSettingsUpdate {
   readonly serverPort?: number;
   readonly controlsAutoHideDelay?: number;
+  readonly setupCompleted?: boolean;
 }
 
 /**
@@ -560,6 +563,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   application: {
     serverPort: 0,  // 0 = auto-assign
     controlsAutoHideDelay: 5,  // 5 seconds default
+    setupCompleted: false,  // false = show setup wizard on first run
   },
   playback: {
     defaultVolume: 0.5,  // 50% default volume
@@ -762,6 +766,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate setupCompleted if provided
+    if (update.setupCompleted !== undefined) {
+      if (typeof update.setupCompleted !== 'boolean') {
+        console.warn(`[SettingsManager] Invalid setupCompleted: ${update.setupCompleted}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -769,11 +781,31 @@ export class SettingsManager {
         ...this.settings.application,
         serverPort: update.serverPort ?? this.settings.application.serverPort,
         controlsAutoHideDelay: update.controlsAutoHideDelay ?? this.settings.application.controlsAutoHideDelay,
+        setupCompleted: update.setupCompleted ?? this.settings.application.setupCompleted,
       },
     };
 
     this.save();
     return this.settings;
+  }
+
+  /**
+   * Marks the setup wizard as completed.
+   * Sets the setupCompleted flag to true and persists to disk.
+   *
+   * @returns The updated complete settings object
+   */
+  public markSetupComplete(): AppSettings {
+    return this.updateApplicationSettings({setupCompleted: true});
+  }
+
+  /**
+   * Checks if the setup wizard has been completed.
+   *
+   * @returns True if setup has been completed, false otherwise
+   */
+  public isSetupComplete(): boolean {
+    return this.settings.application.setupCompleted;
   }
 
   /**
@@ -1624,6 +1656,7 @@ export class SettingsManager {
     const appObj: Record<string, unknown> = app as Record<string, unknown>;
     const serverPort: unknown = appObj['serverPort'];
     const controlsAutoHideDelay: unknown = appObj['controlsAutoHideDelay'];
+    const setupCompleted: unknown = appObj['setupCompleted'];
 
     return {
       serverPort: this.isValidPort(serverPort)
@@ -1632,6 +1665,9 @@ export class SettingsManager {
       controlsAutoHideDelay: this.isValidAutoHideDelay(controlsAutoHideDelay)
         ? controlsAutoHideDelay
         : DEFAULT_SETTINGS.application.controlsAutoHideDelay,
+      setupCompleted: typeof setupCompleted === 'boolean'
+        ? setupCompleted
+        : DEFAULT_SETTINGS.application.setupCompleted,
     };
   }
 

@@ -31,6 +31,7 @@ import {ConfigurationView} from '../configuration/configuration-view/configurati
 import {AboutView} from '../about/about-view/about-view';
 import {HelpTopicsView} from '../help/help-topics-view/help-topics-view';
 import {MiniplayerControls} from '../miniplayer/miniplayer-controls';
+import {SetupWizard} from '../setup-wizard/setup-wizard';
 import {ElectronService} from '../../services/electron.service';
 import {MediaPlayerService} from '../../services/media-player.service';
 import {SettingsService, type VideoAspectMode} from '../../services/settings.service';
@@ -60,7 +61,7 @@ import {buildFileDialogFilters} from '../../constants/media.constants';
  */
 @Component({
   selector: 'app-root',
-  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView, AboutView, HelpTopicsView, MiniplayerControls],
+  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView, AboutView, HelpTopicsView, MiniplayerControls, SetupWizard],
   templateUrl: './root.html',
   styleUrl: './root.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -94,6 +95,14 @@ export class Root implements OnDestroy {
    * When true, only the AboutView is rendered (no header, outlet, controls).
    */
   public readonly isAboutWindow: boolean = new URLSearchParams(window.location.search).get('window') === 'about';
+
+  /**
+   * Whether this is the setup wizard window.
+   *
+   * Checked once at startup by looking for ?window=setup-wizard in the URL.
+   * When true, only the SetupWizard is rendered (no header, outlet, controls).
+   */
+  public readonly isSetupWizardWindow: boolean = new URLSearchParams(window.location.search).get('window') === 'setup-wizard';
 
   /** Service for dependency state */
   private readonly deps: DependencyService = inject(DependencyService);

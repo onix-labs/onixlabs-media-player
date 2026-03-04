@@ -612,6 +612,54 @@ export interface MediaPlayerAPI {
    * @returns Promise that resolves when the window is minimized
    */
   minimizeWindow: () => Promise<void>;
+
+  // ========================================================================
+  // Setup Wizard API
+  // ========================================================================
+
+  /**
+   * Gets the current server port setting.
+   * @returns Promise resolving to the port number (0 = auto-assign)
+   */
+  setupGetPort: () => Promise<number>;
+
+  /**
+   * Sets the server port setting.
+   * @param port - The port number (0 = auto-assign, or 1024-65535)
+   */
+  setupSetPort: (port: number) => Promise<void>;
+
+  /**
+   * Validates if a port is available for use.
+   * @param port - The port number to validate
+   * @returns Promise resolving to true if the port is available
+   */
+  setupValidatePort: (port: number) => Promise<boolean>;
+
+  /**
+   * Gets the current platform identifier.
+   * @returns Promise resolving to 'darwin', 'win32', or 'linux'
+   */
+  setupGetPlatform: () => Promise<string>;
+
+  /**
+   * Completes the setup wizard.
+   * Marks setup as complete and closes the wizard window.
+   */
+  setupComplete: () => Promise<void>;
+
+  /**
+   * Skips the setup wizard.
+   * Closes the wizard without marking complete (will show again next launch).
+   */
+  setupSkip: () => Promise<void>;
+
+  /**
+   * Installs the bundled OPL3 soundfont.
+   * Copies the bundled OPL3-FM-128M.sf2 to the user's soundfont directory.
+   * @returns true if installation succeeded, false otherwise
+   */
+  setupInstallBundledSoundFont: () => Promise<boolean>;
 }
 
 /**

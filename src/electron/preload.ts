@@ -325,6 +325,58 @@ export interface MediaPlayerAPI {
    * @returns Promise that resolves when the window is minimized
    */
   readonly minimizeWindow: () => Promise<void>;
+
+  // ========================================================================
+  // Setup Wizard API
+  // ========================================================================
+
+  /**
+   * Gets the current server port setting.
+   *
+   * @returns Promise resolving to the port number (0 = auto-assign)
+   */
+  readonly setupGetPort: () => Promise<number>;
+
+  /**
+   * Sets the server port setting.
+   *
+   * @param port - The port number (0 = auto-assign, or 1024-65535)
+   */
+  readonly setupSetPort: (port: number) => Promise<void>;
+
+  /**
+   * Validates if a port is available for use.
+   *
+   * @param port - The port number to validate
+   * @returns Promise resolving to true if the port is available
+   */
+  readonly setupValidatePort: (port: number) => Promise<boolean>;
+
+  /**
+   * Gets the current platform identifier.
+   *
+   * @returns Promise resolving to 'darwin', 'win32', or 'linux'
+   */
+  readonly setupGetPlatform: () => Promise<string>;
+
+  /**
+   * Completes the setup wizard.
+   * Marks setup as complete and closes the wizard window.
+   */
+  readonly setupComplete: () => Promise<void>;
+
+  /**
+   * Skips the setup wizard.
+   * Closes the wizard without marking complete (will show again next launch).
+   */
+  readonly setupSkip: () => Promise<void>;
+
+  /**
+   * Installs the bundled OPL3 soundfont.
+   * Copies the bundled OPL3-FM-128M.sf2 to the user's soundfont directory.
+   * @returns true if installation succeeded, false otherwise
+   */
+  readonly setupInstallBundledSoundFont: () => Promise<boolean>;
 }
 
 /**
@@ -420,6 +472,15 @@ const api: MediaPlayerAPI = {
     return (): void => { ipcRenderer.removeListener('os:openPlaylist', listener); };
   },
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
+
+  // Setup Wizard API
+  setupGetPort: (): Promise<number> => ipcRenderer.invoke('setup:getPort'),
+  setupSetPort: (port: number): Promise<void> => ipcRenderer.invoke('setup:setPort', port),
+  setupValidatePort: (port: number): Promise<boolean> => ipcRenderer.invoke('setup:validatePort', port),
+  setupGetPlatform: (): Promise<string> => ipcRenderer.invoke('setup:getPlatform'),
+  setupComplete: (): Promise<void> => ipcRenderer.invoke('setup:complete'),
+  setupSkip: (): Promise<void> => ipcRenderer.invoke('setup:skip'),
+  setupInstallBundledSoundFont: (): Promise<boolean> => ipcRenderer.invoke('setup:installBundledSoundFont'),
 };
 
 /**
