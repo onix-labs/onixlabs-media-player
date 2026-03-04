@@ -89,6 +89,8 @@ const mockApi: {
   exitFullscreen: ReturnType<typeof vi.fn>;
   isFullscreen: ReturnType<typeof vi.fn>;
   onFullscreenChange: ReturnType<typeof vi.fn>;
+  onFullscreenTransitionStart: ReturnType<typeof vi.fn>;
+  onFullscreenTransitionEnd: ReturnType<typeof vi.fn>;
   onMenuEvent: ReturnType<typeof vi.fn>;
   enterMiniplayer: ReturnType<typeof vi.fn>;
   exitMiniplayer: ReturnType<typeof vi.fn>;
@@ -118,6 +120,8 @@ const mockApi: {
   exitFullscreen: vi.fn().mockResolvedValue(undefined),
   isFullscreen: vi.fn().mockResolvedValue(false),
   onFullscreenChange: vi.fn().mockReturnValue((): void => {}),
+  onFullscreenTransitionStart: vi.fn().mockReturnValue((): void => {}),
+  onFullscreenTransitionEnd: vi.fn().mockReturnValue((): void => {}),
   onMenuEvent: vi.fn().mockReturnValue((): void => {}),
   enterMiniplayer: vi.fn().mockResolvedValue(undefined),
   exitMiniplayer: vi.fn().mockResolvedValue(undefined),

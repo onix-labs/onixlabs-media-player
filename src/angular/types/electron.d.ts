@@ -450,6 +450,24 @@ export interface MediaPlayerAPI {
   onFullscreenChange: (callback: (isFullscreen: boolean) => void) => () => void;
 
   /**
+   * Registers a callback for fullscreen transition start.
+   * Called when the fullscreen transition begins. Use this to pause
+   * intensive rendering to reduce GPU spike during transition.
+   * @param callback - Function called when transition starts
+   * @returns Cleanup function to unregister the listener
+   */
+  onFullscreenTransitionStart: (callback: () => void) => () => void;
+
+  /**
+   * Registers a callback for fullscreen transition end.
+   * Called when the fullscreen transition completes. Use this to resume
+   * normal rendering after the transition.
+   * @param callback - Function called when transition ends
+   * @returns Cleanup function to unregister the listener
+   */
+  onFullscreenTransitionEnd: (callback: () => void) => () => void;
+
+  /**
    * Registers a callback for application menu events.
    * Called when user selects menu items from the native application menu.
    * @param event - The menu event name (e.g., 'showConfig', 'openFile', 'togglePlayPause')

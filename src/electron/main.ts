@@ -862,19 +862,42 @@ class Program {
       return logPath;
     });
 
-    // Fullscreen control
+    // Fullscreen control - uses simpleFullScreen on Windows to reduce GPU spike
     ipcMain.handle("window:enterFullscreen", (): void => {
       windowLogger.debug('Entering fullscreen');
-      this.window?.setFullScreen(true);
+      // Notify renderer to pause intensive rendering during transition
+      this.window?.webContents.send('window:fullscreenTransitionStart');
+      if (process.platform === 'win32') {
+        // Windows: use simpleFullScreen to avoid swap chain recreation overhead
+        this.window?.setSimpleFullScreen(true);
+        // Notify renderer that transition is complete (simpleFullScreen is synchronous)
+        this.window?.webContents.send('window:fullscreenTransitionEnd');
+      } else {
+        // macOS/Linux: use native fullscreen (transition end sent via event handler)
+        this.window?.setFullScreen(true);
+      }
     });
 
     ipcMain.handle("window:exitFullscreen", (): void => {
       windowLogger.debug('Exiting fullscreen');
-      this.window?.setFullScreen(false);
+      // Notify renderer to pause intensive rendering during transition
+      this.window?.webContents.send('window:fullscreenTransitionStart');
+      if (process.platform === 'win32') {
+        // Windows: use simpleFullScreen
+        this.window?.setSimpleFullScreen(false);
+        // Notify renderer that transition is complete
+        this.window?.webContents.send('window:fullscreenTransitionEnd');
+      } else {
+        // macOS/Linux: use native fullscreen
+        this.window?.setFullScreen(false);
+      }
     });
 
     ipcMain.handle("window:isFullscreen", (): boolean => {
-      const isFullscreen: boolean = this.window?.isFullScreen() || false;
+      // On Windows, check simpleFullScreen state; on macOS/Linux, check native fullscreen
+      const isFullscreen: boolean = process.platform === 'win32'
+        ? (this.window?.isSimpleFullScreen() || false)
+        : (this.window?.isFullScreen() || false);
       windowLogger.debug(`isFullscreen query: ${isFullscreen}`);
       return isFullscreen;
     });
@@ -888,12 +911,22 @@ class Program {
       }
 
       // If in fullscreen, exit first and wait for transition to complete
-      if (this.window.isFullScreen()) {
+      const isFullscreen: boolean = process.platform === 'win32'
+        ? this.window.isSimpleFullScreen()
+        : this.window.isFullScreen();
+
+      if (isFullscreen) {
         windowLogger.debug('Exiting fullscreen before entering miniplayer');
-        await new Promise<void>((resolve: () => void): void => {
-          this.window?.once('leave-full-screen', resolve);
-          this.window?.setFullScreen(false);
-        });
+        if (process.platform === 'win32') {
+          // Windows: simpleFullScreen is synchronous
+          this.window.setSimpleFullScreen(false);
+        } else {
+          // macOS/Linux: wait for async transition
+          await new Promise<void>((resolve: () => void): void => {
+            this.window?.once('leave-full-screen', resolve);
+            this.window?.setFullScreen(false);
+          });
+        }
       }
 
       // Store current bounds for restoration (after exiting fullscreen)
@@ -1137,9 +1170,12 @@ class Program {
       });
     });
 
-    // Notify renderer when fullscreen state changes (including via green button)
+    // Notify renderer when fullscreen state changes (including via green button on macOS)
+    // These events only fire on macOS/Linux with native fullscreen, not on Windows with simpleFullScreen
     this.window.on('enter-full-screen', (): void => {
       windowLogger.info('Entered fullscreen');
+      // Notify renderer that transition is complete (for macOS/Linux native fullscreen)
+      this.window?.webContents.send('window:fullscreenTransitionEnd');
       this.window?.webContents.send('window:fullscreenChanged', true);
       this.window?.webContents.send('window:viewModeChanged', 'fullscreen');
     });
@@ -1148,6 +1184,8 @@ class Program {
       // Send the mode we're returning to (miniplayer or desktop)
       const mode: string = this.isInMiniPlayerMode ? 'miniplayer' : 'desktop';
       windowLogger.info(`Left fullscreen, returning to ${mode}`);
+      // Notify renderer that transition is complete (for macOS/Linux native fullscreen)
+      this.window?.webContents.send('window:fullscreenTransitionEnd');
       this.window?.webContents.send('window:fullscreenChanged', false);
       this.window?.webContents.send('window:viewModeChanged', mode);
     });
@@ -1223,7 +1261,19 @@ class Program {
       },
       onToggleFullscreen: (): void => {
         if (this.window) {
-          this.window.setFullScreen(!this.window.isFullScreen());
+          // Notify renderer to pause intensive rendering during transition
+          this.window.webContents.send('window:fullscreenTransitionStart');
+          if (process.platform === 'win32') {
+            // Windows: use simpleFullScreen to reduce GPU spike
+            const isCurrentlyFullscreen: boolean = this.window.isSimpleFullScreen();
+            this.window.setSimpleFullScreen(!isCurrentlyFullscreen);
+            // Notify renderer that transition is complete
+            this.window.webContents.send('window:fullscreenTransitionEnd');
+            this.window.webContents.send('window:fullscreenChanged', !isCurrentlyFullscreen);
+          } else {
+            // macOS/Linux: use native fullscreen (events handled by window event listeners)
+            this.window.setFullScreen(!this.window.isFullScreen());
+          }
         }
       },
       onTogglePlayPause: (): void => {

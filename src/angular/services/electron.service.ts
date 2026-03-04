@@ -111,6 +111,12 @@ export class ElectronService implements OnDestroy {
   /** Whether the application is in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
+  /** Signal that increments when fullscreen transition starts (pause rendering) */
+  public readonly fullscreenTransitionStart: ReturnType<typeof signal<number>> = signal<number>(0);
+
+  /** Signal that increments when fullscreen transition ends (resume rendering) */
+  public readonly fullscreenTransitionEnd: ReturnType<typeof signal<number>> = signal<number>(0);
+
   /** Current view mode: desktop, miniplayer, or fullscreen */
   public readonly viewMode: ReturnType<typeof signal<'desktop' | 'miniplayer' | 'fullscreen'>> = signal<'desktop' | 'miniplayer' | 'fullscreen'>('desktop');
 
@@ -123,6 +129,12 @@ export class ElectronService implements OnDestroy {
 
   /** Cleanup function for fullscreen change listener */
   private fullscreenCleanup: (() => void) | null = null;
+
+  /** Cleanup function for fullscreen transition start listener */
+  private fullscreenTransitionStartCleanup: (() => void) | null = null;
+
+  /** Cleanup function for fullscreen transition end listener */
+  private fullscreenTransitionEndCleanup: (() => void) | null = null;
 
   /** Cleanup function for view mode change listener */
   private viewModeCleanup: (() => void) | null = null;
@@ -315,6 +327,7 @@ export class ElectronService implements OnDestroy {
    * Sets up fullscreen state tracking via IPC.
    *
    * Gets the initial state and registers a listener for changes.
+   * Also sets up transition event listeners for pausing rendering.
    * All updates run through NgZone to trigger Angular change detection.
    */
   private setupFullscreenListener(): void {
@@ -331,6 +344,19 @@ export class ElectronService implements OnDestroy {
     this.fullscreenCleanup = this.api.onFullscreenChange((isFullscreen: boolean): void => {
       this.ngZone.run((): void => {
         this.isFullscreen.set(isFullscreen);
+      });
+    });
+
+    // Listen for fullscreen transition events (for pausing rendering)
+    this.fullscreenTransitionStartCleanup = this.api.onFullscreenTransitionStart((): void => {
+      this.ngZone.run((): void => {
+        this.fullscreenTransitionStart.update((v: number): number => v + 1);
+      });
+    });
+
+    this.fullscreenTransitionEndCleanup = this.api.onFullscreenTransitionEnd((): void => {
+      this.ngZone.run((): void => {
+        this.fullscreenTransitionEnd.update((v: number): number => v + 1);
       });
     });
   }
@@ -1511,6 +1537,8 @@ export class ElectronService implements OnDestroy {
   public ngOnDestroy(): void {
     this.eventSource?.close();
     this.fullscreenCleanup?.();
+    this.fullscreenTransitionStartCleanup?.();
+    this.fullscreenTransitionEndCleanup?.();
     this.viewModeCleanup?.();
     this.prepareForCloseCleanup?.();
     this.exitConfigurationModeCleanup?.();

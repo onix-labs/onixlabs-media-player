@@ -186,6 +186,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Timeout ID for pending crossfade callback (used to cancel stale pause/stop actions) */
   private fadeTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
+  /** Whether rendering is paused during fullscreen transition */
+  private renderingPaused: boolean = false;
+
   // ============================================================================
   // Constructor - Reactive Effects
   // ============================================================================
@@ -344,6 +347,24 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
       if (this.visualization) {
         this.visualization.setFftSize(fftSize);
+      }
+    });
+
+    // React to fullscreen transition start - pause rendering to reduce GPU spike
+    effect((): void => {
+      const _transitionCount: number = this.electron.fullscreenTransitionStart();
+      // Only pause if we've received at least one transition event (count > 0)
+      if (_transitionCount > 0) {
+        this.renderingPaused = true;
+      }
+    });
+
+    // React to fullscreen transition end - resume rendering
+    effect((): void => {
+      const _transitionCount: number = this.electron.fullscreenTransitionEnd();
+      // Only resume if we've received at least one transition event (count > 0)
+      if (_transitionCount > 0) {
+        this.renderingPaused = false;
       }
     });
   }
@@ -755,12 +776,18 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * Uses requestAnimationFrame for smooth rendering. The loop handles
    * canvas resizing and delegates drawing to the visualization.
    * Frame rate can be limited via settings (0 = uncapped, or 15/30/60 FPS).
+   * Rendering is paused during fullscreen transitions to reduce GPU spike.
    */
   private startAnimationLoop(): void {
     const canvas: HTMLCanvasElement = this.canvasRef.nativeElement;
 
     const draw: (timestamp: number) => void = (timestamp: number): void => {
       this.animationId = requestAnimationFrame(draw);
+
+      // Skip rendering during fullscreen transition to reduce GPU spike
+      if (this.renderingPaused) {
+        return;
+      }
 
       // Frame rate limiting
       const maxFps: number = this.settings.maxFrameRate();

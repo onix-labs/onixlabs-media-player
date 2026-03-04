@@ -152,6 +152,26 @@ export interface MediaPlayerAPI {
   readonly onFullscreenChange: (callback: (isFullscreen: boolean) => void) => () => void;
 
   /**
+   * Registers a callback for fullscreen transition start.
+   * Called when the fullscreen transition begins. Use this to pause
+   * intensive rendering to reduce GPU spike during transition.
+   *
+   * @param callback - Function called when transition starts
+   * @returns Cleanup function to remove the listener
+   */
+  readonly onFullscreenTransitionStart: (callback: () => void) => () => void;
+
+  /**
+   * Registers a callback for fullscreen transition end.
+   * Called when the fullscreen transition completes. Use this to resume
+   * normal rendering after the transition.
+   *
+   * @param callback - Function called when transition ends
+   * @returns Cleanup function to remove the listener
+   */
+  readonly onFullscreenTransitionEnd: (callback: () => void) => () => void;
+
+  /**
    * Registers a callback for menu events.
    * Called when user selects menu items from the application menu.
    *
@@ -331,6 +351,16 @@ const api: MediaPlayerAPI = {
     const listener: (_event: Electron.IpcRendererEvent, isFullscreen: boolean) => void = (_event: Electron.IpcRendererEvent, isFullscreen: boolean): void => callback(isFullscreen);
     ipcRenderer.on('window:fullscreenChanged', listener);
     return (): void => { ipcRenderer.removeListener('window:fullscreenChanged', listener); };
+  },
+  onFullscreenTransitionStart: (callback: () => void): () => void => {
+    const listener: () => void = (): void => callback();
+    ipcRenderer.on('window:fullscreenTransitionStart', listener);
+    return (): void => { ipcRenderer.removeListener('window:fullscreenTransitionStart', listener); };
+  },
+  onFullscreenTransitionEnd: (callback: () => void): () => void => {
+    const listener: () => void = (): void => callback();
+    ipcRenderer.on('window:fullscreenTransitionEnd', listener);
+    return (): void => { ipcRenderer.removeListener('window:fullscreenTransitionEnd', listener); };
   },
   onMenuEvent: (event: string, callback: (...args: unknown[]) => void): () => void => {
     const channel: string = `menu:${event}`;
