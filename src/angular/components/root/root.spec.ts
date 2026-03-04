@@ -39,7 +39,6 @@ function createMockElectronService(): Record<string, unknown> {
     viewMode: signal('desktop' as 'desktop' | 'miniplayer' | 'fullscreen'),
     menuShowConfig: signal(0),
     menuOpenFile: signal(0),
-    menuShowAbout: signal(0),
     menuShowHelp: signal(0),
     menuOpenPlaylist: signal(0),
     menuSavePlaylist: signal(0),
@@ -539,56 +538,6 @@ describe('Root', (): void => {
   });
 
   // ============================================================================
-  // About Mode
-  // ============================================================================
-
-  describe('enterAboutMode', (): void => {
-    it('sets isAboutMode to true and notifies main process', async (): Promise<void> => {
-      await component.enterAboutMode();
-
-      expect(component.isAboutMode()).toBe(true);
-      expect(mockElectron['setConfigurationMode']).toHaveBeenCalledWith(true);
-    });
-
-    it('exits fullscreen before entering about mode', async (): Promise<void> => {
-      (mockElectron['isFullscreen'] as WritableSignal<boolean>).set(true);
-
-      await component.enterAboutMode();
-
-      expect(mockElectron['exitFullscreen']).toHaveBeenCalled();
-      expect(component.isAboutMode()).toBe(true);
-    });
-
-    it('exits miniplayer before entering about mode', async (): Promise<void> => {
-      (mockElectron['viewMode'] as WritableSignal<'desktop' | 'miniplayer' | 'fullscreen'>).set('miniplayer');
-
-      await component.enterAboutMode();
-
-      expect(mockElectron['exitMiniplayer']).toHaveBeenCalled();
-      expect(component.isAboutMode()).toBe(true);
-    });
-
-    it('does not exit fullscreen when not fullscreen', async (): Promise<void> => {
-      (mockElectron['isFullscreen'] as WritableSignal<boolean>).set(false);
-
-      await component.enterAboutMode();
-
-      expect(mockElectron['exitFullscreen']).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('exitAboutMode', (): void => {
-    it('sets isAboutMode to false and notifies main process', (): void => {
-      component.isAboutMode.set(true);
-
-      component.exitAboutMode();
-
-      expect(component.isAboutMode()).toBe(false);
-      expect(mockElectron['setConfigurationMode']).toHaveBeenCalledWith(false);
-    });
-  });
-
-  // ============================================================================
   // Help Mode
   // ============================================================================
 
@@ -615,15 +564,6 @@ describe('Root', (): void => {
       await component.enterHelpMode();
 
       expect(mockElectron['exitMiniplayer']).toHaveBeenCalled();
-      expect(component.isHelpMode()).toBe(true);
-    });
-
-    it('exits about mode when entering help mode', async (): Promise<void> => {
-      component.isAboutMode.set(true);
-
-      await component.enterHelpMode();
-
-      expect(component.isAboutMode()).toBe(false);
       expect(component.isHelpMode()).toBe(true);
     });
 

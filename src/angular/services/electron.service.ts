@@ -176,9 +176,6 @@ export class ElectronService implements OnDestroy {
   /** Signal emitted when "Open File" menu item is selected */
   public readonly menuOpenFile: ReturnType<typeof signal<number>> = signal<number>(0);
 
-  /** Signal emitted when "Show About" menu item is selected */
-  public readonly menuShowAbout: ReturnType<typeof signal<number>> = signal<number>(0);
-
   /** Signal emitted when "Show Help" menu item is selected */
   public readonly menuShowHelp: ReturnType<typeof signal<number>> = signal<number>(0);
 
@@ -396,15 +393,6 @@ export class ElectronService implements OnDestroy {
       this.api.onMenuEvent('openFile', (): void => {
         this.ngZone.run((): void => {
           this.menuOpenFile.update((v: number): number => v + 1);
-        });
-      })
-    );
-
-    // Show about menu item
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('showAbout', (): void => {
-        this.ngZone.run((): void => {
-          this.menuShowAbout.update((v: number): number => v + 1);
         });
       })
     );

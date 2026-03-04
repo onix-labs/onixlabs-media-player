@@ -87,6 +87,14 @@ export class Root implements OnDestroy {
    */
   public readonly isConfigurationWindow: boolean = new URLSearchParams(window.location.search).get('window') === 'configuration';
 
+  /**
+   * Whether this is the standalone about window.
+   *
+   * Checked once at startup by looking for ?window=about in the URL.
+   * When true, only the AboutView is rendered (no header, outlet, controls).
+   */
+  public readonly isAboutWindow: boolean = new URLSearchParams(window.location.search).get('window') === 'about';
+
   /** Service for dependency state */
   private readonly deps: DependencyService = inject(DependencyService);
 
@@ -120,9 +128,6 @@ export class Root implements OnDestroy {
     return (this.isFullscreen() || this.isMiniplayer()) && !this.showControls();
   });
 
-
-  /** Whether the about view is displayed (about mode) */
-  public readonly isAboutMode: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** Whether the help topics view is displayed (help mode) */
   public readonly isHelpMode: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
@@ -233,14 +238,6 @@ export class Root implements OnDestroy {
       }
     });
 
-    // React to "Show About" menu event
-    effect((): void => {
-      const trigger: number = this.electron.menuShowAbout();
-      if (trigger > 0) {
-        void this.enterAboutMode();
-      }
-    });
-
     // React to "Show Help" menu event
     effect((): void => {
       const trigger: number = this.electron.menuShowHelp();
@@ -282,13 +279,11 @@ export class Root implements OnDestroy {
       }
     });
 
-    // React to window close button pressed in about or help mode
+    // React to window close button pressed in help mode
     effect((): void => {
       const trigger: number = this.electron.exitConfigurationModeRequested();
       if (trigger > 0) {
-        if (untracked((): boolean => this.isAboutMode())) {
-          this.exitAboutMode();
-        } else if (untracked((): boolean => this.isHelpMode())) {
+        if (untracked((): boolean => this.isHelpMode())) {
           this.exitHelpMode();
         }
       }
@@ -395,7 +390,7 @@ export class Root implements OnDestroy {
 
       // Only toggle playlist in desktop mode (not fullscreen, not miniplayer)
       const isDesktopMode: boolean = !this.isFullscreen() && !this.isMiniplayer();
-      if (isDesktopMode && !this.isAboutMode() && !this.isHelpMode()) {
+      if (isDesktopMode && !this.isHelpMode()) {
         this.layoutOutlet?.togglePlaylist();
       }
     }
@@ -502,42 +497,6 @@ export class Root implements OnDestroy {
   }
 
   // ============================================================================
-  // Public Methods - About Mode
-  // ============================================================================
-
-  /**
-   * Enters about mode, displaying the about view.
-   * Called when the About menu item is clicked.
-   * Exits fullscreen/miniplayer mode first to ensure proper window display.
-   *
-   * Uses untracked() to prevent signal reads from registering as effect
-   * dependencies when called from an effect (e.g., menu event handler).
-   */
-  public async enterAboutMode(): Promise<void> {
-    // Exit fullscreen if active (untracked to avoid effect dependency)
-    if (untracked((): boolean => this.isFullscreen())) {
-      await this.electron.exitFullscreen();
-    }
-    // Exit miniplayer if active (untracked to avoid effect dependency)
-    if (untracked((): boolean => this.isMiniplayer())) {
-      await this.electron.exitMiniplayer();
-    }
-    this.isAboutMode.set(true);
-    // Notify main process so close button returns to media player instead of quitting
-    await this.electron.setConfigurationMode(true);
-  }
-
-  /**
-   * Exits about mode, returning to the media player view.
-   * Called when the window close button is pressed while in about mode.
-   */
-  public exitAboutMode(): void {
-    this.isAboutMode.set(false);
-    // Notify main process that we're no longer in an overlay mode
-    void this.electron.setConfigurationMode(false);
-  }
-
-  // ============================================================================
   // Public Methods - Help Mode
   // ============================================================================
 
@@ -558,8 +517,6 @@ export class Root implements OnDestroy {
     if (untracked((): boolean => this.isMiniplayer())) {
       await this.electron.exitMiniplayer();
     }
-    // Exit about mode if active
-    this.isAboutMode.set(false);
     this.isHelpMode.set(true);
     // Notify main process so close button returns to media player instead of quitting
     await this.electron.setConfigurationMode(true);

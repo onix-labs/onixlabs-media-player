@@ -1,24 +1,24 @@
 @if (isConfigurationWindow) {
   <!-- Standalone configuration window -->
   <app-configuration-view [isStandaloneWindow]="true"/>
+} @else if (isAboutWindow) {
+  <!-- Standalone about window -->
+  <app-about-view/>
 } @else {
   <!-- Main application window -->
-  @if (isAboutMode()) {
-    <app-about-view/>
-  }
   @if (isHelpMode()) {
     <app-help-topics-view/>
   }
   @if (isMiniplayer()) {
     <div class="miniplayer-container"
-         [class.hidden]="isAboutMode() || isHelpMode()"
+         [class.hidden]="isHelpMode()"
          (mouseenter)="onMiniplayerMouseEnter()"
          (mouseleave)="onMiniplayerMouseLeave()">
       <app-layout-outlet class="miniplayer-content" (openDependencySettings)="onOpenDependencySettings()"/>
       <app-miniplayer-controls class="miniplayer-overlay" [class.controls-visible]="showControls()"/>
     </div>
   } @else {
-    <div class="media-player-view" [class.hidden]="isAboutMode() || isHelpMode()">
+    <div class="media-player-view" [class.hidden]="isHelpMode()">
       @if (!isFullscreen() && isMacOS()) {
         <app-layout-header/>
       }

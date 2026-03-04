@@ -270,11 +270,6 @@ describe('ElectronService', (): void => {
         expect(value).toBe(0);
       });
 
-      it('should have menuShowAbout start at 0', (): void => {
-        const value: number = service.menuShowAbout();
-        expect(value).toBe(0);
-      });
-
       it('should have menuSelectVisualization start as empty string', (): void => {
         const value: string = service.menuSelectVisualization();
         expect(value).toBe('');

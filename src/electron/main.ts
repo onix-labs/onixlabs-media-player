@@ -128,6 +128,9 @@ class Program {
   /** The configuration window instance, null when closed */
   private configWindow: BrowserWindow | null = null;
 
+  /** The about window instance, null when closed */
+  private aboutWindow: BrowserWindow | null = null;
+
   /** The unified HTTP media server instance */
   private mediaServer: UnifiedMediaServer | null = null;
 
@@ -610,6 +613,105 @@ class Program {
   }
 
   /**
+   * Opens the About window.
+   *
+   * Creates a new BrowserWindow that displays application information
+   * including version, dependencies, and links.
+   *
+   * If the window already exists, it will be focused instead of creating a new one.
+   */
+  private showAboutWindow(): void {
+    // If window already exists, focus it
+    if (this.aboutWindow && !this.aboutWindow.isDestroyed()) {
+      this.aboutWindow.focus();
+      return;
+    }
+
+    const projectRoot: string = Program.getProjectRoot();
+    const preloadPath: string = path.join(projectRoot, "src", "electron", "dist", "preload.js");
+
+    // Fixed size, non-resizable dialog
+    const aboutWindowWidth: number = 480;
+    const aboutWindowHeight: number = 640;
+
+    // Platform-specific options for hidden title bar with traffic lights (macOS only)
+    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
+    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? true;
+    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
+    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
+
+    let aboutPlatformOptions: Electron.BrowserWindowConstructorOptions = {};
+    if (process.platform === 'darwin') {
+      aboutPlatformOptions = {
+        titleBarStyle: 'hiddenInset',
+        trafficLightPosition: {x: 12, y: 13},
+        ...(glassEnabled
+          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
+          : { backgroundColor }
+        )
+      };
+    } else if (process.platform === 'win32') {
+      aboutPlatformOptions = glassEnabled
+        ? { backgroundMaterial: 'acrylic' as const }
+        : { backgroundColor };
+    } else {
+      aboutPlatformOptions = { backgroundColor };
+    }
+
+    this.aboutWindow = new BrowserWindow({
+      width: aboutWindowWidth,
+      height: aboutWindowHeight,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      center: true,
+      parent: this.window ?? undefined,
+      modal: false,
+      show: false,
+      title: 'About ONIXPlayer',
+      ...aboutPlatformOptions,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        preload: preloadPath,
+        zoomFactor: 1.0,
+        webSecurity: true
+      }
+    });
+
+    // Hide menu bar on Windows/Linux
+    this.aboutWindow.setMenuBarVisibility(false);
+
+    // Load the Angular app with about window parameter
+    const baseUrl: string = app.isPackaged
+      ? `http://127.0.0.1:${this.serverPort}/`
+      : Program.DEVELOPMENT_SERVER_URL;
+    const aboutUrl: string = `${baseUrl}?window=about`;
+
+    void this.aboutWindow.loadURL(aboutUrl);
+
+    // Show when ready
+    this.aboutWindow.once('ready-to-show', (): void => {
+      this.aboutWindow?.show();
+    });
+
+    // Clean up reference when closed
+    this.aboutWindow.on('closed', (): void => {
+      this.aboutWindow = null;
+    });
+
+    // Prevent zoom
+    this.aboutWindow.webContents.on('before-input-event', (_event: Electron.Event, input: Electron.Input): void => {
+      if ((input.control || input.meta) && (input.key === '+' || input.key === '-' || input.key === '=' || input.key === '0')) {
+        _event.preventDefault();
+      }
+    });
+    this.aboutWindow.webContents.setVisualZoomLevelLimits(1, 1);
+  }
+
+  /**
    * Sets up IPC handlers for communication with the renderer process.
    *
    * Handlers registered:
@@ -1079,7 +1181,7 @@ class Program {
         this.showConfigurationWindow();
       },
       onShowAbout: (): void => {
-        this.window?.webContents.send('menu:showAbout');
+        this.showAboutWindow();
       },
       onShowHelp: (): void => {
         this.window?.webContents.send('menu:showHelp');
