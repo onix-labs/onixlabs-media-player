@@ -334,6 +334,31 @@
                     </div>
                   }
 
+                  <!-- Strobe Frequency -->
+                  @if (hasApplicableSetting(vizId, 'strobeFrequency')) {
+                    <div class="setting-row">
+                      <div class="setting-label">
+                        <label>Strobe Frequency</label>
+                        <p class="setting-description">
+                          Controls how fast the waveform strobes on/off (Hz).
+                        </p>
+                      </div>
+                      <div class="setting-control slider-control">
+                        <input
+                          type="range"
+                          min="1"
+                          max="20"
+                          step="1"
+                          [value]="getEffectiveSetting(vizId, 'strobeFrequency')"
+                          (input)="onPerVizSettingChange(vizId, 'strobeFrequency', $event)"
+                        />
+                        <span class="slider-value">
+                          {{ formatStrobeFrequency(vizId) }}
+                        </span>
+                      </div>
+                    </div>
+                  }
+
                   <!-- Bar Color Bottom (Analyzer only) -->
                   @if (hasApplicableSetting(vizId, 'barColorBottom')) {
                     <div class="setting-row">

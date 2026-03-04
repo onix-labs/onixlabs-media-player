@@ -60,6 +60,7 @@ export interface VisualizationLocalSettings {
   readonly barColorBottom?: string;
   readonly barColorMiddle?: string;
   readonly barColorTop?: string;
+  readonly strobeFrequency?: number;
 }
 
 /**
@@ -330,6 +331,7 @@ export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> 
   barColorBottom: '#00cc00',
   barColorMiddle: '#cccc00',
   barColorTop: '#cc0000',
+  strobeFrequency: 5,
 };
 
 /**
@@ -973,6 +975,8 @@ export class SettingsService implements OnDestroy {
       validValue = this.clamp(value as number, 0, 1) as VisualizationLocalSettings[K];
     } else if (setting === 'lineWidth') {
       validValue = this.clamp(value as number, 1, 5) as VisualizationLocalSettings[K];
+    } else if (setting === 'strobeFrequency') {
+      validValue = this.clamp(value as number, 1, 20) as VisualizationLocalSettings[K];
     } else if (setting === 'barDensity') {
       const validDensities: readonly BarDensity[] = ['low', 'medium', 'high'];
       if (!validDensities.includes(value as BarDensity)) {

@@ -96,6 +96,9 @@ export const DEFAULT_GLOW_INTENSITY: number = 0.5;
 /** Default waveform smoothing */
 export const DEFAULT_WAVEFORM_SMOOTHING: number = 0.5;
 
+/** Default strobe frequency in Hz */
+export const DEFAULT_STROBE_FREQUENCY: number = 5;
+
 /** Standard glow blur radius */
 export const GLOW_BLUR_RADIUS: number = 12;
 

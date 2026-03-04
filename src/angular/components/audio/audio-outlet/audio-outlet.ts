@@ -366,6 +366,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const barColorBottom: string = this.settings.getEffectiveSetting(vizId, 'barColorBottom') as string ?? '#00cc00';
     const barColorMiddle: string = this.settings.getEffectiveSetting(vizId, 'barColorMiddle') as string ?? '#cccc00';
     const barColorTop: string = this.settings.getEffectiveSetting(vizId, 'barColorTop') as string ?? '#cc0000';
+    const strobeFrequency: number = this.settings.getEffectiveSetting(vizId, 'strobeFrequency') ?? 5;
 
     // Apply settings
     this.visualization.setSensitivity(sensitivity);
@@ -377,6 +378,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualization.setBarColorBottom(barColorBottom);
     this.visualization.setBarColorMiddle(barColorMiddle);
     this.visualization.setBarColorTop(barColorTop);
+    this.visualization.setStrobeFrequency(strobeFrequency);
   }
 
   // ============================================================================

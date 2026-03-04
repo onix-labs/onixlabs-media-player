@@ -510,6 +510,7 @@ export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> 
   barColorBottom: '#00cc00',
   barColorMiddle: '#cccc00',
   barColorTop: '#cc0000',
+  strobeFrequency: 5,
 };
 
 /** Valid FFT size values */
@@ -1575,6 +1576,9 @@ export class SettingsManager {
         ...(this.isValidHexColor(vizSettingsObj['barColorTop'])
           ? {barColorTop: vizSettingsObj['barColorTop'] as string}
           : {}),
+        ...(this.isValidStrobeFrequency(vizSettingsObj['strobeFrequency'])
+          ? {strobeFrequency: vizSettingsObj['strobeFrequency'] as number}
+          : {}),
       };
 
       // Only add if there are any valid settings
@@ -2088,6 +2092,18 @@ export class SettingsManager {
    */
   private isValidHexColor(value: unknown): value is string {
     return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
+  }
+
+  /**
+   * Type guard to check if a value is a valid strobe frequency.
+   *
+   * Valid values are integers between 1 and 20 Hz.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid strobe frequency
+   */
+  private isValidStrobeFrequency(value: unknown): value is number {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 20;
   }
 
   /**

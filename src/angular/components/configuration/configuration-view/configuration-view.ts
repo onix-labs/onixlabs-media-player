@@ -1334,6 +1334,18 @@ export class ConfigurationView {
   }
 
   /**
+   * Formats the strobe frequency setting with units.
+   * Uses getEffectiveSetting to ensure reactive updates.
+   *
+   * @param vizId - The visualization ID
+   * @returns The strobe frequency with Hz units (e.g., "5 Hz")
+   */
+  public formatStrobeFrequency(vizId: string): string {
+    const value: number = this.getEffectiveSetting(vizId, 'strobeFrequency') as number;
+    return `${Math.round(value)} Hz`;
+  }
+
+  /**
    * Handles per-visualization setting change.
    *
    * @param vizId - The visualization ID

@@ -31,6 +31,7 @@ import {
   DEFAULT_LINE_WIDTH,
   DEFAULT_GLOW_INTENSITY,
   DEFAULT_WAVEFORM_SMOOTHING,
+  DEFAULT_STROBE_FREQUENCY,
   GLOW_BLUR_RADIUS,
   GLOW_OPACITY_MULTIPLIER,
   GLOW_LINE_WIDTH_OFFSET,
@@ -182,6 +183,12 @@ export abstract class Visualization {
    * Only affects Analyzer visualization.
    */
   protected barColorTop: string = '#cc0000';
+
+  /**
+   * Strobe frequency in Hz (1-20, default 5).
+   * Only affects visualizations with strobe effects.
+   */
+  protected strobeFrequency: number = DEFAULT_STROBE_FREQUENCY;
 
   /**
    * Current fade alpha level (0 = fully visible, 1 = fully transparent).
@@ -480,6 +487,24 @@ export abstract class Visualization {
    */
   protected onBarColorsChanged(): void {
     // Override in subclasses that use bar colors
+  }
+
+  /**
+   * Sets the strobe frequency for strobe-based visualizations.
+   *
+   * @param frequency - Strobe frequency in Hz (1-20)
+   */
+  public setStrobeFrequency(frequency: number): void {
+    this.strobeFrequency = Math.max(1, Math.min(20, frequency));
+  }
+
+  /**
+   * Gets the current strobe frequency.
+   *
+   * @returns Current strobe frequency in Hz (1-20)
+   */
+  public getStrobeFrequency(): number {
+    return this.strobeFrequency;
   }
 
   /**
