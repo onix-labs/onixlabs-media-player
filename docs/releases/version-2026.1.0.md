@@ -72,14 +72,16 @@ ONIXPlayer 2026.1.0 introduces a first-run setup wizard, soundfont selection for
 
 ## Downloads
 
-| Platform           | File                                     |
-| ------------------ | ---------------------------------------- |
-| macOS              | ONIXPlayer-2026.1.0.dmg                  |
-| macOS (zip)        | ONIXPlayer-2026.1.0-mac.zip              |
-| Windows            | ONIXPlayer Setup 2026.1.0.exe            |
-| Windows (portable) | ONIXPlayer 2026.1.0.exe                  |
-| Linux (AppImage)   | ONIXPlayer-2026.1.0.AppImage             |
-| Linux (deb)        | onixlabs-media-player_2026.1.0_amd64.deb |
+| Platform               | File                                     |
+| ---------------------- | ---------------------------------------- |
+| macOS (Apple Silicon)  | ONIXPlayer-2026.1.0-arm64.dmg            |
+| macOS (Intel)          | ONIXPlayer-2026.1.0-x64.dmg              |
+| macOS (Apple Silicon)  | ONIXPlayer-2026.1.0-arm64-mac.zip        |
+| macOS (Intel)          | ONIXPlayer-2026.1.0-x64-mac.zip          |
+| Windows                | ONIXPlayer Setup 2026.1.0.exe            |
+| Windows (portable)     | ONIXPlayer 2026.1.0.exe                  |
+| Linux (AppImage)       | ONIXPlayer-2026.1.0.AppImage             |
+| Linux (deb)            | onixlabs-media-player_2026.1.0_amd64.deb |
 
 ---
 

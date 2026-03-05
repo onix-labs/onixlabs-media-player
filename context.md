@@ -1625,6 +1625,20 @@ Example: `./docs/releases/version-2026.1.0.md`
 5. Push tag to remote (`git push origin 2026.1.0`)
 6. Create GitHub release from the tag
 
+### macOS Build Architectures
+
+macOS builds **must** include both architectures:
+- **x64** — Intel Macs
+- **arm64** — Apple Silicon (M1/M2/M3/M4)
+
+This is configured in `package.json` under `build.mac.target`:
+```json
+"target": [
+  { "target": "dmg", "arch": ["x64", "arm64"] },
+  { "target": "zip", "arch": ["x64", "arm64"] }
+]
+```
+
 ---
 
 ## Future Considerations

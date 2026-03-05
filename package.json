@@ -109,8 +109,14 @@
       "category": "public.app-category.entertainment",
       "icon": "public/icon-macos.png",
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
       ]
     },
     "win": {
