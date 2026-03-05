@@ -1,4 +1,4 @@
-# ONIXPlayer 2026.0.0
+# ONIXPlayer 2026.0.1
 
 **Release Date:** March 2026
 **Platform:** macOS, Windows, Linux
@@ -8,7 +8,7 @@
 
 ## Overview
 
-ONIXPlayer 2026.0.0 is the initial public release of a cross-platform media player featuring real-time audio visualizations, video playback with on-the-fly transcoding, and MIDI synthesis support.
+ONIXPlayer 2026.0.1 is the initial public release of a cross-platform media player featuring real-time audio visualizations, video playback with on-the-fly transcoding, and MIDI synthesis support.
 
 ---
 
@@ -148,12 +148,12 @@ sudo pacman -S ffmpeg fluidsynth
 
 | Platform | File |
 |----------|------|
-| macOS | ONIXPlayer-2026.0.0.dmg |
-| macOS (zip) | ONIXPlayer-2026.0.0-mac.zip |
-| Windows | ONIXPlayer Setup 2026.0.0.exe |
-| Windows (portable) | ONIXPlayer 2026.0.0.exe |
-| Linux (AppImage) | ONIXPlayer-2026.0.0.AppImage |
-| Linux (deb) | onixlabs-media-player_2026.0.0_amd64.deb |
+| macOS | ONIXPlayer-2026.0.1.dmg |
+| macOS (zip) | ONIXPlayer-2026.0.1-mac.zip |
+| Windows | ONIXPlayer Setup 2026.0.1.exe |
+| Windows (portable) | ONIXPlayer 2026.0.1.exe |
+| Linux (AppImage) | ONIXPlayer-2026.0.1.AppImage |
+| Linux (deb) | onixlabs-media-player_2026.0.1_amd64.deb |
 
 ---
 

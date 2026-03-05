@@ -21,6 +21,7 @@
     "test:electron:watch": "vitest --config vitest.electron.config.ts",
     "lint": "eslint src/angular src/electron --ext .ts",
     "dev": "npm run lint && npm run build:preload && concurrently -k \"ng serve\" \"wait-on http://localhost:4200 && cross-env NODE_ENV=development DEV_SERVER_URL=http://localhost:4200 NODE_OPTIONS=--import=tsx electron src/electron/main.ts\"",
+    "dev:first-run": "npm run lint && npm run build:preload && concurrently -k \"ng serve\" \"wait-on http://localhost:4200 && cross-env NODE_ENV=development DEV_SERVER_URL=http://localhost:4200 NODE_OPTIONS=--import=tsx electron src/electron/main.ts --first-run\"",
     "build:electron": "tsx scripts/build-electron.ts",
     "build:electron:dev": "tsc -p src/electron/tsconfig.prod.json",
     "build:preload": "esbuild src/electron/preload.ts --bundle --platform=node --format=esm --outfile=src/electron/dist/preload.js --external:electron",
