@@ -976,6 +976,77 @@
       background: var(--text-2);
       border: 1px solid var(--text-8);
       border-radius: 4px;
+      transition: background 0.15s ease, border-color 0.15s ease;
+
+      &.selected {
+        background: rgba(74, 222, 128, 0.05);
+        border-color: rgba(74, 222, 128, 0.2);
+
+        @include light-mode {
+          background: rgba(34, 197, 94, 0.08);
+          border-color: rgba(34, 197, 94, 0.3);
+        }
+      }
+
+      .soundfont-select {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        background: none;
+        border: none;
+        cursor: pointer;
+      }
+
+      .soundfont-radio {
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--text-30);
+        border-radius: 50%;
+        transition: border-color 0.15s ease, background 0.15s ease;
+        position: relative;
+
+        &::after {
+          content: '';
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: transparent;
+          transition: background 0.15s ease;
+        }
+
+        &.active {
+          border-color: $color-success;
+
+          @include light-mode {
+            border-color: #22c55e;
+          }
+
+          &::after {
+            background: $color-success;
+
+            @include light-mode {
+              background: #22c55e;
+            }
+          }
+        }
+
+        .soundfont-select:hover & {
+          border-color: var(--text-50);
+        }
+
+        .soundfont-select:hover &.active {
+          border-color: $color-success;
+
+          @include light-mode {
+            border-color: #22c55e;
+          }
+        }
+      }
 
       > i {
         color: var(--text-30);

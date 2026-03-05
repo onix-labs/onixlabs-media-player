@@ -134,6 +134,9 @@ class Program {
   /** The setup wizard window instance, null when closed */
   private setupWizardWindow: BrowserWindow | null = null;
 
+  /** Whether the setup wizard was closed legitimately (via complete/skip) */
+  private setupWizardClosedLegitimately: boolean = false;
+
   /** The unified HTTP media server instance */
   private mediaServer: UnifiedMediaServer | null = null;
 
@@ -263,6 +266,9 @@ class Program {
     this.mediaServer = new UnifiedMediaServer(staticPath);
     this.serverPort = await this.mediaServer.start();
     mainLogger.info(`Media server started on port ${this.serverPort}`);
+
+    // Nuke any stale MIDI cache from previous sessions
+    this.mediaServer.nukeMidiCache();
 
     // Register callback to update menu when shuffle/repeat mode changes
     this.mediaServer.onModeChange((shuffle: boolean, repeat: boolean): void => {
@@ -750,6 +756,9 @@ class Program {
       });
     }
 
+    // Reset the legitimate close flag
+    this.setupWizardClosedLegitimately = false;
+
     const projectRoot: string = Program.getProjectRoot();
     const preloadPath: string = path.join(projectRoot, "src", "electron", "dist", "preload.js");
     const iconPath: string = path.join(projectRoot, "public", "icon-windows-linux.png");
@@ -820,10 +829,19 @@ class Program {
     // Show when ready
     this.setupWizardWindow.show();
 
-    // Wait for wizard completion
+    // Wait for wizard completion or direct close
     return new Promise((resolve: () => void): void => {
       this.setupWizardWindow?.on('closed', (): void => {
         this.setupWizardWindow = null;
+
+        // If the wizard was closed directly (clicking X) rather than via complete/skip,
+        // quit the app entirely - don't proceed to the main window
+        if (!this.setupWizardClosedLegitimately) {
+          mainLogger.info('Setup wizard closed directly - quitting application');
+          app.quit();
+          return;
+        }
+
         resolve();
       });
     });
@@ -1287,12 +1305,14 @@ class Program {
     ipcMain.handle("setup:complete", (): void => {
       ipcLogger.info('Setup wizard completed');
       this.mediaServer?.getSettingsManager().markSetupComplete();
+      this.setupWizardClosedLegitimately = true;
       this.setupWizardWindow?.close();
     });
 
     // Skip the setup wizard (will show again next launch)
     ipcMain.handle("setup:skip", (): void => {
       ipcLogger.info('Setup wizard skipped');
+      this.setupWizardClosedLegitimately = true;
       this.setupWizardWindow?.close();
     });
 
@@ -1310,19 +1330,17 @@ class Program {
         const bundledPath: string = path.join(Program.getProjectRoot(), 'dist', 'onixlabs-media-player', 'browser', 'soundfonts', 'OPL3-FM-128M.sf2');
 
         // Check if the bundled soundfont exists
-        if (!fs.existsSync(bundledPath)) {
+        if (!existsSync(bundledPath)) {
           ipcLogger.error(`Bundled soundfont not found at: ${bundledPath}`);
           return false;
         }
 
         // Install it using the dependency manager
-        const result: {success: boolean} = depManager.installSoundFont(bundledPath);
-        if (result.success) {
-          ipcLogger.info('Bundled OPL3 soundfont installed successfully');
-          // Broadcast the updated state
-          this.mediaServer?.broadcastDependencyState();
-        }
-        return result.success;
+        const soundFontInfo: import('./dependency-manager.js').SoundFontInfo = depManager.installSoundFont(bundledPath);
+        ipcLogger.info(`Bundled OPL3 soundfont installed successfully: ${soundFontInfo.fileName}`);
+        // Broadcast the updated state
+        this.mediaServer?.broadcastDependencyState();
+        return true;
       } catch (error) {
         ipcLogger.error(`Failed to install bundled soundfont: ${error}`);
         return false;
@@ -1381,6 +1399,10 @@ class Program {
 
       Promise.race([fadePromise, timeout]).then((): void => {
         windowLogger.info('Destroying window');
+        // Close all child windows before destroying main window
+        this.closeAllChildWindows();
+        // Nuke MIDI cache on close
+        this.mediaServer?.nukeMidiCache();
         this.window?.destroy();
       });
     });
@@ -1595,6 +1617,28 @@ class Program {
       }
 
       this.window.on("closed", this.onClosed.bind(this));
+    }
+  }
+
+  /**
+   * Closes all child windows (configuration, about, setup wizard).
+   * Called when the main window is closing to ensure clean shutdown.
+   */
+  private closeAllChildWindows(): void {
+    if (this.configWindow && !this.configWindow.isDestroyed()) {
+      windowLogger.debug('Closing configuration window');
+      this.configWindow.destroy();
+      this.configWindow = null;
+    }
+    if (this.aboutWindow && !this.aboutWindow.isDestroyed()) {
+      windowLogger.debug('Closing about window');
+      this.aboutWindow.destroy();
+      this.aboutWindow = null;
+    }
+    if (this.setupWizardWindow && !this.setupWizardWindow.isDestroyed()) {
+      windowLogger.debug('Closing setup wizard window');
+      this.setupWizardWindow.destroy();
+      this.setupWizardWindow = null;
     }
   }
 

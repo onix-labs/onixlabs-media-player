@@ -298,6 +298,21 @@ export class DependencyService implements OnDestroy {
   }
 
   /**
+   * Sets the active SoundFont for MIDI playback.
+   * Pass null to reset to auto-selection (first available).
+   */
+  public async setActiveSoundFont(fileName: string | null): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    await fetch(`${serverUrl}/dependencies/soundfont/select`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({fileName}),
+    });
+  }
+
+  /**
    * Re-detects all binaries and refreshes the dependency state.
    */
   public async refreshDependencies(): Promise<void> {

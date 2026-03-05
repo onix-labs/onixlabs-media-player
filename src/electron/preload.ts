@@ -283,6 +283,14 @@ export interface MediaPlayerAPI {
   readonly setConfigurationMode: (enabled: boolean) => Promise<void>;
 
   /**
+   * Shows the standalone configuration window.
+   * Opens a new window with the settings view.
+   *
+   * @param initialCategory - Optional initial category to display
+   */
+  readonly showConfigurationWindow: (initialCategory?: string) => Promise<void>;
+
+  /**
    * Registers a callback for when the close button is pressed in configuration mode.
    * The main process intercepts the close and tells the renderer to exit config mode instead.
    *

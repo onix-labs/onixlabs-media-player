@@ -12,5 +12,5 @@
     "types": ["node"]
   },
   "include": ["./*.ts"],
-  "exclude": ["dist"]
+  "exclude": ["dist", "./*.spec.ts"]
 }

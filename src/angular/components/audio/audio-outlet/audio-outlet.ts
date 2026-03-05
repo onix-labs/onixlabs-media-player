@@ -208,11 +208,14 @@ export class AudioOutlet implements OnInit, OnDestroy {
     // Also depends on playbackState to detect same-track re-selection:
     // when the server enters 'loading', currentFilePath is always cleared
     // so the same file gets reloaded on re-selection.
+    // Also watches forceReloadCounter for soundfont changes that require re-render.
     effect((): void => {
       const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
       const state: string = this.mediaPlayer.playbackState();
+      const forceReload: number = this.electron.forceReloadCounter();
 
-      if (state === 'loading') {
+      // Clear cached path on loading or force reload (soundfont change)
+      if (state === 'loading' || forceReload > 0) {
         this.currentFilePath = null;
       }
 
@@ -524,8 +527,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
     this.currentFilePath = filePath;
 
-    // Build the stream URL
-    const url: string = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}`;
+    // Build the stream URL with cache-buster to force fresh fetch after soundfont change
+    const cacheBuster: number = this.electron.forceReloadCounter();
+    const url: string = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}&r=${cacheBuster}`;
 
     // Initialize audio context if needed (must be after user gesture)
     if (!this.isInitialized) {

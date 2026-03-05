@@ -709,6 +709,11 @@ export class ConfigurationView {
     (): SoundFontInfo[] => this.dependencyService.soundFonts()
   );
 
+  /** Active SoundFont path (full path to currently selected soundfont) */
+  public readonly activeSoundFontPath: ReturnType<typeof computed<string | null>> = computed(
+    (): string | null => this.dependencyService.activeSoundFont()
+  );
+
   /** Whether FluidSynth is installed (for showing SoundFont section) */
   public readonly fluidsynthInstalled: ReturnType<typeof computed<boolean>> = computed(
     (): boolean => this.dependencyService.fluidsynthInstalled()
@@ -1223,6 +1228,21 @@ export class ConfigurationView {
    */
   public async onRemoveSoundFont(fileName: string): Promise<void> {
     await this.dependencyService.removeSoundFont(fileName);
+  }
+
+  /**
+   * Selects a SoundFont as the active one for MIDI playback.
+   */
+  public async onSelectSoundFont(fileName: string): Promise<void> {
+    await this.dependencyService.setActiveSoundFont(fileName);
+  }
+
+  /**
+   * Checks if a SoundFont is the currently active one.
+   * Compares by file path since that's what activeSoundFont contains.
+   */
+  public isActiveSoundFont(sf: SoundFontInfo): boolean {
+    return sf.filePath === this.activeSoundFontPath();
   }
 
   /**

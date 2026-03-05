@@ -21,7 +21,7 @@
 
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { createHash } from 'crypto';
-import { createReadStream, statSync, existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, Stats } from 'fs';
+import { createReadStream, statSync, existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, rmdirSync, Stats } from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { SettingsManager } from './settings-manager.js';
@@ -390,8 +390,9 @@ export class UnifiedMediaServer {
   /**
    * Broadcasts dependency state via SSE and notifies the callback.
    */
-  private broadcastDependencyState(): void {
-    const state: DependencyState = this.deps.getState();
+  public broadcastDependencyState(): void {
+    const preferredSoundFont: string | null = this.settings.getActiveSoundFontFileName();
+    const state: DependencyState = this.deps.getState(preferredSoundFont);
     this.sse.broadcast('dependencies:state', state);
     this.onDependencyStateChangeCallback?.(state.ffmpeg.installed, state.fluidsynth.installed);
   }
@@ -603,6 +604,8 @@ export class UnifiedMediaServer {
         await this.handleSoundFontInstall(req, res);
       } else if (pathname === '/dependencies/soundfont/remove' && method === 'POST') {
         await this.handleSoundFontRemove(req, res);
+      } else if (pathname === '/dependencies/soundfont/select' && method === 'POST') {
+        await this.handleSoundFontSelect(req, res);
       } else if (pathname === '/dependencies/refresh' && method === 'POST') {
         this.handleDependenciesRefresh(res);
       } else if (this.staticPath) {
@@ -656,7 +659,8 @@ export class UnifiedMediaServer {
     res.write(`event: playback:volume\ndata: ${JSON.stringify({ volume: this.playback.volume, muted: this.playback.muted })}\n\n`);
     res.write(`event: playlist:updated\ndata: ${JSON.stringify(this.playlist.getState())}\n\n`);
     res.write(`event: settings:updated\ndata: ${JSON.stringify(this.settings.getSettings())}\n\n`);
-    res.write(`event: dependencies:state\ndata: ${JSON.stringify(this.deps.getState())}\n\n`);
+    const preferredSoundFont: string | null = this.settings.getActiveSoundFontFileName();
+    res.write(`event: dependencies:state\ndata: ${JSON.stringify(this.deps.getState(preferredSoundFont))}\n\n`);
 
     if (this.playback.currentMedia) {
       res.write(`event: playback:loaded\ndata: ${JSON.stringify(this.playback.currentMedia)}\n\n`);
@@ -804,8 +808,15 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    * @param filePath - Absolute path to the file
    * @param ext - File extension (for MIME type lookup)
+   * @param options - Optional settings (noCache: disable browser caching)
    */
-  private serveDirectFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string, ext: string): void {
+  private serveDirectFile(
+    req: Readonly<IncomingMessage>,
+    res: Readonly<ServerResponse>,
+    filePath: string,
+    ext: string,
+    options?: {noCache?: boolean}
+  ): void {
     try {
       const stat: ReturnType<typeof statSync> = statSync(filePath);
       const fileSize: number = stat.size;
@@ -825,6 +836,7 @@ export class UnifiedMediaServer {
           'Content-Length': chunkSize,
           'Content-Type': mimeType,
           'Access-Control-Allow-Origin': '*',
+          ...(options?.noCache && {'Cache-Control': 'no-store, no-cache, must-revalidate'}),
         });
 
         createReadStream(filePath, { start, end, highWaterMark: 2 * 1024 * 1024 }).pipe(res); // 2MB buffer for NAS/network latency
@@ -835,6 +847,7 @@ export class UnifiedMediaServer {
           'Content-Type': mimeType,
           'Accept-Ranges': 'bytes',
           'Access-Control-Allow-Origin': '*',
+          ...(options?.noCache && {'Cache-Control': 'no-store, no-cache, must-revalidate'}),
         });
 
         createReadStream(filePath, { highWaterMark: 2 * 1024 * 1024 }).pipe(res); // 2MB buffer for NAS/network latency
@@ -1166,7 +1179,9 @@ export class UnifiedMediaServer {
   private hashMidiFile(filePath: string): string {
     const content: Buffer = readFileSync(filePath);
     const soundfont: string = this.findSoundFont() ?? '';
-    return createHash('sha256').update(soundfont).update(content).digest('hex').slice(0, 16);
+    const hash: string = createHash('sha256').update(soundfont).update(content).digest('hex').slice(0, 16);
+    midiLogger.info(`hashMidiFile: soundfont="${soundfont}", hash="${hash}"`);
+    return hash;
   }
 
   /**
@@ -1262,6 +1277,7 @@ export class UnifiedMediaServer {
       const audioBitrate: number = this.settings.getSettings().transcoding.audioBitrate;
 
       midiLogger.info(`Pre-rendering MIDI: ${path.basename(filePath)} → ${path.basename(tempFile)}`);
+      midiLogger.info(`Using SoundFont: ${soundfont}`);
 
       // Spawn FluidSynth: MIDI → raw PCM
       const fluidsynthArgs: string[] = [
@@ -1274,6 +1290,7 @@ export class UnifiedMediaServer {
         filePath
       ];
 
+      midiLogger.info(`FluidSynth command: ${fluidsynthBin} ${fluidsynthArgs.join(' ')}`);
       logProcessSpawn(midiLogger, 'fluidsynth (pre-render)', fluidsynthArgs);
       const fluidsynth: ChildProcess = spawn(fluidsynthBin, fluidsynthArgs);
 
@@ -1388,7 +1405,7 @@ export class UnifiedMediaServer {
         this.broadcastTime();
       }
       midiLogger.info(`Serving pre-rendered MIDI: ${path.basename(cached.tempFile)}`);
-      this.serveDirectFile(req, res, cached.tempFile, '.mp3');
+      this.serveDirectFile(req, res, cached.tempFile, '.mp3', {noCache: true});
       return;
     }
 
@@ -1401,7 +1418,7 @@ export class UnifiedMediaServer {
         this.playback.duration = entry.duration;
         this.broadcastTime();
       }
-      this.serveDirectFile(req, res, tempFile, '.mp3');
+      this.serveDirectFile(req, res, tempFile, '.mp3', {noCache: true});
     }).catch((err: Error): void => {
       midiLogger.error(`MIDI render failed: ${err.message}`);
       if (!res.headersSent) {
@@ -1414,11 +1431,15 @@ export class UnifiedMediaServer {
   /**
    * Finds the first available SoundFont file.
    * Delegates to DependencyManager which checks user-installed and system paths.
+   * Uses the user's preferred soundfont if set in settings.
    *
    * @returns Path to SoundFont file, or undefined if none found
    */
   private findSoundFont(): string | undefined {
-    return this.deps.findSoundFont();
+    const preferredSoundFont: string | null = this.settings.getActiveSoundFontFileName();
+    const result: string | undefined = this.deps.findSoundFont(preferredSoundFont);
+    midiLogger.info(`findSoundFont: preferred="${preferredSoundFont}", resolved="${result}"`);
+    return result;
   }
 
   // ============================================================================
@@ -1939,6 +1960,9 @@ export class UnifiedMediaServer {
     this.playback.state = 'stopped';
     this.playback.currentTime = 0;
     this.stopTimeTracking();
+
+    // Nuke MIDI cache on stop to ensure fresh renders next time
+    this.nukeMidiCache();
 
     // Select first item if playlist has items
     if (this.playlist.getState().items.length > 0) {
@@ -2736,8 +2760,9 @@ export class UnifiedMediaServer {
    * Returns the current dependency state.
    */
   private handleDependenciesGet(res: Readonly<ServerResponse>): void {
+    const preferredSoundFont: string | null = this.settings.getActiveSoundFontFileName();
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(this.deps.getState()));
+    res.end(JSON.stringify(this.deps.getState(preferredSoundFont)));
   }
 
   /**
@@ -2814,6 +2839,7 @@ export class UnifiedMediaServer {
 
   /**
    * Removes a SoundFont file from the app data directory.
+   * If the removed file was the active selection, clears the setting.
    */
   private async handleSoundFontRemove(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
@@ -2827,11 +2853,111 @@ export class UnifiedMediaServer {
 
     const removed: boolean = this.deps.removeSoundFont(fileName);
     if (removed) {
+      // Clear the active selection if we just removed the active soundfont
+      const activeSoundFont: string | null = this.settings.getActiveSoundFontFileName();
+      if (activeSoundFont === fileName) {
+        this.settings.setActiveSoundFontFileName(null);
+        this.clearMidiRenderCache();
+      }
       this.broadcastDependencyState();
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: removed }));
+  }
+
+  /**
+   * Selects a SoundFont as the active one for MIDI playback.
+   * Validates that the file exists before setting.
+   * If MIDI is currently playing, stops playback to force re-render with new soundfont.
+   */
+  private async handleSoundFontSelect(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const { fileName }: { fileName: string | null } = JSON.parse(body) as { fileName: string | null };
+
+    // Validate that the soundfont exists (if not null)
+    if (fileName !== null) {
+      const soundfonts: SoundFontInfo[] = this.deps.getSoundFonts();
+      const exists: boolean = soundfonts.some((sf: SoundFontInfo): boolean => sf.fileName === fileName);
+      if (!exists) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: `SoundFont "${fileName}" not found` }));
+        return;
+      }
+    }
+
+    // Check if MIDI is currently playing - if so, we need to stop and signal restart
+    const currentFile: string | undefined = this.playback.currentMedia?.filePath;
+    const isMidiPlaying: boolean = currentFile !== undefined &&
+      MIDI_FORMATS.has(path.extname(currentFile).toLowerCase()) &&
+      (this.playback.state === 'playing' || this.playback.state === 'paused');
+
+    // Update the setting
+    midiLogger.info(`Setting active SoundFont to: "${fileName}"`);
+    this.settings.setActiveSoundFontFileName(fileName);
+
+    // Nuke the entire MIDI cache (in-memory and disk)
+    this.nukeMidiCache();
+
+    // If MIDI was playing, stop it and signal restart
+    if (isMidiPlaying) {
+      midiLogger.info('SoundFont changed during MIDI playback - signaling restart');
+      this.playback.state = 'stopped';
+      this.playback.currentTime = 0;
+      this.broadcastState();
+      this.broadcastTime();
+      // Broadcast a special event for the frontend to restart playback
+      this.sse.broadcast('soundfont:changed', {restart: true, filePath: currentFile});
+    } else {
+      // Always broadcast soundfont change so frontend can invalidate its cache
+      this.sse.broadcast('soundfont:changed', {restart: false});
+    }
+
+    // Broadcast the updated state
+    this.broadcastDependencyState();
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, activeSoundFont: fileName }));
+  }
+
+  /**
+   * Completely nukes all MIDI render caches (in-memory and disk).
+   * Deletes the entire MIDI temp directory and clears all in-memory state.
+   * Call this on: app startup, app shutdown, playback stop, soundfont change.
+   */
+  public nukeMidiCache(): void {
+    // Clear in-memory caches
+    const cacheSize: number = this.midiRenderCache.size;
+    const inProgressSize: number = this.midiRenderInProgress.size;
+    this.midiRenderCache.clear();
+    this.midiRenderInProgress.clear();
+
+    // Delete the entire disk cache directory
+    const tempDir: string = path.join(app.getPath('temp'), 'onixplayer-midi');
+    let filesDeleted: number = 0;
+    try {
+      if (existsSync(tempDir)) {
+        const files: string[] = readdirSync(tempDir);
+        for (const file of files) {
+          try {
+            unlinkSync(path.join(tempDir, file));
+            filesDeleted++;
+          } catch {
+            // Ignore individual file deletion errors (may be in use)
+          }
+        }
+        // Try to remove the directory itself
+        try {
+          rmdirSync(tempDir);
+        } catch {
+          // Directory may not be empty if some files couldn't be deleted
+        }
+      }
+    } catch (err) {
+      midiLogger.warn(`Failed to clean MIDI cache directory: ${err}`);
+    }
+
+    midiLogger.info(`Nuked MIDI cache: ${cacheSize} in-memory, ${inProgressSize} in-progress, ${filesDeleted} disk files`);
   }
 
   /**
@@ -2841,7 +2967,8 @@ export class UnifiedMediaServer {
     this.deps.detectBinaries();
     this.broadcastDependencyState();
 
-    const state: DependencyState = this.deps.getState();
+    const preferredSoundFont: string | null = this.settings.getActiveSoundFontFileName();
+    const state: DependencyState = this.deps.getState(preferredSoundFont);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(state));
   }

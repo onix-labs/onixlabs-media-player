@@ -59,6 +59,8 @@ export interface VisualizationLocalSettings {
   readonly barColorMiddle?: string;
   /** Bar gradient top color (hex format, e.g., '#cc0000') - only for bars */
   readonly barColorTop?: string;
+  /** Strobe frequency in Hz (1-20) - only for modern visualization */
+  readonly strobeFrequency?: number;
 }
 
 /**
@@ -244,6 +246,8 @@ export interface ApplicationSettings {
   readonly controlsAutoHideDelay: number;
   /** Whether the setup wizard has been completed (default false) */
   readonly setupCompleted: boolean;
+  /** Active SoundFont file name (null = auto-select first available) */
+  readonly activeSoundFontFileName: string | null;
 }
 
 /**
@@ -426,6 +430,7 @@ export interface ApplicationSettingsUpdate {
   readonly serverPort?: number;
   readonly controlsAutoHideDelay?: number;
   readonly setupCompleted?: boolean;
+  readonly activeSoundFontFileName?: string | null;
 }
 
 /**
@@ -564,6 +569,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     serverPort: 0,  // 0 = auto-assign
     controlsAutoHideDelay: 5,  // 5 seconds default
     setupCompleted: false,  // false = show setup wizard on first run
+    activeSoundFontFileName: null,  // null = auto-select first available
   },
   playback: {
     defaultVolume: 0.5,  // 50% default volume
@@ -774,7 +780,7 @@ export class SettingsManager {
       }
     }
 
-    // Merge the update
+    // Merge the update (use hasOwnProperty to distinguish undefined from explicit null)
     this.settings = {
       ...this.settings,
       application: {
@@ -782,11 +788,33 @@ export class SettingsManager {
         serverPort: update.serverPort ?? this.settings.application.serverPort,
         controlsAutoHideDelay: update.controlsAutoHideDelay ?? this.settings.application.controlsAutoHideDelay,
         setupCompleted: update.setupCompleted ?? this.settings.application.setupCompleted,
+        activeSoundFontFileName: Object.prototype.hasOwnProperty.call(update, 'activeSoundFontFileName')
+          ? update.activeSoundFontFileName ?? null
+          : this.settings.application.activeSoundFontFileName,
       },
     };
 
     this.save();
     return this.settings;
+  }
+
+  /**
+   * Gets the active SoundFont file name.
+   *
+   * @returns The active SoundFont file name, or null if auto-selecting
+   */
+  public getActiveSoundFontFileName(): string | null {
+    return this.settings.application.activeSoundFontFileName;
+  }
+
+  /**
+   * Sets the active SoundFont file name.
+   *
+   * @param fileName - The file name to set as active, or null for auto-selection
+   * @returns The updated complete settings object
+   */
+  public setActiveSoundFontFileName(fileName: string | null): AppSettings {
+    return this.updateApplicationSettings({activeSoundFontFileName: fileName});
   }
 
   /**
@@ -1657,6 +1685,7 @@ export class SettingsManager {
     const serverPort: unknown = appObj['serverPort'];
     const controlsAutoHideDelay: unknown = appObj['controlsAutoHideDelay'];
     const setupCompleted: unknown = appObj['setupCompleted'];
+    const activeSoundFontFileName: unknown = appObj['activeSoundFontFileName'];
 
     return {
       serverPort: this.isValidPort(serverPort)
@@ -1668,6 +1697,9 @@ export class SettingsManager {
       setupCompleted: typeof setupCompleted === 'boolean'
         ? setupCompleted
         : DEFAULT_SETTINGS.application.setupCompleted,
+      activeSoundFontFileName: activeSoundFontFileName === null || typeof activeSoundFontFileName === 'string'
+        ? activeSoundFontFileName
+        : DEFAULT_SETTINGS.application.activeSoundFontFileName,
     };
   }
 

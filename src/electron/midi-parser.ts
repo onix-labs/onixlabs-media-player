@@ -77,6 +77,8 @@ export function parseMidiDuration(filePath: string): number {
       const trackEnd: number = offset + trackLength;
       let currentTick: number = 0;
 
+      let runningStatus: number = 0; // Track running status for channel messages
+
       // Parse track events
       while (offset < trackEnd && offset < buffer.length) {
         // Read variable-length delta time (max 4 bytes per MIDI spec)
@@ -94,7 +96,29 @@ export function parseMidiDuration(filePath: string): number {
 
         if (offset >= buffer.length) break;
 
-        const eventType: number = buffer[offset++];
+        let eventType: number = buffer[offset];
+
+        // Check for running status: if high bit is not set, use previous status
+        if ((eventType & 0x80) === 0) {
+          // Running status - reuse last channel message status
+          if (runningStatus === 0) {
+            // No previous status, skip this byte and continue
+            offset++;
+            continue;
+          }
+          eventType = runningStatus;
+          // Don't increment offset - the byte we read is data, not status
+        } else {
+          // Normal status byte - consume it
+          offset++;
+          // Update running status for channel messages (0x80-0xEF)
+          if (eventType >= 0x80 && eventType < 0xf0) {
+            runningStatus = eventType;
+          } else {
+            // System messages (0xF0-0xFF) clear running status
+            runningStatus = 0;
+          }
+        }
 
         // Meta event (0xFF)
         if (eventType === 0xff) {

@@ -287,14 +287,15 @@ export class DependencyManager {
 
   /**
    * Gets the full dependency state for broadcasting to the renderer.
+   * @param preferredSoundFont - Optional preferred SoundFont file name from settings
    * @returns Complete dependency state including SoundFont info
    */
-  public getState(): DependencyState {
+  public getState(preferredSoundFont?: string | null): DependencyState {
     return {
       ffmpeg: this.getDependencyStatus('ffmpeg'),
       fluidsynth: this.getDependencyStatus('fluidsynth'),
       soundfonts: this.getSoundFonts(),
-      activeSoundFont: this.findSoundFont() ?? null,
+      activeSoundFont: this.findSoundFont(preferredSoundFont) ?? null,
       hardwareEncoders: this.hardwareEncoders,
     };
   }
@@ -494,14 +495,29 @@ export class DependencyManager {
   }
 
   /**
-   * Finds the first available SoundFont file.
-   * Checks user-installed SoundFonts first, then system paths.
+   * Finds the active SoundFont file.
+   * If a preferred file name is provided and exists, uses that.
+   * Otherwise, checks user-installed SoundFonts first, then system paths.
    *
+   * @param preferredFileName - Optional preferred SoundFont file name
    * @returns Path to a SoundFont file, or undefined if none found
    */
-  public findSoundFont(): string | undefined {
-    // Check user-installed SoundFonts first
+  public findSoundFont(preferredFileName?: string | null): string | undefined {
     const userSoundFonts: SoundFontInfo[] = this.getSoundFonts();
+
+    // If a preferred file name is specified, try to use it
+    if (preferredFileName) {
+      const preferred: SoundFontInfo | undefined = userSoundFonts.find(
+        (sf: SoundFontInfo): boolean => sf.fileName === preferredFileName
+      );
+      if (preferred) {
+        return preferred.filePath;
+      }
+      // Preferred file not found, fall through to auto-selection
+      depsLogger.info(`Preferred SoundFont "${preferredFileName}" not found, auto-selecting`);
+    }
+
+    // Auto-select: use first user-installed SoundFont
     if (userSoundFonts.length > 0) {
       return userSoundFonts[0].filePath;
     }

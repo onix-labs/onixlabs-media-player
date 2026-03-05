@@ -160,12 +160,15 @@
                   <div class="soundfont-section">
                     <div class="soundfont-header">
                       <span class="soundfont-title">SoundFonts</span>
-                      <span class="soundfont-subtitle">SoundFont files are required for MIDI playback synthesis.</span>
+                      <span class="soundfont-subtitle">SoundFont files are required for MIDI playback synthesis. Select one to use for playback.</span>
                     </div>
                     @if (soundFonts().length > 0) {
                       <div class="soundfont-list">
                         @for (sf of soundFonts(); track sf.fileName) {
-                          <div class="soundfont-item">
+                          <div class="soundfont-item" [class.selected]="isActiveSoundFont(sf)">
+                            <button class="soundfont-select" (click)="onSelectSoundFont(sf.fileName)" (mouseup)="$any($event.currentTarget).blur()" title="Use this SoundFont">
+                              <div class="soundfont-radio" [class.active]="isActiveSoundFont(sf)"></div>
+                            </button>
                             <i class="fa-solid fa-music"></i>
                             <span class="soundfont-name">{{ sf.fileName }}</span>
                             <span class="soundfont-size">{{ formatFileSize(sf.sizeBytes) }}</span>

@@ -108,6 +108,9 @@ export class ElectronService implements OnDestroy {
   /** Brief pulse signal when media ends (true for 100ms) */
   public readonly mediaEnded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
+  /** Counter that increments when media source should be force-reloaded (e.g., soundfont change) */
+  public readonly forceReloadCounter: ReturnType<typeof signal<number>> = signal<number>(0);
+
   /** Whether the application is in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
@@ -875,6 +878,21 @@ export class ElectronService implements OnDestroy {
         const data: unknown = this.safeParseJSON<unknown>(e.data, null);
         if (data) {
           this.dependencyProgressCallback?.(data);
+        }
+      });
+    });
+
+    // Soundfont changed event - invalidate cache and optionally restart MIDI playback
+    this.eventSource.addEventListener('soundfont:changed', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
+        const data: { restart: boolean; filePath?: string } = this.safeParseJSON<{ restart: boolean; filePath?: string }>(e.data, { restart: false });
+        // Always increment force reload counter to invalidate browser cache for MIDI
+        this.forceReloadCounter.update((n: number): number => n + 1);
+        if (data.restart) {
+          // Small delay to ensure cache is fully cleared, then restart playback
+          setTimeout((): void => {
+            void this.play();
+          }, 100);
         }
       });
     });
