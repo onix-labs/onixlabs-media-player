@@ -23,7 +23,8 @@
 11. [Performance Optimizations](#performance-optimizations)
 12. [Build & Packaging](#build--packaging)
 13. [Dependencies](#dependencies)
-14. [Future Considerations](#future-considerations)
+14. [Release Workflow](#release-workflow)
+15. [Future Considerations](#future-considerations)
 
 ---
 
@@ -1584,6 +1585,45 @@ test-electron:
 - `fail-fast: false` ensures all platforms complete even if one fails
 - Cache the Electron binary and node_modules to save time
 - macOS runners are slower and cost more — consider limiting full E2E to release branches
+
+---
+
+## Release Workflow
+
+### Versioning
+
+ONIXPlayer uses **CalVer** (Calendar Versioning) with the format `YYYY.MAJOR.PATCH`:
+- `YYYY` — Year of release (e.g., 2026)
+- `MAJOR` — Incremented for new functionality
+- `PATCH` — Incremented for bug fixes
+
+### Git Tags
+
+When creating a release, the Git tag **must be the version number only** — no prefix, no suffix.
+
+| Correct | Incorrect |
+|---------|-----------|
+| `2026.0.0` | `v2026.0.0` |
+| `2026.1.2` | `version-2026.1.2` |
+| `2027.0.0` | `release/2027.0.0` |
+
+### Release Notes
+
+Release notes must be created at `./docs/releases/version-YYYY.M.P.md` where:
+- `YYYY` is the year of release
+- `M` is the major version (new functionality)
+- `P` is the patch version (bug fixes)
+
+Example: `./docs/releases/version-2026.1.0.md`
+
+### Release Checklist
+
+1. Update version in `package.json`
+2. Create release notes at `./docs/releases/version-X.Y.Z.md`
+3. Commit changes
+4. Create Git tag matching the version number exactly (e.g., `git tag 2026.1.0`)
+5. Push tag to remote (`git push origin 2026.1.0`)
+6. Create GitHub release from the tag
 
 ---
 

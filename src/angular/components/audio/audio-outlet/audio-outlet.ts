@@ -421,7 +421,20 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.setupUserGestureHandler();
     this.initVisualization();
     this.startAnimationLoop();
+
+    // Listen for when audio actually starts playing and notify server
+    // This allows the server to start time tracking at the right moment
+    const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
+    if (audio) {
+      this.onAudioPlaying = (): void => {
+        void this.electron.signalPlaybackStarted();
+      };
+      audio.addEventListener('playing', this.onAudioPlaying);
+    }
   }
+
+  /** Handler for audio 'playing' event - stored for cleanup */
+  private onAudioPlaying: (() => void) | null = null;
 
   /**
    * Cleanup when component is destroyed.
@@ -444,6 +457,12 @@ export class AudioOutlet implements OnInit, OnDestroy {
       document.removeEventListener('click', this.gestureHandler);
       document.removeEventListener('keydown', this.gestureHandler);
       this.gestureHandler = null;
+    }
+    // Clean up audio playing event listener
+    if (this.onAudioPlaying) {
+      const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
+      audio?.removeEventListener('playing', this.onAudioPlaying);
+      this.onAudioPlaying = null;
     }
   }
 
@@ -542,10 +561,11 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
     console.log(`Audio source loaded: ${filePath}`);
 
-    // If the server is already in 'playing' state (e.g. cached MIDI where the
-    // loading→playing transition happened before the source was set), start
-    // playback immediately so the play effect doesn't miss it.
-    if (this.mediaPlayer.isPlaying()) {
+    // For audio files, the server stays in 'loading' state until we signal playback started.
+    // Start playback immediately so the 'playing' event fires and triggers the state transition.
+    // Also handle 'playing' state for cases like cached MIDI or video files.
+    const state: string = this.mediaPlayer.playbackState();
+    if (state === 'loading' || state === 'playing') {
       this.resumeAudioContext();
       this.fadeToVolume(this.mediaPlayer.muted() ? 0 : this.mediaPlayer.volume());
       audio.play().catch(console.error);

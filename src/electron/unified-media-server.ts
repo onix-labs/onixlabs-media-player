@@ -550,6 +550,8 @@ export class UnifiedMediaServer {
         this.handlePause(res);
       } else if (pathname === '/player/stop' && method === 'POST') {
         this.handleStop(res);
+      } else if (pathname === '/player/started' && method === 'POST') {
+        this.handlePlaybackStarted(res);
       } else if (pathname === '/player/seek' && method === 'POST') {
         await this.handleSeek(req, res);
       } else if (pathname === '/player/volume' && method === 'POST') {
@@ -1902,15 +1904,36 @@ export class UnifiedMediaServer {
       this.playback.currentMedia = mediaInfo;
       this.playback.duration = mediaInfo.duration;
       this.playback.currentTime = 0;
-      this.playback.state = 'playing';
-      this.startTime = Date.now();
+
+      // Pre-render MIDI files before transitioning to 'playing' to avoid
+      // race condition where UI shows playing but audio hasn't loaded yet
+      const ext: string = path.extname(currentItem.filePath).toLowerCase();
+      if (MIDI_FORMATS.has(ext)) {
+        playbackLogger.info('Pre-rendering MIDI before playback...');
+        await this.renderMidiToFile(currentItem.filePath);
+        // Update duration from the rendered file (more accurate than MIDI parser)
+        const cacheEntry: {readonly tempFile: string; readonly duration: number} | undefined =
+          this.midiRenderCache.get(currentItem.filePath);
+        if (cacheEntry && cacheEntry.duration > 0) {
+          this.playback.duration = cacheEntry.duration;
+        }
+      }
+
+      // For audio files, keep state as 'loading' until frontend signals playback started.
+      // This prevents the UI from showing 'playing' before audio actually begins.
+      // For video files, transition to 'playing' immediately since video outlet handles timing.
+      if (mediaInfo.type === 'video') {
+        this.playback.state = 'playing';
+        this.startTime = Date.now();
+        this.startTimeTracking();
+      }
+      // Audio files stay in 'loading' - /player/started will transition to 'playing'
 
       this.sse.broadcast('playback:loaded', mediaInfo);
       this.broadcastState();
       this.broadcastTime();
-      this.startTimeTracking();
 
-      playbackLogger.info(`Playing: ${mediaInfo.title} (${mediaInfo.type}, ${mediaInfo.duration.toFixed(1)}s)`);
+      playbackLogger.info(`${mediaInfo.type === 'video' ? 'Playing' : 'Loaded (awaiting playback)'}: ${mediaInfo.title} (${mediaInfo.type}, ${mediaInfo.duration.toFixed(1)}s)`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, media: mediaInfo }));
     } catch (err) {
@@ -1971,6 +1994,42 @@ export class UnifiedMediaServer {
 
     this.broadcastState();
     this.broadcastTime();
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true }));
+  }
+
+  /**
+   * Handles playback started signal from frontend.
+   *
+   * Called when the audio/video element actually starts playing.
+   * This starts time tracking on the server to sync the seek bar.
+   * For audio files, this prevents the UI from showing playback
+   * before the audio has actually loaded and started.
+   *
+   * @param res - HTTP response to write to
+   */
+  private handlePlaybackStarted(res: Readonly<ServerResponse>): void {
+    // Accept either 'loading' (normal audio start) or 'playing' (video or already started)
+    if (this.playback.state !== 'loading' && this.playback.state !== 'playing') {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Not in loading or playing state' }));
+      return;
+    }
+
+    // Transition from 'loading' to 'playing' now that audio has actually started
+    if (this.playback.state === 'loading') {
+      playbackLogger.info('Audio playback started - transitioning to playing state');
+      this.playback.state = 'playing';
+      this.broadcastState();
+    }
+
+    // Only start time tracking if not already running
+    if (!this.timeUpdateInterval) {
+      playbackLogger.info('Beginning time tracking');
+      this.startTime = Date.now();
+      this.startTimeTracking();
+    }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true }));
@@ -2857,7 +2916,7 @@ export class UnifiedMediaServer {
       const activeSoundFont: string | null = this.settings.getActiveSoundFontFileName();
       if (activeSoundFont === fileName) {
         this.settings.setActiveSoundFontFileName(null);
-        this.clearMidiRenderCache();
+        this.nukeMidiCache();
       }
       this.broadcastDependencyState();
     }

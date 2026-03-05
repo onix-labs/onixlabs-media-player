@@ -1,4 +1,4 @@
-# ONIXPlayer 2026.0.1
+# ONIXPlayer 2026.0.0
 
 **Release Date:** March 2026
 **Platform:** macOS, Windows, Linux
@@ -8,7 +8,7 @@
 
 ## Overview
 
-ONIXPlayer 2026.0.1 is the initial public release of a cross-platform media player featuring real-time audio visualizations, video playback with on-the-fly transcoding, and MIDI synthesis support.
+ONIXPlayer 2026.0.0 is the initial public release of a cross-platform media player featuring real-time audio visualizations, video playback with on-the-fly transcoding, and MIDI synthesis support.
 
 ---
 
@@ -87,17 +87,17 @@ ONIXPlayer 2026.0.1 is the initial public release of a cross-platform media play
 
 ### Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| Space | Play/Pause |
-| Shift+Space | Stop |
-| Tab | Toggle playlist panel |
-| Ctrl/Cmd+D | Discreet mode (stop, clear, minimize) |
-| Ctrl/Cmd+O | Open file |
-| Ctrl/Cmd+Shift+O | Open playlist |
-| Ctrl/Cmd+S | Save playlist |
-| Escape | Exit fullscreen |
-| Shift+Click Previous/Next | Skip backward/forward |
+| Shortcut                  | Action                                |
+| ------------------------- | ------------------------------------- |
+| Space                     | Play/Pause                            |
+| Shift+Space               | Stop                                  |
+| Tab                       | Toggle playlist panel                 |
+| Ctrl/Cmd+D                | Discreet mode (stop, clear, minimize) |
+| Ctrl/Cmd+O                | Open file                             |
+| Ctrl/Cmd+Shift+O          | Open playlist                         |
+| Ctrl/Cmd+S                | Save playlist                         |
+| Escape                    | Exit fullscreen                       |
+| Shift+Click Previous/Next | Skip backward/forward                 |
 
 ### Settings
 
@@ -146,14 +146,14 @@ sudo pacman -S ffmpeg fluidsynth
 
 ## Downloads
 
-| Platform | File |
-|----------|------|
-| macOS | ONIXPlayer-2026.0.1.dmg |
-| macOS (zip) | ONIXPlayer-2026.0.1-mac.zip |
-| Windows | ONIXPlayer Setup 2026.0.1.exe |
-| Windows (portable) | ONIXPlayer 2026.0.1.exe |
-| Linux (AppImage) | ONIXPlayer-2026.0.1.AppImage |
-| Linux (deb) | onixlabs-media-player_2026.0.1_amd64.deb |
+| Platform           | File                                     |
+| ------------------ | ---------------------------------------- |
+| macOS              | ONIXPlayer-2026.0.0.dmg                  |
+| macOS (zip)        | ONIXPlayer-2026.0.0-mac.zip              |
+| Windows            | ONIXPlayer Setup 2026.0.0.exe            |
+| Windows (portable) | ONIXPlayer 2026.0.0.exe                  |
+| Linux (AppImage)   | ONIXPlayer-2026.0.0.AppImage             |
+| Linux (deb)        | onixlabs-media-player_2026.0.0_amd64.deb |
 
 ---
 

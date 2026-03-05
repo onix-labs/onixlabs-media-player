@@ -181,4 +181,5 @@ export type SSEEventType =
   | 'settings:updated'       // Application settings changed
   | 'dependencies:state'    // Dependency state changed
   | 'dependencies:progress' // Dependency install/uninstall progress
+  | 'soundfont:changed'     // Active soundfont changed (MIDI cache invalidation)
   | 'heartbeat';            // Keep-alive ping

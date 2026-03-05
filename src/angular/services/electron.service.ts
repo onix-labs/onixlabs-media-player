@@ -1155,6 +1155,15 @@ export class ElectronService implements OnDestroy {
   }
 
   /**
+   * Signals that audio playback has actually started.
+   * Called by the audio outlet when the audio element fires the 'playing' event.
+   * This starts time tracking on the server.
+   */
+  public async signalPlaybackStarted(): Promise<void> {
+    await this.post('/player/started');
+  }
+
+  /**
    * Seeks to a specific position in the current track.
    *
    * @param timeSeconds - Target position in seconds
