@@ -18,6 +18,7 @@ import {FormsModule} from '@angular/forms';
 import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
+import {EQ_FREQUENCIES, EQ_PRESETS, EQ_GAIN_MIN, EQ_GAIN_MAX, type EqualizerPreset} from '../../../services/equalizer';
 import type {DependencyId, DependencyState, DependencyStatus, SoundFontInfo, InstallProgress, HardwareEncoderInfo} from '../../../services/dependency.service';
 
 /**
@@ -315,6 +316,33 @@ export class ConfigurationView {
   public readonly currentAudioBitrate: ReturnType<typeof computed<AudioBitrate>> = computed(
     (): AudioBitrate => this.settingsService.audioBitrate()
   );
+
+  /** Whether the equalizer is enabled */
+  public readonly currentEqualizerEnabled: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.settingsService.equalizerEnabled()
+  );
+
+  /** Current equalizer preset identifier */
+  public readonly currentEqualizerPreset: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settingsService.equalizerPreset()
+  );
+
+  /** Current equalizer per-band gains in dB */
+  public readonly currentEqualizerBands: ReturnType<typeof computed<readonly number[]>> = computed(
+    (): readonly number[] => this.settingsService.equalizerBands()
+  );
+
+  /** Equalizer band centre frequencies (Hz) for labels */
+  public readonly equalizerFrequencies: readonly number[] = EQ_FREQUENCIES;
+
+  /** Equalizer preset options for the dropdown */
+  public readonly equalizerPresetOptions: readonly EqualizerPreset[] = EQ_PRESETS;
+
+  /** Minimum equalizer band gain (dB) */
+  public readonly equalizerGainMin: number = EQ_GAIN_MIN;
+
+  /** Maximum equalizer band gain (dB) */
+  public readonly equalizerGainMax: number = EQ_GAIN_MAX;
 
   /** Current server port (0 = auto-assign) */
   public readonly currentServerPort: ReturnType<typeof computed<number>> = computed(
@@ -822,6 +850,58 @@ export class ConfigurationView {
   public async onCrossfadeDurationChange(event: Event): Promise<void> {
     const duration: number = parseInt(getInputValue(event), 10);
     if (!isNaN(duration)) await this.settingsService.setCrossfadeDuration(duration);
+  }
+
+  /**
+   * Handles the equalizer enable toggle.
+   *
+   * @param event - The change event from the checkbox
+   */
+  public async onEqualizerToggle(event: Event): Promise<void> {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLInputElement) {
+      await this.settingsService.setEqualizerEnabled(target.checked);
+    }
+  }
+
+  /**
+   * Handles equalizer preset selection.
+   *
+   * @param event - The change event from the select
+   */
+  public async onEqualizerPresetChange(event: Event): Promise<void> {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLSelectElement) {
+      await this.settingsService.setEqualizerPreset(target.value);
+    }
+  }
+
+  /**
+   * Handles an equalizer band slider change.
+   *
+   * @param index - The band index (0-9)
+   * @param event - The input event from the slider
+   */
+  public async onEqualizerBandChange(index: number, event: Event): Promise<void> {
+    const gain: number = parseFloat(getInputValue(event));
+    if (!isNaN(gain)) await this.settingsService.setEqualizerBand(index, gain);
+  }
+
+  /**
+   * Resets the equalizer to flat.
+   */
+  public async onResetEqualizer(): Promise<void> {
+    await this.settingsService.resetEqualizer();
+  }
+
+  /**
+   * Formats a band frequency for display (e.g. 1000 -> "1k", 16000 -> "16k").
+   *
+   * @param hz - The frequency in Hz
+   * @returns A short display label
+   */
+  public formatFrequency(hz: number): string {
+    return hz >= 1000 ? `${hz / 1000}k` : `${hz}`;
   }
 
   /**

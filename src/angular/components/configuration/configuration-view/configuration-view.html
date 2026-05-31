@@ -711,6 +711,80 @@
                     </select>
                   </div>
                 </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="equalizer-enabled">Equalizer</label>
+                    <p class="setting-description">
+                      A 10-band graphic equalizer applied to all audio — music, MIDI, and video.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <label class="toggle">
+                      <input
+                        type="checkbox"
+                        id="equalizer-enabled"
+                        [checked]="currentEqualizerEnabled()"
+                        (change)="onEqualizerToggle($event)"
+                      />
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                @if (currentEqualizerEnabled()) {
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label for="equalizer-preset">Preset</label>
+                      <p class="setting-description">
+                        Choose a preset, or adjust the bands below to create a custom curve.
+                      </p>
+                    </div>
+                    <div class="setting-control">
+                      <select
+                        id="equalizer-preset"
+                        (change)="onEqualizerPresetChange($event)"
+                      >
+                        @for (preset of equalizerPresetOptions; track preset.value) {
+                          <option [value]="preset.value" [selected]="preset.value === currentEqualizerPreset()">{{ preset.label }}</option>
+                        }
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="equalizer-bands">
+                    @for (frequency of equalizerFrequencies; track frequency; let i = $index) {
+                      <div class="equalizer-band">
+                        <span class="equalizer-band-gain">{{ currentEqualizerBands()[i] > 0 ? '+' : '' }}{{ currentEqualizerBands()[i] }}</span>
+                        <input
+                          type="range"
+                          class="equalizer-band-slider"
+                          [min]="equalizerGainMin"
+                          [max]="equalizerGainMax"
+                          step="1"
+                          [value]="currentEqualizerBands()[i]"
+                          (input)="onEqualizerBandChange(i, $event)"
+                          [attr.aria-label]="formatFrequency(frequency) + 'Hz band'"
+                        />
+                        <span class="equalizer-band-freq">{{ formatFrequency(frequency) }}</span>
+                      </div>
+                    }
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label>Reset Equalizer</label>
+                      <p class="setting-description">
+                        Set every band back to flat (0 dB).
+                      </p>
+                    </div>
+                    <div class="setting-control">
+                      <button type="button" class="reset-button" (click)="onResetEqualizer()" (mouseup)="$any($event.currentTarget).blur()">
+                        Reset to Flat
+                      </button>
+                    </div>
+                  </div>
+                }
               </div>
             }
 
