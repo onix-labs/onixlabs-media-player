@@ -17,6 +17,7 @@
 
 import {Injectable, signal, computed, inject, effect, OnDestroy, EffectRef} from '@angular/core';
 import {ElectronService} from './electron.service';
+import {EQ_PRESETS, EQ_CUSTOM_PRESET, EQ_GAIN_MIN, EQ_GAIN_MAX, normalizeBands, flatBands, type EqualizerPreset} from './equalizer';
 
 // ============================================================================
 // Types
@@ -284,6 +285,18 @@ export interface AppearanceSettings {
 /**
  * Complete application settings structure.
  */
+/**
+ * Equalizer settings — a 10-band graphic equalizer applied to all audio.
+ */
+export interface EqualizerSettings {
+  /** Whether the equalizer is active */
+  readonly enabled: boolean;
+  /** Selected preset identifier ('flat', 'rock', …, or 'custom') */
+  readonly preset: string;
+  /** Per-band gains in dB (length 10, order matches EQ_FREQUENCIES) */
+  readonly bands: readonly number[];
+}
+
 export interface AppSettings {
   /** Settings schema version */
   readonly version: number;
@@ -299,6 +312,8 @@ export interface AppSettings {
   readonly appearance: AppearanceSettings;
   /** Subtitle appearance settings */
   readonly subtitles: SubtitleSettings;
+  /** Equalizer settings */
+  readonly equalizer: EqualizerSettings;
 }
 
 /**
@@ -404,6 +419,11 @@ const DEFAULT_SETTINGS: AppSettings = {
     shadowSpread: 2,
     shadowBlur: 2,
     shadowColor: '#000000',
+  },
+  equalizer: {
+    enabled: false,
+    preset: 'flat',
+    bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   },
 };
 
@@ -815,6 +835,21 @@ export class SettingsService implements OnDestroy {
     (): string => this.settings().subtitles?.shadowColor ?? '#000000'
   );
 
+  /** Whether the equalizer is enabled */
+  public readonly equalizerEnabled: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.settings().equalizer?.enabled ?? false
+  );
+
+  /** Selected equalizer preset identifier */
+  public readonly equalizerPreset: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settings().equalizer?.preset ?? 'flat'
+  );
+
+  /** Equalizer per-band gains in dB (always length 10) */
+  public readonly equalizerBands: ReturnType<typeof computed<readonly number[]>> = computed(
+    (): readonly number[] => normalizeBands(this.settings().equalizer?.bands)
+  );
+
   // ============================================================================
   // Private Helper Methods
   // ============================================================================
@@ -832,17 +867,28 @@ export class SettingsService implements OnDestroy {
    * @param value - The value to set
    */
   private async updateSetting<T>(category: string, field: string, value: T): Promise<void> {
+    await this.updateSettingGroup(category, {[field]: value});
+  }
+
+  /**
+   * Generic helper for updating several fields of a settings category in one
+   * HTTP PUT (e.g. an equalizer preset and its band gains together).
+   *
+   * @param category - Settings category
+   * @param update - Partial object of fields to update
+   */
+  private async updateSettingGroup(category: string, update: Record<string, unknown>): Promise<void> {
     const serverUrl: string = this.electron.serverUrl();
     if (!serverUrl) return;
 
     const response: Response = await fetch(`${serverUrl}/settings/${category}`, {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({[field]: value}),
+      body: JSON.stringify(update),
     });
 
     if (!response.ok) {
-      console.error(`[SettingsService] Failed to save ${field}: ${response.status}`);
+      console.error(`[SettingsService] Failed to save ${category}: ${response.status}`);
     }
   }
 
@@ -1107,6 +1153,60 @@ export class SettingsService implements OnDestroy {
    */
   public async setCrossfadeDuration(duration: number): Promise<void> {
     await this.updateSetting('playback', 'crossfadeDuration', this.clamp(Math.round(duration), 0, 500));
+  }
+
+  /**
+   * Enables or disables the equalizer.
+   *
+   * @param enabled - Whether the equalizer should be active
+   */
+  public async setEqualizerEnabled(enabled: boolean): Promise<void> {
+    await this.updateSetting('equalizer', 'enabled', enabled);
+  }
+
+  /**
+   * Applies a named equalizer preset. Selecting a built-in preset also sets
+   * its band gains; 'custom' leaves the current bands untouched.
+   *
+   * @param preset - The preset identifier
+   */
+  public async setEqualizerPreset(preset: string): Promise<void> {
+    const match: EqualizerPreset | undefined = EQ_PRESETS.find(
+      (p: EqualizerPreset): boolean => p.value === preset
+    );
+    if (!match) {
+      console.error(`[SettingsService] Invalid equalizer preset: ${preset}`);
+      return;
+    }
+    const update: {preset: string; bands?: number[]} = {preset: match.value};
+    if (match.bands) {
+      update.bands = normalizeBands(match.bands);
+    }
+    await this.updateSettingGroup('equalizer', update);
+  }
+
+  /**
+   * Sets a single equalizer band gain. Hand-tuning a band switches the
+   * preset to 'custom'.
+   *
+   * @param index - Band index (0-9)
+   * @param gain - Gain in dB (clamped to -12..12)
+   */
+  public async setEqualizerBand(index: number, gain: number): Promise<void> {
+    const bands: number[] = normalizeBands(this.equalizerBands());
+    if (index < 0 || index >= bands.length) {
+      console.error(`[SettingsService] Invalid equalizer band index: ${index}`);
+      return;
+    }
+    bands[index] = this.clamp(gain, EQ_GAIN_MIN, EQ_GAIN_MAX);
+    await this.updateSettingGroup('equalizer', {preset: EQ_CUSTOM_PRESET, bands});
+  }
+
+  /**
+   * Resets the equalizer to flat (all bands 0 dB, 'flat' preset).
+   */
+  public async resetEqualizer(): Promise<void> {
+    await this.updateSettingGroup('equalizer', {preset: 'flat', bands: flatBands()});
   }
 
   /**

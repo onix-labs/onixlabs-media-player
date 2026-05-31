@@ -88,6 +88,11 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       shadowBlur: 2,
       shadowColor: '#000000',
     },
+    equalizer: {
+      enabled: false,
+      preset: 'flat',
+      bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    },
   };
 
   return {...base, ...overrides};

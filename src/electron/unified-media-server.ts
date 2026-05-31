@@ -29,7 +29,7 @@ import { serverLogger, playlistLogger, playbackLogger, ffmpegLogger, midiLogger,
 import { app } from 'electron';
 import { DependencyManager } from './dependency-manager.js';
 import type { DependencyId, DependencyState, InstallProgress, SoundFontInfo, HardwareEncoderInfo } from './dependency-manager.js';
-import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate, SubtitleSettingsUpdate, RecentItemsSettings, HardwareAcceleration } from './settings-manager.js';
+import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate, SubtitleSettingsUpdate, EqualizerSettingsUpdate, RecentItemsSettings, HardwareAcceleration } from './settings-manager.js';
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
 import { SSEManager } from './sse-manager.js';
 import { PlaylistManager } from './playlist-manager.js';
@@ -596,6 +596,8 @@ export class UnifiedMediaServer {
         await this.handleSettingsAppearance(req, res);
       } else if (pathname === '/settings/subtitles' && method === 'PUT') {
         await this.handleSettingsSubtitles(req, res);
+      } else if (pathname === '/settings/equalizer' && method === 'PUT') {
+        await this.handleSettingsEqualizer(req, res);
       } else if (pathname === '/dependencies' && method === 'GET') {
         this.handleDependenciesGet(res);
       } else if (pathname === '/dependencies/install' && method === 'POST') {
@@ -2795,6 +2797,27 @@ export class UnifiedMediaServer {
     const update: SubtitleSettingsUpdate = JSON.parse(body) as SubtitleSettingsUpdate;
 
     const updatedSettings: AppSettings = this.settings.updateSubtitleSettings(update);
+
+    // Broadcast the updated settings to all clients
+    this.sse.broadcast('settings:updated', updatedSettings);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+  }
+
+  /**
+   * Handles PUT /settings/equalizer requests.
+   *
+   * Updates equalizer settings and broadcasts the change to all clients.
+   *
+   * @param req - Incoming HTTP request with EqualizerSettingsUpdate body
+   * @param res - HTTP response to write to
+   */
+  private async handleSettingsEqualizer(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const update: EqualizerSettingsUpdate = JSON.parse(body) as EqualizerSettingsUpdate;
+
+    const updatedSettings: AppSettings = this.settings.updateEqualizerSettings(update);
 
     // Broadcast the updated settings to all clients
     this.sse.broadcast('settings:updated', updatedSettings);

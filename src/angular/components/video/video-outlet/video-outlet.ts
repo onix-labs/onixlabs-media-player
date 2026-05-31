@@ -25,6 +25,7 @@ import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS, SubtitleFontFamily, PreferredAudioLanguage, PreferredSubtitleLanguage} from '../../../services/settings.service';
+import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equalizer';
 import type {PlaylistItem, SubtitleTrack, AudioTrack} from '../../../services/electron.service';
 
 /**
@@ -250,6 +251,15 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Path of the last successfully loaded video (state reached 'playing') */
   private lastSuccessfullyLoadedPath: string | null = null;
 
+  /**
+   * Web Audio graph for routing video audio through the equalizer.
+   * Created lazily on first playback (requires a user gesture).
+   */
+  private audioContext: AudioContext | null = null;
+  private audioSourceNode: MediaElementAudioSourceNode | null = null;
+  private equalizerFilters: BiquadFilterNode[] | null = null;
+  private audioGraphInitialized: boolean = false;
+
   /** Whether the current video requires transcoding */
   private isTranscoded: boolean = false;
 
@@ -295,6 +305,15 @@ export class VideoOutlet implements OnInit, OnDestroy {
    * - Mute changes: toggles video element muted state
    */
   public constructor() {
+    // Keep the equalizer chain in sync with settings (video audio)
+    effect((): void => {
+      const enabled: boolean = this.settings.equalizerEnabled();
+      const bands: readonly number[] = this.settings.equalizerBands();
+      if (this.equalizerFilters) {
+        applyEqualizerGains(this.equalizerFilters, bands, enabled);
+      }
+    });
+
     // React to track changes - load new video source.
     // Also handles same-track re-selection: when the user clicks on a track
     // that was already playing, we detect this by checking if the 'loading'
@@ -339,6 +358,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
       if (!video) return;
 
       if (state === 'playing') {
+        // Route video audio through the equalizer (lazy, needs a user gesture)
+        this.initVideoAudioGraph();
+        this.resumeAudioContext();
         if (video.src && video.readyState >= 2) {
           video.play().catch(console.error);
         }
@@ -542,6 +564,49 @@ export class VideoOutlet implements OnInit, OnDestroy {
   }
 
   // ============================================================================
+  // Web Audio (equalizer)
+  // ============================================================================
+
+  /**
+   * Lazily builds the Web Audio graph that routes the video element's audio
+   * through the equalizer: source → equalizer → destination.
+   *
+   * Created on first playback so it happens within a user gesture (required
+   * to start an AudioContext). The element's own volume/muted still apply
+   * (they affect the signal entering the graph), so existing volume, mute,
+   * and fade behaviour is unchanged.
+   */
+  private initVideoAudioGraph(): void {
+    if (this.audioGraphInitialized) return;
+    const video: HTMLVideoElement | undefined = this.videoRef?.nativeElement;
+    if (!video) return;
+
+    try {
+      this.audioContext = new AudioContext();
+      this.audioSourceNode = this.audioContext.createMediaElementSource(video);
+      this.equalizerFilters = createEqualizerFilters(this.audioContext);
+      applyEqualizerGains(this.equalizerFilters, this.settings.equalizerBands(), this.settings.equalizerEnabled());
+
+      this.audioSourceNode.connect(this.equalizerFilters[0]);
+      this.equalizerFilters[this.equalizerFilters.length - 1].connect(this.audioContext.destination);
+
+      this.audioGraphInitialized = true;
+    } catch (error: unknown) {
+      console.error('Failed to initialize video audio graph', error);
+    }
+  }
+
+  /**
+   * Resumes the AudioContext if suspended (it starts suspended until a
+   * user gesture). Without this, routed video audio would be silent.
+   */
+  private resumeAudioContext(): void {
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      this.audioContext.resume().catch(console.error);
+    }
+  }
+
+  // ============================================================================
   // Lifecycle Hooks
   // ============================================================================
 
@@ -568,6 +633,15 @@ export class VideoOutlet implements OnInit, OnDestroy {
     video.src = '';
     this.currentFilePath = null;
     this.lastSuccessfullyLoadedPath = null;
+
+    // Tear down the equalizer audio graph
+    if (this.audioContext) {
+      void this.audioContext.close().catch((): void => {});
+      this.audioContext = null;
+      this.audioSourceNode = null;
+      this.equalizerFilters = null;
+      this.audioGraphInitialized = false;
+    }
 
     // Remove event listeners
     if (this.videoErrorHandler) {

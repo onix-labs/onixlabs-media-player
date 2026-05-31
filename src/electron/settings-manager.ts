@@ -336,6 +336,18 @@ export interface SubtitleSettings {
 }
 
 /**
+ * Equalizer settings — a 10-band graphic equalizer applied to all audio.
+ */
+export interface EqualizerSettings {
+  /** Whether the equalizer is active (default false) */
+  readonly enabled: boolean;
+  /** Selected preset identifier ('flat', 'rock', …, or 'custom', default 'flat') */
+  readonly preset: string;
+  /** Per-band gains in dB (length 10, each clamped to -12..12, default all 0) */
+  readonly bands: readonly number[];
+}
+
+/**
  * Window bounds (position and size).
  */
 export interface WindowBounds {
@@ -407,6 +419,8 @@ export interface AppSettings {
   readonly appearance: AppearanceSettings;
   /** Subtitle appearance settings */
   readonly subtitles: SubtitleSettings;
+  /** Equalizer settings */
+  readonly equalizer: EqualizerSettings;
   /** Window state settings (not exposed in UI) */
   readonly windowState: WindowStateSettings;
   /** Recent items (files and playlists) */
@@ -485,6 +499,15 @@ export interface SubtitleSettingsUpdate {
   readonly shadowSpread?: number;
   readonly shadowBlur?: number;
   readonly shadowColor?: string;
+}
+
+/**
+ * Partial equalizer settings for updates.
+ */
+export interface EqualizerSettingsUpdate {
+  readonly enabled?: boolean;
+  readonly preset?: string;
+  readonly bands?: readonly number[];
 }
 
 /**
@@ -609,6 +632,11 @@ const DEFAULT_SETTINGS: AppSettings = {
     shadowBlur: 2,  // 2px blur for soft edges
     shadowColor: '#000000',  // black shadow/outline
   },
+  equalizer: {
+    enabled: false,  // off by default
+    preset: 'flat',  // flat response
+    bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],  // 10 bands, 0 dB each
+  },
   windowState: {
     miniplayerBounds: null,  // no saved position initially
   },
@@ -619,6 +647,18 @@ const DEFAULT_SETTINGS: AppSettings = {
     maxPlaylists: 5,      // max 5 recent playlists
   },
 };
+
+/** Number of equalizer bands. */
+const EQUALIZER_BAND_COUNT: number = 10;
+
+/** Valid equalizer preset identifiers. */
+const VALID_EQUALIZER_PRESETS: readonly string[] = [
+  'flat', 'rock', 'pop', 'jazz', 'bass', 'vocal', 'treble', 'custom',
+];
+
+/** Equalizer band gain bounds in dB. */
+const EQUALIZER_GAIN_MIN: number = -12;
+const EQUALIZER_GAIN_MAX: number = 12;
 
 /** Valid visualization type values for validation */
 const VALID_VISUALIZATION_TYPES: readonly string[] = [
@@ -1184,6 +1224,57 @@ export class SettingsManager {
   }
 
   /**
+   * Updates equalizer settings with partial values.
+   *
+   * Only provided fields are updated; others retain their current values.
+   * Changes are immediately persisted to disk.
+   *
+   * @param update - Partial equalizer settings to apply
+   * @returns The updated complete settings object
+   */
+  public updateEqualizerSettings(update: EqualizerSettingsUpdate): AppSettings {
+    // Validate enabled if provided
+    if (update.enabled !== undefined && typeof update.enabled !== 'boolean') {
+      console.warn(`[SettingsManager] Invalid equalizer enabled: ${update.enabled}, ignoring`);
+      return this.settings;
+    }
+
+    // Validate preset if provided
+    if (update.preset !== undefined && !VALID_EQUALIZER_PRESETS.includes(update.preset)) {
+      console.warn(`[SettingsManager] Invalid equalizer preset: ${update.preset}, ignoring`);
+      return this.settings;
+    }
+
+    // Validate bands if provided
+    let validatedBands: number[] | undefined;
+    if (update.bands !== undefined) {
+      if (!Array.isArray(update.bands) || update.bands.length !== EQUALIZER_BAND_COUNT) {
+        console.warn(`[SettingsManager] Invalid equalizer bands, ignoring`);
+        return this.settings;
+      }
+      validatedBands = update.bands.map((gain: number): number =>
+        typeof gain === 'number' && Number.isFinite(gain)
+          ? Math.max(EQUALIZER_GAIN_MIN, Math.min(EQUALIZER_GAIN_MAX, gain))
+          : 0
+      );
+    }
+
+    // Merge the update
+    this.settings = {
+      ...this.settings,
+      equalizer: {
+        ...this.settings.equalizer,
+        enabled: update.enabled ?? this.settings.equalizer.enabled,
+        preset: update.preset ?? this.settings.equalizer.preset,
+        bands: validatedBands ?? this.settings.equalizer.bands,
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
+  /**
    * Sets the miniplayer bounds (position and size).
    *
    * This is a non-UI setting used to remember miniplayer position between sessions.
@@ -1501,6 +1592,11 @@ export class SettingsManager {
       obj['subtitles']
     );
 
+    // Extract and validate equalizer settings
+    const equalizerSettings: EqualizerSettings = this.validateEqualizerSettings(
+      obj['equalizer']
+    );
+
     // Extract and validate window state settings
     const windowStateSettings: WindowStateSettings = this.validateWindowStateSettings(
       obj['windowState']
@@ -1519,6 +1615,7 @@ export class SettingsManager {
       transcoding: transcodingSettings,
       appearance: appearanceSettings,
       subtitles: subtitleSettings,
+      equalizer: equalizerSettings,
       windowState: windowStateSettings,
       recentItems: recentItemsSettings,
     };
@@ -1976,6 +2073,41 @@ export class SettingsManager {
       shadowColor: this.isValidHexColor(shadowColor)
         ? shadowColor
         : DEFAULT_SETTINGS.subtitles.shadowColor,
+    };
+  }
+
+  /**
+   * Validates equalizer settings, falling back to defaults for missing or
+   * invalid values. Band gains are clamped; malformed band arrays reset to flat.
+   *
+   * @param equalizer - The raw equalizer settings (type unknown)
+   * @returns Valid equalizer settings
+   */
+  private validateEqualizerSettings(equalizer: unknown): EqualizerSettings {
+    if (!equalizer || typeof equalizer !== 'object') {
+      return DEFAULT_SETTINGS.equalizer;
+    }
+
+    const obj: Record<string, unknown> = equalizer as Record<string, unknown>;
+    const enabled: unknown = obj['enabled'];
+    const preset: unknown = obj['preset'];
+    const bands: unknown = obj['bands'];
+
+    const validBands: number[] =
+      Array.isArray(bands) && bands.length === EQUALIZER_BAND_COUNT
+        ? bands.map((gain: unknown): number =>
+            typeof gain === 'number' && Number.isFinite(gain)
+              ? Math.max(EQUALIZER_GAIN_MIN, Math.min(EQUALIZER_GAIN_MAX, gain))
+              : 0
+          )
+        : [...DEFAULT_SETTINGS.equalizer.bands];
+
+    return {
+      enabled: typeof enabled === 'boolean' ? enabled : DEFAULT_SETTINGS.equalizer.enabled,
+      preset: typeof preset === 'string' && VALID_EQUALIZER_PRESETS.includes(preset)
+        ? preset
+        : DEFAULT_SETTINGS.equalizer.preset,
+      bands: validBands,
     };
   }
 

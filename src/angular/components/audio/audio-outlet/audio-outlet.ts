@@ -33,6 +33,7 @@ import {SettingsService, PerVisualizationSettings} from '../../../services/setti
 import {FileDropService} from '../../../services/file-drop.service';
 import type {PlaylistItem} from '../../../types/electron';
 import {Visualization, createVisualization, VISUALIZATION_TYPES, VISUALIZATION_METADATA} from './visualizations';
+import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equalizer';
 
 /**
  * Audio outlet component that plays audio and renders visualizations.
@@ -146,6 +147,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Gain node for volume control (separate from analyser) */
   private gainNode: GainNode | null = null;
 
+  /** Equalizer band filters inserted between the source and the analyser */
+  private equalizerFilters: BiquadFilterNode[] | null = null;
+
   /** Animation frame ID for the visualization loop */
   private animationId: number | null = null;
 
@@ -204,6 +208,15 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * - Mute changes: sets gain to 0 or restores volume
    */
   public constructor() {
+    // Keep the equalizer chain in sync with settings (audio + MIDI sources)
+    effect((): void => {
+      const enabled: boolean = this.settings.equalizerEnabled();
+      const bands: readonly number[] = this.settings.equalizerBands();
+      if (this.equalizerFilters) {
+        applyEqualizerGains(this.equalizerFilters, bands, enabled);
+      }
+    });
+
     // React to track changes - load new audio source.
     // Also depends on playbackState to detect same-track re-selection:
     // when the server enters 'loading', currentFilePath is always cleared
@@ -600,10 +613,16 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.gainNode = this.audioContext.createGain();
     this.gainNode.gain.value = 0;
 
-    // Connect: source → analyser → gainNode → destination
-    // This ensures analyser sees full signal regardless of volume
+    // Build the equalizer chain (applied to all audio sources)
+    this.equalizerFilters = createEqualizerFilters(this.audioContext);
+    applyEqualizerGains(this.equalizerFilters, this.settings.equalizerBands(), this.settings.equalizerEnabled());
+
+    // Connect: source → equalizer → analyser → gainNode → destination
+    // The analyser (and thus the visualizer) reflects the equalized signal;
+    // the gain node still sees full signal regardless of volume.
     this.sourceNode = this.audioContext.createMediaElementSource(audio);
-    this.sourceNode.connect(this.analyser);
+    this.sourceNode.connect(this.equalizerFilters[0]);
+    this.equalizerFilters[this.equalizerFilters.length - 1].connect(this.analyser);
     this.analyser.connect(this.gainNode);
     this.gainNode.connect(this.audioContext.destination);
 
