@@ -8,11 +8,27 @@
 
 ## Overview
 
-ONIXPlayer 2026.2.0 adds Intel Mac build support, refreshes the dependency stack to resolve all known security advisories, and fixes a video aspect-ratio control bug.
+ONIXPlayer 2026.2.0 is a feature-packed release: a real-time **audio equalizer** and **video adjustments**, a redesigned media bar, reorganized settings, Intel Mac builds, and a full dependency/security refresh.
 
 ---
 
 ## New Features
+
+### Audio Equalizer
+
+- **10-band graphic equalizer** (31 Hz – 16 kHz, ±12 dB) applied to **all** audio — music, MIDI, and video
+- Presets: Flat, Rock, Pop, Jazz, Bass Boost, Vocal, Treble Boost, plus Custom
+- Real-time, GPU-light Web Audio processing; lives under **Settings → Audio Playback**
+
+### Video Adjustments
+
+- **Real-time colour and tone controls** applied to all video: Brightness, Contrast, Saturation, Hue, Soften, Grayscale, Sepia, and Invert
+- Presets: Default, Vivid, Warm, Cool, Soft, Noir, Night, plus Custom
+- Applied instantly via CSS filters (no re-encoding); lives at the bottom of **Settings → Video Playback**
+
+### Video Flip
+
+- **Flip video** horizontally, vertically, or both, from a dropdown in the media bar
 
 ### Intel Mac Support
 
@@ -23,6 +39,13 @@ ONIXPlayer 2026.2.0 adds Intel Mac build support, refreshes the dependency stack
 ---
 
 ## Improvements
+
+### Interface
+
+- **Redesigned media bar** — visualization, aspect-ratio, subtitle, audio-track, and flip controls are now consistent dropdowns; the now-playing title moved beside them
+- **Refreshed player controls** — new fullscreen (TV), miniplayer (picture-in-picture), and restore icons; squircle-cornered control groups; resized transport buttons
+- **Reorganized settings** into clear media-type categories: Application, Appearance, Dependencies, Playback, Audio Playback, Audio Visualizations, Video Playback, Video Subtitles
+- **Settings are tied to the default window mode** — settings can only be opened in the normal window, and fullscreen/miniplayer controls are disabled while settings are open
 
 ### Build & Distribution
 
@@ -41,6 +64,7 @@ ONIXPlayer 2026.2.0 adds Intel Mac build support, refreshes the dependency stack
 ## Bug Fixes
 
 - **Fixed the video aspect-ratio dropdown showing a stale "Default" value.** The control read its state through the optional video-outlet view child, whose `computed` cached `'default'` on first evaluation (before any video rendered) and never recomputed. The dropdown now reads the persisted setting directly, so it always reflects the active aspect mode (Default, Forced 4:3, Forced 16:9, or Fit to Screen).
+- Fixed video audio not being affected by audio processing — video audio is now routed through the same Web Audio graph as music and MIDI, so the equalizer applies to it.
 
 ---
 
@@ -61,6 +85,8 @@ ONIXPlayer 2026.2.0 adds Intel Mac build support, refreshes the dependency stack
 
 ## Technical Notes
 
+- Equalizer and video adjustments are persisted settings groups (`equalizer`, `videoAdjustments`) with server-side validation and SSE-driven reactive updates
+- Video audio is routed through Web Audio (`MediaElementSource → equalizer → destination`); video colour uses a CSS `filter` on the video element
 - `currentAspectMode` in `LayoutOutlet` now derives from `SettingsService.videoAspectMode()` — the same source of truth used by `VideoOutlet.aspectMode()` — making it reactive and always present
 - Dependency tree re-resolved from a fresh `package-lock.json`; `package.json` ranges were unchanged
 
