@@ -82,7 +82,8 @@
   .button-group {
     display: inherit;
     align-items: center;
-    border-radius: 0.25rem;
+    border-radius: 0.75rem;
+    corner-shape: squircle;
     border: 0.0625rem solid $black-50;
     outline: 0.0625rem solid $white-15;
     backdrop-filter: blur(16px);
@@ -124,6 +125,7 @@
     border-right: 0.0625rem solid $black-30;
     outline: none;
     font-size: 1rem;
+    corner-shape: squircle;
 
     @include light-mode {
       border-left-color: $white-30;
@@ -131,14 +133,14 @@
 
     &:first-of-type {
       border-left: none;
-      border-top-left-radius: 0.175rem;
-      border-bottom-left-radius: 0.175rem;
+      border-top-left-radius: 0.675rem;
+      border-bottom-left-radius: 0.675rem;
     }
 
     &:last-of-type {
       border-right: none;
-      border-top-right-radius: 0.175rem;
-      border-bottom-right-radius: 0.175rem;
+      border-top-right-radius: 0.675rem;
+      border-bottom-right-radius: 0.675rem;
     }
 
     &:hover:not(:disabled) {
@@ -176,8 +178,9 @@
     justify-content: center;
     background: $btn-glass;
     width: 4rem;
-    border-top-right-radius: 0.175rem;
-    border-bottom-right-radius: 0.175rem;
+    corner-shape: squircle;
+    border-top-right-radius: 0.675rem;
+    border-bottom-right-radius: 0.675rem;
 
     .volume-slider {
       position: relative;
