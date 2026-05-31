@@ -588,6 +588,52 @@
               <div class="setting-group">
                 <div class="setting-row">
                   <div class="setting-label">
+                    <label for="previous-track-threshold">Previous Track Threshold</label>
+                    <p class="setting-description">
+                      If playback is past this point, "previous" restarts the track instead of going back. Set to 0 to always go to previous.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="previous-track-threshold"
+                      min="0"
+                      max="10"
+                      step="1"
+                      [value]="currentPreviousTrackThreshold()"
+                      (input)="onPreviousTrackThresholdChange($event)"
+                    />
+                    <span class="slider-value">{{ formatPreviousTrackThreshold() }}</span>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="skip-duration">Skip Duration</label>
+                    <p class="setting-description">
+                      How many seconds to skip forward or backward when using the skip buttons.
+                    </p>
+                  </div>
+                  <div class="setting-control slider-control">
+                    <input
+                      type="range"
+                      id="skip-duration"
+                      min="1"
+                      max="60"
+                      step="1"
+                      [value]="currentSkipDuration()"
+                      (input)="onSkipDurationChange($event)"
+                    />
+                    <span class="slider-value">{{ formatSkipDuration() }}</span>
+                  </div>
+                </div>
+              </div>
+            }
+
+            @case ('audio') {
+              <div class="setting-group">
+                <div class="setting-row">
+                  <div class="setting-label">
                     <label for="default-volume">Default Volume</label>
                     <p class="setting-description">
                       The volume level when the application starts.
@@ -630,46 +676,46 @@
 
                 <div class="setting-row">
                   <div class="setting-label">
-                    <label for="previous-track-threshold">Previous Track Threshold</label>
+                    <label for="preferred-audio-language">Preferred Audio Language</label>
                     <p class="setting-description">
-                      If playback is past this point, "previous" restarts the track instead of going back. Set to 0 to always go to previous.
+                      Default audio track for videos with multiple audio streams.
                     </p>
                   </div>
-                  <div class="setting-control slider-control">
-                    <input
-                      type="range"
-                      id="previous-track-threshold"
-                      min="0"
-                      max="10"
-                      step="1"
-                      [value]="currentPreviousTrackThreshold()"
-                      (input)="onPreviousTrackThresholdChange($event)"
-                    />
-                    <span class="slider-value">{{ formatPreviousTrackThreshold() }}</span>
+                  <div class="setting-control">
+                    <select
+                      id="preferred-audio-language"
+                      (change)="onPreferredAudioLanguageChange($event)"
+                    >
+                      @for (option of audioLanguageOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentPreferredAudioLanguage()">{{ option.label }}</option>
+                      }
+                    </select>
                   </div>
                 </div>
 
                 <div class="setting-row">
                   <div class="setting-label">
-                    <label for="skip-duration">Skip Duration</label>
+                    <label for="audio-bitrate">Audio Bitrate</label>
                     <p class="setting-description">
-                      How many seconds to skip forward or backward when using the skip buttons.
+                      Bitrate for transcoded audio. Higher values provide better quality but larger files.
                     </p>
                   </div>
-                  <div class="setting-control slider-control">
-                    <input
-                      type="range"
-                      id="skip-duration"
-                      min="1"
-                      max="60"
-                      step="1"
-                      [value]="currentSkipDuration()"
-                      (input)="onSkipDurationChange($event)"
-                    />
-                    <span class="slider-value">{{ formatSkipDuration() }}</span>
+                  <div class="setting-control">
+                    <select
+                      id="audio-bitrate"
+                      (change)="onAudioBitrateChange($event)"
+                    >
+                      @for (option of audioBitrateOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentAudioBitrate()">{{ option.label }}</option>
+                      }
+                    </select>
                   </div>
                 </div>
+              </div>
+            }
 
+            @case ('video') {
+              <div class="setting-group">
                 <div class="setting-row">
                   <div class="setting-label">
                     <label for="video-aspect-mode">Video Aspect Ratio</label>
@@ -684,25 +730,6 @@
                     >
                       @for (option of videoAspectOptions; track option.value) {
                         <option [value]="option.value" [selected]="option.value === currentVideoAspectMode()">{{ option.label }}</option>
-                      }
-                    </select>
-                  </div>
-                </div>
-
-                <div class="setting-row">
-                  <div class="setting-label">
-                    <label for="preferred-audio-language">Preferred Audio Language</label>
-                    <p class="setting-description">
-                      Default audio track for videos with multiple audio streams.
-                    </p>
-                  </div>
-                  <div class="setting-control">
-                    <select
-                      id="preferred-audio-language"
-                      (change)="onPreferredAudioLanguageChange($event)"
-                    >
-                      @for (option of audioLanguageOptions; track option.value) {
-                        <option [value]="option.value" [selected]="option.value === currentPreferredAudioLanguage()">{{ option.label }}</option>
                       }
                     </select>
                   </div>
@@ -747,6 +774,51 @@
                     <span class="slider-value">{{ formatAutoHideDelay() }}</span>
                   </div>
                 </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="video-quality">Video Quality</label>
+                    <p class="setting-description">
+                      Quality preset for transcoding non-native video formats. Higher quality uses more CPU.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="video-quality"
+                      (change)="onVideoQualityChange($event)"
+                    >
+                      @for (option of videoQualityOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentVideoQuality()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="hardware-acceleration">Hardware Acceleration</label>
+                    <p class="setting-description">
+                      Use GPU for video encoding. Auto selects the best available encoder for your system.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="hardware-acceleration"
+                      (change)="onHardwareAccelerationChange($event)"
+                    >
+                      @for (option of hardwareAccelerationOptions(); track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentHardwareAcceleration()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                @if (!availableHardwareEncoders().available) {
+                  <div class="info-notice">
+                    <i class="fa-solid fa-info-circle"></i>
+                    <span>No hardware encoders detected. Video transcoding will use software encoding.</span>
+                  </div>
+                }
               </div>
             }
 
@@ -951,74 +1023,6 @@
                     [style.textShadow]="subtitleShadowPreviewStyle()"
                   >Sample Subtitle Text</span>
                 </div>
-              </div>
-            }
-
-            @case ('transcoding') {
-              <div class="setting-group">
-                <div class="setting-row">
-                  <div class="setting-label">
-                    <label for="video-quality">Video Quality</label>
-                    <p class="setting-description">
-                      Quality preset for transcoding non-native video formats. Higher quality uses more CPU.
-                    </p>
-                  </div>
-                  <div class="setting-control">
-                    <select
-                      id="video-quality"
-                      (change)="onVideoQualityChange($event)"
-                    >
-                      @for (option of videoQualityOptions; track option.value) {
-                        <option [value]="option.value" [selected]="option.value === currentVideoQuality()">{{ option.label }}</option>
-                      }
-                    </select>
-                  </div>
-                </div>
-
-                <div class="setting-row">
-                  <div class="setting-label">
-                    <label for="audio-bitrate">Audio Bitrate</label>
-                    <p class="setting-description">
-                      Bitrate for transcoded audio. Higher values provide better quality but larger files.
-                    </p>
-                  </div>
-                  <div class="setting-control">
-                    <select
-                      id="audio-bitrate"
-                      (change)="onAudioBitrateChange($event)"
-                    >
-                      @for (option of audioBitrateOptions; track option.value) {
-                        <option [value]="option.value" [selected]="option.value === currentAudioBitrate()">{{ option.label }}</option>
-                      }
-                    </select>
-                  </div>
-                </div>
-
-                <div class="setting-row">
-                  <div class="setting-label">
-                    <label for="hardware-acceleration">Hardware Acceleration</label>
-                    <p class="setting-description">
-                      Use GPU for video encoding. Auto selects the best available encoder for your system.
-                    </p>
-                  </div>
-                  <div class="setting-control">
-                    <select
-                      id="hardware-acceleration"
-                      (change)="onHardwareAccelerationChange($event)"
-                    >
-                      @for (option of hardwareAccelerationOptions(); track option.value) {
-                        <option [value]="option.value" [selected]="option.value === currentHardwareAcceleration()">{{ option.label }}</option>
-                      }
-                    </select>
-                  </div>
-                </div>
-
-                @if (!availableHardwareEncoders().available) {
-                  <div class="info-notice">
-                    <i class="fa-solid fa-info-circle"></i>
-                    <span>No hardware encoders detected. Video transcoding will use software encoding.</span>
-                  </div>
-                }
               </div>
             }
 

@@ -120,7 +120,9 @@ interface SettingsCategory {
 
 /**
  * Available settings categories.
- * Future categories (playback, audio) can be added here.
+ *
+ * Media-specific settings are grouped under 'audio' (Audio Playback) and
+ * 'video' (Video Playback); 'playback' holds only shared transport behaviour.
  */
 const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
@@ -144,26 +146,32 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
     id: 'playback',
     name: 'Playback',
-    icon: 'fa-solid fa-play',
-    description: 'Configure playback behavior and volume.',
+    icon: 'fa-solid fa-sliders',
+    description: 'Configure shared playback behaviour.',
   },
   {
-    id: 'subtitles',
-    name: 'Subtitles',
-    icon: 'fa-solid fa-closed-captioning',
-    description: 'Configure subtitle appearance for video playback.',
-  },
-  {
-    id: 'transcoding',
-    name: 'Transcoding',
-    icon: 'fa-solid fa-film',
-    description: 'Configure video and audio transcoding quality.',
+    id: 'audio',
+    name: 'Audio Playback',
+    icon: 'fa-solid fa-music',
+    description: 'Configure audio playback and output.',
   },
   {
     id: 'visualisations',
-    name: 'Visualisations',
+    name: 'Audio Visualizations',
     icon: 'fa-solid fa-waveform-lines',
     description: 'Configure audio visualization preferences.',
+  },
+  {
+    id: 'video',
+    name: 'Video Playback',
+    icon: 'fa-solid fa-film',
+    description: 'Configure video playback and display.',
+  },
+  {
+    id: 'subtitles',
+    name: 'Video Subtitles',
+    icon: 'fa-solid fa-closed-captioning',
+    description: 'Configure subtitle appearance for video playback.',
   },
 ];
 
