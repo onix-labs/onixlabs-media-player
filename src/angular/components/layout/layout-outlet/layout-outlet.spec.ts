@@ -334,9 +334,8 @@ describe('LayoutOutlet', (): void => {
       expect(result).toBe(false);
     });
 
-    it('visualizationDisplayName defaults to empty string', (): void => {
-      const result: string = component.visualizationDisplayName();
-      expect(result).toBe('');
+    it('currentVisualizationType defaults to bars', (): void => {
+      expect(component.currentVisualizationType()).toBe('bars');
     });
 
     it('aspectModeDisplayName defaults to Default', (): void => {
@@ -352,6 +351,16 @@ describe('LayoutOutlet', (): void => {
       (mockSettings['videoAspectMode'] as WritableSignal<string>).set('fit');
 
       expect(component.currentAspectMode()).toBe('fit');
+    });
+
+    it('videoFlipMode defaults to none', (): void => {
+      expect(component.videoFlipMode()).toBe('none');
+    });
+
+    it('onFlipModeChange is a no-op when no video outlet is present', (): void => {
+      // videoOutlet is undefined in the test harness; the call must not throw.
+      const event: Event = {target: {value: 'horizontal'} as HTMLSelectElement} as unknown as Event;
+      expect((): void => component.onFlipModeChange(event)).not.toThrow();
     });
   });
 

@@ -59,6 +59,32 @@ const BROWSER_COMPATIBLE_AUDIO_CODECS: Set<string> = new Set([
 const EXTERNAL_SUBTITLE_TRACK_INDEX: number = -2;
 
 /**
+ * Video flip mode — mirrors the video around the vertical axis (horizontal),
+ * the horizontal axis (vertical), both, or neither.
+ */
+export type VideoFlipMode = 'none' | 'horizontal' | 'vertical' | 'both';
+
+/**
+ * A selectable video flip option for the media bar dropdown.
+ */
+export interface VideoFlipOption {
+  /** The flip mode value */
+  readonly value: VideoFlipMode;
+  /** Human-readable display label */
+  readonly label: string;
+}
+
+/**
+ * Available video flip options for the media bar dropdown.
+ */
+export const VIDEO_FLIP_OPTIONS: readonly VideoFlipOption[] = [
+  {value: 'none', label: 'No Flip'},
+  {value: 'horizontal', label: 'Flip Horizontal'},
+  {value: 'vertical', label: 'Flip Vertical'},
+  {value: 'both', label: 'Flip Both'},
+];
+
+/**
  * Represents a parsed WebVTT cue with timing and text content.
  * Used for custom subtitle rendering that bypasses the browser's TextTrack API.
  */
@@ -148,6 +174,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Emits the current aspect mode display name when it changes */
   public readonly aspectModeChange: OutputEmitterRef<string> = output<string>();
 
+  /** Emits the current flip mode when it changes */
+  public readonly flipChange: OutputEmitterRef<VideoFlipMode> = output<VideoFlipMode>();
+
   // ============================================================================
   // Reactive State
   // ============================================================================
@@ -165,6 +194,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
   public readonly aspectMode: ReturnType<typeof computed<VideoAspectMode>> = computed(
     (): VideoAspectMode => this.settings.videoAspectMode()
   );
+
+  /**
+   * Current video flip mode (none, horizontal, vertical, or both). Session
+   * state — resets when a different video is loaded; subtitles are unaffected.
+   */
+  public readonly flipMode: ReturnType<typeof signal<VideoFlipMode>> = signal<VideoFlipMode>('none');
 
   /** Display name for the current aspect mode */
   public readonly aspectModeName: ReturnType<typeof computed<string>> = computed((): string => {
@@ -287,6 +322,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
         // - Track switch: currentFilePath is set to a different path, start from 0
         const isViewModeChange: boolean = this.currentFilePath === null;
         const startTime: number = isViewModeChange ? this.mediaPlayer.currentTime() : 0;
+        // Reset flip on a genuine track switch, but preserve it across
+        // view-mode changes (e.g. entering fullscreen) which reload the
+        // same file.
+        if (!isViewModeChange) {
+          this.flipMode.set('none');
+        }
         void this.loadVideo(track.filePath, startTime);
       }
     });
@@ -398,6 +439,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
     effect((): void => {
       const name: string = this.aspectModeName();
       this.aspectModeChange.emit(name);
+    });
+
+    // React to flip mode changes and emit state
+    effect((): void => {
+      this.flipChange.emit(this.flipMode());
     });
 
     // Load subtitle tracks when they change (custom rendering approach)
@@ -708,6 +754,15 @@ export class VideoOutlet implements OnInit, OnDestroy {
    */
   public setAspectMode(mode: VideoAspectMode): void {
     void this.settings.setVideoAspectMode(mode);
+  }
+
+  /**
+   * Sets the video flip mode (none, horizontal, vertical, or both).
+   *
+   * @param mode - The flip mode to apply
+   */
+  public setFlipMode(mode: VideoFlipMode): void {
+    this.flipMode.set(mode);
   }
 
   /**

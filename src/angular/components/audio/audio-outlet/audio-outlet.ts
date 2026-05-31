@@ -77,7 +77,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
   // Output Events
   // ============================================================================
 
-  /** Emits the visualization display name when it changes (format: "Category : Name") */
+  /** Emits the current visualization type when it changes */
   @Output() public readonly visualizationChange: EventEmitter<string> = new EventEmitter<string>();
 
   // ============================================================================
@@ -749,7 +749,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const metadata: {name: string; category: string} = VISUALIZATION_METADATA[type];
     this.visualizationNameSignal.set(metadata.name);
     this.visualizationCategorySignal.set(metadata.category);
-    this.visualizationChange.emit(`${metadata.category} : ${metadata.name}`);
+    this.visualizationChange.emit(type);
 
     if (this.visualization) {
       this.visualization.destroy();

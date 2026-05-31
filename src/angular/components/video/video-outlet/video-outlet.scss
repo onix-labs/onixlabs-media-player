@@ -57,6 +57,21 @@
     height: 100%;
     object-fit: fill;
   }
+
+  // Flip: mirror the video around the vertical axis (horizontal), horizontal
+  // axis (vertical), or both. Applies only to the video element so the
+  // subtitle overlay stays readable.
+  &.flip-horizontal video {
+    transform: scaleX(-1);
+  }
+
+  &.flip-vertical video {
+    transform: scaleY(-1);
+  }
+
+  &.flip-both video {
+    transform: scale(-1, -1);
+  }
 }
 
 // Custom subtitle overlay (bypasses browser's TextTrack API for reliable sync)

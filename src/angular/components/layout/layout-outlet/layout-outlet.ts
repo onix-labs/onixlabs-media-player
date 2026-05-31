@@ -19,7 +19,8 @@
 import {Component, computed, inject, signal, output, ViewChild, HostBinding, ChangeDetectionStrategy} from '@angular/core';
 import type {OutputEmitterRef} from '@angular/core';
 import {AudioOutlet} from '../../audio/audio-outlet/audio-outlet';
-import {VideoOutlet} from '../../video/video-outlet/video-outlet';
+import {VISUALIZATION_GROUPS} from '../../audio/audio-outlet/visualizations';
+import {VideoOutlet, VIDEO_FLIP_OPTIONS, type VideoFlipMode} from '../../video/video-outlet/video-outlet';
 import {Playlist} from '../../playlist/playlist';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
@@ -86,14 +87,23 @@ export class LayoutOutlet {
   /** Emitted when the user clicks to open dependency settings */
   public readonly openDependencySettings: OutputEmitterRef<void> = output<void>();
 
-  /** Signal for visualization display name (updated reactively from audioOutlet) */
-  public readonly visualizationDisplayName: ReturnType<typeof signal<string>> = signal<string>('');
+  /** Current visualization type (updated reactively from audioOutlet) */
+  public readonly currentVisualizationType: ReturnType<typeof signal<string>> = signal<string>('bars');
+
+  /** Visualization options grouped by category for the select dropdown */
+  public readonly visualizationGroups: typeof VISUALIZATION_GROUPS = VISUALIZATION_GROUPS;
 
   /** Signal for video aspect mode display name (updated reactively from videoOutlet) */
   public readonly aspectModeDisplayName: ReturnType<typeof signal<string>> = signal<string>('Default');
 
+  /** Current video flip mode (updated reactively from videoOutlet) */
+  public readonly videoFlipMode: ReturnType<typeof signal<VideoFlipMode>> = signal<VideoFlipMode>('none');
+
   /** Video aspect ratio options for the select dropdown */
   public readonly aspectOptions: typeof VIDEO_ASPECT_OPTIONS = VIDEO_ASPECT_OPTIONS;
+
+  /** Video flip options for the select dropdown */
+  public readonly flipOptions: typeof VIDEO_FLIP_OPTIONS = VIDEO_FLIP_OPTIONS;
 
   /**
    * Current aspect mode value for the select dropdown.
@@ -188,17 +198,15 @@ export class LayoutOutlet {
   }
 
   /**
-   * Cycles to the next visualization.
+   * Handles visualization change from select element.
+   *
+   * @param event - The change event from the select
    */
-  public nextVisualization(): void {
-    this.audioOutlet?.nextVisualization();
-  }
-
-  /**
-   * Cycles to the previous visualization.
-   */
-  public previousVisualization(): void {
-    this.audioOutlet?.previousVisualization();
+  public onVisualizationChange(event: Event): void {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLSelectElement) {
+      this.audioOutlet?.setVisualization(target.value);
+    }
   }
 
   /**
@@ -210,6 +218,18 @@ export class LayoutOutlet {
     const target: EventTarget | null = event.target;
     if (target instanceof HTMLSelectElement) {
       this.videoOutlet?.setAspectMode(target.value as VideoAspectMode);
+    }
+  }
+
+  /**
+   * Handles flip mode change from select element.
+   *
+   * @param event - The change event from the select
+   */
+  public onFlipModeChange(event: Event): void {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLSelectElement) {
+      this.videoOutlet?.setFlipMode(target.value as VideoFlipMode);
     }
   }
 

@@ -2,9 +2,9 @@
   <div class="content-area">
     <div class="media-area">
       @if (isAudio()) {
-        <app-audio-outlet #audioOutlet (visualizationChange)="visualizationDisplayName.set($event)"/>
+        <app-audio-outlet #audioOutlet (visualizationChange)="currentVisualizationType.set($event)"/>
       } @else if (isVideo()) {
-        <app-video-outlet #videoOutlet (aspectModeChange)="aspectModeDisplayName.set($event)"/>
+        <app-video-outlet #videoOutlet (aspectModeChange)="aspectModeDisplayName.set($event)" (flipChange)="videoFlipMode.set($event)"/>
       } @else {
         <div class="idle-state"
              [class.drag-over]="isDragOver()"
@@ -41,13 +41,15 @@
   @if (!isFullscreen() && !isMiniplayer()) {
     <div class="media-bar">
       @if (isAudio()) {
-        <button tabindex="-1" (click)="previousVisualization()" (mouseup)="$any($event.currentTarget).blur()" title="Previous visualization">
-          <i class="fa-solid fa-caret-left"></i>
-        </button>
-        <button tabindex="-1" (click)="nextVisualization()" (mouseup)="$any($event.currentTarget).blur()" title="Next visualization">
-          <i class="fa-solid fa-caret-right"></i>
-        </button>
-        <span class="visualization-name">{{ visualizationDisplayName() }}</span>
+        <select class="media-bar-select" (change)="onVisualizationChange($event)" title="Visualization">
+          @for (group of visualizationGroups; track group.category) {
+            <optgroup [label]="group.category">
+              @for (option of group.options; track option.value) {
+                <option [value]="option.value" [selected]="option.value === currentVisualizationType()">{{ option.name }}</option>
+              }
+            </optgroup>
+          }
+        </select>
       } @else if (isVideo()) {
         <select class="media-bar-select" (change)="onAspectModeChange($event)" title="Aspect ratio">
           @for (option of aspectOptions; track option.value) {
@@ -65,6 +67,11 @@
             <option value="-2" [selected]="getSelectedSubtitleTrack() === -2">External File</option>
           }
           <option value="-3">Load External...</option>
+        </select>
+        <select class="media-bar-select" (change)="onFlipModeChange($event)" title="Flip video">
+          @for (option of flipOptions; track option.value) {
+            <option [value]="option.value" [selected]="option.value === videoFlipMode()">{{ option.label }}</option>
+          }
         </select>
         @if (getAudioTracks().length > 1) {
           <select class="media-bar-select" (change)="onAudioTrackChange($event)" title="Audio track">

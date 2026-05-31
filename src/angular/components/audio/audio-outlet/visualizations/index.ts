@@ -120,3 +120,39 @@ export const VISUALIZATION_TYPES: string[] = [
   // Waves
   'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'pulsar', 'water',
 ];
+
+/** A single selectable visualization option (type value + display name). */
+export interface VisualizationOption {
+  /** The visualization type value */
+  readonly value: string;
+  /** Human-readable display name */
+  readonly name: string;
+}
+
+/** A group of visualization options sharing a category (e.g. Bars, Waves). */
+export interface VisualizationGroup {
+  /** The category label */
+  readonly category: string;
+  /** The options within this category */
+  readonly options: readonly VisualizationOption[];
+}
+
+/**
+ * Visualization options grouped by category, in {@link VISUALIZATION_TYPES}
+ * order. Derived from the type list and metadata so new visualizations appear
+ * automatically. Used to populate the grouped visualization select dropdown.
+ */
+export const VISUALIZATION_GROUPS: readonly VisualizationGroup[] = ((): readonly VisualizationGroup[] => {
+  const groups: {category: string; options: VisualizationOption[]}[] = [];
+  for (const value of VISUALIZATION_TYPES) {
+    const metadata: {name: string; category: string} = VISUALIZATION_METADATA[value];
+    let group: {category: string; options: VisualizationOption[]} | undefined =
+      groups.find((g: {category: string}): boolean => g.category === metadata.category);
+    if (!group) {
+      group = {category: metadata.category, options: []};
+      groups.push(group);
+    }
+    group.options.push({value, name: metadata.name});
+  }
+  return groups;
+})();
