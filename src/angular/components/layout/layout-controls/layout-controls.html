@@ -47,10 +47,10 @@
   <div class="control-group right">
     <div class="button-group left">
       <button tabindex="-1" (click)="onToggleFullscreen()" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack()" [title]="isFullscreen() ? 'Exit fullscreen' : 'Enter fullscreen'">
-        <i [class]="isFullscreen() ? 'fa-solid fa-compress' : 'fa-solid fa-expand'"></i>
+        <i [class]="isFullscreen() ? 'fa-solid fa-window-restore' : 'fa-solid fa-tv'"></i>
       </button>
       <button tabindex="-1" (click)="onEnterMiniplayer()" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack()" title="Enter miniplayer">
-        <i class="fa-solid fa-down-left-and-up-right-to-center"></i>
+        <i class="fa-solid fa-picture-in-picture"></i>
       </button>
     </div>
   </div>
