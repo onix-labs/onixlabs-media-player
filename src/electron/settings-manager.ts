@@ -348,6 +348,23 @@ export interface EqualizerSettings {
 }
 
 /**
+ * Video adjustment settings — real-time CSS colour/tone filters for video.
+ * Levels are -100..100 (0 = neutral), hue is -180..180, effects are 0..100.
+ */
+export interface VideoAdjustmentsSettings {
+  readonly enabled: boolean;
+  readonly preset: string;
+  readonly brightness: number;
+  readonly contrast: number;
+  readonly saturation: number;
+  readonly hue: number;
+  readonly blur: number;
+  readonly grayscale: number;
+  readonly sepia: number;
+  readonly invert: boolean;
+}
+
+/**
  * Window bounds (position and size).
  */
 export interface WindowBounds {
@@ -421,6 +438,8 @@ export interface AppSettings {
   readonly subtitles: SubtitleSettings;
   /** Equalizer settings */
   readonly equalizer: EqualizerSettings;
+  /** Video adjustment settings */
+  readonly videoAdjustments: VideoAdjustmentsSettings;
   /** Window state settings (not exposed in UI) */
   readonly windowState: WindowStateSettings;
   /** Recent items (files and playlists) */
@@ -508,6 +527,22 @@ export interface EqualizerSettingsUpdate {
   readonly enabled?: boolean;
   readonly preset?: string;
   readonly bands?: readonly number[];
+}
+
+/**
+ * Partial video adjustment settings for updates.
+ */
+export interface VideoAdjustmentsSettingsUpdate {
+  readonly enabled?: boolean;
+  readonly preset?: string;
+  readonly brightness?: number;
+  readonly contrast?: number;
+  readonly saturation?: number;
+  readonly hue?: number;
+  readonly blur?: number;
+  readonly grayscale?: number;
+  readonly sepia?: number;
+  readonly invert?: boolean;
 }
 
 /**
@@ -637,6 +672,18 @@ const DEFAULT_SETTINGS: AppSettings = {
     preset: 'flat',  // flat response
     bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],  // 10 bands, 0 dB each
   },
+  videoAdjustments: {
+    enabled: false,  // off by default
+    preset: 'default',  // neutral
+    brightness: 0,
+    contrast: 0,
+    saturation: 0,
+    hue: 0,
+    blur: 0,
+    grayscale: 0,
+    sepia: 0,
+    invert: false,
+  },
   windowState: {
     miniplayerBounds: null,  // no saved position initially
   },
@@ -659,6 +706,19 @@ const VALID_EQUALIZER_PRESETS: readonly string[] = [
 /** Equalizer band gain bounds in dB. */
 const EQUALIZER_GAIN_MIN: number = -12;
 const EQUALIZER_GAIN_MAX: number = 12;
+
+/** Valid video-adjustment preset identifiers. */
+const VALID_VIDEO_ADJUSTMENT_PRESETS: readonly string[] = [
+  'default', 'vivid', 'warm', 'cool', 'soft', 'noir', 'night', 'custom',
+];
+
+/** Video-adjustment value bounds. */
+const VIDEO_ADJ_LEVEL_MIN: number = -100;
+const VIDEO_ADJ_LEVEL_MAX: number = 100;
+const VIDEO_ADJ_HUE_MIN: number = -180;
+const VIDEO_ADJ_HUE_MAX: number = 180;
+const VIDEO_ADJ_EFFECT_MIN: number = 0;
+const VIDEO_ADJ_EFFECT_MAX: number = 100;
 
 /** Valid visualization type values for validation */
 const VALID_VISUALIZATION_TYPES: readonly string[] = [
@@ -1275,6 +1335,54 @@ export class SettingsManager {
   }
 
   /**
+   * Updates video adjustment settings with partial values.
+   *
+   * Only provided fields are updated; others retain their current values.
+   * Numeric fields are clamped to their valid ranges. Changes are persisted.
+   *
+   * @param update - Partial video adjustment settings to apply
+   * @returns The updated complete settings object
+   */
+  public updateVideoAdjustmentsSettings(update: VideoAdjustmentsSettingsUpdate): AppSettings {
+    if (update.enabled !== undefined && typeof update.enabled !== 'boolean') {
+      console.warn(`[SettingsManager] Invalid video adjustment enabled, ignoring`);
+      return this.settings;
+    }
+    if (update.preset !== undefined && !VALID_VIDEO_ADJUSTMENT_PRESETS.includes(update.preset)) {
+      console.warn(`[SettingsManager] Invalid video adjustment preset: ${update.preset}, ignoring`);
+      return this.settings;
+    }
+    if (update.invert !== undefined && typeof update.invert !== 'boolean') {
+      console.warn(`[SettingsManager] Invalid video adjustment invert, ignoring`);
+      return this.settings;
+    }
+
+    const clampLevel: (value: number, min: number, max: number) => number = (value: number, min: number, max: number): number =>
+      typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : 0;
+
+    const current: VideoAdjustmentsSettings = this.settings.videoAdjustments;
+    this.settings = {
+      ...this.settings,
+      videoAdjustments: {
+        ...current,
+        enabled: update.enabled ?? current.enabled,
+        preset: update.preset ?? current.preset,
+        brightness: update.brightness !== undefined ? clampLevel(update.brightness, VIDEO_ADJ_LEVEL_MIN, VIDEO_ADJ_LEVEL_MAX) : current.brightness,
+        contrast: update.contrast !== undefined ? clampLevel(update.contrast, VIDEO_ADJ_LEVEL_MIN, VIDEO_ADJ_LEVEL_MAX) : current.contrast,
+        saturation: update.saturation !== undefined ? clampLevel(update.saturation, VIDEO_ADJ_LEVEL_MIN, VIDEO_ADJ_LEVEL_MAX) : current.saturation,
+        hue: update.hue !== undefined ? clampLevel(update.hue, VIDEO_ADJ_HUE_MIN, VIDEO_ADJ_HUE_MAX) : current.hue,
+        blur: update.blur !== undefined ? clampLevel(update.blur, VIDEO_ADJ_EFFECT_MIN, VIDEO_ADJ_EFFECT_MAX) : current.blur,
+        grayscale: update.grayscale !== undefined ? clampLevel(update.grayscale, VIDEO_ADJ_EFFECT_MIN, VIDEO_ADJ_EFFECT_MAX) : current.grayscale,
+        sepia: update.sepia !== undefined ? clampLevel(update.sepia, VIDEO_ADJ_EFFECT_MIN, VIDEO_ADJ_EFFECT_MAX) : current.sepia,
+        invert: update.invert ?? current.invert,
+      },
+    };
+
+    this.save();
+    return this.settings;
+  }
+
+  /**
    * Sets the miniplayer bounds (position and size).
    *
    * This is a non-UI setting used to remember miniplayer position between sessions.
@@ -1597,6 +1705,11 @@ export class SettingsManager {
       obj['equalizer']
     );
 
+    // Extract and validate video adjustment settings
+    const videoAdjustmentsSettings: VideoAdjustmentsSettings = this.validateVideoAdjustmentsSettings(
+      obj['videoAdjustments']
+    );
+
     // Extract and validate window state settings
     const windowStateSettings: WindowStateSettings = this.validateWindowStateSettings(
       obj['windowState']
@@ -1616,6 +1729,7 @@ export class SettingsManager {
       appearance: appearanceSettings,
       subtitles: subtitleSettings,
       equalizer: equalizerSettings,
+      videoAdjustments: videoAdjustmentsSettings,
       windowState: windowStateSettings,
       recentItems: recentItemsSettings,
     };
@@ -2108,6 +2222,43 @@ export class SettingsManager {
         ? preset
         : DEFAULT_SETTINGS.equalizer.preset,
       bands: validBands,
+    };
+  }
+
+  /**
+   * Validates video adjustment settings, falling back to defaults for missing
+   * or invalid values. Numeric fields are clamped to their valid ranges.
+   *
+   * @param adjustments - The raw video adjustment settings (type unknown)
+   * @returns Valid video adjustment settings
+   */
+  private validateVideoAdjustmentsSettings(adjustments: unknown): VideoAdjustmentsSettings {
+    const defaults: VideoAdjustmentsSettings = DEFAULT_SETTINGS.videoAdjustments;
+    if (!adjustments || typeof adjustments !== 'object') {
+      return defaults;
+    }
+
+    const obj: Record<string, unknown> = adjustments as Record<string, unknown>;
+    const clampLevel: (value: unknown, min: number, max: number, fallback: number) => number = (value: unknown, min: number, max: number, fallback: number): number =>
+      typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+
+    const preset: unknown = obj['preset'];
+    const enabled: unknown = obj['enabled'];
+    const invert: unknown = obj['invert'];
+
+    return {
+      enabled: typeof enabled === 'boolean' ? enabled : defaults.enabled,
+      preset: typeof preset === 'string' && VALID_VIDEO_ADJUSTMENT_PRESETS.includes(preset)
+        ? preset
+        : defaults.preset,
+      brightness: clampLevel(obj['brightness'], VIDEO_ADJ_LEVEL_MIN, VIDEO_ADJ_LEVEL_MAX, defaults.brightness),
+      contrast: clampLevel(obj['contrast'], VIDEO_ADJ_LEVEL_MIN, VIDEO_ADJ_LEVEL_MAX, defaults.contrast),
+      saturation: clampLevel(obj['saturation'], VIDEO_ADJ_LEVEL_MIN, VIDEO_ADJ_LEVEL_MAX, defaults.saturation),
+      hue: clampLevel(obj['hue'], VIDEO_ADJ_HUE_MIN, VIDEO_ADJ_HUE_MAX, defaults.hue),
+      blur: clampLevel(obj['blur'], VIDEO_ADJ_EFFECT_MIN, VIDEO_ADJ_EFFECT_MAX, defaults.blur),
+      grayscale: clampLevel(obj['grayscale'], VIDEO_ADJ_EFFECT_MIN, VIDEO_ADJ_EFFECT_MAX, defaults.grayscale),
+      sepia: clampLevel(obj['sepia'], VIDEO_ADJ_EFFECT_MIN, VIDEO_ADJ_EFFECT_MAX, defaults.sepia),
+      invert: typeof invert === 'boolean' ? invert : defaults.invert,
     };
   }
 

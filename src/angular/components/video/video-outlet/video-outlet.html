@@ -12,7 +12,7 @@
      (dragover)="onDragOver($event)"
      (dragleave)="onDragLeave($event)"
      (drop)="onDrop($event)">
-  <video #videoElement crossorigin="anonymous"></video>
+  <video #videoElement crossorigin="anonymous" [style.filter]="videoFilter()"></video>
   @if (subtitleText()) {
     <div class="subtitle-overlay" [innerHTML]="sanitizedSubtitleHtml()"></div>
   }

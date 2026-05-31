@@ -29,7 +29,7 @@ import { serverLogger, playlistLogger, playbackLogger, ffmpegLogger, midiLogger,
 import { app } from 'electron';
 import { DependencyManager } from './dependency-manager.js';
 import type { DependencyId, DependencyState, InstallProgress, SoundFontInfo, HardwareEncoderInfo } from './dependency-manager.js';
-import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate, SubtitleSettingsUpdate, EqualizerSettingsUpdate, RecentItemsSettings, HardwareAcceleration } from './settings-manager.js';
+import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate, SubtitleSettingsUpdate, EqualizerSettingsUpdate, VideoAdjustmentsSettingsUpdate, RecentItemsSettings, HardwareAcceleration } from './settings-manager.js';
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
 import { SSEManager } from './sse-manager.js';
 import { PlaylistManager } from './playlist-manager.js';
@@ -598,6 +598,8 @@ export class UnifiedMediaServer {
         await this.handleSettingsSubtitles(req, res);
       } else if (pathname === '/settings/equalizer' && method === 'PUT') {
         await this.handleSettingsEqualizer(req, res);
+      } else if (pathname === '/settings/videoAdjustments' && method === 'PUT') {
+        await this.handleSettingsVideoAdjustments(req, res);
       } else if (pathname === '/dependencies' && method === 'GET') {
         this.handleDependenciesGet(res);
       } else if (pathname === '/dependencies/install' && method === 'POST') {
@@ -2818,6 +2820,27 @@ export class UnifiedMediaServer {
     const update: EqualizerSettingsUpdate = JSON.parse(body) as EqualizerSettingsUpdate;
 
     const updatedSettings: AppSettings = this.settings.updateEqualizerSettings(update);
+
+    // Broadcast the updated settings to all clients
+    this.sse.broadcast('settings:updated', updatedSettings);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+  }
+
+  /**
+   * Handles PUT /settings/videoAdjustments requests.
+   *
+   * Updates video adjustment settings and broadcasts the change to all clients.
+   *
+   * @param req - Incoming HTTP request with VideoAdjustmentsSettingsUpdate body
+   * @param res - HTTP response to write to
+   */
+  private async handleSettingsVideoAdjustments(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const update: VideoAdjustmentsSettingsUpdate = JSON.parse(body) as VideoAdjustmentsSettingsUpdate;
+
+    const updatedSettings: AppSettings = this.settings.updateVideoAdjustmentsSettings(update);
 
     // Broadcast the updated settings to all clients
     this.sse.broadcast('settings:updated', updatedSettings);

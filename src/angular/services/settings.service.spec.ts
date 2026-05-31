@@ -93,6 +93,18 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       preset: 'flat',
       bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     },
+    videoAdjustments: {
+      enabled: false,
+      preset: 'default',
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      hue: 0,
+      blur: 0,
+      grayscale: 0,
+      sepia: 0,
+      invert: false,
+    },
   };
 
   return {...base, ...overrides};

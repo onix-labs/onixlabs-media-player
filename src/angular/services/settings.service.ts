@@ -18,6 +18,7 @@
 import {Injectable, signal, computed, inject, effect, OnDestroy, EffectRef} from '@angular/core';
 import {ElectronService} from './electron.service';
 import {EQ_PRESETS, EQ_CUSTOM_PRESET, EQ_GAIN_MIN, EQ_GAIN_MAX, normalizeBands, flatBands, type EqualizerPreset} from './equalizer';
+import {VIDEO_ADJUSTMENT_PRESETS, VIDEO_ADJ_CUSTOM_PRESET, NEUTRAL_VIDEO_ADJUSTMENTS, normalizeAdjustments, type VideoAdjustmentValues, type VideoAdjustmentPreset} from './video-adjustments';
 
 // ============================================================================
 // Types
@@ -297,6 +298,16 @@ export interface EqualizerSettings {
   readonly bands: readonly number[];
 }
 
+/**
+ * Video adjustment settings — real-time CSS colour/tone filters for video.
+ */
+export interface VideoAdjustmentsSettings extends VideoAdjustmentValues {
+  /** Whether video adjustments are active */
+  readonly enabled: boolean;
+  /** Selected preset identifier ('default', 'vivid', …, or 'custom') */
+  readonly preset: string;
+}
+
 export interface AppSettings {
   /** Settings schema version */
   readonly version: number;
@@ -314,6 +325,8 @@ export interface AppSettings {
   readonly subtitles: SubtitleSettings;
   /** Equalizer settings */
   readonly equalizer: EqualizerSettings;
+  /** Video adjustment settings */
+  readonly videoAdjustments: VideoAdjustmentsSettings;
 }
 
 /**
@@ -424,6 +437,11 @@ const DEFAULT_SETTINGS: AppSettings = {
     enabled: false,
     preset: 'flat',
     bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  },
+  videoAdjustments: {
+    enabled: false,
+    preset: 'default',
+    ...NEUTRAL_VIDEO_ADJUSTMENTS,
   },
 };
 
@@ -850,6 +868,21 @@ export class SettingsService implements OnDestroy {
     (): readonly number[] => normalizeBands(this.settings().equalizer?.bands)
   );
 
+  /** Whether video adjustments are enabled */
+  public readonly videoAdjustmentsEnabled: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.settings().videoAdjustments?.enabled ?? false
+  );
+
+  /** Selected video-adjustment preset identifier */
+  public readonly videoAdjustmentsPreset: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settings().videoAdjustments?.preset ?? 'default'
+  );
+
+  /** Normalised video adjustment values */
+  public readonly videoAdjustments: ReturnType<typeof computed<VideoAdjustmentValues>> = computed(
+    (): VideoAdjustmentValues => normalizeAdjustments(this.settings().videoAdjustments)
+  );
+
   // ============================================================================
   // Private Helper Methods
   // ============================================================================
@@ -1207,6 +1240,54 @@ export class SettingsService implements OnDestroy {
    */
   public async resetEqualizer(): Promise<void> {
     await this.updateSettingGroup('equalizer', {preset: 'flat', bands: flatBands()});
+  }
+
+  /**
+   * Enables or disables video adjustments.
+   *
+   * @param enabled - Whether video adjustments should be active
+   */
+  public async setVideoAdjustmentsEnabled(enabled: boolean): Promise<void> {
+    await this.updateSetting('videoAdjustments', 'enabled', enabled);
+  }
+
+  /**
+   * Applies a named video-adjustment preset. Built-in presets also set their
+   * values; 'custom' leaves the current values untouched.
+   *
+   * @param preset - The preset identifier
+   */
+  public async setVideoAdjustmentPreset(preset: string): Promise<void> {
+    const match: VideoAdjustmentPreset | undefined = VIDEO_ADJUSTMENT_PRESETS.find(
+      (p: VideoAdjustmentPreset): boolean => p.value === preset
+    );
+    if (!match) {
+      console.error(`[SettingsService] Invalid video adjustment preset: ${preset}`);
+      return;
+    }
+    const update: Record<string, unknown> = {preset: match.value};
+    if (match.values) {
+      Object.assign(update, normalizeAdjustments(match.values));
+    }
+    await this.updateSettingGroup('videoAdjustments', update);
+  }
+
+  /**
+   * Sets a single video adjustment value. Hand-tuning switches the preset
+   * to 'custom'.
+   *
+   * @param key - The adjustment field (e.g. 'brightness', 'invert')
+   * @param value - The new value (number for levels, boolean for invert)
+   */
+  public async setVideoAdjustment(key: keyof VideoAdjustmentValues, value: number | boolean): Promise<void> {
+    await this.updateSettingGroup('videoAdjustments', {preset: VIDEO_ADJ_CUSTOM_PRESET, [key]: value});
+  }
+
+  /**
+   * Resets all video adjustments to neutral ('default' preset).
+   */
+  public async resetVideoAdjustments(): Promise<void> {
+    await this.updateSettingGroup('videoAdjustments', {preset: 'default', ...NEUTRAL_VIDEO_ADJUSTMENTS});
   }
 
   /**

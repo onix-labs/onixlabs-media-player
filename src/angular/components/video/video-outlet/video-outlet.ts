@@ -26,6 +26,7 @@ import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS, SubtitleFontFamily, PreferredAudioLanguage, PreferredSubtitleLanguage} from '../../../services/settings.service';
 import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equalizer';
+import {buildVideoFilter} from '../../../services/video-adjustments';
 import type {PlaylistItem, SubtitleTrack, AudioTrack} from '../../../services/electron.service';
 
 /**
@@ -201,6 +202,14 @@ export class VideoOutlet implements OnInit, OnDestroy {
    * state — resets when a different video is loaded; subtitles are unaffected.
    */
   public readonly flipMode: ReturnType<typeof signal<VideoFlipMode>> = signal<VideoFlipMode>('none');
+
+  /**
+   * CSS filter string for real-time video adjustments (brightness, contrast,
+   * saturation, hue, etc.), applied to the video element. 'none' when disabled.
+   */
+  public readonly videoFilter: ReturnType<typeof computed<string>> = computed(
+    (): string => buildVideoFilter(this.settings.videoAdjustments(), this.settings.videoAdjustmentsEnabled())
+  );
 
   /** Display name for the current aspect mode */
   public readonly aspectModeName: ReturnType<typeof computed<string>> = computed((): string => {
