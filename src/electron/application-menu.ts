@@ -86,6 +86,10 @@ export interface MenuState {
   isPlaying: boolean;
   isVideo: boolean;
   openEnabled: boolean;
+  /** Whether the window is in the default (non-fullscreen, non-miniplayer) mode */
+  windowModeDefault: boolean;
+  /** Whether the settings window is open (disables fullscreen/miniplayer) */
+  configOpen: boolean;
   recentFiles: readonly RecentItem[];
   recentPlaylists: readonly RecentItem[];
 }
@@ -94,7 +98,7 @@ export interface MenuState {
 let storedCallbacks: MenuCallbacks | null = null;
 
 /** Current menu state */
-let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false, hasMedia: false, isPlaying: false, isVideo: false, openEnabled: true, recentFiles: [], recentPlaylists: []};
+let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false, hasMedia: false, isPlaying: false, isVideo: false, openEnabled: true, windowModeDefault: true, configOpen: false, recentFiles: [], recentPlaylists: []};
 
 /**
  * Updates the menu state and rebuilds the menu.
@@ -191,6 +195,8 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
         {
           label: 'Settings',
           accelerator: 'Cmd+,',
+          // Settings is only available in the default window mode
+          enabled: state.windowModeDefault,
           click: callbacks.onShowConfig
         },
         {type: 'separator'},
@@ -269,7 +275,8 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
       {
         label: 'Full Screen',
         accelerator: isMac ? 'Ctrl+Cmd+F' : 'F11',
-        enabled: state.hasMedia,
+        // Disabled while the settings window is open
+        enabled: state.hasMedia && !state.configOpen,
         click: callbacks.onToggleFullscreen
       },
       {

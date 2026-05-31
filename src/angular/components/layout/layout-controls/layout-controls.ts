@@ -91,6 +91,9 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
   /** Whether the application is currently in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isFullscreen());
 
+  /** Whether the settings window is open (disables fullscreen/miniplayer controls) */
+  public readonly isConfigOpen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isConfigOpen());
+
   // ============================================================================
   // Event Handlers - File Operations
   // ============================================================================

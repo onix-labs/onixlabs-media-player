@@ -479,6 +479,46 @@ class Program {
   }
 
   /**
+   * Whether the main window is in the default mode — i.e. neither fullscreen
+   * (native on macOS/Linux, simpleFullScreen on Windows) nor miniplayer.
+   */
+  private isDefaultWindowMode(): boolean {
+    if (!this.window) return true;
+    const isFullscreen: boolean = process.platform === 'win32'
+      ? this.window.isSimpleFullScreen()
+      : this.window.isFullScreen();
+    return !isFullscreen && !this.isInMiniPlayerMode;
+  }
+
+  /**
+   * Pushes the current window mode into the application menu so mode-gated
+   * items (e.g. Settings) enable/disable correctly.
+   */
+  private syncWindowModeMenuState(): void {
+    updateMenuState({windowModeDefault: this.isDefaultWindowMode()});
+  }
+
+  /**
+   * Whether the configuration (settings) window is currently open.
+   */
+  private isConfigWindowOpen(): boolean {
+    return this.configWindow !== null && !this.configWindow.isDestroyed();
+  }
+
+  /**
+   * Notifies the menu and the main window renderer that settings opened or
+   * closed, so fullscreen/miniplayer controls can be disabled while open.
+   *
+   * @param open - Whether the configuration window is now open
+   */
+  private notifyConfigOpenChanged(open: boolean): void {
+    updateMenuState({configOpen: open});
+    if (this.window && !this.window.isDestroyed()) {
+      this.window.webContents.send('config:openChanged', open);
+    }
+  }
+
+  /**
    * Creates and shows the configuration window.
    *
    * The configuration window is a fixed-size frameless dialog (800x600) that displays
@@ -487,9 +527,18 @@ class Program {
    *
    * If the window already exists, it will be focused instead of creating a new one.
    *
+   * Settings are only available in the default window mode; the request is
+   * ignored while in fullscreen or miniplayer.
+   *
    * @param initialCategory - Optional category ID to select on open (e.g., 'dependencies')
    */
   private showConfigurationWindow(initialCategory?: string): void {
+    // Settings is only available in the default window mode
+    if (!this.isDefaultWindowMode()) {
+      windowLogger.info('Settings requested while not in default window mode - ignoring');
+      return;
+    }
+
     // If window already exists, focus it
     if (this.configWindow && !this.configWindow.isDestroyed()) {
       this.configWindow.focus();
@@ -623,7 +672,12 @@ class Program {
       }
       this.mainWindowBoundsBeforeConfig = null;
       this.configWindow = null;
+      // Re-enable fullscreen/miniplayer controls now that settings is closed
+      this.notifyConfigOpenChanged(false);
     });
+
+    // Disable fullscreen/miniplayer controls while settings is open
+    this.notifyConfigOpenChanged(true);
 
     // Prevent zoom
     this.configWindow.webContents.on('before-input-event', (_event: Electron.Event, input: Electron.Input): void => {
@@ -981,6 +1035,11 @@ class Program {
 
     // Fullscreen control - uses simpleFullScreen on Windows to reduce GPU spike
     ipcMain.handle("window:enterFullscreen", (): void => {
+      // Fullscreen is unavailable while the settings window is open
+      if (this.isConfigWindowOpen()) {
+        windowLogger.info('enterFullscreen ignored - settings window is open');
+        return;
+      }
       windowLogger.debug('Entering fullscreen');
       // Notify renderer to pause intensive rendering during transition
       this.window?.webContents.send('window:fullscreenTransitionStart');
@@ -989,6 +1048,7 @@ class Program {
         this.window?.setSimpleFullScreen(true);
         // Notify renderer that transition is complete (simpleFullScreen is synchronous)
         this.window?.webContents.send('window:fullscreenTransitionEnd');
+        this.syncWindowModeMenuState();
       } else {
         // macOS/Linux: use native fullscreen (transition end sent via event handler)
         this.window?.setFullScreen(true);
@@ -1004,6 +1064,7 @@ class Program {
         this.window?.setSimpleFullScreen(false);
         // Notify renderer that transition is complete
         this.window?.webContents.send('window:fullscreenTransitionEnd');
+        this.syncWindowModeMenuState();
       } else {
         // macOS/Linux: use native fullscreen
         this.window?.setFullScreen(false);
@@ -1021,6 +1082,11 @@ class Program {
 
     // Miniplayer control
     ipcMain.handle("window:enterMiniplayer", async (): Promise<void> => {
+      // Miniplayer is unavailable while the settings window is open
+      if (this.isConfigWindowOpen()) {
+        windowLogger.info('enterMiniplayer ignored - settings window is open');
+        return;
+      }
       windowLogger.info('Entering miniplayer mode');
       if (!this.window) {
         windowLogger.warn('enterMiniplayer - no window available');
@@ -1116,6 +1182,7 @@ class Program {
 
       this.isInMiniPlayerMode = true;
       this.window.webContents.send('window:viewModeChanged', 'miniplayer');
+      this.syncWindowModeMenuState();
       windowLogger.info('Miniplayer mode active');
     });
 
@@ -1152,6 +1219,7 @@ class Program {
 
       this.isInMiniPlayerMode = false;
       this.window.webContents.send('window:viewModeChanged', 'desktop');
+      this.syncWindowModeMenuState();
       windowLogger.info('Desktop mode restored');
     });
 
@@ -1415,6 +1483,7 @@ class Program {
       this.window?.webContents.send('window:fullscreenTransitionEnd');
       this.window?.webContents.send('window:fullscreenChanged', true);
       this.window?.webContents.send('window:viewModeChanged', 'fullscreen');
+      this.syncWindowModeMenuState();
     });
 
     this.window.on('leave-full-screen', (): void => {
@@ -1425,6 +1494,7 @@ class Program {
       this.window?.webContents.send('window:fullscreenTransitionEnd');
       this.window?.webContents.send('window:fullscreenChanged', false);
       this.window?.webContents.send('window:viewModeChanged', mode);
+      this.syncWindowModeMenuState();
     });
 
     // Save mini-player bounds when window is resized (in mini-player mode)

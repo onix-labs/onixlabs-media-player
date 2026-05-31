@@ -96,6 +96,7 @@ const mockApi: {
   exitMiniplayer: ReturnType<typeof vi.fn>;
   getViewMode: ReturnType<typeof vi.fn>;
   onViewModeChange: ReturnType<typeof vi.fn>;
+  onConfigOpenChange: ReturnType<typeof vi.fn>;
   setWindowPosition: ReturnType<typeof vi.fn>;
   getWindowPosition: ReturnType<typeof vi.fn>;
   setTrafficLightVisibility: ReturnType<typeof vi.fn>;
@@ -138,6 +139,7 @@ const mockApi: {
   exitMiniplayer: vi.fn().mockResolvedValue(undefined),
   getViewMode: vi.fn().mockResolvedValue('desktop'),
   onViewModeChange: vi.fn().mockReturnValue((): void => {}),
+  onConfigOpenChange: vi.fn().mockReturnValue((): void => {}),
   setWindowPosition: vi.fn().mockResolvedValue({x: 0, y: 0}),
   getWindowPosition: vi.fn().mockResolvedValue({x: 0, y: 0}),
   setTrafficLightVisibility: vi.fn().mockResolvedValue(undefined),

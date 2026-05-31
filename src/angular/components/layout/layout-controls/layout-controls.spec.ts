@@ -72,6 +72,7 @@ function createMockMediaPlayerService(): Record<string, unknown> {
 function createMockElectronService(): Record<string, unknown> {
   return {
     isFullscreen: signal(false),
+    isConfigOpen: signal(false),
     playlist: signal<PlaylistState>({
       items: [],
       currentIndex: -1,

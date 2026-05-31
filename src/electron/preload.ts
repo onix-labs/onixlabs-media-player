@@ -244,6 +244,15 @@ export interface MediaPlayerAPI {
   readonly onViewModeChange: (callback: (mode: 'desktop' | 'miniplayer' | 'fullscreen') => void) => () => void;
 
   /**
+   * Registers a callback for settings (configuration) window open/close.
+   * Used to disable fullscreen/miniplayer controls while settings is open.
+   *
+   * @param callback - Function called with whether settings is now open
+   * @returns Cleanup function to remove the listener
+   */
+  readonly onConfigOpenChange: (callback: (open: boolean) => void) => () => void;
+
+  /**
    * Opens a URL in the default system browser.
    *
    * @param url - The URL to open
@@ -439,6 +448,11 @@ const api: MediaPlayerAPI = {
     const listener: (_event: Electron.IpcRendererEvent, mode: 'desktop' | 'miniplayer' | 'fullscreen') => void = (_event: Electron.IpcRendererEvent, mode: 'desktop' | 'miniplayer' | 'fullscreen'): void => callback(mode);
     ipcRenderer.on('window:viewModeChanged', listener);
     return (): void => { ipcRenderer.removeListener('window:viewModeChanged', listener); };
+  },
+  onConfigOpenChange: (callback: (open: boolean) => void): () => void => {
+    const listener: (_event: Electron.IpcRendererEvent, open: boolean) => void = (_event: Electron.IpcRendererEvent, open: boolean): void => callback(open);
+    ipcRenderer.on('config:openChanged', listener);
+    return (): void => { ipcRenderer.removeListener('config:openChanged', listener); };
   },
   openExternal: (url: string): Promise<void> => {
     const parsed: URL = new URL(url);

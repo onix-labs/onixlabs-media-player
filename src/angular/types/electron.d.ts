@@ -532,6 +532,14 @@ export interface MediaPlayerAPI {
   onViewModeChange: (callback: (mode: 'desktop' | 'miniplayer' | 'fullscreen') => void) => () => void;
 
   /**
+   * Registers a callback for settings (configuration) window open/close.
+   * Used to disable fullscreen/miniplayer controls while settings is open.
+   * @param callback - Function called with whether settings is now open
+   * @returns Cleanup function to unregister the listener
+   */
+  onConfigOpenChange: (callback: (open: boolean) => void) => () => void;
+
+  /**
    * Opens a URL in the default system browser.
    * @param url - The URL to open
    * @returns Promise that resolves when the URL is opened

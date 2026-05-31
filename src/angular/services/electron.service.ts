@@ -123,6 +123,9 @@ export class ElectronService implements OnDestroy {
   /** Current view mode: desktop, miniplayer, or fullscreen */
   public readonly viewMode: ReturnType<typeof signal<'desktop' | 'miniplayer' | 'fullscreen'>> = signal<'desktop' | 'miniplayer' | 'fullscreen'>('desktop');
 
+  /** Whether the settings (configuration) window is currently open */
+  public readonly isConfigOpen: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
   /** Platform information including glass effect support */
   public readonly platformInfo: ReturnType<typeof signal<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}>> = signal<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}>({
     platform: 'unknown',
@@ -141,6 +144,9 @@ export class ElectronService implements OnDestroy {
 
   /** Cleanup function for view mode change listener */
   private viewModeCleanup: (() => void) | null = null;
+
+  /** Cleanup function for config (settings) open-change listener */
+  private configOpenCleanup: (() => void) | null = null;
 
   /** Previous view mode for restoring after fullscreen (miniplayer or desktop) */
   private previousViewMode: 'desktop' | 'miniplayer' = 'desktop';
@@ -390,6 +396,13 @@ export class ElectronService implements OnDestroy {
         if (mode !== 'fullscreen') {
           this.previousViewMode = mode;
         }
+      });
+    });
+
+    // Listen for settings window open/close to disable fullscreen/miniplayer controls
+    this.configOpenCleanup = this.api.onConfigOpenChange((open: boolean): void => {
+      this.ngZone.run((): void => {
+        this.isConfigOpen.set(open);
       });
     });
   }
@@ -1567,6 +1580,7 @@ export class ElectronService implements OnDestroy {
     this.fullscreenTransitionStartCleanup?.();
     this.fullscreenTransitionEndCleanup?.();
     this.viewModeCleanup?.();
+    this.configOpenCleanup?.();
     this.prepareForCloseCleanup?.();
     this.exitConfigurationModeCleanup?.();
     this.osOpenFileCleanup?.();
