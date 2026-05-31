@@ -894,6 +894,103 @@
                   </div>
                 }
               </div>
+
+              <div class="setting-group">
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="video-adjustments-enabled">Video Adjustments</label>
+                    <p class="setting-description">
+                      Real-time colour and tone adjustments applied to all video playback.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <label class="toggle">
+                      <input
+                        type="checkbox"
+                        id="video-adjustments-enabled"
+                        [checked]="currentVideoAdjustmentsEnabled()"
+                        (change)="onVideoAdjustmentsToggle($event)"
+                      />
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+
+                @if (currentVideoAdjustmentsEnabled()) {
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label for="video-adjustments-preset">Preset</label>
+                      <p class="setting-description">
+                        Choose a preset, or adjust the controls below to create a custom look.
+                      </p>
+                    </div>
+                    <div class="setting-control">
+                      <select
+                        id="video-adjustments-preset"
+                        (change)="onVideoAdjustmentPresetChange($event)"
+                      >
+                        @for (preset of videoAdjustmentPresetOptions; track preset.value) {
+                          <option [value]="preset.value" [selected]="preset.value === currentVideoAdjustmentsPreset()">{{ preset.label }}</option>
+                        }
+                      </select>
+                    </div>
+                  </div>
+
+                  @for (control of videoAdjustmentControls; track control.key) {
+                    <div class="setting-row">
+                      <div class="setting-label">
+                        <label [for]="'video-adj-' + control.key">{{ control.label }}</label>
+                      </div>
+                      <div class="setting-control slider-control">
+                        <input
+                          type="range"
+                          [id]="'video-adj-' + control.key"
+                          [min]="control.min"
+                          [max]="control.max"
+                          step="1"
+                          [value]="videoAdjustmentValue(control.key)"
+                          (input)="onVideoAdjustmentChange(control.key, $event)"
+                        />
+                        <span class="slider-value">{{ videoAdjustmentValue(control.key) }}{{ control.unit }}</span>
+                      </div>
+                    </div>
+                  }
+
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label for="video-adj-invert">Invert Colours</label>
+                      <p class="setting-description">
+                        Produce a photo-negative image.
+                      </p>
+                    </div>
+                    <div class="setting-control">
+                      <label class="toggle">
+                        <input
+                          type="checkbox"
+                          id="video-adj-invert"
+                          [checked]="currentVideoAdjustments().invert"
+                          (change)="onVideoAdjustmentInvertToggle($event)"
+                        />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label>Reset Adjustments</label>
+                      <p class="setting-description">
+                        Restore all video adjustments to their defaults.
+                      </p>
+                    </div>
+                    <div class="setting-control">
+                      <button type="button" class="reset-button" (click)="onResetVideoAdjustments()" (mouseup)="$any($event.currentTarget).blur()">
+                        Reset to Default
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
             }
 
             @case ('subtitles') {

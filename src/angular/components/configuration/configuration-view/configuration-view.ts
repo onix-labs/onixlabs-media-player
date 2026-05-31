@@ -19,6 +19,7 @@ import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, AUDIO_LANG
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import {EQ_FREQUENCIES, EQ_PRESETS, EQ_GAIN_MIN, EQ_GAIN_MAX, type EqualizerPreset} from '../../../services/equalizer';
+import {VIDEO_ADJUSTMENT_PRESETS, VIDEO_ADJUSTMENT_CONTROLS, type VideoAdjustmentPreset, type VideoAdjustmentControl, type VideoAdjustmentValues} from '../../../services/video-adjustments';
 import type {DependencyId, DependencyState, DependencyStatus, SoundFontInfo, InstallProgress, HardwareEncoderInfo} from '../../../services/dependency.service';
 
 /**
@@ -343,6 +344,27 @@ export class ConfigurationView {
 
   /** Maximum equalizer band gain (dB) */
   public readonly equalizerGainMax: number = EQ_GAIN_MAX;
+
+  /** Whether video adjustments are enabled */
+  public readonly currentVideoAdjustmentsEnabled: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.settingsService.videoAdjustmentsEnabled()
+  );
+
+  /** Current video-adjustment preset identifier */
+  public readonly currentVideoAdjustmentsPreset: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settingsService.videoAdjustmentsPreset()
+  );
+
+  /** Current video adjustment values */
+  public readonly currentVideoAdjustments: ReturnType<typeof computed<VideoAdjustmentValues>> = computed(
+    (): VideoAdjustmentValues => this.settingsService.videoAdjustments()
+  );
+
+  /** Video-adjustment slider controls (metadata for the UI) */
+  public readonly videoAdjustmentControls: readonly VideoAdjustmentControl[] = VIDEO_ADJUSTMENT_CONTROLS;
+
+  /** Video-adjustment preset options for the dropdown */
+  public readonly videoAdjustmentPresetOptions: readonly VideoAdjustmentPreset[] = VIDEO_ADJUSTMENT_PRESETS;
 
   /** Current server port (0 = auto-assign) */
   public readonly currentServerPort: ReturnType<typeof computed<number>> = computed(
@@ -902,6 +924,70 @@ export class ConfigurationView {
    */
   public formatFrequency(hz: number): string {
     return hz >= 1000 ? `${hz / 1000}k` : `${hz}`;
+  }
+
+  /**
+   * Handles the video-adjustments enable toggle.
+   *
+   * @param event - The change event from the checkbox
+   */
+  public async onVideoAdjustmentsToggle(event: Event): Promise<void> {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLInputElement) {
+      await this.settingsService.setVideoAdjustmentsEnabled(target.checked);
+    }
+  }
+
+  /**
+   * Handles video-adjustment preset selection.
+   *
+   * @param event - The change event from the select
+   */
+  public async onVideoAdjustmentPresetChange(event: Event): Promise<void> {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLSelectElement) {
+      await this.settingsService.setVideoAdjustmentPreset(target.value);
+    }
+  }
+
+  /**
+   * Handles a video-adjustment slider change.
+   *
+   * @param key - The adjustment field
+   * @param event - The input event from the slider
+   */
+  public async onVideoAdjustmentChange(key: VideoAdjustmentControl['key'], event: Event): Promise<void> {
+    const value: number = parseInt(getInputValue(event), 10);
+    if (!isNaN(value)) await this.settingsService.setVideoAdjustment(key, value);
+  }
+
+  /**
+   * Handles the invert toggle.
+   *
+   * @param event - The change event from the checkbox
+   */
+  public async onVideoAdjustmentInvertToggle(event: Event): Promise<void> {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLInputElement) {
+      await this.settingsService.setVideoAdjustment('invert', target.checked);
+    }
+  }
+
+  /**
+   * Resets all video adjustments to neutral.
+   */
+  public async onResetVideoAdjustments(): Promise<void> {
+    await this.settingsService.resetVideoAdjustments();
+  }
+
+  /**
+   * Reads a numeric video-adjustment value by key (for template binding).
+   *
+   * @param key - The adjustment field
+   * @returns The current value
+   */
+  public videoAdjustmentValue(key: VideoAdjustmentControl['key']): number {
+    return this.currentVideoAdjustments()[key];
   }
 
   /**
