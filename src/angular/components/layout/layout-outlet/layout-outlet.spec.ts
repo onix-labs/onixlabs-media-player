@@ -16,6 +16,7 @@ import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import {DependencyService} from '../../../services/dependency.service';
+import {SettingsService} from '../../../services/settings.service';
 import type {DependencyStatus} from '../../../services/dependency.service';
 import type {PlaylistItem, PlaylistState} from '../../../types/electron';
 
@@ -115,6 +116,16 @@ function createMockDependencyService(): Record<string, unknown> {
   };
 }
 
+/**
+ * Creates a mock SettingsService exposing the videoAspectMode signal that
+ * drives the aspect-ratio dropdown's selected value.
+ */
+function createMockSettingsService(): Record<string, unknown> {
+  return {
+    videoAspectMode: signal<string>('default'),
+  };
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -126,12 +137,14 @@ describe('LayoutOutlet', (): void => {
   let mockElectron: ReturnType<typeof createMockElectronService>;
   let mockFileDrop: ReturnType<typeof createMockFileDropService>;
   let mockDeps: ReturnType<typeof createMockDependencyService>;
+  let mockSettings: ReturnType<typeof createMockSettingsService>;
 
   beforeEach(async (): Promise<void> => {
     mockMediaPlayer = createMockMediaPlayerService();
     mockElectron = createMockElectronService();
     mockFileDrop = createMockFileDropService();
     mockDeps = createMockDependencyService();
+    mockSettings = createMockSettingsService();
 
     await TestBed.configureTestingModule({
       imports: [LayoutOutlet],
@@ -140,6 +153,7 @@ describe('LayoutOutlet', (): void => {
         {provide: ElectronService, useValue: mockElectron},
         {provide: FileDropService, useValue: mockFileDrop},
         {provide: DependencyService, useValue: mockDeps},
+        {provide: SettingsService, useValue: mockSettings},
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
@@ -328,6 +342,16 @@ describe('LayoutOutlet', (): void => {
     it('aspectModeDisplayName defaults to Default', (): void => {
       const result: string = component.aspectModeDisplayName();
       expect(result).toBe('Default');
+    });
+
+    it('currentAspectMode reflects the persisted setting', (): void => {
+      expect(component.currentAspectMode()).toBe('default');
+
+      // Reacts to setting changes (not stuck on 'default' like the old
+      // computed over the optional videoOutlet ViewChild).
+      (mockSettings['videoAspectMode'] as WritableSignal<string>).set('fit');
+
+      expect(component.currentAspectMode()).toBe('fit');
     });
   });
 

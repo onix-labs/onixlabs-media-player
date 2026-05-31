@@ -25,7 +25,7 @@ import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import {DependencyService} from '../../../services/dependency.service';
-import {VIDEO_ASPECT_OPTIONS, type VideoAspectMode} from '../../../services/settings.service';
+import {SettingsService, VIDEO_ASPECT_OPTIONS, type VideoAspectMode} from '../../../services/settings.service';
 import type {DependencyStatus} from '../../../services/dependency.service';
 import type {PlaylistItem, SubtitleTrack, AudioTrack} from '../../../types/electron';
 
@@ -80,6 +80,9 @@ export class LayoutOutlet {
   /** Dependency service for external binary status */
   private readonly deps: DependencyService = inject(DependencyService);
 
+  /** Settings service for reading the persisted video aspect mode */
+  private readonly settings: SettingsService = inject(SettingsService);
+
   /** Emitted when the user clicks to open dependency settings */
   public readonly openDependencySettings: OutputEmitterRef<void> = output<void>();
 
@@ -92,9 +95,18 @@ export class LayoutOutlet {
   /** Video aspect ratio options for the select dropdown */
   public readonly aspectOptions: typeof VIDEO_ASPECT_OPTIONS = VIDEO_ASPECT_OPTIONS;
 
-  /** Current aspect mode value for the select dropdown */
+  /**
+   * Current aspect mode value for the select dropdown.
+   *
+   * Reads directly from the settings service (the source of truth that
+   * VideoOutlet.aspectMode() also uses) rather than through the optional
+   * `videoOutlet` ViewChild. The ViewChild is a non-signal property that is
+   * undefined until a video renders, so a computed reading it would capture
+   * zero signal dependencies on first evaluation and cache 'default' forever,
+   * leaving the dropdown stuck on "Default" while the video used the real mode.
+   */
   public readonly currentAspectMode: ReturnType<typeof computed<VideoAspectMode>> = computed(
-    (): VideoAspectMode => this.videoOutlet?.aspectMode() ?? 'default'
+    (): VideoAspectMode => this.settings.videoAspectMode()
   );
 
   // ============================================================================
