@@ -79,19 +79,6 @@
     }
   }
 
-  .media-title {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: block;
-    direction: rtl;
-    text-align: left;
-    padding-right: 1.5rem;
-    font-size: 0.75rem;
-    color: var(--text-75);
-    user-select: none;
-  }
-
   .button-group {
     display: inherit;
     align-items: center;

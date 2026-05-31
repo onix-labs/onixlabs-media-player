@@ -126,6 +126,17 @@ export class LayoutOutlet {
   /** Current media type: 'audio', 'video', or null if nothing loaded */
   public readonly mediaType: ReturnType<typeof computed<'audio' | 'video' | null>> = computed((): 'audio' | 'video' | null => this.mediaPlayer.currentMediaType());
 
+  /**
+   * Formatted title of the currently playing track for the media bar.
+   * Returns "Artist - Title" when an artist is available, otherwise just the
+   * title, or an empty string when nothing is loaded.
+   */
+  public readonly trackTitle: ReturnType<typeof computed<string>> = computed((): string => {
+    const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
+    if (!track) return '';
+    return track.artist ? `${track.artist} - ${track.title}` : track.title;
+  });
+
   /** Whether the playlist has any items */
   public readonly hasPlaylistItems: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.playlist().items.length > 0);
 

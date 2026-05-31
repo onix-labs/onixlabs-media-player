@@ -83,7 +83,7 @@
           </select>
         }
       }
-      <div class="spacer"></div>
+      <span class="media-title">{{ trackTitle() }}</span>
       <button tabindex="-1" class="playlist-toggle" (click)="togglePlaylist()" (mouseup)="$any($event.currentTarget).blur()" title="Toggle playlist">
         <i class="fa-solid fa-list"></i>
       </button>

@@ -365,6 +365,31 @@ describe('LayoutOutlet', (): void => {
   });
 
   // ==========================================================================
+  // Computed Signals - Track Title
+  // ==========================================================================
+
+  describe('trackTitle', (): void => {
+    it('returns "Artist - Title" when artist is present', (): void => {
+      (mockMediaPlayer['currentTrack'] as WritableSignal<PlaylistItem | null>).set(
+        createPlaylistItem({title: 'My Song', artist: 'Test Artist'})
+      );
+      expect(component.trackTitle()).toBe('Test Artist - My Song');
+    });
+
+    it('returns just the title when no artist', (): void => {
+      (mockMediaPlayer['currentTrack'] as WritableSignal<PlaylistItem | null>).set(
+        createPlaylistItem({title: 'Solo Track', artist: undefined})
+      );
+      expect(component.trackTitle()).toBe('Solo Track');
+    });
+
+    it('returns an empty string when no track', (): void => {
+      (mockMediaPlayer['currentTrack'] as WritableSignal<PlaylistItem | null>).set(null);
+      expect(component.trackTitle()).toBe('');
+    });
+  });
+
+  // ==========================================================================
   // Drag and Drop
   // ==========================================================================
 

@@ -230,34 +230,6 @@ describe('LayoutControls', (): void => {
   });
 
   // ==========================================================================
-  // Computed Signals - Track Title
-  // ==========================================================================
-
-  describe('trackTitle', (): void => {
-    it('should return "Artist - Title" when artist is present', (): void => {
-      (mockMediaPlayer['currentTrack'] as WritableSignal<PlaylistItem | null>).set(
-        createPlaylistItem('t1', 'My Song', 'Test Artist')
-      );
-      const result: string = component.trackTitle();
-      expect(result).toBe('Test Artist - My Song');
-    });
-
-    it('should return just title when no artist', (): void => {
-      (mockMediaPlayer['currentTrack'] as WritableSignal<PlaylistItem | null>).set(
-        createPlaylistItem('t1', 'Solo Track')
-      );
-      const result: string = component.trackTitle();
-      expect(result).toBe('Solo Track');
-    });
-
-    it('should return empty string when no track', (): void => {
-      (mockMediaPlayer['currentTrack'] as WritableSignal<PlaylistItem | null>).set(null);
-      const result: string = component.trackTitle();
-      expect(result).toBe('');
-    });
-  });
-
-  // ==========================================================================
   // Computed Signals - Skip Navigation
   // ==========================================================================
 

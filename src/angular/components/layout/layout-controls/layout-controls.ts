@@ -25,7 +25,6 @@
 import {Component, inject, computed, ChangeDetectionStrategy, OnDestroy} from '@angular/core';
 import {DependencyService} from '../../../services/dependency.service';
 import {TransportControlsBase} from '../../shared/transport-controls-base';
-import type {PlaylistItem} from '../../../types/electron';
 
 /**
  * Control bar component with playback controls, seek bar, and volume.
@@ -88,16 +87,6 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
 
   /** Total duration formatted as "M:SS" */
   public readonly totalDuration: ReturnType<typeof computed<string>> = computed((): string => this.mediaPlayer.formatTime(this.mediaPlayer.totalDuration()));
-
-  /**
-   * Formatted track title for display.
-   * Returns "Artist - Title" if artist is available, otherwise just title.
-   */
-  public readonly trackTitle: ReturnType<typeof computed<string>> = computed((): string => {
-    const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
-    if (!track) return '';
-    return track.artist ? `${track.artist} - ${track.title}` : track.title;
-  });
 
   /** Whether the application is currently in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isFullscreen());
