@@ -1067,27 +1067,31 @@ export abstract class Canvas2DVisualization extends Visualization {
    *
    * @param ctx - The canvas rendering context to draw on
    * @param points - Array of {x, y} points defining the path
-   * @param numPoints - Number of points to process (defaults to points.length - 1)
+   * @param numPoints - Index of the last point to process (defaults to points.length - 1)
+   * @param startIndex - Index of the first point to process (defaults to 0), for
+   *   building a path over a sub-range of the array
    */
   protected buildSmoothPath(
     ctx: CanvasRenderingContext2D,
     points: ReadonlyArray<{x: number; y: number}>,
-    numPoints?: number
+    numPoints?: number,
+    startIndex: number = 0
   ): void {
     const count: number = numPoints ?? points.length - 1;
+    const start: number = startIndex;
     const smoothing: number = this.waveformSmoothing;
 
     ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
+    ctx.moveTo(points[start].x, points[start].y);
 
     if (smoothing === 0) {
       // Straight lines (no smoothing)
-      for (let i: number = 1; i <= count; i++) {
+      for (let i: number = start + 1; i <= count; i++) {
         ctx.lineTo(points[i].x, points[i].y);
       }
     } else {
       // Smooth curves using quadratic bezier
-      for (let i: number = 0; i < count; i++) {
+      for (let i: number = start; i < count; i++) {
         const current: {x: number; y: number} = points[i];
         const next: {x: number; y: number} = points[i + 1];
 
