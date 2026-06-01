@@ -84,6 +84,12 @@ export class WaterVisualization extends Canvas2DVisualization {
   // two-fold symmetric waveform instead of a single pass.
   private readonly CIRCULAR_REPEATS: number = 2;
 
+  // Probability (0-1) that an emission cycle fills one of its bands instead of
+  // stroking them all. Most cycles render every ring as a line; occasionally a
+  // single random band is filled, so the filled flourish happens at random
+  // intervals rather than every pass.
+  private readonly CIRCULAR_FILL_CHANCE: number = 0.15;
+
 
   // Per-frame fraction the circular-waveform trail history is pushed outward
   // toward the next concentric circle, where it squashes up as it fades. Large
@@ -194,6 +200,9 @@ export class WaterVisualization extends Canvas2DVisualization {
   private lastColorShift: number = 0;
   // 1 at the instant of a color shift, easing to 0 as the invert resolves.
   private colorSnapProgress: number = 0;
+  // Band flagged (on a gated rotation change) to render filled on the next
+  // circular-waveform emission, then consumed back to -1 (none).
+  private fillBand: number = -1;
 
   // Pre-allocated arrays to avoid GC pressure
   private readonly allPoints: Array<{x: number; y: number}>;
@@ -477,6 +486,13 @@ export class WaterVisualization extends Canvas2DVisualization {
       this.lastColorShift = now;
     }
 
+    // A rotation change also occasionally (CIRCULAR_FILL_CHANCE) flags one random
+    // band to render filled on the next emission. Tied to the rotation-change
+    // trigger but gated so it doesn't fire on every rotation.
+    if (rotationChanged && Math.random() < this.CIRCULAR_FILL_CHANCE) {
+      this.fillBand = Math.floor(Math.random() * this.cachedWaveformColors.length);
+    }
+
     // Invert progress for the color-snap flash: 1 at the shift, easing to 0.
     this.colorSnapProgress = this.lastColorShift > 0
       ? Math.max(0, 1 - (now - this.lastColorShift) / this.COLOR_SNAP_DURATION)
@@ -556,8 +572,12 @@ export class WaterVisualization extends Canvas2DVisualization {
     if (now - this.lastEmitTime >= this.CIRCULAR_EMIT_MS) {
       this.lastEmitTime = now;
       const numBands: number = this.cachedWaveformColors.length;
+      // A band is filled this emission only if a (gated) rotation change flagged
+      // one; consume it so the fill lasts a single emission, not every pass.
+      const filledBand: number = this.fillBand;
+      this.fillBand = -1;
       for (let band: number = numBands - 1; band >= 0; band--) {
-        this.emitCircularBand(ringTrailCtx, centerX, centerY, band);
+        this.emitCircularBand(ringTrailCtx, centerX, centerY, band, band === filledBand);
       }
     }
 
@@ -1013,10 +1033,17 @@ export class WaterVisualization extends Canvas2DVisualization {
    *
    * The mirrored horizontal waveform splits each band into a left and a right
    * run at the same radius; the first usable run for the target band is found
-   * and stroked as a single closed circular waveform onto the ring-trail layer.
-   * Called once per stagger slot so each band renders in turn.
+   * and drawn as a single closed circular waveform onto the ring-trail layer -
+   * stroked as a line, or filled when `filled` is set. Called once per band per
+   * emission cycle.
    */
-  private emitCircularBand(ctx: CanvasRenderingContext2D, centerX: number, centerY: number, targetBand: number): void {
+  private emitCircularBand(
+    ctx: CanvasRenderingContext2D,
+    centerX: number,
+    centerY: number,
+    targetBand: number,
+    filled: boolean
+  ): void {
     if (!this.SHOW_CIRCULAR_WAVEFORM) return;
 
     const waveformColors: Array<{r: number; g: number; b: number}> = this.cachedWaveformColors;
@@ -1031,7 +1058,7 @@ export class WaterVisualization extends Canvas2DVisualization {
       if (i === totalPoints || this.pointBands[i] !== runBand) {
         const endIdx: number = i < totalPoints ? i + 1 : totalPoints;
         if (runBand === targetBand && endIdx - runStart >= 2) {
-          this.drawCircularSegment(ctx, centerX, centerY, runStart, endIdx, targetBand, waveformColors[targetBand]);
+          this.drawCircularSegment(ctx, centerX, centerY, runStart, endIdx, targetBand, waveformColors[targetBand], filled);
           return;
         }
         runStart = i;
@@ -1048,7 +1075,7 @@ export class WaterVisualization extends Canvas2DVisualization {
    * The segment's audio samples are wrapped around a full circle. Each sample's
    * locked level sets the radius between this band's inner concentric circle
    * (level 0) and the next circle outward (level 1), so spikes grow outward
-   * across the band's annulus. Stroked as a line, not filled.
+   * across the band's annulus. Stroked as a line, or filled when `filled` is set.
    */
   private drawCircularSegment(
     ctx: CanvasRenderingContext2D,
@@ -1057,7 +1084,8 @@ export class WaterVisualization extends Canvas2DVisualization {
     startIdx: number,
     endIdx: number,
     band: number,
-    color: {r: number; g: number; b: number}
+    color: {r: number; g: number; b: number},
+    filled: boolean
   ): void {
     const numColors: number = this.cachedWaveformColors.length;
     // The band's annulus: inner concentric circle (0 for the innermost disc)
@@ -1113,6 +1141,24 @@ export class WaterVisualization extends Canvas2DVisualization {
     };
 
     const glowBlur: number = this.getScaledGlowBlur(15);
+
+    // Filled variant: fill the region bounded by the waveform outline instead
+    // of stroking it, for the one band chosen at random this cycle.
+    if (filled) {
+      ctx.save();
+      ctx.shadowBlur = glowBlur;
+      ctx.shadowColor = glowColor;
+      ctx.fillStyle = mainColor;
+      buildPath();
+      ctx.fill();
+      ctx.restore();
+
+      // Highlight overlay
+      ctx.fillStyle = highlightColor;
+      buildPath();
+      ctx.fill();
+      return;
+    }
 
     // Glow layer
     ctx.save();
