@@ -88,7 +88,7 @@ export class WaterVisualization extends Canvas2DVisualization {
   // stroking them all. Most cycles render every ring as a line; occasionally a
   // single random band is filled, so the filled flourish happens at random
   // intervals rather than every pass.
-  private readonly CIRCULAR_FILL_CHANCE: number = 0.15;
+  private readonly CIRCULAR_FILL_CHANCE: number = 0.10;
 
 
   // Per-frame fraction the circular-waveform trail history is pushed outward
@@ -118,6 +118,13 @@ export class WaterVisualization extends Canvas2DVisualization {
   // freshly stamped rings start sharp and grow progressively blurrier as they
   // push outward and bleed away. 0 disables the blur.
   private readonly RING_TRAIL_BLUR_PX: number = 2;
+
+  // The center circle keeps its own trail (same linear-fade + compounding-blur
+  // approach as the ring trail) so it leaves a soft halo that blurs and fades to
+  // transparent instead of popping crisply each frame. Faded faster than the
+  // rings since the circle is re-stamped every frame and only the halo lingers.
+  private readonly CENTER_TRAIL_FADE_STEP: number = 8;
+  private readonly CENTER_TRAIL_BLUR_PX: number = 2;
 
   // Per-frame fade of the horizontal-waveform trail (the over-the-top spin+fade
   // layer). Faster than the main trail since it has no collapse motion to
@@ -167,6 +174,11 @@ export class WaterVisualization extends Canvas2DVisualization {
   // composited over everything else (see drawHorizontalSegments).
   private waveTrailCanvas: HTMLCanvasElement | null = null;
   private waveTrailCtx: CanvasRenderingContext2D | null = null;
+  // Trail canvas for the center circle - blurs and linearly fades to transparent
+  // each frame, leaving a soft halo. Read back via getImageData (the linear
+  // fade), so willReadFrequently keeps it CPU-side like the ring trail.
+  private centerTrailCanvas: HTMLCanvasElement | null = null;
+  private centerTrailCtx: CanvasRenderingContext2D | null = null;
 
   // Fixed reference hue the scene is rendered at, with gradient-color caching.
   private readonly baseHue: number = this.DEFAULT_HUE;
@@ -200,9 +212,6 @@ export class WaterVisualization extends Canvas2DVisualization {
   private lastColorShift: number = 0;
   // 1 at the instant of a color shift, easing to 0 as the invert resolves.
   private colorSnapProgress: number = 0;
-  // Band flagged (on a gated rotation change) to render filled on the next
-  // circular-waveform emission, then consumed back to -1 (none).
-  private fillBand: number = -1;
 
   // Pre-allocated arrays to avoid GC pressure
   private readonly allPoints: Array<{x: number; y: number}>;
@@ -333,12 +342,22 @@ export class WaterVisualization extends Canvas2DVisualization {
       this.waveTrailCtx = offscreen.ctx;
     }
 
+    // Create the center-circle trail canvas if needed. Like the ring trail it is
+    // read back via getImageData (the linear fade), so willReadFrequently keeps
+    // it CPU-side instead of stalling the GPU each frame.
+    if (!this.centerTrailCanvas) {
+      this.centerTrailCanvas = document.createElement('canvas');
+      this.centerTrailCtx = this.centerTrailCanvas.getContext('2d', {alpha: true, willReadFrequently: true})!;
+    }
+
     // Resize trail canvas while preserving content
     this.resizeCanvasPreserving(this.trailCanvas, this.trailCtx!, this.width, this.height);
     // Ring trail canvas is a trail too - preserve its content across resizes
     this.resizeCanvasPreserving(this.ringTrailCanvas, this.ringTrailCtx!, this.width, this.height);
     // Wave trail canvas is a trail too - preserve its content across resizes
     this.resizeCanvasPreserving(this.waveTrailCanvas, this.waveTrailCtx!, this.width, this.height);
+    // Center trail canvas is a trail too - preserve its content across resizes
+    this.resizeCanvasPreserving(this.centerTrailCanvas, this.centerTrailCtx!, this.width, this.height);
     // Temp canvas doesn't need content preserved (it's just working space)
     this.tempCanvas.width = this.width;
     this.tempCanvas.height = this.height;
@@ -431,7 +450,8 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     // Ensure canvases exist
     if (!this.circleCanvas || !this.trailCanvas || !this.trailCtx || !this.tempCanvas || !this.tempCtx ||
-        !this.ringTrailCanvas || !this.ringTrailCtx || !this.waveTrailCanvas || !this.waveTrailCtx) {
+        !this.ringTrailCanvas || !this.ringTrailCtx || !this.waveTrailCanvas || !this.waveTrailCtx ||
+        !this.centerTrailCanvas || !this.centerTrailCtx) {
       this.onResize();
     }
 
@@ -486,13 +506,6 @@ export class WaterVisualization extends Canvas2DVisualization {
       this.lastColorShift = now;
     }
 
-    // A rotation change also occasionally (CIRCULAR_FILL_CHANCE) flags one random
-    // band to render filled on the next emission. Tied to the rotation-change
-    // trigger but gated so it doesn't fire on every rotation.
-    if (rotationChanged && Math.random() < this.CIRCULAR_FILL_CHANCE) {
-      this.fillBand = Math.floor(Math.random() * this.cachedWaveformColors.length);
-    }
-
     // Invert progress for the color-snap flash: 1 at the shift, easing to 0.
     this.colorSnapProgress = this.lastColorShift > 0
       ? Math.max(0, 1 - (now - this.lastColorShift) / this.COLOR_SNAP_DURATION)
@@ -508,8 +521,10 @@ export class WaterVisualization extends Canvas2DVisualization {
     // Get waveform data
     this.analyser.getByteTimeDomainData(this.dataArray);
 
-    // Draw the mirrored waveforms (also computes the per-point band assignment).
-    this.drawMirroredWaveform(trailCtx, centerX, centerY);
+    // Compute the per-point waveform positions and band assignments (consumed
+    // by the horizontal and circular waveform layers). The center circle is
+    // drawn last, on top of everything (see end of draw()).
+    this.drawMirroredWaveform(centerX, centerY);
 
     // Composite - circles background, then trails on top. The hue-rotate
     // filter re-tints the whole composited image uniformly, so every pixel
@@ -563,7 +578,7 @@ export class WaterVisualization extends Canvas2DVisualization {
       ringTrailCtx.clearRect(0, 0, width, height);
       ringTrailCtx.drawImage(tempCanvas, 0, 0);
     }
-    this.fadeRingTrailStep(ringTrailCtx);
+    this.fadeTrailLinear(ringTrailCtx, this.RING_TRAIL_FADE_STEP);
 
     // Every concentric band's circular waveform is stamped together (no stagger
     // between bands) once per CIRCULAR_EMIT_MS, innermost first then outward.
@@ -572,10 +587,11 @@ export class WaterVisualization extends Canvas2DVisualization {
     if (now - this.lastEmitTime >= this.CIRCULAR_EMIT_MS) {
       this.lastEmitTime = now;
       const numBands: number = this.cachedWaveformColors.length;
-      // A band is filled this emission only if a (gated) rotation change flagged
-      // one; consume it so the fill lasts a single emission, not every pass.
-      const filledBand: number = this.fillBand;
-      this.fillBand = -1;
+      // Occasionally (CIRCULAR_FILL_CHANCE) pick one band at random to render
+      // filled instead of stroked; otherwise (-1) every band is a line this pass.
+      const filledBand: number = Math.random() < this.CIRCULAR_FILL_CHANCE
+        ? Math.floor(Math.random() * numBands)
+        : -1;
       for (let band: number = numBands - 1; band >= 0; band--) {
         this.emitCircularBand(ringTrailCtx, centerX, centerY, band, band === filledBand);
       }
@@ -606,6 +622,30 @@ export class WaterVisualization extends Canvas2DVisualization {
     ctx.save();
     ctx.filter = hueFilter;
     ctx.drawImage(waveTrailCanvas, 0, 0);
+    ctx.restore();
+
+    // Center filled circle on its own fading, blurring trail, drawn last so it
+    // always sits on top of every other layer. Each frame the previous halo is
+    // blurred (on the GPU-backed temp canvas), copied back, and linearly faded
+    // toward transparent; then the fresh circle is stamped sharp on top. Finally
+    // composited with the hue filter so it cycles color with the rest of the
+    // scene. The compounding blur softens the lingering halo as it fades.
+    const centerTrailCtx: CanvasRenderingContext2D = this.centerTrailCtx!;
+    const centerTrailCanvas: HTMLCanvasElement = this.centerTrailCanvas!;
+    tempCtx.clearRect(0, 0, width, height);
+    tempCtx.save();
+    if (this.CENTER_TRAIL_BLUR_PX > 0) {
+      tempCtx.filter = `blur(${this.CENTER_TRAIL_BLUR_PX}px)`;
+    }
+    tempCtx.drawImage(centerTrailCanvas, 0, 0);
+    tempCtx.restore();
+    centerTrailCtx.clearRect(0, 0, width, height);
+    centerTrailCtx.drawImage(tempCanvas, 0, 0);
+    this.fadeTrailLinear(centerTrailCtx, this.CENTER_TRAIL_FADE_STEP);
+    this.drawCenterCircleOnTop(centerTrailCtx, centerX, centerY);
+    ctx.save();
+    ctx.filter = hueFilter;
+    ctx.drawImage(centerTrailCanvas, 0, 0);
     ctx.restore();
 
     this.applyFadeOverlay();
@@ -716,7 +756,7 @@ export class WaterVisualization extends Canvas2DVisualization {
       ctx.clip();
 
       // Spin + radial push about the center, then redraw at full strength.
-      // The fade is applied separately (fadeRingTrailStep), as a linear alpha
+      // The fade is applied separately (fadeTrailLinear), as a linear alpha
       // subtraction, so the moved history fades cleanly to transparent.
       ctx.translate(centerX, centerY);
       ctx.rotate(rotation);
@@ -729,22 +769,21 @@ export class WaterVisualization extends Canvas2DVisualization {
   }
 
   /**
-   * Linearly fades the ring-trail layer toward fully transparent.
+   * Linearly fades a trail layer toward fully transparent.
    *
-   * Subtracts a fixed amount (RING_TRAIL_FADE_STEP) from every pixel's alpha
-   * each frame. Unlike a multiplicative fade - which asymptotically approaches
-   * but never reaches zero (8-bit rounding leaves a stuck low-alpha floor) -
-   * a constant subtraction drives every pixel to exactly 0, so all rendered,
-   * pushed and blurred history literally fades away and disappears.
+   * Subtracts a fixed `step` from every pixel's alpha each frame. Unlike a
+   * multiplicative fade - which asymptotically approaches but never reaches zero
+   * (8-bit rounding leaves a stuck low-alpha floor) - a constant subtraction
+   * drives every pixel to exactly 0, so all rendered, pushed and blurred history
+   * literally fades away and disappears.
    */
-  private fadeRingTrailStep(ctx: CanvasRenderingContext2D): void {
+  private fadeTrailLinear(ctx: CanvasRenderingContext2D, step: number): void {
     const width: number = this.width;
     const height: number = this.height;
     if (width <= 0 || height <= 0) return;
 
     const imageData: ImageData = ctx.getImageData(0, 0, width, height);
     const data: Uint8ClampedArray = imageData.data;
-    const step: number = this.RING_TRAIL_FADE_STEP;
 
     // Alpha is at index 3, 7, 11, ... (every 4th byte starting at 3).
     for (let i: number = 3; i < data.length; i += 4) {
@@ -805,14 +844,11 @@ export class WaterVisualization extends Canvas2DVisualization {
     return this.maxRadius;
   }
 
-  private drawMirroredWaveform(ctx: CanvasRenderingContext2D, centerX: number, centerY: number): void {
+  private drawMirroredWaveform(centerX: number, centerY: number): void {
     const width: number = this.width;
     const height: number = this.height;
     const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
     const dataLength: number = dataArray.length;
-    // Waveform sections use the higher-contrast lightness ramp, not the rings.
-    const waveformColors: Array<{r: number; g: number; b: number}> = this.cachedWaveformColors;
-    const numColors: number = waveformColors.length;
 
     const halfWidth: number = this.halfWidth;
     const minArcRadius: number = this.minArcRadius;
@@ -861,12 +897,21 @@ export class WaterVisualization extends Canvas2DVisualization {
     }
 
     // The horizontal waveform segments themselves are drawn separately by
-    // drawHorizontalSegments onto their own spin+fade trail layer; here we only
-    // compute the point/band data they (and the circular waveforms) consume.
+    // drawHorizontalSegments onto their own spin+fade trail layer, and the
+    // center circle by drawCenterCircleOnTop at the end of draw(); here we only
+    // compute the point/band data those layers consume.
+  }
 
-    // Draw circular waveform at center. Normally the brightest color, but
-    // during a color snap it blends toward the darkest shade (inverted against
-    // the white background) and eases back to bright as the snap resolves.
+  /**
+   * Draws the central circular waveform on top of everything else.
+   *
+   * Normally rendered in the brightest waveform color, but during a color snap
+   * it blends toward the darkest shade (inverted against the white background)
+   * and eases back to bright as the snap resolves.
+   */
+  private drawCenterCircleOnTop(ctx: CanvasRenderingContext2D, centerX: number, centerY: number): void {
+    const waveformColors: Array<{r: number; g: number; b: number}> = this.cachedWaveformColors;
+    const numColors: number = waveformColors.length;
     const brightColor: {r: number; g: number; b: number} = waveformColors[numColors - 1];
     const darkColor: {r: number; g: number; b: number} = waveformColors[0];
     const t: number = this.colorSnapProgress;
@@ -875,7 +920,7 @@ export class WaterVisualization extends Canvas2DVisualization {
       g: Math.round(brightColor.g + (darkColor.g - brightColor.g) * t),
       b: Math.round(brightColor.b + (darkColor.b - brightColor.b) * t)
     };
-    this.drawCenterCircle(ctx, centerX, centerY, halfWidth * this.CENTER_RADIUS_FRACTION, centerColor);
+    this.drawCenterCircle(ctx, centerX, centerY, this.halfWidth * this.CENTER_RADIUS_FRACTION, centerColor);
   }
 
   private drawCenterCircle(
@@ -1198,5 +1243,7 @@ export class WaterVisualization extends Canvas2DVisualization {
     this.ringTrailCtx = null;
     this.waveTrailCanvas = null;
     this.waveTrailCtx = null;
+    this.centerTrailCanvas = null;
+    this.centerTrailCtx = null;
   }
 }
