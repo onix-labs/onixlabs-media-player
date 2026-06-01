@@ -354,10 +354,12 @@ export class WaterVisualization extends Canvas2DVisualization {
     // Total segments: 9 (pattern: 0-1-2-3-4-3-2-1-0)
     const totalSegments: number = numColors * 2 - 1;
     const totalPoints: number = samplesPerHalf * 2;
-    const pointsPerSegment: number = Math.floor(totalPoints / totalSegments);
     const centerSegmentIndex: number = numColors - 1;
 
-    // Draw each segment with its color, but skip the center segment
+    // Draw each segment with its color, but skip the center segment.
+    // Boundaries are computed proportionally and rounded so any remainder
+    // (totalPoints not divisible by totalSegments) is distributed evenly,
+    // keeping the segmentation symmetric about the true center point.
     for (let seg: number = 0; seg < totalSegments; seg++) {
       if (seg === centerSegmentIndex) continue;
 
@@ -370,8 +372,9 @@ export class WaterVisualization extends Canvas2DVisualization {
       }
 
       const color: {r: number; g: number; b: number} = gradientColors[colorIndex];
-      const startIdx: number = seg * pointsPerSegment;
-      const endIdx: number = seg === totalSegments - 1 ? totalPoints : (seg + 1) * pointsPerSegment + 1;
+      const startIdx: number = Math.round((seg * totalPoints) / totalSegments);
+      // Overlap by one point so adjacent segments connect with no visible gap.
+      const endIdx: number = Math.round(((seg + 1) * totalPoints) / totalSegments) + 1;
 
       if (endIdx - startIdx >= 2) {
         this.drawWaveformSegment(ctx, startIdx, Math.min(endIdx, totalPoints), color);
