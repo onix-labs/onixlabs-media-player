@@ -79,19 +79,25 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly AMPLITUDE_BUCKET_LOW: number = 34;
   private readonly AMPLITUDE_BUCKET_HIGH: number = 65;
 
+  // Number of times each circular waveform's pattern repeats around the circle
+  // per full turn. 2 wraps the segment's samples around the ring twice, giving a
+  // two-fold symmetric waveform instead of a single pass.
+  private readonly CIRCULAR_REPEATS: number = 2;
+
 
   // Per-frame fraction the circular-waveform trail history is pushed outward
-  // toward the next concentric circle, where it squashes up as it fades. Kept
-  // small so the history drifts slowly and lingers.
-  private readonly RING_PUSH_RATE: number = 0.01;
+  // toward the next concentric circle, where it squashes up as it fades. Large
+  // enough that the history reaches and bleeds against the next circle before
+  // it fades away, rather than fading mid-band.
+  private readonly RING_PUSH_RATE: number = 0.05;
 
   // All concentric bands' circular waveforms are emitted together (no per-band
   // stagger) once every CIRCULAR_EMIT_MS. Between emissions nothing new is
   // stamped, so the existing rings push outward and linearly fade toward fully
   // transparent before the next fresh set lands. Emitting every frame instead
   // would re-stamp at full opacity constantly and the trail would never fade.
-  private readonly CIRCULAR_EMIT_MS: number = 100;
-  private lastEmitTime: number = 0;
+  private readonly CIRCULAR_EMIT_MS: number = 25;
+  private lastEmitTime: number = 5;
 
   // Per-frame linear alpha reduction (0-255) of the circular-waveform trail.
   // Subtracting a fixed amount from every pixel's alpha each frame marches it
@@ -99,12 +105,18 @@ export class WaterVisualization extends Canvas2DVisualization {
   // away to transparent. A multiplicative fade can't do this: it asymptotically
   // stalls at a low-alpha floor (8-bit rounding) and leaves a permanent smear.
   // Kept small so the history lingers and fades slowly.
-  private readonly RING_TRAIL_FADE_STEP: number = 5;
+  private readonly RING_TRAIL_FADE_STEP: number = 4;
+
+  // Per-frame Gaussian blur (px) applied to the circular-waveform trail history.
+  // Because the trail is re-blurred every frame, the blur compounds with age:
+  // freshly stamped rings start sharp and grow progressively blurrier as they
+  // push outward and bleed away. 0 disables the blur.
+  private readonly RING_TRAIL_BLUR_PX: number = 2;
 
   // Per-frame fade of the horizontal-waveform trail (the over-the-top spin+fade
   // layer). Faster than the main trail since it has no collapse motion to
   // disperse residue, so it clears instead of leaving a smear.
-  private readonly WAVE_FADE_RATE: number = 0.1;
+  private readonly WAVE_FADE_RATE: number = 0.001;
 
   // Radius of the central circle as a fraction of the half-width. The waveforms
   // also bend around a minimum arc radius of this same value, so they converge
@@ -210,14 +222,15 @@ export class WaterVisualization extends Canvas2DVisualization {
     // Pre-allocate point arrays (left half + right half = WAVEFORM_SAMPLES * 2)
     this.allPoints = new Array(this.WAVEFORM_SAMPLES * 2);
     this.centerPoints = new Array(this.CENTER_CIRCLE_POINTS + 1);
-    // A circular segment can span every point plus one to close the loop.
-    this.ringPoints = new Array(this.WAVEFORM_SAMPLES * 2 + 1);
+    // A circular segment can span every point, repeated CIRCULAR_REPEATS times
+    // around the ring, plus one to close the loop.
+    this.ringPoints = new Array(this.WAVEFORM_SAMPLES * 2 * this.CIRCULAR_REPEATS + 1);
     this.pointBands = new Int8Array(this.WAVEFORM_SAMPLES * 2);
 
     for (let i: number = 0; i < this.WAVEFORM_SAMPLES * 2; i++) {
       this.allPoints[i] = {x: 0, y: 0};
     }
-    for (let i: number = 0; i <= this.WAVEFORM_SAMPLES * 2; i++) {
+    for (let i: number = 0; i < this.ringPoints.length; i++) {
       this.ringPoints[i] = {x: 0, y: 0};
     }
     for (let i: number = 0; i <= this.CENTER_CIRCLE_POINTS; i++) {
@@ -521,6 +534,19 @@ export class WaterVisualization extends Canvas2DVisualization {
     // then linearly subtract alpha from every pixel so all rendered and
     // pushed/blurred history marches steadily to fully transparent and vanishes.
     this.drawRingTrailFeedback(ringTrailCtx, tempCanvas, centerX, centerY, this.RING_PUSH_RATE, rotation);
+    // Blur the pushed history a touch each frame. As it is re-blurred every
+    // frame the bleed-out content compounds blur with age. The filter is applied
+    // writing to the GPU-backed temp canvas (then copied straight back) to avoid
+    // software-filter cost on the willReadFrequently ring-trail canvas.
+    if (this.RING_TRAIL_BLUR_PX > 0) {
+      tempCtx.clearRect(0, 0, width, height);
+      tempCtx.save();
+      tempCtx.filter = `blur(${this.RING_TRAIL_BLUR_PX}px)`;
+      tempCtx.drawImage(ringTrailCanvas, 0, 0);
+      tempCtx.restore();
+      ringTrailCtx.clearRect(0, 0, width, height);
+      ringTrailCtx.drawImage(tempCanvas, 0, 0);
+    }
     this.fadeRingTrailStep(ringTrailCtx);
 
     // Every concentric band's circular waveform is stamped together (no stagger
@@ -994,19 +1020,18 @@ export class WaterVisualization extends Canvas2DVisualization {
     if (!this.SHOW_CIRCULAR_WAVEFORM) return;
 
     const waveformColors: Array<{r: number; g: number; b: number}> = this.cachedWaveformColors;
-    // All circular waveforms render in the darkest waveform shade (index 0),
-    // regardless of which band they sit in.
-    const ringColor: {r: number; g: number; b: number} = waveformColors[0];
     const totalPoints: number = this.WAVEFORM_SAMPLES * 2;
 
-    // Find the first usable point-run that falls in the target band and draw it.
+    // Find the first usable point-run that falls in the target band and draw it
+    // in that band's waveform color - the same per-band coloring the horizontal
+    // waveform segments use (see drawHorizontalSegments).
     let runStart: number = 0;
     let runBand: number = this.pointBands[0];
     for (let i: number = 1; i <= totalPoints; i++) {
       if (i === totalPoints || this.pointBands[i] !== runBand) {
         const endIdx: number = i < totalPoints ? i + 1 : totalPoints;
         if (runBand === targetBand && endIdx - runStart >= 2) {
-          this.drawCircularSegment(ctx, centerX, centerY, runStart, endIdx, targetBand, ringColor);
+          this.drawCircularSegment(ctx, centerX, centerY, runStart, endIdx, targetBand, waveformColors[targetBand]);
           return;
         }
         runStart = i;
@@ -1049,14 +1074,18 @@ export class WaterVisualization extends Canvas2DVisualization {
     const segLen: number = endIdx - startIdx;
     const points: Array<{x: number; y: number}> = this.ringPoints;
 
+    // The segment's samples are wrapped around the circle CIRCULAR_REPEATS times,
+    // so the same waveform pattern renders multiple times per full turn.
+    const totalSteps: number = segLen * this.CIRCULAR_REPEATS;
+
     // If every sample locks to level 0 the ring collapses flat onto its inner
     // circle and carries no waveform - skip it entirely rather than stamping a
     // bare circle onto the trail.
     let hasAmplitude: boolean = false;
 
-    for (let j: number = 0; j <= segLen; j++) {
-      // Wrap the segment's points evenly around the full circle; j === segLen
-      // reuses the first sample so the loop closes seamlessly.
+    for (let j: number = 0; j <= totalSteps; j++) {
+      // Wrap the segment's points evenly around the full circle, repeating the
+      // pattern; j === totalSteps reuses the first sample so the loop closes.
       const p: number = startIdx + (j % segLen);
       // Map the concatenated left/right point index back to its source sample.
       const sampleIdx: number = p < samplesPerHalf ? p : 2 * samplesPerHalf - 1 - p;
@@ -1066,7 +1095,7 @@ export class WaterVisualization extends Canvas2DVisualization {
       const level: number = this.quantizeAmplitude(dataArray[dataIndex] - 128);
       if (level > 0) hasAmplitude = true;
       const radius: number = innerRadius + level * bandWidth;
-      const angle: number = (j / segLen) * Math.PI * 2;
+      const angle: number = (j / totalSteps) * Math.PI * 2;
 
       points[j].x = centerX + radius * Math.cos(angle);
       points[j].y = centerY + radius * Math.sin(angle);
@@ -1079,7 +1108,7 @@ export class WaterVisualization extends Canvas2DVisualization {
     const highlightColor: string = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.5)`;
 
     const buildPath: () => void = (): void => {
-      this.buildSmoothPath(ctx, points, segLen);
+      this.buildSmoothPath(ctx, points, totalSteps);
       ctx.closePath();
     };
 
