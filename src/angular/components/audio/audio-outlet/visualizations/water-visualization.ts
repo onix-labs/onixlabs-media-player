@@ -34,14 +34,32 @@ export class WaterVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Water';
   public readonly category: string = 'Waves';
 
+  // ===========================================================================
+  // Configuration constants (tuning knobs, grouped by responsibility)
+  // ===========================================================================
+
+  // --- Global rotation & fade ------------------------------------------------
+  // Base spin rate (rad/frame) of every trail layer, and the per-frame fade of
+  // the main (horizontal-waveform collapse) trail.
   private readonly ROTATION_SPEED: number = 0.009;
   private readonly FADE_RATE: number = 0.008;
-  private readonly BACKGROUND_DARKEN: number = 0.7;
 
-  // Gaussian blur applied to the concentric circles, as a fraction of the
-  // radius, to soften the boundaries between rings. 0 = crisp edges.
-  private readonly RING_BLUR_FRACTION: number = 0.001;
+  // --- Background concentric rings -------------------------------------------
+  // Multiplier darkening the gradient when painted, the ring-edge blur (as a
+  // fraction of the radius; 0 = crisp), and the per-band saturation/lightness
+  // levels (outer dark -> inner bright). GRADIENT_LEVELS.length is the number
+  // of concentric circles.
+  private readonly BACKGROUND_DARKEN: number = 0.5;
+  private readonly RING_BLUR_FRACTION: number = 0.05;
+  private readonly GRADIENT_LEVELS: ReadonlyArray<{s: number; l: number}> = [
+    {s: 70, l: 15},
+    {s: 65, l: 29},
+    {s: 60, l: 43},
+    {s: 55, l: 56},
+    {s: 50, l: 70}
+  ];
 
+  // --- Hue & color cycling ---------------------------------------------------
   // The scene (rings, waveform, trails) is rendered at a single fixed reference
   // hue, then the entire composited canvas is re-tinted each frame with a
   // hue-rotate filter. Because the tint is applied uniformly at display time,
@@ -52,111 +70,144 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly DEFAULT_HUE: number = 210;
   private readonly HUE_CYCLE_SPEED: number = 0.15;
 
-  // Trail "collapse": the waveform is split into segments at the concentric
-  // circle boundaries. As the spinning trail fades, each radial slice is
-  // nudged toward the nearest boundary, so the pieces collapse onto the rings
-  // as they fade. More bands = a smoother collapse but a higher per-frame cost.
-  private readonly COLLAPSE_BANDS: number = 20;
-  private readonly COLLAPSE_RATE: number = 0.05;
+  // --- Bass-transient reactivity ---------------------------------------------
+  // Bass is averaged over the first BASS_BINS FFT bins. A jump over
+  // TRANSIENT_THRESHOLD while above MIN_LEVEL is a transient, which flips the
+  // spin direction at most once per DIRECTION_COOLDOWN ms. A transient can also
+  // trigger a sudden color shift (gated to once per COLOR_SHIFT_COOLDOWN ms),
+  // jumping the display hue by COLOR_SHIFT_DEGREES on top of the slow cycle and
+  // inverting the background/center lightness, which eases back to normal over
+  // COLOR_SNAP_DURATION ms.
+  private readonly BASS_BINS: number = 16;
+  private readonly TRANSIENT_THRESHOLD: number = 15;
+  private readonly MIN_LEVEL: number = 50;
+  private readonly DIRECTION_COOLDOWN: number = 5000;
+  private readonly COLOR_SHIFT_COOLDOWN: number = 10000;
+  private readonly COLOR_SHIFT_DEGREES: number = 150;
+  private readonly COLOR_SNAP_DURATION: number = 1500;
 
-  // Balanced sample counts for performance
+  // --- Waveform geometry & color ---------------------------------------------
+  // Sample counts (balanced for performance), the central circle radius as a
+  // fraction of the half-width, and the lightness range for the waveform
+  // sections. The waveforms bend around a minimum arc radius equal to
+  // CENTER_RADIUS_FRACTION so they converge exactly at the circle's edge; it is
+  // kept just below the innermost ring boundary
+  // (1/(GRADIENT_LEVELS.length*2 - 1) of the radius) so the waveform dips into
+  // the innermost color band and all gradient colors are used. The waveform
+  // sections reuse the ring hues/saturations but spread their lightness across
+  // a wider range (LIGHTNESS_MIN..MAX, ramped outer dark -> inner bright) so
+  // each section reads as a clearly distinct shade.
   private readonly WAVEFORM_SAMPLES: number = 256;
   private readonly CENTER_CIRCLE_POINTS: number = 64;
+  private readonly CENTER_RADIUS_FRACTION: number = 0.1;
+  private readonly WAVEFORM_LIGHTNESS_MIN: number = 22;
+  private readonly WAVEFORM_LIGHTNESS_MAX: number = 80;
 
-  // When true, the mirrored horizontal waveforms are drawn on their own
-  // spinning, fading trail layer composited over everything else (see
-  // drawHorizontalSegments). The rings and center circle render regardless.
+  // --- Layer toggles ---------------------------------------------------------
+  // SHOW_HORIZONTAL_WAVEFORM: draw the mirrored horizontal waveforms on their
+  // own spinning, fading trail layer (see drawHorizontalSegments).
+  // SHOW_CIRCULAR_WAVEFORM: re-render each waveform segment as a circular
+  // waveform sitting on the inner boundary of its concentric color band.
+  // The rings and center circle render regardless of either toggle.
   private readonly SHOW_HORIZONTAL_WAVEFORM: boolean = true;
-
-  // When true, each horizontal waveform segment is re-rendered as a stroked
-  // circular waveform sitting on the inner boundary of its concentric color
-  // band. Reuses the existing per-point band assignment without altering the
-  // horizontal waveform code.
   private readonly SHOW_CIRCULAR_WAVEFORM: boolean = true;
 
+  // --- Main trail: collapse onto rings ---------------------------------------
+  // The main trail is split into COLLAPSE_BANDS thin concentric bands. As the
+  // spinning trail fades, each band is nudged toward the nearest ring boundary
+  // at COLLAPSE_RATE, so the pieces collapse onto the rings as they fade. More
+  // bands = a smoother collapse but a higher per-frame cost. COLLAPSE_BANDS is
+  // also reused as the band count for the circular ring trail's outward push.
+  private readonly COLLAPSE_BANDS: number = 20;
+  private readonly COLLAPSE_RATE: number = 0.005;
+
+  // --- Circular waveforms: shape ---------------------------------------------
   // Spike amplitudes lock to three levels by magnitude (on a 0-100 scale):
-  // below LOW -> 0, below HIGH -> 50%, otherwise 100%.
+  // below LOW -> 0, below HIGH -> 50%, otherwise 100%. CIRCULAR_REPEATS wraps
+  // each segment's samples around the ring that many times (2 = two-fold
+  // symmetric). CIRCULAR_FILL_CHANCE is the probability (0-1) an emission cycle
+  // fills one random band instead of stroking them all, so the filled flourish
+  // happens at random intervals rather than every pass.
   private readonly AMPLITUDE_BUCKET_LOW: number = 34;
   private readonly AMPLITUDE_BUCKET_HIGH: number = 65;
-
-  // Number of times each circular waveform's pattern repeats around the circle
-  // per full turn. 2 wraps the segment's samples around the ring twice, giving a
-  // two-fold symmetric waveform instead of a single pass.
   private readonly CIRCULAR_REPEATS: number = 2;
+  private readonly CIRCULAR_FILL_CHANCE: number = 0.1;
 
-  // Probability (0-1) that an emission cycle fills one of its bands instead of
-  // stroking them all. Most cycles render every ring as a line; occasionally a
-  // single random band is filled, so the filled flourish happens at random
-  // intervals rather than every pass.
-  private readonly CIRCULAR_FILL_CHANCE: number = 0.10;
-
-
-  // Per-frame fraction the circular-waveform trail history is pushed outward
-  // toward the next concentric circle, where it squashes up as it fades. Large
-  // enough that the history reaches and bleeds against the next circle before
-  // it fades away, rather than fading mid-band.
-  private readonly RING_PUSH_RATE: number = 0.05;
-
+  // --- Circular waveforms: ring trail (emit / push / fade / blur) ------------
   // All concentric bands' circular waveforms are emitted together (no per-band
   // stagger) once every CIRCULAR_EMIT_MS. Between emissions nothing new is
-  // stamped, so the existing rings push outward and linearly fade toward fully
-  // transparent before the next fresh set lands. Emitting every frame instead
-  // would re-stamp at full opacity constantly and the trail would never fade.
-  private readonly CIRCULAR_EMIT_MS: number = 25;
-  private lastEmitTime: number = 5;
+  // stamped, so the existing rings push outward and fade before the next set
+  // lands (emitting every frame would re-stamp at full opacity and never fade).
+  //
+  // RING_PUSH_RATE is the per-frame fraction the trail history is pushed
+  // outward toward the next concentric circle, where it squashes up as it
+  // fades - large enough that it reaches and bleeds against the next circle
+  // before fading, rather than fading mid-band.
+  //
+  // RING_TRAIL_FADE_STEP is the per-frame linear alpha reduction (0-255).
+  // Subtracting a fixed amount each frame marches every pixel to exactly 0, so
+  // rendered/pushed/blurred history literally fades to transparent. A
+  // multiplicative fade can't do this: it stalls at a low-alpha floor (8-bit
+  // rounding) and leaves a permanent smear. It may be fractional (< 1): the
+  // fractional part is accumulated across frames (ringFadeAccum) and only the
+  // integer overflow is subtracted, letting the trail fade slower than the
+  // 1-alpha-per-frame floor a plain integer subtraction would impose.
+  //
+  // RING_TRAIL_BLUR_PX is the per-frame Gaussian blur applied to the trail
+  // history. As it is re-blurred every frame the blur compounds with age:
+  // freshly stamped rings start sharp and grow blurrier as they push outward
+  // and bleed away. 0 disables the blur.
+  private readonly CIRCULAR_EMIT_MS: number = 200;
+  private readonly RING_PUSH_RATE: number = 0.02;
+  private readonly RING_TRAIL_FADE_STEP: number = 0.5;
+  private readonly RING_TRAIL_BLUR_PX: number = 1;
 
-  // Per-frame linear alpha reduction (0-255) of the circular-waveform trail.
-  // Subtracting a fixed amount from every pixel's alpha each frame marches it
-  // steadily to exactly 0, so rendered/pushed/blurred history literally fades
-  // away to transparent. A multiplicative fade can't do this: it asymptotically
-  // stalls at a low-alpha floor (8-bit rounding) and leaves a permanent smear.
-  // Kept small so the history lingers and fades slowly.
-  private readonly RING_TRAIL_FADE_STEP: number = 4;
-
-  // Per-frame Gaussian blur (px) applied to the circular-waveform trail history.
-  // Because the trail is re-blurred every frame, the blur compounds with age:
-  // freshly stamped rings start sharp and grow progressively blurrier as they
-  // push outward and bleed away. 0 disables the blur.
-  private readonly RING_TRAIL_BLUR_PX: number = 2;
-
-  // The center circle keeps its own trail (same linear-fade + compounding-blur
-  // approach as the ring trail) so it leaves a soft halo that blurs and fades to
-  // transparent instead of popping crisply each frame. Faded faster than the
-  // rings since the circle is re-stamped every frame and only the halo lingers.
-  private readonly CENTER_TRAIL_FADE_STEP: number = 8;
-  private readonly CENTER_TRAIL_BLUR_PX: number = 2;
-
+  // --- Horizontal-waveform trail ---------------------------------------------
   // Per-frame fade of the horizontal-waveform trail (the over-the-top spin+fade
   // layer). Faster than the main trail since it has no collapse motion to
   // disperse residue, so it clears instead of leaving a smear.
   private readonly WAVE_FADE_RATE: number = 0.001;
 
-  // Radius of the central circle as a fraction of the half-width. The waveforms
-  // also bend around a minimum arc radius of this same value, so they converge
-  // exactly at the circle's edge. Kept just below the innermost ring boundary
-  // (1/(GRADIENT_LEVELS.length*2 - 1) of the radius) so the waveform dips into
-  // the innermost color band and all gradient colors are used.
-  private readonly CENTER_RADIUS_FRACTION: number = 0.1;
+  // --- Center-circle trail ---------------------------------------------------
+  // The center circle keeps its own trail (same linear-fade + compounding-blur
+  // approach as the ring trail) so it leaves a soft halo that blurs and fades to
+  // transparent instead of popping crisply each frame. Faded faster than the
+  // rings since the circle is re-stamped every frame and only the halo lingers.
+  private readonly CENTER_TRAIL_FADE_STEP: number = 200;
+  private readonly CENTER_TRAIL_BLUR_PX: number = 20;
 
-  // Saturation and lightness levels for gradient (outer dark -> inner bright).
-  // The array length is the number of concentric circles.
-  private readonly GRADIENT_LEVELS: ReadonlyArray<{s: number; l: number}> = [
-    {s: 70, l: 15},
-    {s: 65, l: 29},
-    {s: 60, l: 43},
-    {s: 55, l: 56},
-    {s: 50, l: 70}
-  ];
+  // ===========================================================================
+  // Mutable runtime state
+  // ===========================================================================
 
-  // The waveform sections reuse the ring hues/saturations but spread their
-  // lightness across a wider range than the background rings, so each section
-  // reads as a clearly distinct shade. Lightness is ramped linearly between
-  // these bounds across the bands (outer dark -> inner bright).
-  private readonly WAVEFORM_LIGHTNESS_MIN: number = 40;
-  private readonly WAVEFORM_LIGHTNESS_MAX: number = 98;
-
+  // Audio data buffers
   private dataArray: Uint8Array<ArrayBuffer>;
   private frequencyData: Uint8Array<ArrayBuffer>;
+
+  // Fixed reference hue the scene is rendered at, with gradient-color caching.
+  private readonly baseHue: number = this.DEFAULT_HUE;
+  private cachedHue: number = -1;
+  private cachedGradientColors: Array<{r: number; g: number; b: number}> = [];
+  // Higher-contrast lightness ramp used for the waveform sections.
+  private cachedWaveformColors: Array<{r: number; g: number; b: number}> = [];
+
+  // Display-time hue rotation (degrees), advanced each frame to cycle the
+  // single on-screen hue through the spectrum.
+  private hueRotation: number = 0;
+
+  // Bass-transient state (see the bass-transient reactivity constants).
+  private smoothedBass: number = 0;
+  private prevBass: number = 0;
+  private rotationDirection: number = 1;
+  private lastDirectionChange: number = 0;
+  private lastColorShift: number = 0;
+  // 1 at the instant of a color shift, easing to 0 as the invert resolves.
+  private colorSnapProgress: number = 0;
+
+  // Circular-waveform emission/fade state: timestamp of the last emission, and
+  // the carried sub-integer remainder of the ring-trail fade between frames.
+  private lastEmitTime: number = 5;
+  private ringFadeAccum: number = 0;
 
   // Canvases - created once, reused each frame
   private circleCanvas: HTMLCanvasElement | null = null;
@@ -179,39 +230,6 @@ export class WaterVisualization extends Canvas2DVisualization {
   // fade), so willReadFrequently keeps it CPU-side like the ring trail.
   private centerTrailCanvas: HTMLCanvasElement | null = null;
   private centerTrailCtx: CanvasRenderingContext2D | null = null;
-
-  // Fixed reference hue the scene is rendered at, with gradient-color caching.
-  private readonly baseHue: number = this.DEFAULT_HUE;
-  private cachedHue: number = -1;
-  private cachedGradientColors: Array<{r: number; g: number; b: number}> = [];
-  // Higher-contrast lightness ramp used for the waveform sections.
-  private cachedWaveformColors: Array<{r: number; g: number; b: number}> = [];
-
-  // Display-time hue rotation (degrees), advanced each frame to cycle the
-  // single on-screen hue through the spectrum.
-  private hueRotation: number = 0;
-
-  // Bass/mid detection settings
-  private readonly BASS_BINS: number = 16;
-  private readonly TRANSIENT_THRESHOLD: number = 15;
-  private readonly MIN_LEVEL: number = 50;
-  private readonly DIRECTION_COOLDOWN: number = 5000;
-  // A bass transient can also trigger a sudden complete color shift, gated to
-  // at most once per cooldown. The shift jumps the display hue by a large
-  // amount (e.g. blue -> red) on top of the slow cycle.
-  private readonly COLOR_SHIFT_COOLDOWN: number = 10000;
-  private readonly COLOR_SHIFT_DEGREES: number = 150;
-  // On a color shift, the lightness of the background and center circle is
-  // inverted (white background + dark center) and animates back to normal
-  // (dark background + light center) over this duration.
-  private readonly COLOR_SNAP_DURATION: number = 1500;
-  private smoothedBass: number = 0;
-  private prevBass: number = 0;
-  private rotationDirection: number = 1;
-  private lastDirectionChange: number = 0;
-  private lastColorShift: number = 0;
-  // 1 at the instant of a color shift, easing to 0 as the invert resolves.
-  private colorSnapProgress: number = 0;
 
   // Pre-allocated arrays to avoid GC pressure
   private readonly allPoints: Array<{x: number; y: number}>;
@@ -578,7 +596,15 @@ export class WaterVisualization extends Canvas2DVisualization {
       ringTrailCtx.clearRect(0, 0, width, height);
       ringTrailCtx.drawImage(tempCanvas, 0, 0);
     }
-    this.fadeTrailLinear(ringTrailCtx, this.RING_TRAIL_FADE_STEP);
+    // Accumulate the (possibly fractional) fade step and only subtract the whole
+    // part this frame, banking the remainder so the trail fades slower than the
+    // 1-alpha-per-frame floor of an integer subtraction.
+    this.ringFadeAccum += this.RING_TRAIL_FADE_STEP;
+    const ringFadeStep: number = Math.floor(this.ringFadeAccum);
+    if (ringFadeStep > 0) {
+      this.ringFadeAccum -= ringFadeStep;
+      this.fadeTrailLinear(ringTrailCtx, ringFadeStep);
+    }
 
     // Every concentric band's circular waveform is stamped together (no stagger
     // between bands) once per CIRCULAR_EMIT_MS, innermost first then outward.
@@ -1074,12 +1100,17 @@ export class WaterVisualization extends Canvas2DVisualization {
   }
 
   /**
-   * Emits exactly one circular waveform, for the band whose turn it is.
+   * Emits the circular waveforms for the band whose turn it is.
    *
    * The mirrored horizontal waveform splits each band into a left and a right
    * run at the same radius; the first usable run for the target band is found
-   * and drawn as a single closed circular waveform onto the ring-trail layer -
-   * stroked as a line, or filled when `filled` is set. Called once per band per
+   * and drawn as a closed circular waveform onto the ring-trail layer - stroked
+   * as a line, or filled when `filled` is set.
+   *
+   * The same waveform shape is drawn twice: once in this band's own annulus and
+   * color, and once scaled into the NEXT concentric band's annulus (looped, so
+   * the central disc wraps back to the outermost ring) in that band's color, so
+   * each emission echoes its shape one band over. Called once per band per
    * emission cycle.
    */
   private emitCircularBand(
@@ -1092,6 +1123,7 @@ export class WaterVisualization extends Canvas2DVisualization {
     if (!this.SHOW_CIRCULAR_WAVEFORM) return;
 
     const waveformColors: Array<{r: number; g: number; b: number}> = this.cachedWaveformColors;
+    const numBands: number = waveformColors.length;
     const totalPoints: number = this.WAVEFORM_SAMPLES * 2;
 
     // Find the first usable point-run that falls in the target band and draw it
@@ -1103,7 +1135,11 @@ export class WaterVisualization extends Canvas2DVisualization {
       if (i === totalPoints || this.pointBands[i] !== runBand) {
         const endIdx: number = i < totalPoints ? i + 1 : totalPoints;
         if (runBand === targetBand && endIdx - runStart >= 2) {
+          // Same waveform shape, drawn into this band and into the next band
+          // (looped) so it reads as a colored echo one concentric ring over.
+          const nextBand: number = (targetBand + 1) % numBands;
           this.drawCircularSegment(ctx, centerX, centerY, runStart, endIdx, targetBand, waveformColors[targetBand], filled);
+          this.drawCircularSegment(ctx, centerX, centerY, runStart, endIdx, nextBand, waveformColors[nextBand], filled);
           return;
         }
         runStart = i;
@@ -1175,6 +1211,13 @@ export class WaterVisualization extends Canvas2DVisualization {
     }
 
     if (!hasAmplitude) return;
+
+    // Filled rings always render in the darkest available waveform color
+    // (index 0 of the outer-dark -> inner-bright ramp), regardless of which
+    // band emitted them; stroked rings keep their own band color.
+    if (filled) {
+      color = this.cachedWaveformColors[0];
+    }
 
     const mainColor: string = `rgb(${color.r}, ${color.g}, ${color.b})`;
     const glowColor: string = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
