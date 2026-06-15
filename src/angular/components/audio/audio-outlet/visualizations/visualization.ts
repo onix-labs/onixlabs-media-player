@@ -9,10 +9,10 @@
  * │   ├── BarsVisualization
  * │   ├── WaveformVisualization
  * │   ├── TunnelVisualization
- * │   └── NeonVisualization
+ * │   ├── NeonVisualization
+ * │   ├── PulsarVisualization
+ * │   └── WaterVisualization
  * └── WebGLVisualization (abstract) - For WebGL rendering
- *     ├── PulsarVisualization
- *     └── WaterVisualization
  * ```
  *
  * All visualizations share common functionality:

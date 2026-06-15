@@ -1,494 +1,684 @@
 /**
- * @fileoverview Water visualization.
+ * @fileoverview Water visualization (Ambience / Water).
  *
- * Baseline: draws ONLY the concentric filled rings - a Tower of Hanoi viewed
- * top-down: a stack of color bands, bright at the center and darker at each step
- * outward. All other elements (waveforms, trails, center circle, reactivity)
- * have been removed; they will be layered back on as needed.
+ * A reimagining of the classic "Ambience / Water" media-player visual.
  *
- * The ring stack is rendered once at a fixed reference hue, then the composited
- * canvas is re-tinted each frame with a hue-rotate filter so the single on-screen
- * hue slowly cycles through the spectrum.
+ * The frame is built from four surgical layers, drawn back-to-front:
+ *
+ *   1. Concentric tower - six filled, centered circles stacked brightest
+ *      (smallest, on top) to darkest (largest, underneath), feathered into
+ *      one another with a mild blur. Looks like a Tower of Hanoi from above.
+ *
+ *   2. Horizontal waveforms - a left and a right waveform that start at the
+ *      screen edges, run inward and bend around the smallest circle like light
+ *      bending around a black hole (they can never cross the core). The right
+ *      waveform is a 180-degree rotation of the left, so the pair is
+ *      rotationally symmetrical. Their history is pulled toward the centre in a
+ *      whirlpool: spiralling, blurring and fading.
+ *
+ *   3. Circular square-wave - a castellated square wave whose rest line sits on
+ *      the second circle. Peaks ceiling outward to the third circle and are
+ *      pushed toward the edge; troughs floor inward to the first circle and are
+ *      sucked toward the centre as though falling into a black hole. Both
+ *      bleed across circle boundaries as they spiral, blur and fade.
+ *
+ *   4. Effects - per-element glow, a slow hue drift (the whole scene breathes
+ *      from blue through to red and back), and the trail blur/fade that powers
+ *      every spiral.
+ *
+ * Colour comes from a single slowly-cycling hue so the entire visual drifts
+ * through the spectrum; the waveforms always match the brightest (top) circle.
  *
  * @module app/components/audio/audio-outlet/visualizations/water-visualization
  */
 
 import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from './visualization';
+import {TWO_PI} from './visualization-constants';
+
+/** A single mutable 2D point. */
+interface Point {
+  x: number;
+  y: number;
+}
+
+/** An RGB colour triplet (0-255 per channel). */
+interface Rgb {
+  r: number;
+  g: number;
+  b: number;
+}
 
 /**
- * Water visualization - concentric ring baseline.
+ * Water visualization: a concentric glowing tower wrapped in mirrored
+ * horizontal waveforms and a circular square wave, all spiralling into and out
+ * of the centre.
  */
 export class WaterVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Water';
   public readonly category: string = 'Waves';
 
-  // ===========================================================================
-  // Configuration constants
-  // ===========================================================================
+  // --- Concentric tower -----------------------------------------------------
 
-  // --- Background concentric rings -------------------------------------------
-  // Multiplier darkening the gradient when painted, the ring-edge blur (as a
-  // fraction of the radius; 0 = crisp), and the per-band saturation/lightness
-  // levels (outer dark -> inner bright). GRADIENT_LEVELS.length is the number
-  // of concentric circles.
-  private readonly BACKGROUND_DARKEN: number = 0.9;
-  private readonly RING_BLUR_FRACTION: number = 0.01;
-  private readonly GRADIENT_LEVELS: ReadonlyArray<{s: number; l: number}> = [
-    {s: 70, l: 15},
-    {s: 65, l: 26},
-    {s: 60, l: 37},
-    {s: 55, l: 48},
-    {s: 50, l: 59},
-    {s: 45, l: 70}
-  ];
+  /** Number of stacked concentric circles. */
+  private readonly CIRCLE_COUNT: number = 6;
 
-  // --- Hue & color cycling ---------------------------------------------------
-  // The rings are rendered at a single fixed reference hue, then the whole
-  // composited canvas is re-tinted each frame with a hue-rotate filter, sweeping
-  // that single hue through the spectrum.
-  private readonly DEFAULT_HUE: number = 210;
-  private readonly HUE_CYCLE_SPEED: number = 0.15;
+  /**
+   * The largest (outermost) circle's radius as a multiple of half the screen
+   * width, so its circumference overlaps the left and right edges slightly.
+   * The six circles are then equally spaced from the centre out to it.
+   */
+  private readonly EDGE_OVERLAP_FACTOR: number = 1.06;
 
-  // --- Horizontal waveform ---------------------------------------------------
-  // A mirrored oscilloscope across the middle. Each sample bends the line around
-  // the center; the arc radius is clamped to CENTER_RADIUS_FRACTION of the
-  // half-width so both halves converge on the central ring's edge and stop there
-  // (the waveform routes around the center "like light around a black hole"
-  // rather than crossing it). Drawn in a SINGLE bright color at the current
-  // display hue, with the standard glow.
-  private readonly SHOW_HORIZONTAL_WAVEFORM: boolean = true;
-  private readonly WAVEFORM_SAMPLES: number = 256;
-  private readonly CENTER_RADIUS_FRACTION: number = 0.1;
-  private readonly WAVEFORM_AMPLITUDE_FRACTION: number = 0.3;
-  private readonly WAVEFORM_BEND_STRENGTH: number = 1.2;
-  private readonly WAVEFORM_SATURATION: number = 60;
-  private readonly WAVEFORM_LIGHTNESS: number = 60;
+  /** Saturation used for every circle (percent). */
+  private readonly CIRCLE_SATURATION: number = 85;
 
-  // --- Swirl trail -----------------------------------------------------------
-  // The waveform is stamped onto a trail canvas that is rotated a little and
-  // faded each frame, so it spins and trails off. Because the waveform is point-
-  // symmetric, the single rotation makes each side appear to swirl away in the
-  // opposite direction. ROTATION_SPEED is radians/frame (kept slow);
-  // TRAIL_FADE_STEP is a per-frame LINEAR alpha subtraction (0-255). Subtracting
-  // a fixed amount drives every pixel to exactly 0, so the trail dissolves
-  // gradually (blending into the rings as it goes) and then disappears
-  // completely. A multiplicative fade can't do this: it stalls at a low-alpha
-  // floor (8-bit rounding) and, re-stamped each frame, builds a permanent bright
-  // smear. Higher = shorter trail.
-  private readonly ROTATION_SPEED: number = 0.004;
-  private readonly TRAIL_FADE_STEP: number = 1;
+  /** Lightness of the innermost (brightest) circle (percent). */
+  private readonly INNER_LIGHTNESS: number = 64;
 
-  // ===========================================================================
-  // Mutable runtime state
-  // ===========================================================================
+  /** Lightness of the outermost (darkest) circle (percent). */
+  private readonly OUTER_LIGHTNESS: number = 16;
 
-  // Fixed reference hue the scene is rendered at, with gradient-color caching.
-  private readonly baseHue: number = this.DEFAULT_HUE;
-  private cachedHue: number = -1;
-  private cachedGradientColors: Array<{r: number; g: number; b: number}> = [];
-  // Single waveform color, rendered at the fixed base hue (re-tinted at composite
-  // time by the hue filter, like the rings).
-  private cachedWaveColor: {r: number; g: number; b: number} = {r: 255, g: 255, b: 255};
+  /** Lightness of the background fill - a shade darker than the darkest circle. */
+  private readonly BACKGROUND_LIGHTNESS: number = 4;
 
-  // Display-time hue rotation (degrees), advanced each frame to cycle the
-  // single on-screen hue through the spectrum.
-  private hueRotation: number = 0;
+  /** Base blur radius used to feather one circle into the next (pixels). */
+  private readonly CIRCLE_BASE_BLUR: number = 4;
 
-  // Carried sub-integer remainder of the linear trail fade between frames, so a
-  // fractional effective step (after the trail-intensity multiplier) fades
-  // slower than the 1-alpha-per-frame floor of a plain integer subtraction.
-  private trailFadeAccum: number = 0;
+  /**
+   * Minimum feather between circles, applied even when the user glow control is
+   * zero. The "mild blur from one circle to the next" is intrinsic to the tower,
+   * so it must not be multiplied away by glowIntensity.
+   */
+  private readonly CIRCLE_MIN_BLUR: number = 80;
 
-  // Ring canvas - created once, re-rendered only when the reference hue changes.
-  private circleCanvas: HTMLCanvasElement | null = null;
-  private circleCtx: CanvasRenderingContext2D | null = null;
-  // Trail canvas (waveform spins + fades here) and a temp canvas for the copy.
-  private trailCanvas: HTMLCanvasElement | null = null;
-  private trailCtx: CanvasRenderingContext2D | null = null;
-  private tempCanvas: HTMLCanvasElement | null = null;
-  private tempCtx: CanvasRenderingContext2D | null = null;
+  /** Ambient radial-wash opacity behind the tower. */
+  private readonly AMBIENT_OPACITY: number = 0.12;
 
-  // Audio time-domain buffer and pre-allocated mirrored-waveform points
-  // (left half + right half = WAVEFORM_SAMPLES * 2).
+  // --- Waveform colour ------------------------------------------------------
+
+  /**
+   * Glow blur radius for the waveforms (pixels). The waveform colour itself is
+   * not configured here: it is taken from the brightest (top) circle so the two
+   * always match, per the spec.
+   */
+  private readonly WAVE_GLOW_BLUR: number = 14;
+
+  /** Opacity of the static rest line drawn on the second circle. */
+  private readonly BASELINE_OPACITY: number = 0.22;
+
+  // --- Horizontal waveforms -------------------------------------------------
+
+  /** Samples per horizontal waveform (edge to centre). */
+  private readonly HORIZONTAL_SAMPLES: number = 32;
+
+  /** Horizontal amplitude as a fraction of screen height. */
+  private readonly HORIZONTAL_AMP_FRACTION: number = 0.22;
+
+  /** How hard the horizontal waveform bends around the core. */
+  private readonly BEND_STRENGTH: number = 1.0;
+
+  /** Maximum bend angle so the waveform never wraps over the core (radians). */
+  private readonly MAX_BEND_ANGLE: number = 1.4;
+
+  // --- Circular square wave -------------------------------------------------
+
+  /** Angular samples around the circular waveform. */
+  private readonly CIRCULAR_SAMPLES: number = 96;
+
+  /** Per-frame rotation of the freshly drawn circular wave (radians). */
+  private readonly WAVE_ROTATION_SPEED: number = 0.003;
+
+  // --- Trails (spiral / blur / fade) ---------------------------------------
+
+  /** Per-frame scale of the inward (black-hole) trail. Below 1 = pulled in. */
+  private readonly INWARD_SCALE: number = 0.975;
+
+  /** Per-frame scale of the outward (push) trail. Above 1 = pushed out. */
+  private readonly OUTWARD_SCALE: number = 1.022;
+
+  /** Per-frame rotation of the inward trail (radians). */
+  private readonly INWARD_ROTATION: number = 0.006;
+
+  /** Per-frame rotation of the outward trail (radians). */
+  private readonly OUTWARD_ROTATION: number = 0.004;
+
+  /** Per-frame fade of the inward trail. */
+  private readonly INWARD_FADE: number = 0.04;
+
+  /** Per-frame fade of the outward trail. */
+  private readonly OUTWARD_FADE: number = 0.03;
+
+  /** Extra trail-canvas margin beyond the outer circle, for glow (pixels). */
+  private readonly TRAIL_MARGIN: number = 24;
+
+  // --- Colour cycling -------------------------------------------------------
+
+  /** Per-frame hue drift (degrees). */
+  private readonly HUE_CYCLE_SPEED: number = 0.08;
+
+  /** Starting hue (degrees) - blue, matching the reference. */
+  private readonly START_HUE: number = 220;
+
+  // --- State ----------------------------------------------------------------
+
+  /** Time-domain audio buffer. */
   private dataArray: Uint8Array<ArrayBuffer>;
-  private readonly allPoints: Array<{x: number; y: number}>;
 
-  // Pre-computed values (updated on resize)
+  /** Current global hue (degrees). */
+  private hue: number;
+
+  /** Integer hue the cached colours were computed for (-1 = uncached). */
+  private cachedHue: number = -1;
+
+  /** Rotation applied to the freshly drawn circular wave (radians). */
+  // Reassigned by the circular-wave layer, which is currently disabled in draw().
+  // eslint-disable-next-line @typescript-eslint/prefer-readonly
+  private waveAngle: number = 0;
+
+  /** Pre-computed centre and per-circle radii (recomputed on resize). */
   private centerX: number = 0;
   private centerY: number = 0;
-  private maxRadius: number = 0;
-  private halfWidth: number = 0;
-  private minArcRadius: number = 0;
+  private readonly radii: number[];
+
+  /**
+   * Trail surfaces are larger than the visible canvas so the swirling waveform
+   * is preserved while it rotates out of bounds at the sides and back into the
+   * corners - landing exactly on the outer circle. trailCx/trailCy is the trail
+   * centre, aligned to the screen centre when composited.
+   */
+  private trailSize: number = 0;
+  private trailCx: number = 0;
+  private trailCy: number = 0;
+
+  /** Cached per-circle colours, their `rgb(...)` strings, and the wave colours. */
+  private readonly circleColors: Rgb[];
+  private readonly circleColorStrings: string[];
+  private waveColorMain: string = 'rgb(255, 255, 255)';
+  private waveColorGlow: string = 'rgba(255, 255, 255, 0.8)';
+
+  /** Cached background fill colour (a shade darker than the darkest circle). */
+  private backgroundColorString: string = 'rgb(0, 0, 0)';
+
+  /** Cached ambient radial gradient (rebuilt only on resize or hue change). */
+  private ambientGradient: CanvasGradient | null = null;
+  private ambientDirty: boolean = true;
+
+  /** Set once destroy() runs so a trailing frame cannot resurrect the surfaces. */
+  private destroyed: boolean = false;
+
+  /** Pre-allocated point buffers (avoids per-frame allocation). */
+  private readonly leftPoints: Point[];
+  private readonly rightPoints: Point[];
+  private readonly outwardPoints: Point[];
+  private readonly inwardPoints: Point[];
+  private readonly outwardRadii: number[];
+  private readonly inwardRadii: number[];
+
+  /** Inward (whirlpool / black-hole) trail surface. */
+  private inwardCanvas: HTMLCanvasElement | null = null;
+  private inwardCtx: CanvasRenderingContext2D | null = null;
+
+  /** Outward (pushed-to-edge) trail surface. */
+  private outwardCanvas: HTMLCanvasElement | null = null;
+  private outwardCtx: CanvasRenderingContext2D | null = null;
+
+  /** Scratch surface used while spinning the trails. */
+  private tempCanvas: HTMLCanvasElement | null = null;
+  private tempCtx: CanvasRenderingContext2D | null = null;
 
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
-    this.allPoints = new Array(this.WAVEFORM_SAMPLES * 2);
-    for (let i: number = 0; i < this.WAVEFORM_SAMPLES * 2; i++) {
-      this.allPoints[i] = {x: 0, y: 0};
+    this.hue = this.START_HUE;
+    this.sensitivity = 0.4;
+
+    this.radii = new Array<number>(this.CIRCLE_COUNT).fill(0);
+    this.circleColors = [];
+    this.circleColorStrings = new Array<string>(this.CIRCLE_COUNT).fill('rgb(0, 0, 0)');
+    for (let i: number = 0; i < this.CIRCLE_COUNT; i++) {
+      this.circleColors.push({r: 0, g: 0, b: 0});
     }
-    this.sensitivity = 0.3;
+
+    this.leftPoints = WaterVisualization.allocatePoints(this.HORIZONTAL_SAMPLES);
+    this.rightPoints = WaterVisualization.allocatePoints(this.HORIZONTAL_SAMPLES);
+    // Two vertices per angular sample (a flat top then a radial jump).
+    this.outwardPoints = WaterVisualization.allocatePoints(this.CIRCULAR_SAMPLES * 2);
+    this.inwardPoints = WaterVisualization.allocatePoints(this.CIRCULAR_SAMPLES * 2);
+    this.outwardRadii = new Array<number>(this.CIRCULAR_SAMPLES).fill(0);
+    this.inwardRadii = new Array<number>(this.CIRCULAR_SAMPLES).fill(0);
+  }
+
+  /** Allocates a fresh array of zeroed points. */
+  private static allocatePoints(count: number): Point[] {
+    const points: Point[] = new Array<Point>(count);
+    for (let i: number = 0; i < count; i++) {
+      points[i] = {x: 0, y: 0};
+    }
+    return points;
   }
 
   protected override onFftSizeChanged(): void {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
 
-  // Cache gradient colors - only recalculate when the hue changes by >= 1 degree
-  private updateGradientColors(): boolean {
-    const hueInt: number = Math.floor(this.baseHue);
-    if (hueInt === this.cachedHue) return false;
-
-    this.cachedHue = hueInt;
-    this.cachedGradientColors = this.GRADIENT_LEVELS.map(
-      (level: {s: number; l: number}): {r: number; g: number; b: number} =>
-        this.hslToRgb(this.baseHue, level.s, level.l)
-    );
-    this.cachedWaveColor = this.hslToRgb(this.baseHue, this.WAVEFORM_SATURATION, this.WAVEFORM_LIGHTNESS);
-    return true;
-  }
-
   protected override onResize(): void {
-    // Pre-compute geometry values
-    this.centerX = this.width * 0.5;
-    this.centerY = this.height * 0.5;
-    this.maxRadius = this.width * 0.5;
-    this.halfWidth = this.width * 0.5;
-    this.minArcRadius = this.halfWidth * this.CENTER_RADIUS_FRACTION;
-
-    // Create ring canvas if needed (re-rendered only when hue changes).
-    if (!this.circleCanvas) {
-      this.circleCanvas = document.createElement('canvas');
-      this.circleCtx = this.circleCanvas.getContext('2d')!;
-    }
-    this.circleCanvas.width = this.width;
-    this.circleCanvas.height = this.height;
-
-    // Create the trail + temp canvases if needed. The trail is read back via
-    // fadeTrailLinear (getImageData) every frame, so willReadFrequently keeps it
-    // CPU-side instead of stalling the GPU.
-    if (!this.trailCanvas) {
-      this.trailCanvas = document.createElement('canvas');
-      this.trailCtx = this.trailCanvas.getContext('2d', {alpha: true, willReadFrequently: true})!;
-    }
-    if (!this.tempCanvas) {
-      const pair: OffscreenCanvasPair = this.createOffscreenCanvas();
-      this.tempCanvas = pair.canvas;
-      this.tempCtx = pair.ctx;
-    }
-    this.trailCanvas.width = this.width;
-    this.trailCanvas.height = this.height;
-    this.tempCanvas.width = this.width;
-    this.tempCanvas.height = this.height;
-
-    // Force re-render of the rings on the next frame.
-    this.cachedHue = -1;
-
-    this.ctx.clearRect(0, 0, this.width, this.height);
-  }
-
-  private renderCirclesToCanvas(): void {
-    const ctx: CanvasRenderingContext2D = this.circleCtx!;
     const width: number = this.width;
     const height: number = this.height;
-    const centerX: number = this.centerX;
-    const centerY: number = this.centerY;
-    const maxRadius: number = this.maxRadius;
-    const gradientColors: Array<{r: number; g: number; b: number}> = this.cachedGradientColors;
-    const numColors: number = gradientColors.length;
 
-    ctx.clearRect(0, 0, width, height);
+    this.centerX = width / 2;
+    this.centerY = height / 2;
 
-    // Ring boundary positions (as a fraction of maxRadius), from the outer rim
-    // (1.0) inward to the center (0). Interior rings sit at the odd multiples
-    // of 1/totalSegments: (totalSegments - 2i)/totalSegments.
-    const totalSegments: number = numColors * 2 - 1;
-    const ringPositions: number[] = new Array(numColors + 1);
-    ringPositions[0] = 1.0;
-    ringPositions[numColors] = 0;
-    for (let i: number = 1; i < numColors; i++) {
-      ringPositions[i] = (totalSegments - 2 * i) / totalSegments;
+    // The outermost circle slightly overlaps the left/right edges; the six
+    // circles are then equally spaced from the centre out to it.
+    const outerRadius: number = (width / 2) * this.EDGE_OVERLAP_FACTOR;
+    for (let i: number = 0; i < this.CIRCLE_COUNT; i++) {
+      this.radii[i] = outerRadius * (i + 1) / this.CIRCLE_COUNT;
+    }
+    // Geometry changed: the cached ambient gradient must be rebuilt.
+    this.ambientDirty = true;
+
+    // Trail surface is a square big enough to hold the whole outer circle (and
+    // cover the visible canvas), so the swirling waveform survives going out of
+    // bounds and re-emerges on the outer circle in the corners.
+    const trailHalf: number = Math.ceil(Math.max(outerRadius, this.centerX, this.centerY) + this.TRAIL_MARGIN);
+    this.trailSize = trailHalf * 2;
+    this.trailCx = trailHalf;
+    this.trailCy = trailHalf;
+
+    if (!this.inwardCanvas) {
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.inwardCanvas = offscreen.canvas;
+      this.inwardCtx = offscreen.ctx;
+    }
+    if (!this.outwardCanvas) {
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.outwardCanvas = offscreen.canvas;
+      this.outwardCtx = offscreen.ctx;
+    }
+    if (!this.tempCanvas) {
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.tempCanvas = offscreen.canvas;
+      this.tempCtx = offscreen.ctx;
     }
 
-    const gradient: CanvasGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, maxRadius);
-    const darken: number = this.BACKGROUND_DARKEN;
-    const blendZone: number = 0.015;
-
-    // Fill background with a darker shade than the outermost gradient color.
-    const outerColor: {r: number; g: number; b: number} = gradientColors[0];
-    const bgDarken: number = darken * 0.5;
-    const outerR: number = (outerColor.r * bgDarken + 0.5) | 0;
-    const outerG: number = (outerColor.g * bgDarken + 0.5) | 0;
-    const outerB: number = (outerColor.b * bgDarken + 0.5) | 0;
-    ctx.fillStyle = `rgb(${outerR},${outerG},${outerB})`;
-    ctx.fillRect(0, 0, width, height);
-
-    for (let i: number = numColors - 1; i >= 0; i--) {
-      const color: {r: number; g: number; b: number} = gradientColors[i];
-      const r: number = (color.r * darken + 0.5) | 0;
-      const g: number = (color.g * darken + 0.5) | 0;
-      const b: number = (color.b * darken + 0.5) | 0;
-      const colorStr: string = `rgb(${r},${g},${b})`;
-
-      const innerPos: number = ringPositions[i + 1];
-      const outerPos: number = ringPositions[i];
-
-      gradient.addColorStop(Math.min(1, innerPos + blendZone), colorStr);
-      gradient.addColorStop(Math.max(0, outerPos - blendZone), colorStr);
+    // Size the trail surfaces to the trail square (clears them; resize is rare).
+    if (this.inwardCanvas.width !== this.trailSize) {
+      this.inwardCanvas.width = this.trailSize;
+      this.inwardCanvas.height = this.trailSize;
+      this.outwardCanvas.width = this.trailSize;
+      this.outwardCanvas.height = this.trailSize;
+      this.tempCanvas.width = this.trailSize;
+      this.tempCanvas.height = this.trailSize;
     }
 
-    // Blur the rings to soften the boundaries between them. The arc is drawn
-    // slightly oversized so the blur feather doesn't expose the background at
-    // the rim.
-    const blurPx: number = maxRadius * this.RING_BLUR_FRACTION;
-    ctx.save();
-    if (blurPx > 0) {
-      ctx.filter = `blur(${blurPx}px)`;
-    }
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, maxRadius + blurPx, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    this.ctx.clearRect(0, 0, width, height);
   }
 
-  public draw(): void {
+  public override draw(): void {
+    if (this.destroyed) return;
     this.updateFade();
 
     const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const height: number = this.height;
+    if (width <= 0 || height <= 0) return;
 
-    // Refresh cached colors (only recomputes when the reference hue changes).
-    const colorsChanged: boolean = this.updateGradientColors();
-
-    // Advance the display-time tint so the single on-screen hue cycles.
-    this.hueRotation = (this.hueRotation + this.HUE_CYCLE_SPEED) % 360;
-
-    // Ensure all canvases exist.
-    if (!this.circleCanvas || !this.circleCtx || !this.trailCanvas || !this.trailCtx ||
-        !this.tempCanvas || !this.tempCtx) {
+    if (!this.inwardCanvas || !this.outwardCanvas || !this.tempCanvas) {
       this.onResize();
     }
 
-    // Only re-render the rings when the reference hue actually changes.
-    if (colorsChanged) {
-      this.renderCirclesToCanvas();
-    }
+    // Horizontal waveforms are enabled; the circular wave / outward trail stay off.
+    if (!this.inwardCtx) return;
+    const inwardCtx: CanvasRenderingContext2D = this.inwardCtx;
+    // const outwardCtx: CanvasRenderingContext2D = this.outwardCtx;
 
-    const hueFilter: string = `hue-rotate(${this.hueRotation}deg)`;
-
-    // Composite the rings, re-tinted by the cycling hue filter.
-    ctx.save();
-    ctx.filter = hueFilter;
-    ctx.drawImage(this.circleCanvas!, 0, 0);
-    ctx.restore();
-
-    // Swirl trail: spin the existing trail a little and fade it, then stamp the
-    // fresh waveform on top. The trail is rendered at the fixed base hue and
-    // re-tinted at composite time, so the whole trail shows one cycling hue.
-    const trailCtx: CanvasRenderingContext2D = this.trailCtx!;
-    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
-    const width: number = this.width;
-    const height: number = this.height;
-
-    // Spin the existing trail at full strength (no fade here), then stamp the
-    // fresh waveform on top.
-    tempCtx.clearRect(0, 0, width, height);
-    tempCtx.drawImage(this.trailCanvas!, 0, 0);
-
-    trailCtx.clearRect(0, 0, width, height);
-    trailCtx.save();
-    trailCtx.translate(this.centerX, this.centerY);
-    trailCtx.rotate(this.ROTATION_SPEED);
-    trailCtx.translate(-this.centerX, -this.centerY);
-    trailCtx.drawImage(this.tempCanvas!, 0, 0);
-    trailCtx.restore();
+    // Advance time-based state.
+    this.hue = (this.hue + this.HUE_CYCLE_SPEED) % 360;
+    // this.waveAngle += this.WAVE_ROTATION_SPEED;
+    this.updateColors();
 
     this.analyser.getByteTimeDomainData(this.dataArray);
-    this.computeMirroredWaveform();
-    this.drawHorizontalWaveform(trailCtx);
 
-    // Linearly subtract alpha from the whole trail so it dissolves into the
-    // rings and fully disappears (no permanent floor). The trail-intensity
-    // multiplier may make the step fractional, so bank the remainder.
-    this.trailFadeAccum += this.TRAIL_FADE_STEP * this.getFadeMultiplier();
-    const fadeStep: number = Math.floor(this.trailFadeAccum);
-    if (fadeStep > 0) {
-      this.trailFadeAccum -= fadeStep;
-      this.fadeTrailLinear(trailCtx, fadeStep);
-    }
+    // Step 4 (per frame): rotate + fade the waveform trail so it follows the
+    // circle contours. Scale 1 means no radial pull (it is not sucked inward);
+    // the rotation makes every point orbit the centre along its own circle.
+    this.spinTrail(this.inwardCanvas!, inwardCtx, 1, this.INWARD_ROTATION, this.INWARD_FADE);
+    // this.spinTrail(this.outwardCanvas!, outwardCtx, this.OUTWARD_SCALE, -this.OUTWARD_ROTATION, this.OUTWARD_FADE);
 
-    // Composite the trail over the rings with the cycling hue filter.
+    // Step 2: draw fresh horizontal-waveform data onto the inward trail surface.
+    // this.drawCircularWave(inwardCtx, outwardCtx);
+    this.drawHorizontalWaveforms(inwardCtx);
+
+    // Compose the frame: background, tower, then the spiralling waveforms on top.
+    ctx.fillStyle = this.backgroundColorString;
+    ctx.fillRect(0, 0, width, height);
+    // this.drawAmbientWash(ctx);
+    this.drawConcentricCircles(ctx);
+    // this.drawBaselineRing(ctx);
+
+    // Composite the trail centred on the screen: the trail centre maps to the
+    // screen centre, so the waveform's outer boundary lands on the outer circle.
+    const trailOffsetX: number = this.centerX - this.trailCx;
+    const trailOffsetY: number = this.centerY - this.trailCy;
     ctx.save();
-    ctx.filter = hueFilter;
-    ctx.drawImage(this.trailCanvas!, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    // ctx.drawImage(this.outwardCanvas!, trailOffsetX, trailOffsetY);
+    ctx.drawImage(this.inwardCanvas!, trailOffsetX, trailOffsetY);
     ctx.restore();
 
     this.applyFadeOverlay();
   }
 
+  // ==========================================================================
+  // Step 1 - Concentric tower
+  // ==========================================================================
+
   /**
-   * Linearly fades a trail layer toward fully transparent.
-   *
-   * Subtracts a fixed `step` from every pixel's alpha each frame. Unlike a
-   * multiplicative fade - which asymptotically approaches but never reaches zero
-   * (8-bit rounding leaves a stuck low-alpha floor) - a constant subtraction
-   * drives every pixel to exactly 0, so the trail dissolves and disappears.
+   * Faint radial wash so the tower bleeds into the surrounding darkness. The
+   * gradient is cached and only rebuilt on resize or when the hue ticks, since
+   * rebuilding it every frame is the single largest avoidable allocation.
    */
-  private fadeTrailLinear(ctx: CanvasRenderingContext2D, step: number): void {
-    const width: number = this.width;
-    const height: number = this.height;
-    if (width <= 0 || height <= 0) return;
-
-    const imageData: ImageData = ctx.getImageData(0, 0, width, height);
-    const data: Uint8ClampedArray = imageData.data;
-
-    // Alpha is at index 3, 7, 11, ... (every 4th byte starting at 3).
-    for (let i: number = 3; i < data.length; i += 4) {
-      const a: number = data[i];
-      if (a > 0) {
-        data[i] = a > step ? a - step : 0;
-      }
+  private drawAmbientWash(ctx: CanvasRenderingContext2D): void {
+    if (this.ambientDirty || !this.ambientGradient) {
+      const inner: Rgb = this.circleColors[0];
+      const gradient: CanvasGradient = ctx.createRadialGradient(
+        this.centerX, this.centerY, 0,
+        this.centerX, this.centerY, this.radii[this.CIRCLE_COUNT - 1]
+      );
+      gradient.addColorStop(0, `rgba(${inner.r}, ${inner.g}, ${inner.b}, ${this.AMBIENT_OPACITY})`);
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      this.ambientGradient = gradient;
+      this.ambientDirty = false;
     }
 
-    ctx.putImageData(imageData, 0, 0);
-  }
-
-  /**
-   * Computes the mirrored horizontal waveform points into allPoints.
-   *
-   * The left half runs from the left edge inward to the central ring; the right
-   * half mirrors it from the central ring out to the right edge. Each sample
-   * bends the line around the center by a small arc angle, and the arc radius is
-   * clamped to minArcRadius so both halves converge exactly on the central ring's
-   * edge (and stop there - they never cross the center).
-   */
-  private computeMirroredWaveform(): void {
-    const width: number = this.width;
-    const height: number = this.height;
-    const centerX: number = this.centerX;
-    const centerY: number = this.centerY;
-    const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
-    const dataLength: number = dataArray.length;
-
-    const halfWidth: number = this.halfWidth;
-    const minArcRadius: number = this.minArcRadius;
-    const samplesPerHalf: number = this.WAVEFORM_SAMPLES;
-    const bendStrength: number = this.WAVEFORM_BEND_STRENGTH;
-    const sensitivityFactor: number = this.sensitivityFactor;
-    const amplitudeScale: number = height * this.WAVEFORM_AMPLITUDE_FRACTION;
-    const sampleStep: number = (dataLength * 0.5) / samplesPerHalf;
-
-    // Left half (left edge -> center).
-    for (let i: number = 0; i < samplesPerHalf; i++) {
-      const dataIndex: number = (i * sampleStep) | 0;
-      const sample: number = ((dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
-      const amplitude: number = sample * amplitudeScale;
-      const t: number = i / (samplesPerHalf - 1);
-      const baseX: number = t * halfWidth;
-
-      const distFromCenter: number = centerX - baseX;
-      const arcRadius: number = distFromCenter > minArcRadius ? distFromCenter : minArcRadius;
-      const arcAngle: number = (amplitude * bendStrength) / arcRadius;
-      const newAngle: number = Math.PI - arcAngle;
-
-      this.allPoints[i].x = centerX + arcRadius * Math.cos(newAngle);
-      this.allPoints[i].y = centerY + arcRadius * Math.sin(newAngle);
-    }
-
-    // Right half (center -> right edge), mirrored.
-    for (let i: number = samplesPerHalf - 1; i >= 0; i--) {
-      const dataIndex: number = (i * sampleStep) | 0;
-      const sample: number = ((dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
-      const amplitude: number = sample * amplitudeScale;
-      const t: number = i / (samplesPerHalf - 1);
-      const baseX: number = width - t * halfWidth;
-
-      const distFromCenter: number = baseX - centerX;
-      const arcRadius: number = distFromCenter > minArcRadius ? distFromCenter : minArcRadius;
-      const arcAngle: number = (amplitude * bendStrength) / arcRadius;
-
-      const pointIndex: number = samplesPerHalf + (samplesPerHalf - 1 - i);
-      // Negated y offset flips the right half vertically, making it point-
-      // symmetric with the left (mirrored on both axes through the center).
-      this.allPoints[pointIndex].x = centerX + arcRadius * Math.cos(arcAngle);
-      this.allPoints[pointIndex].y = centerY - arcRadius * Math.sin(arcAngle);
-    }
-  }
-
-  /**
-   * Draws the mirrored horizontal waveform in a single color. The left and right
-   * halves are stroked as separate paths so the line stops at the central ring
-   * on each side instead of joining across the center.
-   */
-  private drawHorizontalWaveform(ctx: CanvasRenderingContext2D): void {
-    if (!this.SHOW_HORIZONTAL_WAVEFORM) return;
-
-    const samplesPerHalf: number = this.WAVEFORM_SAMPLES;
-    // Fixed base-hue color; the cycling hue is applied to the whole trail at
-    // composite time, keeping every trail frame a single on-screen hue.
-    const color: {r: number; g: number; b: number} = this.cachedWaveColor;
-
-    // Left half: indices [0 .. samplesPerHalf - 1].
-    this.strokeWavePath(ctx, 0, samplesPerHalf - 1, color);
-    // Right half: indices [samplesPerHalf .. 2 * samplesPerHalf - 1].
-    this.strokeWavePath(ctx, samplesPerHalf, samplesPerHalf * 2 - 1, color);
-  }
-
-  /**
-   * Strokes a smooth sub-path of allPoints (inclusive index range) with the
-   * three-layer glow / main / highlight treatment in the given color.
-   */
-  private strokeWavePath(
-    ctx: CanvasRenderingContext2D,
-    startIdx: number,
-    endIdx: number,
-    color: {r: number; g: number; b: number}
-  ): void {
-    if (endIdx - startIdx < 1) return;
-
-    const points: Array<{x: number; y: number}> = this.allPoints;
-    const mainColor: string = `rgb(${color.r}, ${color.g}, ${color.b})`;
-    const glowColor: string = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
-    const highlightColor: string = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.5)`;
-
-    const buildPath: () => void = (): void => {
-      this.buildSmoothPath(ctx, points, endIdx, startIdx);
-    };
-
-    const glowBlur: number = this.getScaledGlowBlur(15);
-
-    // Glow layer
     ctx.save();
-    ctx.shadowBlur = glowBlur;
-    ctx.shadowColor = glowColor;
-    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
-    ctx.lineWidth = this.lineWidth + 3;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
+    ctx.fillStyle = this.ambientGradient;
+    ctx.fillRect(0, 0, this.width, this.height);
+    ctx.restore();
+  }
+
+  /**
+   * Draws the six filled circles largest (darkest) first so the smaller,
+   * brighter circles stack on top, each feathered into the next with a blur.
+   */
+  private drawConcentricCircles(ctx: CanvasRenderingContext2D): void {
+    for (let i: number = this.CIRCLE_COUNT - 1; i >= 0; i--) {
+      const colorString: string = this.circleColorStrings[i];
+      ctx.save();
+      // Keep an intrinsic feather even when the user glow control is at zero.
+      ctx.shadowBlur = Math.max(this.CIRCLE_MIN_BLUR, this.getScaledGlowBlur(this.CIRCLE_BASE_BLUR));
+      ctx.shadowColor = colorString;
+      ctx.fillStyle = colorString;
+      ctx.beginPath();
+      ctx.arc(this.centerX, this.centerY, this.radii[i], 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  /** Crisp, stable rest line on the second circle (circular-wave baseline). */
+  private drawBaselineRing(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.globalAlpha = this.BASELINE_OPACITY;
+    ctx.strokeStyle = this.waveColorMain;
+    ctx.lineWidth = this.lineWidth;
+    ctx.shadowBlur = this.getScaledGlowBlur(this.WAVE_GLOW_BLUR);
+    ctx.shadowColor = this.waveColorGlow;
+    ctx.beginPath();
+    ctx.arc(this.centerX, this.centerY, this.radii[1], 0, TWO_PI);
     ctx.stroke();
     ctx.restore();
+  }
 
-    // Main waveform
-    ctx.strokeStyle = mainColor;
-    ctx.lineWidth = this.lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
-    ctx.stroke();
+  // ==========================================================================
+  // Step 2 - Horizontal mirrored waveforms
+  // ==========================================================================
 
-    // Highlight
-    ctx.strokeStyle = highlightColor;
-    ctx.lineWidth = 1;
-    buildPath();
-    ctx.stroke();
+  /**
+   * Draws the left and right horizontal waveforms onto the inward trail so
+   * they spiral toward the centre (whirlpool). The waveforms bend around the
+   * smallest circle and the right is a 180-degree rotation of the left.
+   */
+  private drawHorizontalWaveforms(ctx: CanvasRenderingContext2D): void {
+    this.calculateHorizontalPoints();
+
+    const highlight: string = 'rgba(255, 255, 255, 0.5)';
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(ctx, this.leftPoints, this.leftPoints.length - 1); },
+      this.waveColorMain, this.waveColorGlow, highlight,
+      {ctx, baseGlowBlur: this.WAVE_GLOW_BLUR}
+    );
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(ctx, this.rightPoints, this.rightPoints.length - 1); },
+      this.waveColorMain, this.waveColorGlow, highlight,
+      {ctx, baseGlowBlur: this.WAVE_GLOW_BLUR}
+    );
+  }
+
+  /**
+   * Fills leftPoints by bending the waveform around the core, then derives
+   * rightPoints as a point reflection through the centre (rotational symmetry).
+   */
+  private calculateHorizontalPoints(): void {
+    const data: Uint8Array<ArrayBuffer> = this.dataArray;
+    const dataLength: number = data.length;
+    const numSamples: number = this.HORIZONTAL_SAMPLES;
+    // Waveform is drawn into the (larger) trail surface, so use the trail centre.
+    const centerX: number = this.trailCx;
+    const centerY: number = this.trailCy;
+    const coreRadius: number = this.radii[0];
+    const outerRadius: number = this.radii[this.CIRCLE_COUNT - 1];
+    const amplitudeScale: number = this.height * this.HORIZONTAL_AMP_FRACTION;
+    const sensitivityFactor: number = this.sensitivityFactor;
+    // Sample the first half of the buffer across the edge-to-centre span.
+    const sampleStep: number = (dataLength / 2) / numSamples;
+
+    for (let i: number = 0; i < numSamples; i++) {
+      const dataIndex: number = (i * sampleStep) | 0;
+      const sample: number = ((data[dataIndex] - 128) / 128) * sensitivityFactor;
+      const amplitude: number = sample * amplitudeScale;
+
+      const t: number = i / (numSamples - 1);
+      // Radius sweeps from the outer circle (edge, slightly overlapping) inward
+      // to the core, so the waveform's outer end lands on the outer circle's
+      // circumference and spills past the left/right screen edges.
+      const arcRadius: number = outerRadius - t * (outerRadius - coreRadius);
+
+      let arcAngle: number = (amplitude * this.BEND_STRENGTH) / arcRadius;
+      if (arcAngle > this.MAX_BEND_ANGLE) arcAngle = this.MAX_BEND_ANGLE;
+      else if (arcAngle < -this.MAX_BEND_ANGLE) arcAngle = -this.MAX_BEND_ANGLE;
+
+      // Left waveform sweeps in along the left, bending around the core.
+      const angle: number = Math.PI - arcAngle;
+      const lx: number = centerX + arcRadius * Math.cos(angle);
+      const ly: number = centerY + arcRadius * Math.sin(angle);
+      this.leftPoints[i].x = lx;
+      this.leftPoints[i].y = ly;
+
+      // Right waveform: 180-degree rotation about the centre (mirror + flip).
+      this.rightPoints[i].x = centerX * 2 - lx;
+      this.rightPoints[i].y = centerY * 2 - ly;
+    }
+  }
+
+  // ==========================================================================
+  // Step 3 - Circular square wave
+  // ==========================================================================
+
+  /**
+   * Draws the castellated square wave. Outward (peak) castellation is rendered
+   * on the outward trail so peaks are pushed toward the edge; inward (trough)
+   * castellation is rendered on the inward trail so troughs are sucked toward
+   * the centre. Together they reconstruct the full square wave each frame.
+   */
+  private drawCircularWave(inwardCtx: CanvasRenderingContext2D, outwardCtx: CanvasRenderingContext2D): void {
+    this.calculateCircularRadii();
+    this.buildCastellation(this.outwardPoints, this.outwardRadii);
+    this.buildCastellation(this.inwardPoints, this.inwardRadii);
+
+    this.drawPathWithLayers(
+      (): void => { this.buildPolyline(outwardCtx, this.outwardPoints); },
+      this.waveColorMain, this.waveColorGlow, undefined,
+      {ctx: outwardCtx, baseGlowBlur: this.WAVE_GLOW_BLUR, closePath: true}
+    );
+    this.drawPathWithLayers(
+      (): void => { this.buildPolyline(inwardCtx, this.inwardPoints); },
+      this.waveColorMain, this.waveColorGlow, undefined,
+      {ctx: inwardCtx, baseGlowBlur: this.WAVE_GLOW_BLUR, closePath: true}
+    );
+  }
+
+  /**
+   * Computes per-sample radii. Peaks ceiling at the third circle, troughs floor
+   * at the first circle, both measured from the second-circle rest line. The
+   * outward radii hold the baseline on troughs; the inward radii hold the
+   * baseline on peaks - so each trail only ever moves in one direction.
+   */
+  private calculateCircularRadii(): void {
+    const data: Uint8Array<ArrayBuffer> = this.dataArray;
+    const dataLength: number = data.length;
+    const numSamples: number = this.CIRCULAR_SAMPLES;
+    const sensitivityFactor: number = this.sensitivityFactor;
+    const sampleStep: number = (dataLength / 2) / numSamples;
+
+    const innerRadius: number = this.radii[0];
+    const baseRadius: number = this.radii[1];
+    const outerRadius: number = this.radii[2];
+    const outwardSpan: number = outerRadius - baseRadius;
+    const inwardSpan: number = baseRadius - innerRadius;
+
+    for (let i: number = 0; i < numSamples; i++) {
+      const dataIndex: number = (i * sampleStep) | 0;
+      const sample: number = ((data[dataIndex] - 128) / 128) * sensitivityFactor;
+
+      let radius: number;
+      if (sample >= 0) {
+        radius = baseRadius + sample * outwardSpan;
+        if (radius > outerRadius) radius = outerRadius;
+      } else {
+        radius = baseRadius + sample * inwardSpan;
+        if (radius < innerRadius) radius = innerRadius;
+      }
+
+      this.outwardRadii[i] = radius > baseRadius ? radius : baseRadius;
+      this.inwardRadii[i] = radius < baseRadius ? radius : baseRadius;
+    }
+  }
+
+  /**
+   * Builds a castellated (square-wave) ring into the given point buffer: each
+   * sample holds its radius across its angular slice, then jumps radially to
+   * the next sample's radius.
+   */
+  private buildCastellation(points: Point[], radii: number[]): void {
+    const numSamples: number = this.CIRCULAR_SAMPLES;
+    const centerX: number = this.centerX;
+    const centerY: number = this.centerY;
+    const angleStep: number = TWO_PI / numSamples;
+    const baseAngle: number = this.waveAngle;
+
+    let k: number = 0;
+    for (let i: number = 0; i < numSamples; i++) {
+      const radius: number = radii[i];
+      const a0: number = baseAngle + i * angleStep;
+      const a1: number = baseAngle + (i + 1) * angleStep;
+
+      points[k].x = centerX + radius * Math.cos(a0);
+      points[k].y = centerY + radius * Math.sin(a0);
+      k++;
+      points[k].x = centerX + radius * Math.cos(a1);
+      points[k].y = centerY + radius * Math.sin(a1);
+      k++;
+    }
+  }
+
+  /** Strokes a straight-segment polyline through every point (square edges). */
+  private buildPolyline(ctx: CanvasRenderingContext2D, points: Point[]): void {
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i: number = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+  }
+
+  // ==========================================================================
+  // Step 4 - Effects (trail spiral + colour)
+  // ==========================================================================
+
+  /**
+   * Ages a trail surface by one frame: copies it out, clears it, then draws it
+   * back rotated, scaled and faded about the centre. Scale below 1 pulls the
+   * history toward the centre; above 1 pushes it toward the edge. The repeated
+   * resample is what produces the spiral blur, and the alpha is the fade.
+   */
+  private spinTrail(
+    canvas: HTMLCanvasElement,
+    ctx: CanvasRenderingContext2D,
+    scale: number,
+    rotation: number,
+    fadeRate: number
+  ): void {
+    const size: number = this.trailSize;
+    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
+    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
+
+    tempCtx.clearRect(0, 0, size, size);
+    tempCtx.drawImage(canvas, 0, 0);
+
+    ctx.clearRect(0, 0, size, size);
+
+    const effectiveFade: number = fadeRate * this.getFadeMultiplier();
+    const pivotX: number = Math.floor(this.trailCx);
+    const pivotY: number = Math.floor(this.trailCy);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.globalAlpha = 1 - effectiveFade;
+    ctx.translate(pivotX, pivotY);
+    ctx.rotate(rotation);
+    ctx.scale(scale, scale);
+    ctx.translate(-pivotX, -pivotY);
+    ctx.drawImage(tempCanvas, 0, 0);
+    ctx.restore();
+  }
+
+  /** Recomputes cached circle and waveform colours when the hue moves. */
+  private updateColors(): void {
+    const hueInt: number = Math.floor(this.hue);
+    if (hueInt === this.cachedHue) return;
+    this.cachedHue = hueInt;
+    this.ambientDirty = true;
+
+    const span: number = this.CIRCLE_COUNT - 1;
+    for (let i: number = 0; i < this.CIRCLE_COUNT; i++) {
+      // Brightness fraction: 1 at the innermost circle, 0 at the outermost.
+      const brightness: number = (span - i) / span;
+      const lightness: number = this.OUTER_LIGHTNESS + (this.INNER_LIGHTNESS - this.OUTER_LIGHTNESS) * brightness;
+      const rgb: Rgb = this.hslToRgb(this.hue, this.CIRCLE_SATURATION, lightness);
+      this.circleColors[i].r = rgb.r;
+      this.circleColors[i].g = rgb.g;
+      this.circleColors[i].b = rgb.b;
+      this.circleColorStrings[i] = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+    }
+
+    // The waveforms share the brightest (top) circle's colour, per the spec.
+    const wave: Rgb = this.circleColors[0];
+    this.waveColorMain = `rgb(${wave.r}, ${wave.g}, ${wave.b})`;
+    this.waveColorGlow = `rgba(${wave.r}, ${wave.g}, ${wave.b}, 0.8)`;
+
+    // Background: same hue as the tower, a shade darker than the darkest circle.
+    const background: Rgb = this.hslToRgb(this.hue, this.CIRCLE_SATURATION, this.BACKGROUND_LIGHTNESS);
+    this.backgroundColorString = `rgb(${background.r}, ${background.g}, ${background.b})`;
   }
 
   public override destroy(): void {
-    this.circleCanvas = null;
-    this.circleCtx = null;
-    this.trailCanvas = null;
-    this.trailCtx = null;
+    this.destroyed = true;
+    this.ambientGradient = null;
+    this.inwardCanvas = null;
+    this.inwardCtx = null;
+    this.outwardCanvas = null;
+    this.outwardCtx = null;
     this.tempCanvas = null;
     this.tempCtx = null;
   }
