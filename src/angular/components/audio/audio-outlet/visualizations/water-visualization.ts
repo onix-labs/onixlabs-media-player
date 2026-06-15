@@ -143,7 +143,7 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly OUTWARD_ROTATION: number = 0.004;
 
   /** Per-frame fade of the inward trail. */
-  private readonly INWARD_FADE: number = 0.04;
+  private readonly INWARD_FADE: number = 0.012;
 
   /** Per-frame fade of the outward trail. */
   private readonly OUTWARD_FADE: number = 0.03;
