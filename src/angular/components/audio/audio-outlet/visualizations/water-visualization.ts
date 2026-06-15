@@ -95,7 +95,7 @@ export class WaterVisualization extends Canvas2DVisualization {
   // --- Waveforms ------------------------------------------------------------
 
   /** Glow blur radius for the waveforms and rings (pixels). */
-  private readonly WAVE_GLOW_BLUR: number = 16;
+  private readonly WAVE_GLOW_BLUR: number = 0;
 
   /** Samples per horizontal waveform (edge to centre). */
   private readonly HORIZONTAL_SAMPLES: number = 32;
@@ -121,16 +121,16 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly RING_REPEAT: number = 2;
 
   /** Fraction of FFT bins trimmed from each end before bucketing (low & high). */
-  private readonly FREQ_TRIM_FRACTION: number = 0.25;
+  private readonly FREQ_TRIM_FRACTION: number = 0.1;
 
   /** Magnitude (after sensitivity) at/above which a sample jumps to the ceiling. */
   private readonly PEAK_THRESHOLD: number = 0.1;
 
   /** Opacity of the filled interior of each peak (1 = solid). */
-  private readonly PEAK_FILL_ALPHA: number = 1;
+  private readonly PEAK_FILL_ALPHA: number = 0.1;
 
   /** Corner radius for each peak's rounded edges (pixels, border-radius style). */
-  private readonly PEAK_CORNER_RADIUS: number = 8;
+  private readonly PEAK_CORNER_RADIUS: number = 16;
 
   // --- Trails (spiral / blur / fade) ----------------------------------------
 
@@ -138,24 +138,25 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly TRAIL_ROTATION: number = 0.004;
 
   /** Per-frame fade of the horizontal-waveform trail (low = long-lived trails). */
-  private readonly HORIZONTAL_FADE: number = 0.001;
+  private readonly HORIZONTAL_FADE: number = 0.02;
 
-  /** Per-frame fade of the rings trail (high, so layered peaks clear, not pile up). */
-  private readonly RING_FADE: number = 0.01;
+  /** Per-frame fade of the rings trail (the squashed peaks need some persistence to show). */
+  private readonly RING_FADE: number = 0.02;
 
   /**
-   * Per-frame fraction of the gap to the ceiling that each ring's trail climbs.
-   * The ceiling (the next circle) is a fixed point and the baseline migrates up
-   * toward it: a radius x in a ring's band moves to x + RING_PUSH * (top - x), so
-   * the band squashes against the next circle as it ages. Lower = slower.
+   * How far up its band each ring's trail climbs toward the ceiling over the
+   * trail's *visible lifetime* (0-1). The per-frame climb is derived from RING_FADE
+   * so the squash looks the same however fast the trail fades - raising the fade no
+   * longer hides the squash. The ceiling (next circle) is the fixed point: a radius
+   * x moves to x + push * (top - x), so the band bunches against the next circle.
    */
-  private readonly RING_PUSH: number = 0.004;
+  private readonly RING_SQUASH_FRACTION: number = 0.3;
 
   /** Slices per ring band used to approximate the squash (more = smoother). */
-  private readonly RING_PUSH_SLICES: number = 6;
+  private readonly RING_PUSH_SLICES: number = 32;
 
   /** Extra trail-canvas margin beyond the outer circle, for glow (pixels). */
-  private readonly TRAIL_MARGIN: number = 20;
+  private readonly TRAIL_MARGIN: number = 30;
 
   // --- Colour cycling -------------------------------------------------------
 
@@ -556,10 +557,8 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     const baseRadius: number = this.radii[ring];
     const ceilRadius: number = this.radii[ring + 1];
-    // Line and fill match the colour of the circle this ring is attached to.
-    const color: Rgb = this.circleColors[ring];
+    // Fill matches the colour of the circle this ring is attached to.
     const mainColor: string = this.circleColorStrings[ring];
-    const glowColor: string = `rgba(${color.r}, ${color.g}, ${color.b}, 0.8)`;
 
     // Map the bucket across one segment, then repeat it around the circle so the
     // ring is rotationally symmetric (RING_REPEAT copies).
@@ -576,20 +575,13 @@ export class WaterVisualization extends Canvas2DVisualization {
       }
     }
 
-    // Fill each peak as a rounded sector (solid interior).
+    // Fill each peak as a rounded sector (solid interior); no outline.
     ctx.save();
     ctx.globalAlpha = this.PEAK_FILL_ALPHA;
     ctx.fillStyle = mainColor;
     this.appendRoundedPeaks(ctx, baseRadius, ceilRadius, true);
     ctx.fill();
     ctx.restore();
-
-    // Glowing rounded outline of the peaks (walls + rounded tops, no baseline).
-    this.drawPathWithLayers(
-      (): void => { this.appendRoundedPeaks(ctx, baseRadius, ceilRadius, false); },
-      mainColor, glowColor, undefined,
-      {ctx, baseGlowBlur: this.WAVE_GLOW_BLUR}
-    );
   }
 
   /**
@@ -794,9 +786,9 @@ export class WaterVisualization extends Canvas2DVisualization {
   /**
    * Ages the rings trail by one frame like spinTrail (rotate + fade + blur), but
    * also squashes each ring's band toward its ceiling (the next circle). Within a
-   * band the ceiling is a fixed point and a radius x climbs to x + RING_PUSH *
-   * (top - x), so the baseline migrates outward while the top stays pinned and the
-   * band bunches up against the next circle - the "oil pushed to the rim" effect.
+   * band the ceiling is a fixed point and a radius x climbs to x + push * (top - x)
+   * (push derived from the fade), so the baseline migrates outward while the top
+   * stays pinned and the band bunches against the next circle - "oil to the rim".
    * Each band is redrawn as RING_PUSH_SLICES annuli to approximate the squash.
    */
   private spinRingsTrail(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, fadeRate: number): void {
@@ -813,7 +805,9 @@ export class WaterVisualization extends Canvas2DVisualization {
     const cx: number = this.trailCx;
     const cy: number = this.trailCy;
     const subSlices: number = this.RING_PUSH_SLICES;
-    const push: number = this.RING_PUSH;
+    // Derive the per-frame climb from the fade so the squash reaches the same
+    // fraction up the band over the trail's visible lifetime, whatever the fade.
+    const push: number = 1 - Math.pow(1 - this.RING_SQUASH_FRACTION, effectiveFade);
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
