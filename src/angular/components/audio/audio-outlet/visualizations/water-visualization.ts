@@ -122,8 +122,23 @@ export class WaterVisualization extends Canvas2DVisualization {
 
   // --- Circular square wave -------------------------------------------------
 
-  /** Angular samples around the circular waveform. */
-  private readonly CIRCULAR_SAMPLES: number = 96;
+  /** Angular samples around each circular waveform. */
+  private readonly CIRCULAR_SAMPLES: number = 64;
+
+  /** Number of frequency-bucket rings (one per inner circle). */
+  private readonly RING_COUNT: number = 5;
+
+  /** Delay between revealing each ring, from the centre outward (ms). */
+  private readonly REVEAL_INTERVAL_MS: number = 1;
+
+  /** Fraction of FFT bins trimmed from each end before bucketing (low & high). */
+  private readonly FREQ_TRIM_FRACTION: number = 0.2;
+
+  /** Magnitude (after sensitivity) at/above which a sample jumps to the ceiling. */
+  private readonly PEAK_THRESHOLD: number = 0.1125;
+
+  /** Opacity of the filled interior of each peak (1 = solid). */
+  private readonly PEAK_FILL_ALPHA: number = 1;
 
   /** Per-frame rotation of the freshly drawn circular wave (radians). */
   private readonly WAVE_ROTATION_SPEED: number = 0.003;
@@ -164,11 +179,17 @@ export class WaterVisualization extends Canvas2DVisualization {
   /** Time-domain audio buffer. */
   private dataArray: Uint8Array<ArrayBuffer>;
 
+  /** Frequency-domain audio buffer (magnitudes, one per FFT bin). */
+  private freqArray: Uint8Array<ArrayBuffer>;
+
   /** Current global hue (degrees). */
   private hue: number;
 
   /** Integer hue the cached colours were computed for (-1 = uncached). */
   private cachedHue: number = -1;
+
+  /** Timestamp (ms) the ring reveal started; -1 until the first frame / replay. */
+  private revealStartTime: number = -1;
 
   /** Rotation applied to the freshly drawn circular wave (radians). */
   // Reassigned by the circular-wave layer, which is currently disabled in draw().
@@ -229,6 +250,7 @@ export class WaterVisualization extends Canvas2DVisualization {
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
+    this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.hue = this.START_HUE;
     this.sensitivity = 0.4;
 
@@ -259,6 +281,7 @@ export class WaterVisualization extends Canvas2DVisualization {
 
   protected override onFftSizeChanged(): void {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
+    this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
 
   protected override onResize(): void {
@@ -314,6 +337,12 @@ export class WaterVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, width, height);
   }
 
+  public override setPlaying(playing: boolean): void {
+    super.setPlaying(playing);
+    // Restart the staggered ring reveal each time playback (re)starts.
+    if (playing) this.revealStartTime = -1;
+  }
+
   public override draw(): void {
     if (this.destroyed) return;
     this.updateFade();
@@ -327,10 +356,11 @@ export class WaterVisualization extends Canvas2DVisualization {
       this.onResize();
     }
 
-    // Horizontal waveforms are enabled; the circular wave / outward trail stay off.
-    if (!this.inwardCtx) return;
+    // Two separate trail layers: rings on the outward canvas, horizontal
+    // waveforms on the inward canvas, each spun with the same spiral.
+    if (!this.inwardCtx || !this.outwardCtx) return;
     const inwardCtx: CanvasRenderingContext2D = this.inwardCtx;
-    // const outwardCtx: CanvasRenderingContext2D = this.outwardCtx;
+    const outwardCtx: CanvasRenderingContext2D = this.outwardCtx;
 
     // Advance time-based state.
     this.hue = (this.hue + this.HUE_CYCLE_SPEED) % 360;
@@ -339,30 +369,32 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     this.analyser.getByteTimeDomainData(this.dataArray);
 
-    // Step 4 (per frame): rotate + fade the waveform trail so it follows the
-    // circle contours. Scale 1 means no radial pull (it is not sucked inward);
-    // the rotation makes every point orbit the centre along its own circle.
+    // Step 4 (per frame): rotate + fade BOTH trails with the same spiral so the
+    // rings and the horizontal waveforms stay on independent layers.
+    this.spinTrail(this.outwardCanvas!, outwardCtx, 1, this.INWARD_ROTATION, this.INWARD_FADE);
     this.spinTrail(this.inwardCanvas!, inwardCtx, 1, this.INWARD_ROTATION, this.INWARD_FADE);
-    // this.spinTrail(this.outwardCanvas!, outwardCtx, this.OUTWARD_SCALE, -this.OUTWARD_ROTATION, this.OUTWARD_FADE);
 
-    // Step 2: draw fresh horizontal-waveform data onto the inward trail surface.
-    // this.drawCircularWave(inwardCtx, outwardCtx);
+    // Only one ring renders at a time: advance outward every REVEAL_INTERVAL_MS,
+    // then loop back to the centre.
+    const now: number = performance.now();
+    if (this.revealStartTime < 0) this.revealStartTime = now;
+    const activeRing: number = Math.floor((now - this.revealStartTime) / this.REVEAL_INTERVAL_MS) % this.RING_COUNT;
+
+    // Fresh data: rings onto their own trail, horizontal onto its own trail.
+    this.drawFrequencyRings(outwardCtx, activeRing);
     this.drawHorizontalWaveforms(inwardCtx);
 
-    // Compose the frame: background, tower, then the spiralling waveforms on top.
+    // Compose: background, tower, then the rings layer, then the horizontal layer
+    // over the top - kept separate so the rings never overdraw the horizontal.
     ctx.fillStyle = this.backgroundColorString;
     ctx.fillRect(0, 0, width, height);
-    // this.drawAmbientWash(ctx);
     this.drawConcentricCircles(ctx);
-    // this.drawBaselineRing(ctx);
 
-    // Composite the trail centred on the screen: the trail centre maps to the
-    // screen centre, so the waveform's outer boundary lands on the outer circle.
     const trailOffsetX: number = this.centerX - this.trailCx;
     const trailOffsetY: number = this.centerY - this.trailCy;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    // ctx.drawImage(this.outwardCanvas!, trailOffsetX, trailOffsetY);
+    ctx.drawImage(this.outwardCanvas!, trailOffsetX, trailOffsetY);
     ctx.drawImage(this.inwardCanvas!, trailOffsetX, trailOffsetY);
     ctx.restore();
 
@@ -529,6 +561,79 @@ export class WaterVisualization extends Canvas2DVisualization {
   }
 
   /**
+   * Draws RING_COUNT circular waveforms, one on each inner circle. The frequency
+   * spectrum is split into equal buckets (one per ring); each ring is a
+   * peaks-only castellated wave whose rest line sits on its own circle and whose
+   * peaks ceiling at the next circle out. No troughs. Drawn onto the inward trail
+   * so it shares the rotate/fade/blur spiral with the horizontal waveforms.
+   */
+  private drawFrequencyRings(ctx: CanvasRenderingContext2D, activeRing: number): void {
+    this.analyser.getByteFrequencyData(this.freqArray);
+
+    const binCount: number = this.freqArray.length;
+    const numSamples: number = this.CIRCULAR_SAMPLES;
+    const sensitivityFactor: number = this.sensitivityFactor;
+
+    // Trim the extreme low/high bins, then split the remaining span into buckets.
+    const trim: number = binCount * this.FREQ_TRIM_FRACTION;
+    const usableStart: number = trim;
+    const bucketSize: number = (binCount - trim * 2) / this.RING_COUNT;
+
+    for (let ring: number = 0; ring < this.RING_COUNT; ring++) {
+      if (ring !== activeRing) continue;
+      const baseRadius: number = this.radii[ring];
+      const ceilRadius: number = this.radii[ring + 1];
+      const bucketStart: number = usableStart + ring * bucketSize;
+      // Line and fill match the colour of the circle this ring is attached to.
+      const color: Rgb = this.circleColors[ring];
+      const mainColor: string = this.circleColorStrings[ring];
+      const glowColor: string = `rgba(${color.r}, ${color.g}, ${color.b}, 0.8)`;
+
+      for (let i: number = 0; i < numSamples; i++) {
+        // Map this angular sample to a frequency bin inside the ring's bucket.
+        const bin: number = Math.min(binCount - 1, (bucketStart + (i / numSamples) * bucketSize) | 0);
+        const magnitude: number = this.freqArray[bin] / 255;
+        // Two positions only: ceiling (next circle) when the bin is loud enough,
+        // otherwise baseline (this ring's own circle).
+        this.outwardRadii[i] = magnitude * sensitivityFactor >= this.PEAK_THRESHOLD ? ceilRadius : baseRadius;
+      }
+
+      this.buildCastellation(this.outwardPoints, this.outwardRadii);
+      // Fill the inside of each peak (the band from this circle out to the ceiling).
+      this.fillPeaks(ctx, this.outwardPoints, baseRadius, mainColor);
+      // Glowing castellated outline on top.
+      this.drawPathWithLayers(
+        (): void => { this.buildPolyline(ctx, this.outwardPoints); },
+        mainColor, glowColor, undefined,
+        {ctx, baseGlowBlur: this.WAVE_GLOW_BLUR, closePath: true}
+      );
+    }
+  }
+
+  /**
+   * Fills the band between baseRadius and the castellated outline - i.e. the
+   * inside of each peak. Uses an even-odd fill of the outline minus the ring's
+   * baseline circle, so flat (baseline) stretches contribute no fill.
+   */
+  private fillPeaks(ctx: CanvasRenderingContext2D, points: Point[], baseRadius: number, fillColor: string): void {
+    ctx.save();
+    ctx.globalAlpha = this.PEAK_FILL_ALPHA;
+    ctx.fillStyle = fillColor;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i: number = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.closePath();
+    // Subtract the inner baseline disc so only the peak teeth are filled
+    // (trail space, matching buildCastellation).
+    ctx.moveTo(this.trailCx + baseRadius, this.trailCy);
+    ctx.arc(this.trailCx, this.trailCy, baseRadius, 0, TWO_PI);
+    ctx.fill('evenodd');
+    ctx.restore();
+  }
+
+  /**
    * Computes per-sample radii. Peaks ceiling at the third circle, troughs floor
    * at the first circle, both measured from the second-circle rest line. The
    * outward radii hold the baseline on troughs; the inward radii hold the
@@ -572,8 +677,9 @@ export class WaterVisualization extends Canvas2DVisualization {
    */
   private buildCastellation(points: Point[], radii: number[]): void {
     const numSamples: number = this.CIRCULAR_SAMPLES;
-    const centerX: number = this.centerX;
-    const centerY: number = this.centerY;
+    // Drawn onto the (larger) trail surface, so use the trail centre.
+    const centerX: number = this.trailCx;
+    const centerY: number = this.trailCy;
     const angleStep: number = TWO_PI / numSamples;
     const baseAngle: number = this.waveAngle;
 
