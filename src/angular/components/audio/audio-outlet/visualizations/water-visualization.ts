@@ -26,8 +26,8 @@
  *
  * A bass hit (gated to once every ten seconds) reverses the spiral's direction
  * and jumps the hue, so the whole scene flips and recolours on a heavy beat; some
- * hits also flash the frame white with the horizontal waveform inverted to black,
- * fading back to normal.
+ * hits also flash the frame white with the horizontal waveform painted a dark
+ * shade of the new hue, lightening back to normal.
  *
  * @module app/components/audio/audio-outlet/visualizations/water-visualization
  */
@@ -171,6 +171,12 @@ export class WaterVisualization extends Canvas2DVisualization {
   /** Per-frame decay of the flash (lower = slower fade back to normal). */
   private readonly FLASH_FADE: number = 0.01;
 
+  /** Lightness (%) of the flash waveform at full intensity; it lightens as the flash fades. */
+  private readonly FLASH_WAVE_DARK_LIGHTNESS: number = 10;
+
+  /** Per-frame decay of the hue-jump cross-fade (lower = slower colour change). */
+  private readonly HUE_TRANSITION_FADE: number = 0.005;
+
   // --- State ----------------------------------------------------------------
 
   /** Time-domain audio buffer (for the horizontal waveforms). */
@@ -221,6 +227,9 @@ export class WaterVisualization extends Canvas2DVisualization {
   /** Flash intensity: 1 on a flashing trigger, decaying to 0 (off). */
   private flashAmount: number = 0;
 
+  /** Old-tower cross-fade strength after a hue jump: 1 (old) decaying to 0 (new). */
+  private hueTransition: number = 0;
+
   /** Pre-allocated point buffers (avoids per-frame allocation). */
   private readonly leftPoints: Point[];
   private readonly rightPoints: Point[];
@@ -237,6 +246,14 @@ export class WaterVisualization extends Canvas2DVisualization {
   /** Scratch surface used while spinning the trails. */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
+
+  /** Tower layer (background + circles) rendered each frame, then composited. */
+  private towerCanvas: HTMLCanvasElement | null = null;
+  private towerCtx: CanvasRenderingContext2D | null = null;
+
+  /** Snapshot of the old-hue tower, faded out over the new one after a hue jump. */
+  private freezeCanvas: HTMLCanvasElement | null = null;
+  private freezeCtx: CanvasRenderingContext2D | null = null;
 
   public constructor(config: VisualizationConfig) {
     super(config);
@@ -308,6 +325,16 @@ export class WaterVisualization extends Canvas2DVisualization {
       this.tempCanvas = offscreen.canvas;
       this.tempCtx = offscreen.ctx;
     }
+    if (!this.towerCanvas) {
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.towerCanvas = offscreen.canvas;
+      this.towerCtx = offscreen.ctx;
+    }
+    if (!this.freezeCanvas) {
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.freezeCanvas = offscreen.canvas;
+      this.freezeCtx = offscreen.ctx;
+    }
 
     // Size the trail surfaces to the trail square (clears them; resize is rare).
     if (this.ringsCanvas.width !== this.trailSize) {
@@ -317,6 +344,14 @@ export class WaterVisualization extends Canvas2DVisualization {
       this.horizontalCanvas.height = this.trailSize;
       this.tempCanvas.width = this.trailSize;
       this.tempCanvas.height = this.trailSize;
+    }
+
+    // The tower layers match the visible canvas, not the larger trail square.
+    if (this.towerCanvas.width !== width || this.towerCanvas.height !== height) {
+      this.towerCanvas.width = width;
+      this.towerCanvas.height = height;
+      this.freezeCanvas.width = width;
+      this.freezeCanvas.height = height;
     }
 
     this.ctx.clearRect(0, 0, width, height);
@@ -331,10 +366,11 @@ export class WaterVisualization extends Canvas2DVisualization {
     const height: number = this.height;
     if (width <= 0 || height <= 0) return;
 
-    if (!this.ringsCanvas || !this.horizontalCanvas || !this.tempCanvas) {
+    if (!this.ringsCanvas || !this.horizontalCanvas || !this.tempCanvas
+      || !this.towerCanvas || !this.freezeCanvas) {
       this.onResize();
     }
-    if (!this.ringsCtx || !this.horizontalCtx) return;
+    if (!this.ringsCtx || !this.horizontalCtx || !this.towerCtx || !this.freezeCtx) return;
     const ringsCtx: CanvasRenderingContext2D = this.ringsCtx;
     const horizontalCtx: CanvasRenderingContext2D = this.horizontalCtx;
 
@@ -356,10 +392,25 @@ export class WaterVisualization extends Canvas2DVisualization {
     }
     this.drawHorizontalWaveforms(horizontalCtx);
 
-    // Compose: background, tower, rings layer, then the horizontal layer on top.
-    ctx.fillStyle = this.backgroundColorString;
-    ctx.fillRect(0, 0, width, height);
-    this.drawConcentricCircles(ctx);
+    // Tower (background + circles) on its own layer so a hue jump can cross-fade
+    // the old colours out beneath the new ones, rather than snapping the whole
+    // scene to the new hue in a single frame.
+    const towerCtx: CanvasRenderingContext2D = this.towerCtx!;
+    towerCtx.fillStyle = this.backgroundColorString;
+    towerCtx.fillRect(0, 0, width, height);
+    this.drawConcentricCircles(towerCtx);
+
+    ctx.drawImage(this.towerCanvas!, 0, 0);
+    if (this.hueTransition > 0) {
+      // Lay the snapshot of the old-hue tower over the new one and fade it out, so
+      // the new colour is drawn over the old instead of replacing it outright.
+      ctx.save();
+      ctx.globalAlpha = this.hueTransition;
+      ctx.drawImage(this.freezeCanvas!, 0, 0);
+      ctx.restore();
+      this.hueTransition -= this.HUE_TRANSITION_FADE;
+      if (this.hueTransition < 0) this.hueTransition = 0;
+    }
 
     const trailOffsetX: number = this.centerX - this.trailCx;
     const trailOffsetY: number = this.centerY - this.trailCy;
@@ -659,6 +710,14 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     this.lastBassTriggerTime = now;
     this.trailDirection = -this.trailDirection;
+
+    // Snapshot the current (old-hue) tower, then jump the hue; the snapshot is
+    // faded out over the new-hue tower so the colour layers in instead of flipping.
+    if (this.towerCanvas && this.freezeCanvas && this.freezeCtx) {
+      this.freezeCtx.clearRect(0, 0, this.freezeCanvas.width, this.freezeCanvas.height);
+      this.freezeCtx.drawImage(this.towerCanvas, 0, 0);
+      this.hueTransition = 1;
+    }
     this.hue = (this.hue + this.HUE_JUMP_DEGREES) % 360;
 
     // Only some hits flash the scene white/black.
@@ -668,11 +727,11 @@ export class WaterVisualization extends Canvas2DVisualization {
   }
 
   /**
-   * Paints the white/black flash over the finished frame while a flash is active:
-   * the whole canvas washes to white and the horizontal waveform is laid back over
-   * it as a black silhouette, both at the current intensity, which then decays so
-   * the scene fades back to its normal colours. Additive compositing would hide a
-   * black waveform, so it is recoloured via source-in on the scratch surface.
+   * Paints the flash over the finished frame while a flash is active: the whole
+   * canvas washes to white and the horizontal waveform is laid back over it as a
+   * dark shade of the current hue that lightens as the flash decays, so the scene
+   * fades back to its normal colours. Additive compositing would hide the dark
+   * waveform, so it is recoloured via source-in on the scratch surface.
    */
   private applyFlash(
     ctx: CanvasRenderingContext2D,
@@ -692,7 +751,11 @@ export class WaterVisualization extends Canvas2DVisualization {
     ctx.fillRect(0, 0, width, height);
     ctx.restore();
 
-    // Recolour the horizontal trail to a black silhouette on the scratch surface.
+    // Recolour the horizontal trail to a dark shade of the current hue on the
+    // scratch surface; the shade lightens toward the normal wave colour as it fades.
+    const lightness: number =
+      this.INNER_LIGHTNESS - (this.INNER_LIGHTNESS - this.FLASH_WAVE_DARK_LIGHTNESS) * f;
+    const waveColor: Rgb = this.hslToRgb(this.hue, this.CIRCLE_SATURATION, lightness);
     const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
     const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
     tempCtx.save();
@@ -700,11 +763,11 @@ export class WaterVisualization extends Canvas2DVisualization {
     tempCtx.clearRect(0, 0, size, size);
     tempCtx.drawImage(this.horizontalCanvas!, 0, 0);
     tempCtx.globalCompositeOperation = 'source-in';
-    tempCtx.fillStyle = 'rgb(0, 0, 0)';
+    tempCtx.fillStyle = `rgb(${waveColor.r}, ${waveColor.g}, ${waveColor.b})`;
     tempCtx.fillRect(0, 0, size, size);
     tempCtx.restore();
 
-    // Lay the black waveform over the white wash.
+    // Lay the dark-hue waveform over the white wash.
     ctx.save();
     ctx.globalAlpha = f;
     ctx.drawImage(tempCanvas, offsetX, offsetY);
@@ -780,5 +843,9 @@ export class WaterVisualization extends Canvas2DVisualization {
     this.horizontalCtx = null;
     this.tempCanvas = null;
     this.tempCtx = null;
+    this.towerCanvas = null;
+    this.towerCtx = null;
+    this.freezeCanvas = null;
+    this.freezeCtx = null;
   }
 }
