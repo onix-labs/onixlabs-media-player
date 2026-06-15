@@ -24,6 +24,11 @@
  * surface that is rotated, faded and blurred every frame (a spiral), then
  * composited over the tower - rings underneath, horizontal waveforms on top.
  *
+ * A bass hit (gated to once every ten seconds) reverses the spiral's direction
+ * and jumps the hue, so the whole scene flips and recolours on a heavy beat; some
+ * hits also flash the frame white with the horizontal waveform inverted to black,
+ * fading back to normal.
+ *
  * @module app/components/audio/audio-outlet/visualizations/water-visualization
  */
 
@@ -146,6 +151,26 @@ export class WaterVisualization extends Canvas2DVisualization {
   /** Starting hue (degrees) - blue, matching the reference. */
   private readonly START_HUE: number = 220;
 
+  // --- Bass trigger ---------------------------------------------------------
+
+  /** Fraction of the lowest FFT bins treated as the "bass" band. */
+  private readonly BASS_BIN_FRACTION: number = 0.03;
+
+  /** Average bass magnitude (0-1) at/above which the trigger fires. */
+  private readonly BASS_THRESHOLD: number = 0.5;
+
+  /** Minimum time between bass triggers (milliseconds). */
+  private readonly BASS_COOLDOWN_MS: number = 10000;
+
+  /** Hue jump applied on each bass trigger (degrees; golden angle for variety). */
+  private readonly HUE_JUMP_DEGREES: number = 137.5;
+
+  /** Chance (0-1) that a bass trigger also starts a white/black flash. */
+  private readonly FLASH_PROBABILITY: number = 0.5;
+
+  /** Per-frame decay of the flash (lower = slower fade back to normal). */
+  private readonly FLASH_FADE: number = 0.01;
+
   // --- State ----------------------------------------------------------------
 
   /** Time-domain audio buffer (for the horizontal waveforms). */
@@ -186,6 +211,15 @@ export class WaterVisualization extends Canvas2DVisualization {
 
   /** Set once destroy() runs so a trailing frame cannot resurrect the surfaces. */
   private destroyed: boolean = false;
+
+  /** Swirl rotation sign (+1 / -1); flipped by each bass trigger. */
+  private trailDirection: number = 1;
+
+  /** performance.now() of the last bass trigger, gating the cooldown. */
+  private lastBassTriggerTime: number = Number.NEGATIVE_INFINITY;
+
+  /** Flash intensity: 1 on a flashing trigger, decaying to 0 (off). */
+  private flashAmount: number = 0;
 
   /** Pre-allocated point buffers (avoids per-frame allocation). */
   private readonly leftPoints: Point[];
@@ -304,7 +338,8 @@ export class WaterVisualization extends Canvas2DVisualization {
     const ringsCtx: CanvasRenderingContext2D = this.ringsCtx;
     const horizontalCtx: CanvasRenderingContext2D = this.horizontalCtx;
 
-    // Advance time-based state.
+    // Advance time-based state. A bass hit may flip the swirl and jump the hue.
+    this.updateBassTrigger();
     this.hue = (this.hue + this.HUE_CYCLE_SPEED) % 360;
     this.updateColors();
 
@@ -334,6 +369,7 @@ export class WaterVisualization extends Canvas2DVisualization {
     ctx.drawImage(this.horizontalCanvas!, trailOffsetX, trailOffsetY);
     ctx.restore();
 
+    this.applyFlash(ctx, width, height, trailOffsetX, trailOffsetY);
     this.applyFadeOverlay();
   }
 
@@ -602,6 +638,83 @@ export class WaterVisualization extends Canvas2DVisualization {
   // === Trails & colour ======================================================
 
   /**
+   * Reads the spectrum and fires a bass trigger when the low-frequency energy
+   * crosses BASS_THRESHOLD, at most once every BASS_COOLDOWN_MS. Each trigger
+   * reverses the trail swirl direction and jumps the hue, so a heavy bass hit
+   * visibly flips the spiral and recolours the scene.
+   */
+  private updateBassTrigger(): void {
+    this.analyser.getByteFrequencyData(this.freqArray);
+
+    const binCount: number = this.freqArray.length;
+    const bassBins: number = Math.max(1, (binCount * this.BASS_BIN_FRACTION) | 0);
+    let sum: number = 0;
+    for (let b: number = 0; b < bassBins; b++) sum += this.freqArray[b];
+    const bassLevel: number = sum / bassBins / 255;
+
+    if (bassLevel < this.BASS_THRESHOLD) return;
+
+    const now: number = performance.now();
+    if (now - this.lastBassTriggerTime < this.BASS_COOLDOWN_MS) return;
+
+    this.lastBassTriggerTime = now;
+    this.trailDirection = -this.trailDirection;
+    this.hue = (this.hue + this.HUE_JUMP_DEGREES) % 360;
+
+    // Only some hits flash the scene white/black.
+    if (Math.random() < this.FLASH_PROBABILITY) {
+      this.flashAmount = 1;
+    }
+  }
+
+  /**
+   * Paints the white/black flash over the finished frame while a flash is active:
+   * the whole canvas washes to white and the horizontal waveform is laid back over
+   * it as a black silhouette, both at the current intensity, which then decays so
+   * the scene fades back to its normal colours. Additive compositing would hide a
+   * black waveform, so it is recoloured via source-in on the scratch surface.
+   */
+  private applyFlash(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    offsetX: number,
+    offsetY: number
+  ): void {
+    if (this.flashAmount <= 0) return;
+    const f: number = this.flashAmount;
+    const size: number = this.trailSize;
+
+    // Wash the whole frame toward white.
+    ctx.save();
+    ctx.globalAlpha = f;
+    ctx.fillStyle = 'rgb(255, 255, 255)';
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+
+    // Recolour the horizontal trail to a black silhouette on the scratch surface.
+    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
+    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
+    tempCtx.save();
+    tempCtx.globalCompositeOperation = 'source-over';
+    tempCtx.clearRect(0, 0, size, size);
+    tempCtx.drawImage(this.horizontalCanvas!, 0, 0);
+    tempCtx.globalCompositeOperation = 'source-in';
+    tempCtx.fillStyle = 'rgb(0, 0, 0)';
+    tempCtx.fillRect(0, 0, size, size);
+    tempCtx.restore();
+
+    // Lay the black waveform over the white wash.
+    ctx.save();
+    ctx.globalAlpha = f;
+    ctx.drawImage(tempCanvas, offsetX, offsetY);
+    ctx.restore();
+
+    this.flashAmount -= this.FLASH_FADE;
+    if (this.flashAmount < 0) this.flashAmount = 0;
+  }
+
+  /**
    * Ages a trail surface by one frame: copies it out, clears it, then draws it
    * back rotated and faded about the trail centre. The repeated resample is what
    * produces the spiral blur, and the alpha is the fade.
@@ -625,7 +738,7 @@ export class WaterVisualization extends Canvas2DVisualization {
     ctx.imageSmoothingQuality = 'high';
     ctx.globalAlpha = 1 - effectiveFade;
     ctx.translate(pivotX, pivotY);
-    ctx.rotate(this.TRAIL_ROTATION);
+    ctx.rotate(this.TRAIL_ROTATION * this.trailDirection);
     ctx.translate(-pivotX, -pivotY);
     ctx.drawImage(tempCanvas, 0, 0);
     ctx.restore();
