@@ -107,16 +107,16 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly CIRCULAR_SAMPLES: number = 128;
 
   /** Number of frequency-bucket rings (one per inner circle). */
-  private readonly RING_COUNT: number = 6;
+  private readonly RING_COUNT: number = 5;
 
-  /** Delay between revealing each ring, from the centre outward (ms). */
-  private readonly REVEAL_INTERVAL_MS: number = 10;
+  /** Times each ring's waveform repeats around the circle (rotational symmetry). */
+  private readonly RING_REPEAT: number = 2;
 
   /** Fraction of FFT bins trimmed from each end before bucketing (low & high). */
   private readonly FREQ_TRIM_FRACTION: number = 0.25;
 
   /** Magnitude (after sensitivity) at/above which a sample jumps to the ceiling. */
-  private readonly PEAK_THRESHOLD: number = 0.1125;
+  private readonly PEAK_THRESHOLD: number = 0.1;
 
   /** Opacity of the filled interior of each peak (1 = solid). */
   private readonly PEAK_FILL_ALPHA: number = 1;
@@ -127,10 +127,13 @@ export class WaterVisualization extends Canvas2DVisualization {
   // --- Trails (spiral / blur / fade) ----------------------------------------
 
   /** Per-frame rotation of the trail surfaces (radians). */
-  private readonly TRAIL_ROTATION: number = 0.006;
+  private readonly TRAIL_ROTATION: number = 0.004;
 
-  /** Per-frame fade of the trail surfaces. */
-  private readonly TRAIL_FADE: number = 0.008;
+  /** Per-frame fade of the horizontal-waveform trail (low = long-lived trails). */
+  private readonly HORIZONTAL_FADE: number = 0.002;
+
+  /** Per-frame fade of the rings trail (high, so layered peaks clear, not pile up). */
+  private readonly RING_FADE: number = 0.05;
 
   /** Extra trail-canvas margin beyond the outer circle, for glow (pixels). */
   private readonly TRAIL_MARGIN: number = 20;
@@ -156,9 +159,6 @@ export class WaterVisualization extends Canvas2DVisualization {
 
   /** Integer hue the cached colours were computed for (-1 = uncached). */
   private cachedHue: number = -1;
-
-  /** Timestamp (ms) the ring reveal started; -1 until the first frame / replay. */
-  private revealStartTime: number = -1;
 
   /** Pre-computed centre and per-circle radii (recomputed on resize). */
   private centerX: number = 0;
@@ -288,12 +288,6 @@ export class WaterVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, width, height);
   }
 
-  public override setPlaying(playing: boolean): void {
-    super.setPlaying(playing);
-    // Restart the staggered ring reveal each time playback (re)starts.
-    if (playing) this.revealStartTime = -1;
-  }
-
   public override draw(): void {
     if (this.destroyed) return;
     this.updateFade();
@@ -318,17 +312,13 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     // Age both trails with the same rotate/fade/blur spiral. They are kept on
     // independent layers so neither overdraws the other.
-    this.spinTrail(this.ringsCanvas!, ringsCtx);
-    this.spinTrail(this.horizontalCanvas!, horizontalCtx);
+    this.spinTrail(this.ringsCanvas!, ringsCtx, this.RING_FADE);
+    this.spinTrail(this.horizontalCanvas!, horizontalCtx, this.HORIZONTAL_FADE);
 
-    // Only one ring renders at a time: advance outward every REVEAL_INTERVAL_MS,
-    // then loop back to the centre.
-    const now: number = performance.now();
-    if (this.revealStartTime < 0) this.revealStartTime = now;
-    const activeRing: number = Math.floor((now - this.revealStartTime) / this.REVEAL_INTERVAL_MS) % this.RING_COUNT;
-
-    // Fresh data: the active ring onto its trail, the horizontal onto its trail.
-    this.drawFrequencyRing(ringsCtx, activeRing);
+    // Fresh data: every ring onto its trail, the horizontal onto its trail.
+    for (let ring: number = 0; ring < this.RING_COUNT; ring++) {
+      this.drawFrequencyRing(ringsCtx, ring);
+    }
     this.drawHorizontalWaveforms(horizontalCtx);
 
     // Compose: background, tower, rings layer, then the horizontal layer on top.
@@ -453,10 +443,15 @@ export class WaterVisualization extends Canvas2DVisualization {
     const numSamples: number = this.CIRCULAR_SAMPLES;
     const sensitivityFactor: number = this.sensitivityFactor;
 
-    // Trim the extreme low/high bins, then take this ring's bucket of the rest.
-    const trim: number = binCount * this.FREQ_TRIM_FRACTION;
-    const bucketSize: number = (binCount - trim * 2) / this.RING_COUNT;
-    const bucketStart: number = trim + ring * bucketSize;
+    // Logarithmic (octave-like) bucket for this ring so each ring spans a similar
+    // perceptual range, with a per-ring gain compensating the high-frequency
+    // rolloff - both spread activity more evenly than equal linear buckets.
+    const lo: number = Math.max(1, binCount * this.FREQ_TRIM_FRACTION);
+    const hi: number = binCount * (1 - this.FREQ_TRIM_FRACTION);
+    const ratio: number = hi / lo;
+    const binLo: number = lo * Math.pow(ratio, ring / this.RING_COUNT);
+    const binHi: number = lo * Math.pow(ratio, (ring + 1) / this.RING_COUNT);
+    const bucketSpan: number = binHi - binLo;
 
     const baseRadius: number = this.radii[ring];
     const ceilRadius: number = this.radii[ring + 1];
@@ -465,13 +460,19 @@ export class WaterVisualization extends Canvas2DVisualization {
     const mainColor: string = this.circleColorStrings[ring];
     const glowColor: string = `rgba(${color.r}, ${color.g}, ${color.b}, 0.8)`;
 
-    for (let i: number = 0; i < numSamples; i++) {
-      // Map this angular sample to a frequency bin inside the ring's bucket.
-      const bin: number = Math.min(binCount - 1, (bucketStart + (i / numSamples) * bucketSize) | 0);
+    // Map the bucket across one segment, then repeat it around the circle so the
+    // ring is rotationally symmetric (RING_REPEAT copies).
+    const segLen: number = (numSamples / this.RING_REPEAT) | 0;
+    for (let i: number = 0; i < segLen; i++) {
+      // Map this segment sample to a frequency bin inside the ring's bucket.
+      const bin: number = Math.min(binCount - 1, (binLo + (i / segLen) * bucketSpan) | 0);
       const magnitude: number = this.freqArray[bin] / 255;
       // Two positions only: ceiling (next circle) when the bin is loud enough,
       // otherwise baseline (this ring's own circle).
-      this.ringRadii[i] = magnitude * sensitivityFactor >= this.PEAK_THRESHOLD ? ceilRadius : baseRadius;
+      const radius: number = magnitude * sensitivityFactor >= this.PEAK_THRESHOLD ? ceilRadius : baseRadius;
+      for (let rep: number = 0; rep < this.RING_REPEAT; rep++) {
+        this.ringRadii[i + rep * segLen] = radius;
+      }
     }
 
     // Fill each peak as a rounded sector (solid interior).
@@ -605,7 +606,7 @@ export class WaterVisualization extends Canvas2DVisualization {
    * back rotated and faded about the trail centre. The repeated resample is what
    * produces the spiral blur, and the alpha is the fade.
    */
-  private spinTrail(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): void {
+  private spinTrail(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, fadeRate: number): void {
     const size: number = this.trailSize;
     const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
     const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
@@ -615,7 +616,7 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     ctx.clearRect(0, 0, size, size);
 
-    const effectiveFade: number = this.TRAIL_FADE * this.getFadeMultiplier();
+    const effectiveFade: number = fadeRate * this.getFadeMultiplier();
     const pivotX: number = Math.floor(this.trailCx);
     const pivotY: number = Math.floor(this.trailCy);
 
