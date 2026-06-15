@@ -22,7 +22,10 @@
  *
  * The rings and the horizontal waveforms are each rendered onto their own trail
  * surface that is rotated, faded and blurred every frame (a spiral), then
- * composited over the tower - rings underneath, horizontal waveforms on top.
+ * composited over the tower - rings underneath, horizontal waveforms on top. Each
+ * ring's trail also squashes toward its next circle as it ages - the peaks stay
+ * pinned to that circle while the baseline climbs outward - like oil pushed to the
+ * rim of a dish.
  *
  * A bass hit (gated to once every ten seconds) reverses the spiral's direction
  * and jumps the hue, so the whole scene flips and recolours on a heavy beat; some
@@ -135,10 +138,21 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly TRAIL_ROTATION: number = 0.004;
 
   /** Per-frame fade of the horizontal-waveform trail (low = long-lived trails). */
-  private readonly HORIZONTAL_FADE: number = 0.002;
+  private readonly HORIZONTAL_FADE: number = 0.001;
 
   /** Per-frame fade of the rings trail (high, so layered peaks clear, not pile up). */
-  private readonly RING_FADE: number = 0.05;
+  private readonly RING_FADE: number = 0.01;
+
+  /**
+   * Per-frame fraction of the gap to the ceiling that each ring's trail climbs.
+   * The ceiling (the next circle) is a fixed point and the baseline migrates up
+   * toward it: a radius x in a ring's band moves to x + RING_PUSH * (top - x), so
+   * the band squashes against the next circle as it ages. Lower = slower.
+   */
+  private readonly RING_PUSH: number = 0.004;
+
+  /** Slices per ring band used to approximate the squash (more = smoother). */
+  private readonly RING_PUSH_SLICES: number = 6;
 
   /** Extra trail-canvas margin beyond the outer circle, for glow (pixels). */
   private readonly TRAIL_MARGIN: number = 20;
@@ -381,9 +395,9 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     this.analyser.getByteTimeDomainData(this.dataArray);
 
-    // Age both trails with the same rotate/fade/blur spiral. They are kept on
-    // independent layers so neither overdraws the other.
-    this.spinTrail(this.ringsCanvas!, ringsCtx, this.RING_FADE);
+    // Age both trails with a rotate/fade/blur spiral on independent layers. The
+    // rings additionally drift outward and squash against the rim as they age.
+    this.spinRingsTrail(this.ringsCanvas!, ringsCtx, this.RING_FADE);
     this.spinTrail(this.horizontalCanvas!, horizontalCtx, this.HORIZONTAL_FADE);
 
     // Fresh data: every ring onto its trail, the horizontal onto its trail.
@@ -775,6 +789,64 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     this.flashAmount -= this.FLASH_FADE;
     if (this.flashAmount < 0) this.flashAmount = 0;
+  }
+
+  /**
+   * Ages the rings trail by one frame like spinTrail (rotate + fade + blur), but
+   * also squashes each ring's band toward its ceiling (the next circle). Within a
+   * band the ceiling is a fixed point and a radius x climbs to x + RING_PUSH *
+   * (top - x), so the baseline migrates outward while the top stays pinned and the
+   * band bunches up against the next circle - the "oil pushed to the rim" effect.
+   * Each band is redrawn as RING_PUSH_SLICES annuli to approximate the squash.
+   */
+  private spinRingsTrail(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, fadeRate: number): void {
+    const size: number = this.trailSize;
+    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
+    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
+
+    tempCtx.clearRect(0, 0, size, size);
+    tempCtx.drawImage(canvas, 0, 0);
+
+    ctx.clearRect(0, 0, size, size);
+
+    const effectiveFade: number = fadeRate * this.getFadeMultiplier();
+    const cx: number = this.trailCx;
+    const cy: number = this.trailCy;
+    const subSlices: number = this.RING_PUSH_SLICES;
+    const push: number = this.RING_PUSH;
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.globalAlpha = 1 - effectiveFade;
+    for (let r: number = 0; r < this.RING_COUNT; r++) {
+      const bottom: number = this.radii[r];
+      const top: number = this.radii[r + 1];
+      const band: number = top - bottom;
+      for (let j: number = 0; j < subSlices; j++) {
+        const x0: number = bottom + (j / subSlices) * band;
+        const x1: number = bottom + ((j + 1) / subSlices) * band;
+        const xMid: number = (x0 + x1) * 0.5;
+        // Climb each edge toward the ceiling; the ceiling itself stays fixed.
+        const dX0: number = x0 + push * (top - x0);
+        const dX1: number = x1 + push * (top - x1);
+        const scale: number = xMid > 0 ? (xMid + push * (top - xMid)) / xMid : 1;
+
+        ctx.save();
+        // Clip to where this slice lands, then rotate + scale the trail into it.
+        ctx.beginPath();
+        ctx.arc(cx, cy, dX1, 0, TWO_PI, false);
+        ctx.arc(cx, cy, dX0, 0, TWO_PI, true);
+        ctx.clip();
+        ctx.translate(cx, cy);
+        ctx.rotate(this.TRAIL_ROTATION * this.trailDirection);
+        ctx.scale(scale, scale);
+        ctx.translate(-cx, -cy);
+        ctx.drawImage(tempCanvas, 0, 0);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
   }
 
   /**
