@@ -61,7 +61,7 @@ export class WaterVisualization extends Canvas2DVisualization {
    * width, so its circumference overlaps the left and right edges slightly.
    * The six circles are then equally spaced from the centre out to it.
    */
-  private readonly EDGE_OVERLAP_FACTOR: number = 1.06;
+  private readonly EDGE_OVERLAP_FACTOR: number = 1.05;
 
   /** Saturation used for every circle (percent). */
   private readonly CIRCLE_SATURATION: number = 85;
@@ -73,27 +73,27 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly OUTER_LIGHTNESS: number = 16;
 
   /** Lightness of the background fill - a shade darker than the darkest circle. */
-  private readonly BACKGROUND_LIGHTNESS: number = 4;
+  private readonly BACKGROUND_LIGHTNESS: number = 2;
 
   /** Base blur radius used to feather one circle into the next (pixels). */
-  private readonly CIRCLE_BASE_BLUR: number = 4;
+  private readonly CIRCLE_BASE_BLUR: number = 0;
 
   /**
    * Minimum feather between circles, applied even when the user glow control is
    * zero, so the "mild blur from one circle to the next" is intrinsic.
    */
-  private readonly CIRCLE_MIN_BLUR: number = 80;
+  private readonly CIRCLE_MIN_BLUR: number = 10;
 
   // --- Waveforms ------------------------------------------------------------
 
   /** Glow blur radius for the waveforms and rings (pixels). */
-  private readonly WAVE_GLOW_BLUR: number = 14;
+  private readonly WAVE_GLOW_BLUR: number = 16;
 
   /** Samples per horizontal waveform (edge to centre). */
   private readonly HORIZONTAL_SAMPLES: number = 32;
 
   /** Horizontal amplitude as a fraction of screen height. */
-  private readonly HORIZONTAL_AMP_FRACTION: number = 0.22;
+  private readonly HORIZONTAL_AMP_FRACTION: number = 0.25;
 
   /** How hard the horizontal waveform bends around the core. */
   private readonly BEND_STRENGTH: number = 1.0;
@@ -104,13 +104,13 @@ export class WaterVisualization extends Canvas2DVisualization {
   // --- Frequency rings ------------------------------------------------------
 
   /** Angular samples around each ring. */
-  private readonly CIRCULAR_SAMPLES: number = 64;
+  private readonly CIRCULAR_SAMPLES: number = 128;
 
   /** Number of frequency-bucket rings (one per inner circle). */
-  private readonly RING_COUNT: number = 5;
+  private readonly RING_COUNT: number = 6;
 
   /** Delay between revealing each ring, from the centre outward (ms). */
-  private readonly REVEAL_INTERVAL_MS: number = 1;
+  private readonly REVEAL_INTERVAL_MS: number = 250;
 
   /** Fraction of FFT bins trimmed from each end before bucketing (low & high). */
   private readonly FREQ_TRIM_FRACTION: number = 0.2;
@@ -127,10 +127,10 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly TRAIL_ROTATION: number = 0.006;
 
   /** Per-frame fade of the trail surfaces. */
-  private readonly TRAIL_FADE: number = 0.012;
+  private readonly TRAIL_FADE: number = 0.008;
 
   /** Extra trail-canvas margin beyond the outer circle, for glow (pixels). */
-  private readonly TRAIL_MARGIN: number = 24;
+  private readonly TRAIL_MARGIN: number = 20;
 
   // --- Colour cycling -------------------------------------------------------
 
