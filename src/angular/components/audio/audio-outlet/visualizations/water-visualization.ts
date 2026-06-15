@@ -110,16 +110,19 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly RING_COUNT: number = 6;
 
   /** Delay between revealing each ring, from the centre outward (ms). */
-  private readonly REVEAL_INTERVAL_MS: number = 250;
+  private readonly REVEAL_INTERVAL_MS: number = 10;
 
   /** Fraction of FFT bins trimmed from each end before bucketing (low & high). */
-  private readonly FREQ_TRIM_FRACTION: number = 0.2;
+  private readonly FREQ_TRIM_FRACTION: number = 0.25;
 
   /** Magnitude (after sensitivity) at/above which a sample jumps to the ceiling. */
   private readonly PEAK_THRESHOLD: number = 0.1125;
 
   /** Opacity of the filled interior of each peak (1 = solid). */
   private readonly PEAK_FILL_ALPHA: number = 1;
+
+  /** Corner radius for each peak's rounded edges (pixels, border-radius style). */
+  private readonly PEAK_CORNER_RADIUS: number = 8;
 
   // --- Trails (spiral / blur / fade) ----------------------------------------
 
@@ -187,7 +190,6 @@ export class WaterVisualization extends Canvas2DVisualization {
   /** Pre-allocated point buffers (avoids per-frame allocation). */
   private readonly leftPoints: Point[];
   private readonly rightPoints: Point[];
-  private readonly ringPoints: Point[];
   private readonly ringRadii: number[];
 
   /** Trail surface for the frequency rings. */
@@ -218,8 +220,6 @@ export class WaterVisualization extends Canvas2DVisualization {
 
     this.leftPoints = WaterVisualization.allocatePoints(this.HORIZONTAL_SAMPLES);
     this.rightPoints = WaterVisualization.allocatePoints(this.HORIZONTAL_SAMPLES);
-    // Two vertices per angular sample (a flat top then a radial jump).
-    this.ringPoints = WaterVisualization.allocatePoints(this.CIRCULAR_SAMPLES * 2);
     this.ringRadii = new Array<number>(this.CIRCULAR_SAMPLES).fill(0);
   }
 
@@ -474,104 +474,128 @@ export class WaterVisualization extends Canvas2DVisualization {
       this.ringRadii[i] = magnitude * sensitivityFactor >= this.PEAK_THRESHOLD ? ceilRadius : baseRadius;
     }
 
-    this.buildCastellation(this.ringPoints, this.ringRadii);
-    // Fill the inside of each peak (the band from this circle out to the ceiling).
-    this.fillPeaks(ctx, this.ringPoints, baseRadius, mainColor);
-    // Glowing outline of the peaks only - walls and tops, no baseline.
+    // Fill each peak as a rounded sector (solid interior).
+    ctx.save();
+    ctx.globalAlpha = this.PEAK_FILL_ALPHA;
+    ctx.fillStyle = mainColor;
+    this.appendRoundedPeaks(ctx, baseRadius, ceilRadius, true);
+    ctx.fill();
+    ctx.restore();
+
+    // Glowing rounded outline of the peaks (walls + rounded tops, no baseline).
     this.drawPathWithLayers(
-      (): void => { this.buildPeakOutline(ctx, this.ringRadii, baseRadius); },
+      (): void => { this.appendRoundedPeaks(ctx, baseRadius, ceilRadius, false); },
       mainColor, glowColor, undefined,
       {ctx, baseGlowBlur: this.WAVE_GLOW_BLUR}
     );
   }
 
   /**
-   * Fills the band between baseRadius and the castellated outline - i.e. the
-   * inside of each peak. Uses an even-odd fill of the outline minus the ring's
-   * baseline circle, so flat (baseline) stretches contribute no fill.
+   * Appends each peak run to the current path as a rounded annular sector
+   * (border-radius-style corners). When withBottom is true the sector is closed
+   * across the baseline (for filling); otherwise only the walls + rounded tops +
+   * ceiling are traced (an open cap, so the baseline is never drawn). Scanning
+   * starts from a baseline gap so a run never wraps the angle-0 seam.
    */
-  private fillPeaks(ctx: CanvasRenderingContext2D, points: Point[], baseRadius: number, fillColor: string): void {
-    ctx.save();
-    ctx.globalAlpha = this.PEAK_FILL_ALPHA;
-    ctx.fillStyle = fillColor;
+  private appendRoundedPeaks(
+    ctx: CanvasRenderingContext2D,
+    baseRadius: number,
+    ceilRadius: number,
+    withBottom: boolean
+  ): void {
+    const numSamples: number = this.CIRCULAR_SAMPLES;
+    const radii: number[] = this.ringRadii;
+
     ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i: number = 1; i < points.length; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
+
+    let gap: number = -1;
+    for (let i: number = 0; i < numSamples; i++) {
+      if (radii[i] <= baseRadius) { gap = i; break; }
     }
+
+    if (gap < 0) {
+      // Every sample is a peak: a full ring (no walls or corners).
+      ctx.arc(this.trailCx, this.trailCy, ceilRadius, 0, TWO_PI);
+      if (withBottom) {
+        ctx.moveTo(this.trailCx + baseRadius, this.trailCy);
+        ctx.arc(this.trailCx, this.trailCy, baseRadius, 0, TWO_PI, true);
+      }
+      return;
+    }
+
+    let i: number = (gap + 1) % numSamples;
+    let scanned: number = 0;
+    let runStart: number = -1;
+    while (scanned < numSamples) {
+      if (radii[i] > baseRadius) {
+        if (runStart < 0) runStart = i;
+      } else if (runStart >= 0) {
+        this.appendTooth(ctx, runStart, (i - 1 + numSamples) % numSamples, baseRadius, ceilRadius, withBottom);
+        runStart = -1;
+      }
+      i = (i + 1) % numSamples;
+      scanned++;
+    }
+  }
+
+  /**
+   * Appends one peak (sample run startIdx..endIdx) as a rounded sector: radial
+   * walls, an arc'd ceiling and quadratic-rounded corners. The corner radius is
+   * clamped to fit both the wall height and the run's arc length.
+   */
+  private appendTooth(
+    ctx: CanvasRenderingContext2D,
+    startIdx: number,
+    endIdx: number,
+    baseRadius: number,
+    ceilRadius: number,
+    withBottom: boolean
+  ): void {
+    const angleStep: number = TWO_PI / this.CIRCULAR_SAMPLES;
+    const cx: number = this.trailCx;
+    const cy: number = this.trailCy;
+
+    const a0: number = startIdx * angleStep;
+    let a1: number = (endIdx + 1) * angleStep;
+    if (a1 <= a0) a1 += TWO_PI; // run wrapped the seam
+
+    let cr: number = this.PEAK_CORNER_RADIUS;
+    const maxByWall: number = (ceilRadius - baseRadius) * 0.5;
+    const maxByArc: number = (a1 - a0) * baseRadius * 0.5;
+    if (cr > maxByWall) cr = maxByWall;
+    if (cr > maxByArc) cr = maxByArc;
+
+    const dCeil: number = cr / ceilRadius;
+    const dBase: number = cr / baseRadius;
+    const wallBase: number = withBottom ? baseRadius + cr : baseRadius;
+
+    // Left wall up, rounded top-left, ceiling, rounded top-right, right wall down.
+    ctx.moveTo(cx + wallBase * Math.cos(a0), cy + wallBase * Math.sin(a0));
+    ctx.lineTo(cx + (ceilRadius - cr) * Math.cos(a0), cy + (ceilRadius - cr) * Math.sin(a0));
+    ctx.quadraticCurveTo(
+      cx + ceilRadius * Math.cos(a0), cy + ceilRadius * Math.sin(a0),
+      cx + ceilRadius * Math.cos(a0 + dCeil), cy + ceilRadius * Math.sin(a0 + dCeil)
+    );
+    ctx.arc(cx, cy, ceilRadius, a0 + dCeil, a1 - dCeil, false);
+    ctx.quadraticCurveTo(
+      cx + ceilRadius * Math.cos(a1), cy + ceilRadius * Math.sin(a1),
+      cx + (ceilRadius - cr) * Math.cos(a1), cy + (ceilRadius - cr) * Math.sin(a1)
+    );
+    ctx.lineTo(cx + wallBase * Math.cos(a1), cy + wallBase * Math.sin(a1));
+
+    if (!withBottom) return;
+
+    // Rounded bottom-right, base arc back, rounded bottom-left, then close.
+    ctx.quadraticCurveTo(
+      cx + baseRadius * Math.cos(a1), cy + baseRadius * Math.sin(a1),
+      cx + baseRadius * Math.cos(a1 - dBase), cy + baseRadius * Math.sin(a1 - dBase)
+    );
+    ctx.arc(cx, cy, baseRadius, a1 - dBase, a0 + dBase, true);
+    ctx.quadraticCurveTo(
+      cx + baseRadius * Math.cos(a0), cy + baseRadius * Math.sin(a0),
+      cx + (baseRadius + cr) * Math.cos(a0), cy + (baseRadius + cr) * Math.sin(a0)
+    );
     ctx.closePath();
-    // Subtract the inner baseline disc so only the peak teeth are filled.
-    ctx.moveTo(this.trailCx + baseRadius, this.trailCy);
-    ctx.arc(this.trailCx, this.trailCy, baseRadius, 0, TWO_PI);
-    ctx.fill('evenodd');
-    ctx.restore();
-  }
-
-  /**
-   * Builds a castellated (square-wave) ring into the given point buffer (trail
-   * space): each sample holds its radius across its angular slice, then jumps
-   * radially to the next sample's radius.
-   */
-  private buildCastellation(points: Point[], radii: number[]): void {
-    const numSamples: number = this.CIRCULAR_SAMPLES;
-    const cx: number = this.trailCx;
-    const cy: number = this.trailCy;
-    const angleStep: number = TWO_PI / numSamples;
-
-    let k: number = 0;
-    for (let i: number = 0; i < numSamples; i++) {
-      const radius: number = radii[i];
-      const a0: number = i * angleStep;
-      const a1: number = (i + 1) * angleStep;
-
-      points[k].x = cx + radius * Math.cos(a0);
-      points[k].y = cy + radius * Math.sin(a0);
-      k++;
-      points[k].x = cx + radius * Math.cos(a1);
-      points[k].y = cy + radius * Math.sin(a1);
-      k++;
-    }
-  }
-
-  /**
-   * Strokes only the peaks - each peak's ceiling top plus its radial walls at
-   * the rising/falling edges - skipping the baseline stretches between peaks.
-   * Wrap-around is handled via modulo so a peak crossing angle 0 is unbroken.
-   */
-  private buildPeakOutline(ctx: CanvasRenderingContext2D, radii: number[], baseRadius: number): void {
-    const numSamples: number = this.CIRCULAR_SAMPLES;
-    const cx: number = this.trailCx;
-    const cy: number = this.trailCy;
-    const angleStep: number = TWO_PI / numSamples;
-
-    ctx.beginPath();
-    for (let i: number = 0; i < numSamples; i++) {
-      if (radii[i] <= baseRadius) continue;
-
-      const r: number = radii[i];
-      const a0: number = i * angleStep;
-      const a1: number = (i + 1) * angleStep;
-      const x0: number = cx + r * Math.cos(a0);
-      const y0: number = cy + r * Math.sin(a0);
-      const x1: number = cx + r * Math.cos(a1);
-      const y1: number = cy + r * Math.sin(a1);
-
-      // Ceiling top across this sample's slice.
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
-
-      // Left wall where a peak run begins.
-      if (radii[(i - 1 + numSamples) % numSamples] <= baseRadius) {
-        ctx.moveTo(cx + baseRadius * Math.cos(a0), cy + baseRadius * Math.sin(a0));
-        ctx.lineTo(x0, y0);
-      }
-
-      // Right wall where a peak run ends.
-      if (radii[(i + 1) % numSamples] <= baseRadius) {
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(cx + baseRadius * Math.cos(a1), cy + baseRadius * Math.sin(a1));
-      }
-    }
   }
 
   // === Trails & colour ======================================================
