@@ -732,6 +732,7 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'infinity',
   'onix',
   'modern',
+  'spotlight',
 ];
 
 // ============================================================================

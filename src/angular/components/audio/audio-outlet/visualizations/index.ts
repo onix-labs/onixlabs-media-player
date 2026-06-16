@@ -16,6 +16,7 @@
  * - neon: Glowing neon ring visualization
  * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
  * - water: Water ripple effect with rotating waveforms (waves category)
+ * - spotlight: Sweeping stage-light beams reacting to frequency bands (waves category)
  *
  * @module app/components/audio/audio-outlet/visualizations
  */
@@ -32,6 +33,7 @@ export {WaterVisualization} from './water-visualization';
 export {InfinityVisualization} from './infinity-visualization';
 export {OnixVisualization} from './onix-visualization';
 export {ModernVisualization} from './modern-visualization';
+export {SpotlightVisualization} from './spotlight-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
@@ -44,6 +46,7 @@ import {WaterVisualization} from './water-visualization';
 import {InfinityVisualization} from './infinity-visualization';
 import {OnixVisualization} from './onix-visualization';
 import {ModernVisualization} from './modern-visualization';
+import {SpotlightVisualization} from './spotlight-visualization';
 
 /**
  * Map of visualization types to their constructor classes.
@@ -60,6 +63,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   infinity: InfinityVisualization,
   onix: OnixVisualization,
   modern: ModernVisualization,
+  spotlight: SpotlightVisualization,
 };
 
 /**
@@ -77,6 +81,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   infinity: {name: 'Infinity', category: 'Waves'},
   onix: {name: 'Onix', category: 'Waves'},
   modern: {name: 'Modern', category: 'Waves'},
+  spotlight: {name: 'Spotlight', category: 'Waves'},
 };
 
 /**
@@ -118,7 +123,7 @@ export const VISUALIZATION_TYPES: string[] = [
   // Bars
   'bars', 'tether',
   // Waves
-  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'pulsar', 'water',
+  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'pulsar', 'spotlight', 'water',
 ];
 
 /** A single selectable visualization option (type value + display name). */

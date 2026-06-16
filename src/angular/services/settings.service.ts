@@ -375,6 +375,7 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'tunnel', name: 'Plasma', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
   {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
   {id: 'pulsar', name: 'Pulsar', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
+  {id: 'spotlight', name: 'Spotlight', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity']},
   {id: 'water', name: 'Water', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
   {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
@@ -460,6 +461,7 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'onix', label: 'Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
   {value: 'pulsar', label: 'Waves : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
+  {value: 'spotlight', label: 'Waves : Spotlight', description: 'Sweeping stage-light beams reacting to frequency bands'},
   {value: 'water', label: 'Waves : Water', description: 'Water ripple effect with rotating waveforms'},
 ];
 
