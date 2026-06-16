@@ -29,7 +29,7 @@ export class WaveformVisualization extends Canvas2DVisualization {
 
   private readonly FADE_RATE: number = 0.03; // Very slow fade for LCD ghosting effect
   private readonly BASE_GLOW_BLUR: number = 15;
-  private readonly WAVEFORM_POINTS: number = 128;
+  private readonly WAVEFORM_POINTS: number = 32;
   private readonly THRESHOLD_CLEAR_INTERVAL: number = 10; // Clear low-alpha pixels every N frames
   private dataArray: Uint8Array<ArrayBuffer>;
   private frameCount: number = 0;
