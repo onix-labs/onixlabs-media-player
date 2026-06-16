@@ -62,7 +62,7 @@ export class WaterVisualization extends Canvas2DVisualization {
   // --- Concentric tower -----------------------------------------------------
 
   /** Number of stacked concentric circles. */
-  private readonly CIRCLE_COUNT: number = 6;
+  private readonly CIRCLE_COUNT: number = 8;
 
   /**
    * The largest (outermost) circle's radius as a multiple of half the screen
@@ -72,42 +72,33 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly EDGE_OVERLAP_FACTOR: number = 1.05;
 
   /** Saturation used for every circle (percent). */
-  private readonly CIRCLE_SATURATION: number = 85;
+  private readonly CIRCLE_SATURATION: number = 80;
 
   /** Lightness of the innermost (brightest) circle (percent). */
   private readonly INNER_LIGHTNESS: number = 64;
 
   /** Lightness of the outermost (darkest) circle (percent). */
-  private readonly OUTER_LIGHTNESS: number = 16;
+  private readonly OUTER_LIGHTNESS: number = 8;
 
   /** Lightness of the background fill - a shade darker than the darkest circle. */
   private readonly BACKGROUND_LIGHTNESS: number = 2;
 
-  /** Base blur radius used to feather one circle into the next (pixels). */
-  private readonly CIRCLE_BASE_BLUR: number = 0;
-
-  /**
-   * Minimum feather between circles, applied even when the user glow control is
-   * zero, so the "mild blur from one circle to the next" is intrinsic.
-   */
-  private readonly CIRCLE_MIN_BLUR: number = 10;
-
   // --- Waveforms ------------------------------------------------------------
 
   /** Glow blur radius for the waveforms and rings (pixels). */
-  private readonly WAVE_GLOW_BLUR: number = 0;
+  private readonly WAVE_GLOW_BLUR: number = 128;
 
   /** Samples per horizontal waveform (edge to centre). */
   private readonly HORIZONTAL_SAMPLES: number = 32;
 
   /** Horizontal amplitude as a fraction of screen height. */
-  private readonly HORIZONTAL_AMP_FRACTION: number = 0.25;
+  private readonly HORIZONTAL_AMP_FRACTION: number = 0.5;
 
   /** How hard the horizontal waveform bends around the core. */
-  private readonly BEND_STRENGTH: number = 1.0;
+  private readonly BEND_STRENGTH: number = 1.5;
 
   /** Maximum bend angle so the waveform never wraps over the core (radians). */
-  private readonly MAX_BEND_ANGLE: number = 1.4;
+  private readonly MAX_BEND_ANGLE: number = 1.5;
 
   // --- Frequency rings ------------------------------------------------------
 
@@ -115,19 +106,19 @@ export class WaterVisualization extends Canvas2DVisualization {
   private readonly CIRCULAR_SAMPLES: number = 128;
 
   /** Number of frequency-bucket rings (one per inner circle). */
-  private readonly RING_COUNT: number = 5;
+  private readonly RING_COUNT: number = 7;
 
   /** Times each ring's waveform repeats around the circle (rotational symmetry). */
   private readonly RING_REPEAT: number = 2;
 
   /** Fraction of FFT bins trimmed from each end before bucketing (low & high). */
-  private readonly FREQ_TRIM_FRACTION: number = 0.1;
+  private readonly FREQ_TRIM_FRACTION: number = 0.05;
 
   /** Magnitude (after sensitivity) at/above which a sample jumps to the ceiling. */
-  private readonly PEAK_THRESHOLD: number = 0.1;
+  private readonly PEAK_THRESHOLD: number = 0.115;
 
   /** Opacity of the filled interior of each peak (1 = solid). */
-  private readonly PEAK_FILL_ALPHA: number = 0.1;
+  private readonly PEAK_FILL_ALPHA: number = 0.15;
 
   /** Corner radius for each peak's rounded edges (pixels, border-radius style). */
   private readonly PEAK_CORNER_RADIUS: number = 16;
@@ -135,13 +126,13 @@ export class WaterVisualization extends Canvas2DVisualization {
   // --- Trails (spiral / blur / fade) ----------------------------------------
 
   /** Per-frame rotation of the trail surfaces (radians). */
-  private readonly TRAIL_ROTATION: number = 0.004;
+  private readonly TRAIL_ROTATION: number = 0.005;
 
   /** Per-frame fade of the horizontal-waveform trail (low = long-lived trails). */
   private readonly HORIZONTAL_FADE: number = 0.02;
 
   /** Per-frame fade of the rings trail (the squashed peaks need some persistence to show). */
-  private readonly RING_FADE: number = 0.02;
+  private readonly RING_FADE: number = 0.03;
 
   /**
    * How far up its band each ring's trail climbs toward the ceiling over the
@@ -150,18 +141,18 @@ export class WaterVisualization extends Canvas2DVisualization {
    * longer hides the squash. The ceiling (next circle) is the fixed point: a radius
    * x moves to x + push * (top - x), so the band bunches against the next circle.
    */
-  private readonly RING_SQUASH_FRACTION: number = 0.3;
+  private readonly RING_SQUASH_FRACTION: number = 0.2;
 
   /** Slices per ring band used to approximate the squash (more = smoother). */
   private readonly RING_PUSH_SLICES: number = 32;
 
   /** Extra trail-canvas margin beyond the outer circle, for glow (pixels). */
-  private readonly TRAIL_MARGIN: number = 30;
+  private readonly TRAIL_MARGIN: number = 16;
 
   // --- Colour cycling -------------------------------------------------------
 
   /** Per-frame hue drift (degrees). */
-  private readonly HUE_CYCLE_SPEED: number = 0.08;
+  private readonly HUE_CYCLE_SPEED: number = 0.05;
 
   /** Starting hue (degrees) - blue, matching the reference. */
   private readonly START_HUE: number = 220;
@@ -449,8 +440,6 @@ export class WaterVisualization extends Canvas2DVisualization {
     for (let i: number = this.CIRCLE_COUNT - 1; i >= 0; i--) {
       const colorString: string = this.circleColorStrings[i];
       ctx.save();
-      // Keep an intrinsic feather even when the user glow control is at zero.
-      ctx.shadowBlur = Math.max(this.CIRCLE_MIN_BLUR, this.getScaledGlowBlur(this.CIRCLE_BASE_BLUR));
       ctx.shadowColor = colorString;
       ctx.fillStyle = colorString;
       ctx.beginPath();
