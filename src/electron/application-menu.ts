@@ -36,8 +36,13 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'neon', name: 'Neon'},
       {id: 'onix', name: 'Onix'},
       {id: 'pulsar', name: 'Pulsar'},
+    ],
+  },
+  {
+    category: 'Signature',
+    items: [
       {id: 'spotlight', name: 'Spotlight'},
-      {id: 'water', name: 'Water'},
+      {id: 'water', name: 'Reactor'},
     ],
   },
 ];

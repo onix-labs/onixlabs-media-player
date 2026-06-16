@@ -29,7 +29,7 @@
 import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, HostBinding, ChangeDetectionStrategy, Output, EventEmitter} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
-import {SettingsService, PerVisualizationSettings} from '../../../services/settings.service';
+import {SettingsService, PerVisualizationSettings, RenderResolution} from '../../../services/settings.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import type {PlaylistItem} from '../../../types/electron';
 import {Visualization, createVisualization, VISUALIZATION_TYPES, VISUALIZATION_METADATA} from './visualizations';
@@ -782,9 +782,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
       this.visualization.setFftSize(this.settings.fftSize());
       this.applyVisualizationSettings(type);
-
-      const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
-      this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
+      this.applyRenderSize();
     }
   }
 
@@ -808,9 +806,44 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
     this.visualization.setFftSize(this.settings.fftSize());
     this.applyVisualizationSettings(vizType);
+    this.applyRenderSize();
+  }
 
-    const rect: DOMRect = this.canvasRef.nativeElement.getBoundingClientRect();
-    this.visualization.resize(Math.round(rect.width), Math.round(rect.height));
+  /**
+   * Computes the visualization's target backing-store size for the current
+   * render-resolution setting.
+   *
+   * 'native' tracks the canvas's displayed pixel size. A fixed resolution returns
+   * that exact size, so the smaller backing store is stretched by CSS to fill the
+   * screen with nearest-neighbour scaling (pixelated, no blending).
+   *
+   * @param canvas - The visualization canvas element
+   * @returns The target width/height and whether pixelated scaling applies
+   */
+  private getRenderSize(canvas: HTMLCanvasElement): {width: number; height: number; pixelated: boolean} {
+    const resolution: RenderResolution = this.settings.renderResolution();
+    if (resolution !== 'native') {
+      const separator: number = resolution.indexOf('x');
+      const width: number = parseInt(resolution.slice(0, separator), 10);
+      const height: number = parseInt(resolution.slice(separator + 1), 10);
+      if (width > 0 && height > 0) {
+        return {width, height, pixelated: true};
+      }
+    }
+    const rect: DOMRect = canvas.getBoundingClientRect();
+    return {width: Math.round(rect.width), height: Math.round(rect.height), pixelated: false};
+  }
+
+  /**
+   * Resizes the current visualization to the configured render size and toggles
+   * nearest-neighbour (pixelated) CSS scaling when a fixed resolution is active.
+   */
+  private applyRenderSize(): void {
+    if (!this.visualization) return;
+    const canvas: HTMLCanvasElement = this.canvasRef.nativeElement;
+    const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize(canvas);
+    canvas.style.imageRendering = size.pixelated ? 'pixelated' : 'auto';
+    this.visualization.resize(size.width, size.height);
   }
 
   /**
@@ -843,12 +876,13 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.lastFrameTime = timestamp - (elapsed % frameInterval);
       }
 
-      const rect: DOMRect = canvas.getBoundingClientRect();
-      const width: number = Math.round(rect.width);
-      const height: number = Math.round(rect.height);
+      // Target backing-store size: the display size ('native') or the fixed
+      // render resolution (stretched to fill via CSS with nearest-neighbour).
+      const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize(canvas);
 
-      if (canvas.width !== width || canvas.height !== height) {
-        this.visualization?.resize(width, height);
+      if (canvas.width !== size.width || canvas.height !== size.height) {
+        canvas.style.imageRendering = size.pixelated ? 'pixelated' : 'auto';
+        this.visualization?.resize(size.width, size.height);
       }
 
       this.visualization?.draw();

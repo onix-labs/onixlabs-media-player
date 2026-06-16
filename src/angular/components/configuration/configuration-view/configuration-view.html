@@ -488,6 +488,25 @@
                     </div>
                   </div>
 
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label for="render-resolution">Render Resolution</label>
+                      <p class="setting-description">
+                        Fullscreen render size. Fixed resolutions render small and stretch to fill for a pixelated look.
+                      </p>
+                    </div>
+                    <div class="setting-control">
+                      <select
+                        id="render-resolution"
+                        (change)="onRenderResolutionChange($event)"
+                      >
+                        @for (option of renderResolutionOptions; track option.value) {
+                          <option [value]="option.value" [selected]="option.value === currentRenderResolution()">{{ option.label }}</option>
+                        }
+                      </select>
+                    </div>
+                  </div>
+
                   <div class="info-notice">
                     <i class="fa-solid fa-info-circle"></i>
                     <span>Expand "Visualisations" in the sidebar to configure individual visualization settings.</span>

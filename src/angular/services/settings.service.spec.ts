@@ -44,6 +44,7 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       defaultType: 'bars',
       maxFrameRate: 0,
       fftSize: 2048,
+      renderResolution: 'native',
       perVisualizationSettings: {},
     },
     application: {
@@ -159,7 +160,7 @@ describe('SettingsService', (): void => {
   describe('computed signals', (): void => {
     it('defaultVisualization reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'waveform', maxFrameRate: 0, fftSize: 2048, perVisualizationSettings: {}},
+        visualization: {defaultType: 'waveform', maxFrameRate: 0, fftSize: 2048, renderResolution: 'native', perVisualizationSettings: {}},
       });
       service.updateFromSSE(testSettings);
 
@@ -169,7 +170,7 @@ describe('SettingsService', (): void => {
 
     it('maxFrameRate reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'bars', maxFrameRate: 60, fftSize: 2048, perVisualizationSettings: {}},
+        visualization: {defaultType: 'bars', maxFrameRate: 60, fftSize: 2048, renderResolution: 'native', perVisualizationSettings: {}},
       });
       service.updateFromSSE(testSettings);
 
@@ -179,7 +180,7 @@ describe('SettingsService', (): void => {
 
     it('fftSize reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'bars', maxFrameRate: 0, fftSize: 4096, perVisualizationSettings: {}},
+        visualization: {defaultType: 'bars', maxFrameRate: 0, fftSize: 4096, renderResolution: 'native', perVisualizationSettings: {}},
       });
       service.updateFromSSE(testSettings);
 
@@ -295,7 +296,7 @@ describe('SettingsService', (): void => {
   describe('updateFromSSE', (): void => {
     it('updates settings signal', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'tunnel', maxFrameRate: 30, fftSize: 1024, perVisualizationSettings: {}},
+        visualization: {defaultType: 'tunnel', maxFrameRate: 30, fftSize: 1024, renderResolution: 'native', perVisualizationSettings: {}},
       });
 
       service.updateFromSSE(testSettings);
@@ -328,6 +329,7 @@ describe('SettingsService', (): void => {
           defaultType: 'bars',
           maxFrameRate: 0,
           fftSize: 2048,
+          renderResolution: 'native',
           perVisualizationSettings: {
             bars: {sensitivity: customSensitivity},
           },
@@ -345,6 +347,7 @@ describe('SettingsService', (): void => {
           defaultType: 'bars',
           maxFrameRate: 0,
           fftSize: 2048,
+          renderResolution: 'native',
           perVisualizationSettings: {},
         },
       });
@@ -360,6 +363,7 @@ describe('SettingsService', (): void => {
           defaultType: 'bars',
           maxFrameRate: 0,
           fftSize: 2048,
+          renderResolution: 'native',
           perVisualizationSettings: {},
         },
       });
@@ -381,6 +385,7 @@ describe('SettingsService', (): void => {
           defaultType: 'bars',
           maxFrameRate: 0,
           fftSize: 2048,
+          renderResolution: 'native',
           perVisualizationSettings: {
             bars: {sensitivity: 0.9},
           },
@@ -398,6 +403,7 @@ describe('SettingsService', (): void => {
           defaultType: 'bars',
           maxFrameRate: 0,
           fftSize: 2048,
+          renderResolution: 'native',
           perVisualizationSettings: {},
         },
       });

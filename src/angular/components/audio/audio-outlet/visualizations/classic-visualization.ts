@@ -23,7 +23,7 @@ import {Canvas2DVisualization, VisualizationConfig} from './visualization';
  * Renders the audio waveform as a glowing green line with an LCD-style
  * ghosting effect that creates visual trails.
  */
-export class WaveformVisualization extends Canvas2DVisualization {
+export class ClassicVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Classic';
   public readonly category: string = 'Waves';
 

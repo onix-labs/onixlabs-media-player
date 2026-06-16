@@ -15,8 +15,8 @@
  * - tunnel: Hypnotic tunnel/vortex effect
  * - neon: Glowing neon ring visualization
  * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
- * - water: Water ripple effect with rotating waveforms (waves category)
- * - spotlight: Sweeping stage-light beams reacting to frequency bands (waves category)
+ * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
+ * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
  *
  * @module app/components/audio/audio-outlet/visualizations
  */
@@ -24,12 +24,12 @@
 export {Visualization, Canvas2DVisualization, WebGLVisualization} from './visualization';
 export type {VisualizationConfig} from './visualization';
 export {AnalyzerVisualization} from './analyzer-visualization';
-export {WaveformVisualization} from './waveform-visualization';
+export {ClassicVisualization} from './classic-visualization';
 export {SpectreVisualization} from './spectre-visualization';
 export {PlasmaVisualization} from './plasma-visualization';
 export {NeonVisualization} from './neon-visualization';
 export {PulsarVisualization} from './pulsar-visualization';
-export {WaterVisualization} from './water-visualization';
+export {ReactorVisualization} from './reactor-visualization';
 export {InfinityVisualization} from './infinity-visualization';
 export {OnixVisualization} from './onix-visualization';
 export {ModernVisualization} from './modern-visualization';
@@ -37,12 +37,12 @@ export {SpotlightVisualization} from './spotlight-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
-import {WaveformVisualization} from './waveform-visualization';
+import {ClassicVisualization} from './classic-visualization';
 import {SpectreVisualization} from './spectre-visualization';
 import {PlasmaVisualization} from './plasma-visualization';
 import {NeonVisualization} from './neon-visualization';
 import {PulsarVisualization} from './pulsar-visualization';
-import {WaterVisualization} from './water-visualization';
+import {ReactorVisualization} from './reactor-visualization';
 import {InfinityVisualization} from './infinity-visualization';
 import {OnixVisualization} from './onix-visualization';
 import {ModernVisualization} from './modern-visualization';
@@ -54,12 +54,12 @@ import {SpotlightVisualization} from './spotlight-visualization';
  */
 const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfig) => Visualization> = {
   bars: AnalyzerVisualization,
-  waveform: WaveformVisualization,
+  waveform: ClassicVisualization,
   tether: SpectreVisualization,
   tunnel: PlasmaVisualization,
   neon: NeonVisualization,
   pulsar: PulsarVisualization,
-  water: WaterVisualization,
+  water: ReactorVisualization,
   infinity: InfinityVisualization,
   onix: OnixVisualization,
   modern: ModernVisualization,
@@ -77,11 +77,11 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   tunnel: {name: 'Plasma', category: 'Waves'},
   neon: {name: 'Neon', category: 'Waves'},
   pulsar: {name: 'Pulsar', category: 'Waves'},
-  water: {name: 'Water', category: 'Waves'},
+  water: {name: 'Reactor', category: 'Signature'},
   infinity: {name: 'Infinity', category: 'Waves'},
   onix: {name: 'Onix', category: 'Waves'},
   modern: {name: 'Modern', category: 'Waves'},
-  spotlight: {name: 'Spotlight', category: 'Waves'},
+  spotlight: {name: 'Spotlight', category: 'Signature'},
 };
 
 /**
@@ -117,13 +117,16 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  *
  * Categories (in order):
  * - Bars: bars, tether
- * - Waves: plasma, infinity, neon, onix, pulsar, water, waveform
+ * - Waves: waveform, modern, tunnel, infinity, neon, onix, pulsar
+ * - Signature: spotlight, water (Reactor)
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars
   'bars', 'tether',
   // Waves
-  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'pulsar', 'spotlight', 'water',
+  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'pulsar',
+  // Signature
+  'spotlight', 'water',
 ];
 
 /** A single selectable visualization option (type value + display name). */

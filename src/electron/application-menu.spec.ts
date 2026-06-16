@@ -233,7 +233,7 @@ describe('application-menu', (): void => {
       expect(wavesCategory).toBeDefined();
 
       const wavesItems: Record<string, unknown>[] = getSubmenu(wavesCategory!);
-      const expectedNames: readonly string[] = ['Classic', 'Modern', 'Plasma', 'Infinity', 'Neon', 'Onix', 'Pulsar', 'Water'];
+      const expectedNames: readonly string[] = ['Classic', 'Modern', 'Plasma', 'Infinity', 'Neon', 'Onix', 'Pulsar'];
 
       for (const name of expectedNames) {
         const item: Record<string, unknown> | undefined = findSubmenuItem(wavesItems, name);
@@ -241,6 +241,28 @@ describe('application-menu', (): void => {
       }
 
       expect(wavesItems.length).toBe(expectedNames.length);
+    });
+
+    it('Signature category contains the signature visualizations', (): void => {
+      const viewMenu: Record<string, unknown> | undefined = findMenu(template, 'View');
+      expect(viewMenu).toBeDefined();
+      const submenu: Record<string, unknown>[] = getSubmenu(viewMenu!);
+      const vizItem: Record<string, unknown> | undefined = findSubmenuItem(submenu, 'Visualizations');
+      expect(vizItem).toBeDefined();
+
+      const vizSubmenu: Record<string, unknown>[] = getSubmenu(vizItem!);
+      const signatureCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Signature');
+      expect(signatureCategory).toBeDefined();
+
+      const signatureItems: Record<string, unknown>[] = getSubmenu(signatureCategory!);
+      const expectedNames: readonly string[] = ['Spotlight', 'Reactor'];
+
+      for (const name of expectedNames) {
+        const item: Record<string, unknown> | undefined = findSubmenuItem(signatureItems, name);
+        expect(item).toBeDefined();
+      }
+
+      expect(signatureItems.length).toBe(expectedNames.length);
     });
 
     it('Playback menu shows Play when not playing', (): void => {

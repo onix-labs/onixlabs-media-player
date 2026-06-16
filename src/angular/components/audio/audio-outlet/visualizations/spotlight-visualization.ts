@@ -41,7 +41,7 @@ interface Rgb {
  */
 export class SpotlightVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Spotlight';
-  public readonly category: string = 'Waves';
+  public readonly category: string = 'Signature';
 
   // --- Concentric tower -----------------------------------------------------
 

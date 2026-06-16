@@ -55,9 +55,9 @@ interface Rgb {
  * Water visualization: a concentric glowing tower wrapped in frequency rings and
  * mirrored horizontal waveforms, all spiralling about the centre.
  */
-export class WaterVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Water';
-  public readonly category: string = 'Waves';
+export class ReactorVisualization extends Canvas2DVisualization {
+  public readonly name: string = 'Reactor';
+  public readonly category: string = 'Signature';
 
   // --- Concentric tower -----------------------------------------------------
 
@@ -141,7 +141,7 @@ export class WaterVisualization extends Canvas2DVisualization {
    * longer hides the squash. The ceiling (next circle) is the fixed point: a radius
    * x moves to x + push * (top - x), so the band bunches against the next circle.
    */
-  private readonly RING_SQUASH_FRACTION: number = 0.2;
+  private readonly RING_SQUASH_FRACTION: number = 0.3;
 
   /** Slices per ring band used to approximate the squash (more = smoother). */
   private readonly RING_PUSH_SLICES: number = 32;
@@ -275,8 +275,8 @@ export class WaterVisualization extends Canvas2DVisualization {
       this.circleColors.push({r: 0, g: 0, b: 0});
     }
 
-    this.leftPoints = WaterVisualization.allocatePoints(this.HORIZONTAL_SAMPLES);
-    this.rightPoints = WaterVisualization.allocatePoints(this.HORIZONTAL_SAMPLES);
+    this.leftPoints = ReactorVisualization.allocatePoints(this.HORIZONTAL_SAMPLES);
+    this.rightPoints = ReactorVisualization.allocatePoints(this.HORIZONTAL_SAMPLES);
     this.ringRadii = new Array<number>(this.CIRCULAR_SAMPLES).fill(0);
   }
 

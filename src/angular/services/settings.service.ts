@@ -34,7 +34,8 @@ import {VIDEO_ADJUSTMENT_PRESETS, VIDEO_ADJ_CUSTOM_PRESET, NEUTRAL_VIDEO_ADJUSTM
  * - tunnel: Dual red/blue waveforms with zoom
  * - neon: Rotating cyan/magenta waveforms
  * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
- * - water: Water ripple effect with rotating waveforms (waves category)
+ * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
+ * - spotlight: Concentric tower wrapped in counter-spinning rings (signature category)
  * - infinity: Dual orbiting circles with spectrum cycling
  */
 
@@ -42,6 +43,31 @@ import {VIDEO_ADJUSTMENT_PRESETS, VIDEO_ADJ_CUSTOM_PRESET, NEUTRAL_VIDEO_ADJUSTM
  * Valid FFT size values (must be powers of 2).
  */
 export type FftSize = 256 | 512 | 1024 | 2048 | 4096;
+
+/**
+ * Effective fullscreen rendering resolution for visualizations.
+ *
+ * 'native' renders at the display's pixel size. Any fixed value renders to an
+ * offscreen-sized canvas of that resolution which is then stretched (with
+ * nearest-neighbour scaling, no blending) to fill the screen for a pixelated look.
+ */
+export type RenderResolution =
+  | 'native'
+  | '320x180' | '320x200'
+  | '640x360' | '640x400' | '640x480'
+  | '800x450' | '800x500' | '800x600'
+  | '1024x576' | '1024x640' | '1024x768'
+  | '1280x720' | '1280x800' | '1280x1024';
+
+/** All valid render resolution values, in display order. */
+export const RENDER_RESOLUTIONS: readonly RenderResolution[] = [
+  'native',
+  '320x180', '320x200',
+  '640x360', '640x400', '640x480',
+  '800x450', '800x500', '800x600',
+  '1024x576', '1024x640', '1024x768',
+  '1280x720', '1280x800', '1280x1024',
+];
 
 /**
  * Bar density levels for bar-based visualizations.
@@ -81,7 +107,7 @@ export type LocalSettingKey = keyof VisualizationLocalSettings;
 export interface VisualizationMetadata {
   readonly id: string;
   readonly name: string;
-  readonly category: 'Bars' | 'Waves';
+  readonly category: 'Bars' | 'Waves' | 'Signature';
   readonly applicableSettings: readonly LocalSettingKey[];
 }
 
@@ -195,6 +221,8 @@ export interface VisualizationSettings {
   readonly maxFrameRate: number;
   /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096, default 2048) */
   readonly fftSize: FftSize;
+  /** Effective fullscreen rendering resolution ('native' or a fixed WxH, default 'native') */
+  readonly renderResolution: RenderResolution;
   /** Per-visualization local settings (sensitivity, barDensity, trailIntensity, etc.) */
   readonly perVisualizationSettings: PerVisualizationSettings;
 }
@@ -375,8 +403,9 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'tunnel', name: 'Plasma', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
   {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
   {id: 'pulsar', name: 'Pulsar', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
-  {id: 'spotlight', name: 'Spotlight', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity']},
-  {id: 'water', name: 'Water', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
+  // Signature category
+  {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity']},
+  {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
   {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
 ];
@@ -390,6 +419,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     defaultType: 'bars',
     maxFrameRate: 0,
     fftSize: 2048,
+    renderResolution: 'native',
     perVisualizationSettings: {},
   },
   application: {
@@ -461,8 +491,9 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'onix', label: 'Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
   {value: 'pulsar', label: 'Waves : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
-  {value: 'spotlight', label: 'Waves : Spotlight', description: 'Sweeping stage-light beams reacting to frequency bands'},
-  {value: 'water', label: 'Waves : Water', description: 'Water ripple effect with rotating waveforms'},
+  // Signature category
+  {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
+  {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
 ];
 
 /**
@@ -671,6 +702,11 @@ export class SettingsService implements OnDestroy {
   /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096) */
   public readonly fftSize: ReturnType<typeof computed<FftSize>> = computed(
     (): FftSize => this.settings().visualization?.fftSize ?? 2048
+  );
+
+  /** Effective fullscreen rendering resolution ('native' or a fixed WxH) */
+  public readonly renderResolution: ReturnType<typeof computed<RenderResolution>> = computed(
+    (): RenderResolution => this.settings().visualization?.renderResolution ?? 'native'
   );
 
   /** Per-visualization settings map */
@@ -981,6 +1017,19 @@ export class SettingsService implements OnDestroy {
       return;
     }
     await this.updateSetting('visualization', 'fftSize', size);
+  }
+
+  /**
+   * Sets the effective fullscreen rendering resolution.
+   *
+   * @param value - 'native' or a fixed resolution (e.g. '640x360')
+   */
+  public async setRenderResolution(value: RenderResolution): Promise<void> {
+    if (!RENDER_RESOLUTIONS.includes(value)) {
+      console.error(`[SettingsService] Invalid render resolution: ${value}`);
+      return;
+    }
+    await this.updateSetting('visualization', 'renderResolution', value);
   }
 
   // ============================================================================

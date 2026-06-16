@@ -74,6 +74,19 @@ export type PerVisualizationSettings = Partial<Record<string, VisualizationLocal
 export type FftSize = 256 | 512 | 1024 | 2048 | 4096;
 
 /**
+ * Effective fullscreen rendering resolution for visualizations.
+ * 'native' renders at the display's pixel size; any fixed value renders to a
+ * canvas of that size which is then stretched (nearest-neighbour) to fill.
+ */
+export type RenderResolution =
+  | 'native'
+  | '320x180' | '320x200'
+  | '640x360' | '640x400' | '640x480'
+  | '800x450' | '800x500' | '800x600'
+  | '1024x576' | '1024x640' | '1024x768'
+  | '1280x720' | '1280x800' | '1280x1024';
+
+/**
  * Bar density levels for bar-based visualizations.
  * - low: Fewer bars, better performance
  * - medium: Default balance
@@ -232,6 +245,8 @@ export interface VisualizationSettings {
   readonly maxFrameRate: number;
   /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096, default 2048) */
   readonly fftSize: FftSize;
+  /** Effective fullscreen rendering resolution ('native' or a fixed WxH, default 'native') */
+  readonly renderResolution: RenderResolution;
   /** Per-visualization local settings (sensitivity, barDensity, trailIntensity, etc.) */
   readonly perVisualizationSettings: PerVisualizationSettings;
 }
@@ -453,6 +468,7 @@ export interface VisualizationSettingsUpdate {
   readonly defaultType?: string;
   readonly maxFrameRate?: number;
   readonly fftSize?: FftSize;
+  readonly renderResolution?: RenderResolution;
   readonly perVisualizationSettings?: PerVisualizationSettings;
 }
 
@@ -582,6 +598,16 @@ export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> 
 /** Valid FFT size values */
 const VALID_FFT_SIZES: readonly FftSize[] = [256, 512, 1024, 2048, 4096];
 
+/** Valid render resolution values, in display order */
+const VALID_RENDER_RESOLUTIONS: readonly RenderResolution[] = [
+  'native',
+  '320x180', '320x200',
+  '640x360', '640x400', '640x480',
+  '800x450', '800x500', '800x600',
+  '1024x576', '1024x640', '1024x768',
+  '1280x720', '1280x800', '1280x1024',
+];
+
 /** Valid bar density values */
 const VALID_BAR_DENSITIES: readonly BarDensity[] = ['low', 'medium', 'high'];
 
@@ -621,6 +647,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     defaultType: 'bars',
     maxFrameRate: 0,  // 0 = uncapped
     fftSize: 2048,  // 2048 = balanced resolution/performance
+    renderResolution: 'native',  // 'native' = render at display pixel size
     perVisualizationSettings: {},  // Empty = use VISUALIZATION_LOCAL_DEFAULTS
   },
   application: {
@@ -819,6 +846,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate renderResolution if provided
+    if (update.renderResolution !== undefined) {
+      if (!this.isValidRenderResolution(update.renderResolution)) {
+        console.warn(`[SettingsManager] Invalid render resolution: ${update.renderResolution}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Validate and merge per-visualization settings if provided
     let mergedPerVizSettings: PerVisualizationSettings = this.settings.visualization.perVisualizationSettings;
     if (update.perVisualizationSettings !== undefined) {
@@ -839,6 +874,7 @@ export class SettingsManager {
         defaultType: update.defaultType ?? this.settings.visualization.defaultType,
         maxFrameRate: update.maxFrameRate ?? this.settings.visualization.maxFrameRate,
         fftSize: update.fftSize ?? this.settings.visualization.fftSize,
+        renderResolution: update.renderResolution ?? this.settings.visualization.renderResolution,
         perVisualizationSettings: mergedPerVizSettings,
       },
     };
@@ -1752,6 +1788,7 @@ export class SettingsManager {
     const defaultType: unknown = vizObj['defaultType'];
     const maxFrameRate: unknown = vizObj['maxFrameRate'];
     const fftSize: unknown = vizObj['fftSize'];
+    const renderResolution: unknown = vizObj['renderResolution'];
 
     // Handle migration from v1 to v2
     let perVisualizationSettings: PerVisualizationSettings = {};
@@ -1789,6 +1826,9 @@ export class SettingsManager {
       fftSize: this.isValidFftSize(fftSize)
         ? fftSize
         : DEFAULT_SETTINGS.visualization.fftSize,
+      renderResolution: this.isValidRenderResolution(renderResolution)
+        ? renderResolution
+        : DEFAULT_SETTINGS.visualization.renderResolution,
       perVisualizationSettings,
     };
   }
@@ -2384,6 +2424,18 @@ export class SettingsManager {
    */
   private isValidFftSize(value: unknown): value is FftSize {
     return typeof value === 'number' && VALID_FFT_SIZES.includes(value as FftSize);
+  }
+
+  /**
+   * Type guard to check if a value is a valid render resolution.
+   *
+   * Valid values are 'native' or a fixed WxH from VALID_RENDER_RESOLUTIONS.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid render resolution
+   */
+  private isValidRenderResolution(value: unknown): value is RenderResolution {
+    return typeof value === 'string' && VALID_RENDER_RESOLUTIONS.includes(value as RenderResolution);
   }
 
   /**

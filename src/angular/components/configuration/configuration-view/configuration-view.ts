@@ -15,7 +15,7 @@
 import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
 import type {InputSignal, EffectRef} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
+import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, RenderResolution, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import {EQ_FREQUENCIES, EQ_PRESETS, EQ_GAIN_MIN, EQ_GAIN_MAX, type EqualizerPreset} from '../../../services/equalizer';
@@ -295,6 +295,11 @@ export class ConfigurationView {
     (): FftSize => this.settingsService.fftSize()
   );
 
+  /** Current effective fullscreen rendering resolution */
+  public readonly currentRenderResolution: ReturnType<typeof computed<RenderResolution>> = computed(
+    (): RenderResolution => this.settingsService.renderResolution()
+  );
+
   /** Visualization metadata for accordion items */
   public readonly visualizationMetadata: readonly VisualizationMetadata[] = VISUALIZATION_METADATA;
 
@@ -416,6 +421,25 @@ export class ConfigurationView {
     {value: 1024, label: '1024'},
     {value: 2048, label: '2048 (Default)'},
     {value: 4096, label: '4096 (High Quality)'},
+  ];
+
+  /** Available render resolution options for the dropdown */
+  public readonly renderResolutionOptions: readonly {value: RenderResolution; label: string}[] = [
+    {value: 'native', label: 'Native (Default)'},
+    {value: '320x180', label: '320 × 180'},
+    {value: '320x200', label: '320 × 200'},
+    {value: '640x360', label: '640 × 360'},
+    {value: '640x400', label: '640 × 400'},
+    {value: '640x480', label: '640 × 480'},
+    {value: '800x450', label: '800 × 450'},
+    {value: '800x500', label: '800 × 500'},
+    {value: '800x600', label: '800 × 600'},
+    {value: '1024x576', label: '1024 × 576'},
+    {value: '1024x640', label: '1024 × 640'},
+    {value: '1024x768', label: '1024 × 768'},
+    {value: '1280x720', label: '1280 × 720'},
+    {value: '1280x800', label: '1280 × 800'},
+    {value: '1280x1024', label: '1280 × 1024'},
   ];
 
   /** Available bar density options for the dropdown */
@@ -852,6 +876,15 @@ export class ConfigurationView {
   public async onFftSizeChange(event: Event): Promise<void> {
     const size: number = parseInt(getSelectValue(event), 10);
     if (!isNaN(size)) await this.settingsService.setFftSize(size as FftSize);
+  }
+
+  /**
+   * Handles render resolution selection change.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onRenderResolutionChange(event: Event): Promise<void> {
+    await this.settingsService.setRenderResolution(getSelectValue(event) as RenderResolution);
   }
 
   /**
