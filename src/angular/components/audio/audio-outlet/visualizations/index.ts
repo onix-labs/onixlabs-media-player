@@ -32,6 +32,8 @@ export {InfinityVisualization} from './infinity-visualization';
 export {OnixVisualization} from './onix-visualization';
 export {ModernVisualization} from './modern-visualization';
 export {SpotlightVisualization} from './spotlight-visualization';
+export {BlankVisualization} from './blank-visualization';
+export {LogoVisualization} from './logo-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
@@ -44,6 +46,8 @@ import {InfinityVisualization} from './infinity-visualization';
 import {OnixVisualization} from './onix-visualization';
 import {ModernVisualization} from './modern-visualization';
 import {SpotlightVisualization} from './spotlight-visualization';
+import {BlankVisualization} from './blank-visualization';
+import {LogoVisualization} from './logo-visualization';
 
 /**
  * Map of visualization types to their constructor classes.
@@ -60,6 +64,8 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   onix: OnixVisualization,
   modern: ModernVisualization,
   spotlight: SpotlightVisualization,
+  blank: BlankVisualization,
+  logo: LogoVisualization,
 };
 
 /**
@@ -77,6 +83,8 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   onix: {name: 'Onix', category: 'Waves'},
   modern: {name: 'Modern', category: 'Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
+  blank: {name: 'Blank', category: 'Simple'},
+  logo: {name: 'Logo', category: 'Simple'},
 };
 
 /**
@@ -114,6 +122,7 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  * - Bars: bars
  * - Waves: waveform, modern, tunnel, infinity, neon, onix, pulsar
  * - Signature: spotlight, water (Reactor)
+ * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars
@@ -122,6 +131,8 @@ export const VISUALIZATION_TYPES: string[] = [
   'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'pulsar',
   // Signature
   'spotlight', 'water',
+  // Simple
+  'blank', 'logo',
 ];
 
 /** A single selectable visualization option (type value + display name). */

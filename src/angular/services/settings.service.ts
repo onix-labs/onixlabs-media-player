@@ -106,7 +106,7 @@ export type LocalSettingKey = keyof VisualizationLocalSettings;
 export interface VisualizationMetadata {
   readonly id: string;
   readonly name: string;
-  readonly category: 'Bars' | 'Waves' | 'Signature';
+  readonly category: 'Bars' | 'Waves' | 'Signature' | 'Simple';
   readonly applicableSettings: readonly LocalSettingKey[];
 }
 
@@ -406,6 +406,9 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
   {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: []},
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
+  // Simple category
+  {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
+  {id: 'logo', name: 'Logo', category: 'Simple', applicableSettings: []},
 ];
 
 /**
@@ -491,6 +494,9 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   // Signature category
   {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
+  // Simple category
+  {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},
+  {value: 'logo', label: 'Simple : Logo', description: 'The ONIXPlayer logo, centred'},
 ];
 
 /**

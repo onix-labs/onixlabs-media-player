@@ -44,6 +44,13 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'water', name: 'Reactor'},
     ],
   },
+  {
+    category: 'Simple',
+    items: [
+      {id: 'blank', name: 'Blank'},
+      {id: 'logo', name: 'Logo'},
+    ],
+  },
 ];
 
 /**
