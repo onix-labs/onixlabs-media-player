@@ -202,7 +202,7 @@ describe('application-menu', (): void => {
       expect(wavesCategory).toBeDefined();
     });
 
-    it('Bars category contains Analyzer and Spectre', (): void => {
+    it('Bars category contains Analyzer', (): void => {
       const viewMenu: Record<string, unknown> | undefined = findMenu(template, 'View');
       expect(viewMenu).toBeDefined();
       const submenu: Record<string, unknown>[] = getSubmenu(viewMenu!);
@@ -215,10 +215,8 @@ describe('application-menu', (): void => {
 
       const barsItems: Record<string, unknown>[] = getSubmenu(barsCategory!);
       const analyzerItem: Record<string, unknown> | undefined = findSubmenuItem(barsItems, 'Analyzer');
-      const spectreItem: Record<string, unknown> | undefined = findSubmenuItem(barsItems, 'Spectre');
 
       expect(analyzerItem).toBeDefined();
-      expect(spectreItem).toBeDefined();
     });
 
     it('Waves category contains all wave visualizations', (): void => {

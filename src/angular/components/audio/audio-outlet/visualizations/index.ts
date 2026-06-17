@@ -11,7 +11,6 @@
  * Available visualizations:
  * - bars: Classic frequency spectrum bars (green-yellow-red gradient)
  * - waveform: Oscilloscope-style waveform with LCD ghosting effect
- * - tether: Symmetrical waveform bars with smoke trail effect
  * - tunnel: Hypnotic tunnel/vortex effect
  * - neon: Glowing neon ring visualization
  * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
@@ -25,7 +24,6 @@ export {Visualization, Canvas2DVisualization, WebGLVisualization} from './visual
 export type {VisualizationConfig} from './visualization';
 export {AnalyzerVisualization} from './analyzer-visualization';
 export {ClassicVisualization} from './classic-visualization';
-export {SpectreVisualization} from './spectre-visualization';
 export {PlasmaVisualization} from './plasma-visualization';
 export {NeonVisualization} from './neon-visualization';
 export {PulsarVisualization} from './pulsar-visualization';
@@ -38,7 +36,6 @@ export {SpotlightVisualization} from './spotlight-visualization';
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
 import {ClassicVisualization} from './classic-visualization';
-import {SpectreVisualization} from './spectre-visualization';
 import {PlasmaVisualization} from './plasma-visualization';
 import {NeonVisualization} from './neon-visualization';
 import {PulsarVisualization} from './pulsar-visualization';
@@ -55,7 +52,6 @@ import {SpotlightVisualization} from './spotlight-visualization';
 const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfig) => Visualization> = {
   bars: AnalyzerVisualization,
   waveform: ClassicVisualization,
-  tether: SpectreVisualization,
   tunnel: PlasmaVisualization,
   neon: NeonVisualization,
   pulsar: PulsarVisualization,
@@ -73,7 +69,6 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
 export const VISUALIZATION_METADATA: Record<string, {name: string; category: string}> = {
   bars: {name: 'Analyzer', category: 'Bars'},
   waveform: {name: 'Classic', category: 'Waves'},
-  tether: {name: 'Spectre', category: 'Bars'},
   tunnel: {name: 'Plasma', category: 'Waves'},
   neon: {name: 'Neon', category: 'Waves'},
   pulsar: {name: 'Pulsar', category: 'Waves'},
@@ -116,13 +111,13 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  * Used for cycling through visualizations with next/previous.
  *
  * Categories (in order):
- * - Bars: bars, tether
+ * - Bars: bars
  * - Waves: waveform, modern, tunnel, infinity, neon, onix, pulsar
  * - Signature: spotlight, water (Reactor)
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars
-  'bars', 'tether',
+  'bars',
   // Waves
   'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'pulsar',
   // Signature

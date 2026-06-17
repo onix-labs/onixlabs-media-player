@@ -28,7 +28,6 @@ import { settingsLogger } from './logger.js';
  * These correspond to the visualization classes in the Angular app:
  * - bars: BarsVisualization (frequency bars)
  * - waveform: ClassicVisualization (oscilloscope)
- * - tether: SpectreVisualization (symmetrical bars with smoke effect)
  * - tunnel: TunnelVisualization (dual waveforms with zoom)
  * - neon: NeonVisualization (rotating cyan/magenta waveforms)
  * - pulsar: PulsarVisualization (pulsing concentric rings, waves category)
@@ -43,7 +42,7 @@ import { settingsLogger } from './logger.js';
 export interface VisualizationLocalSettings {
   /** Sensitivity for this visualization (0.0 - 1.0, default 0.5) */
   readonly sensitivity?: number;
-  /** Bar density for bar-based visualizations (low, medium, high) - only for bars, tether */
+  /** Bar density for bar-based visualizations (low, medium, high) - only for bars */
   readonly barDensity?: BarDensity;
   /** Trail intensity for trail effects (0.0 - 1.0) - only for tunnel, infinity, neon, onix, pulsar, water */
   readonly trailIntensity?: number;
@@ -751,7 +750,6 @@ const VIDEO_ADJ_EFFECT_MAX: number = 100;
 const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'bars',
   'waveform',
-  'tether',
   'tunnel',
   'neon',
   'pulsar',

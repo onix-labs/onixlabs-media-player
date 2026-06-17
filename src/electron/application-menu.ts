@@ -23,7 +23,6 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     category: 'Bars',
     items: [
       {id: 'bars', name: 'Analyzer'},
-      {id: 'tether', name: 'Spectre'},
     ],
   },
   {

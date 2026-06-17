@@ -143,7 +143,7 @@ export abstract class Visualization {
 
   /**
    * Current bar density level for bar-based visualizations.
-   * Only affects Analyzer and Spectre visualizations.
+   * Only affects the Analyzer visualization.
    */
   protected barDensity: 'low' | 'medium' | 'high' = 'medium';
 
@@ -364,7 +364,7 @@ export abstract class Visualization {
   /**
    * Called when bar density changes. Override in subclass to recalculate bar counts.
    *
-   * Subclasses that render bars (Analyzer, Spectre) should override
+   * Subclasses that render bars (Analyzer) should override
    * this method to update their bar counts based on the new density.
    */
   protected onBarDensityChanged(): void {

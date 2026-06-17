@@ -262,7 +262,7 @@ describe('SettingsManager', () => {
 
     it('should accept all valid visualization types', () => {
       const validTypes: readonly string[] = [
-        'bars', 'waveform', 'tether', 'tunnel', 'neon', 'pulsar', 'water', 'infinity', 'onix', 'modern', 'spotlight',
+        'bars', 'waveform', 'tunnel', 'neon', 'pulsar', 'water', 'infinity', 'onix', 'modern', 'spotlight',
       ];
 
       for (const vizType of validTypes) {

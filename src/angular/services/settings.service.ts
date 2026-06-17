@@ -30,7 +30,6 @@ import {VIDEO_ADJUSTMENT_PRESETS, VIDEO_ADJ_CUSTOM_PRESET, NEUTRAL_VIDEO_ADJUSTM
  * These correspond to the visualization classes:
  * - bars: Frequency Bars (default)
  * - waveform: Oscilloscope-style waveform
- * - tether: Symmetrical waveform bars with smoke effect
  * - tunnel: Dual red/blue waveforms with zoom
  * - neon: Rotating cyan/magenta waveforms
  * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
@@ -396,7 +395,6 @@ export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> 
 export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   // Bars category
   {id: 'bars', name: 'Analyzer', category: 'Bars', applicableSettings: ['sensitivity', 'barDensity', 'barColorBottom', 'barColorMiddle', 'barColorTop']},
-  {id: 'tether', name: 'Spectre', category: 'Bars', applicableSettings: ['sensitivity', 'barDensity']},
   // Waves category
   {id: 'waveform', name: 'Classic', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
   {id: 'modern', name: 'Modern', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
@@ -482,7 +480,6 @@ const DEFAULT_SETTINGS: AppSettings = {
 export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   // Bars category
   {value: 'bars', label: 'Bars : Analyzer', description: 'Configurable frequency bars with gradient'},
-  {value: 'tether', label: 'Bars : Spectre', description: 'Mirrored frequency bars with smoke effect'},
   // Waves category
   {value: 'waveform', label: 'Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
   {value: 'modern', label: 'Waves : Modern', description: 'Frequency spectrum with gradient glow'},
