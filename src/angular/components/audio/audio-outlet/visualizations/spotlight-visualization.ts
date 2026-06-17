@@ -212,7 +212,11 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     super(config);
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.hue = this.START_HUE;
-    this.sensitivity = 0.4;
+    // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
+    this.sensitivity = 0.1;       // 10%
+    this.trailIntensity = 0;      // minimal trails
+    this.lineWidth = 1;           // 1px
+    this.glowIntensity = 0;       // no glow
 
     this.radii = new Array<number>(this.CIRCLE_COUNT).fill(0);
     this.circleColors = [];
@@ -227,6 +231,12 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   protected override onFftSizeChanged(): void {
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
+
+  // Fixed visual parameters: ignore the global controls (values set in constructor).
+  public override setSensitivity(): void { /* fixed */ }
+  public override setTrailIntensity(): void { /* fixed */ }
+  public override setLineWidth(): void { /* fixed */ }
+  public override setGlowIntensity(): void { /* fixed */ }
 
   protected override onResize(): void {
     const width: number = this.width;

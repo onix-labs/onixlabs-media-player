@@ -394,18 +394,18 @@ export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> 
  */
 export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   // Bars category
-  {id: 'bars', name: 'Analyzer', category: 'Bars', applicableSettings: ['sensitivity', 'barDensity', 'barColorBottom', 'barColorMiddle', 'barColorTop']},
+  {id: 'bars', name: 'Analyzer', category: 'Bars', applicableSettings: ['barDensity', 'barColorBottom', 'barColorMiddle', 'barColorTop']},
   // Waves category
-  {id: 'waveform', name: 'Classic', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
-  {id: 'modern', name: 'Modern', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
-  {id: 'tunnel', name: 'Plasma', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
-  {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
-  {id: 'pulsar', name: 'Pulsar', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
+  {id: 'waveform', name: 'Classic', category: 'Waves', applicableSettings: []},
+  {id: 'modern', name: 'Modern', category: 'Waves', applicableSettings: []},
+  {id: 'tunnel', name: 'Plasma', category: 'Waves', applicableSettings: []},
+  {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: []},
+  {id: 'pulsar', name: 'Pulsar', category: 'Waves', applicableSettings: []},
   // Signature category
-  {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity']},
-  {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
-  {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
-  {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: ['sensitivity', 'trailIntensity', 'lineWidth', 'glowIntensity', 'waveformSmoothing']},
+  {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
+  {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
+  {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: []},
+  {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
 ];
 
 /**

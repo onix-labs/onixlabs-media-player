@@ -40,7 +40,13 @@ export class ClassicVisualization extends Canvas2DVisualization {
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
-    this.sensitivity = 0.4;
+    // Hard-coded look; the matching setters are overridden to no-ops so the
+    // (removed) global controls cannot change these.
+    this.sensitivity = 0.2;       // 20%
+    this.trailIntensity = 0;      // fastest fade / minimal trails
+    this.lineWidth = 1;           // 1px
+    this.glowIntensity = 0;       // no glow
+    this.waveformSmoothing = 1;   // 100%
     this.preserveContentOnResize = true;
 
     // Pre-allocate point array
@@ -53,6 +59,13 @@ export class ClassicVisualization extends Canvas2DVisualization {
   protected override onFftSizeChanged(): void {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
+
+  // Fixed visual parameters: ignore the global controls (values set in constructor).
+  public override setSensitivity(): void { /* fixed at 20% */ }
+  public override setTrailIntensity(): void { /* fixed at 0 */ }
+  public override setLineWidth(): void { /* fixed at 1px */ }
+  public override setGlowIntensity(): void { /* fixed at 0 */ }
+  public override setWaveformSmoothing(): void { /* fixed at 100% */ }
 
   public draw(): void {
     this.updateFade();

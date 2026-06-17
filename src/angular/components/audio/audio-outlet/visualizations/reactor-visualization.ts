@@ -266,7 +266,12 @@ export class ReactorVisualization extends Canvas2DVisualization {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.hue = this.START_HUE;
-    this.sensitivity = 0.4;
+    // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
+    this.sensitivity = 0.1;       // 10%
+    this.trailIntensity = 1;      // 100%
+    this.lineWidth = 1;           // 1px
+    this.glowIntensity = 0;       // no glow
+    this.waveformSmoothing = 1;   // 100%
 
     this.radii = new Array<number>(this.CIRCLE_COUNT).fill(0);
     this.circleColors = [];
@@ -293,6 +298,13 @@ export class ReactorVisualization extends Canvas2DVisualization {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
+
+  // Fixed visual parameters: ignore the global controls (values set in constructor).
+  public override setSensitivity(): void { /* fixed */ }
+  public override setTrailIntensity(): void { /* fixed */ }
+  public override setLineWidth(): void { /* fixed */ }
+  public override setGlowIntensity(): void { /* fixed */ }
+  public override setWaveformSmoothing(): void { /* fixed */ }
 
   protected override onResize(): void {
     const width: number = this.width;

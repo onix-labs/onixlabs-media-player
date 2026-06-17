@@ -301,7 +301,9 @@ export class ConfigurationView {
   );
 
   /** Visualization metadata for accordion items */
-  public readonly visualizationMetadata: readonly VisualizationMetadata[] = VISUALIZATION_METADATA;
+  /** Visualizations that still expose per-viz controls (those with none are hidden). */
+  public readonly visualizationMetadata: readonly VisualizationMetadata[] =
+    VISUALIZATION_METADATA.filter((viz: VisualizationMetadata): boolean => viz.applicableSettings.length > 0);
 
   /** Current default volume (0.0 - 1.0) */
   public readonly currentDefaultVolume: ReturnType<typeof computed<number>> = computed(

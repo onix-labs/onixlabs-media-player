@@ -420,8 +420,8 @@ describe('SettingsService', (): void => {
 
   describe('hasApplicableSetting', (): void => {
     it('returns true for applicable setting', (): void => {
-      // 'bars' visualization has 'sensitivity' in its applicableSettings
-      const result: boolean = service.hasApplicableSetting('bars', 'sensitivity');
+      // 'bars' visualization has 'barDensity' in its applicableSettings
+      const result: boolean = service.hasApplicableSetting('bars', 'barDensity');
       expect(result).toBe(true);
     });
 
@@ -449,8 +449,9 @@ describe('SettingsService', (): void => {
       expect(result!.id).toBe('bars');
       expect(result!.name).toBe('Analyzer');
       expect(result!.category).toBe('Bars');
-      expect(result!.applicableSettings).toContain('sensitivity');
       expect(result!.applicableSettings).toContain('barDensity');
+      // Sensitivity is hard-coded for the Analyzer, so it is not a panel control.
+      expect(result!.applicableSettings).not.toContain('sensitivity');
     });
 
     it('returns undefined for unknown visualization', (): void => {

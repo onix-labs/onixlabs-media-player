@@ -45,8 +45,18 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
+    // Hard-coded sensitivity (50%); setSensitivity() is overridden to a no-op so
+    // the global sensitivity control cannot change it.
     this.sensitivity = 0.5;
     this.barCount = AnalyzerVisualization.BAR_COUNTS[this.barDensity];
+  }
+
+  /**
+   * Sensitivity is fixed at 50% for the Analyzer (see constructor); ignore the
+   * global sensitivity control rather than letting it override the baked-in value.
+   */
+  public override setSensitivity(): void {
+    // Intentionally no-op.
   }
 
   protected override onBarDensityChanged(): void {

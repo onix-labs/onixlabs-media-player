@@ -124,13 +124,25 @@ export class PulsarVisualization extends Canvas2DVisualization {
       this.centerPoints[i] = {x: 0, y: 0};
     }
 
-    this.sensitivity = 0.35;
+    // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
+    this.sensitivity = 0.2;       // 20%
+    this.trailIntensity = 0;      // minimal trails
+    this.lineWidth = 1;           // 1px
+    this.glowIntensity = 1;       // 100%
+    this.waveformSmoothing = 1;   // 100%
   }
 
   protected override onFftSizeChanged(): void {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
+
+  // Fixed visual parameters: ignore the global controls (values set in constructor).
+  public override setSensitivity(): void { /* fixed */ }
+  public override setTrailIntensity(): void { /* fixed */ }
+  public override setLineWidth(): void { /* fixed */ }
+  public override setGlowIntensity(): void { /* fixed */ }
+  public override setWaveformSmoothing(): void { /* fixed */ }
 
   // Cache gradient colors - only recalculate when hue changes by >= 1 degree
   private updateGradientColors(): void {
