@@ -100,6 +100,13 @@ export abstract class Visualization {
   /** Category classification for this visualization */
   public abstract readonly category: string;
 
+  /**
+   * When true, this visualization always renders at the display's native
+   * resolution, ignoring the global (possibly pixelated) render-resolution
+   * setting. Override in subclasses that must stay crisp (e.g. the Logo).
+   */
+  public readonly rendersAtNativeResolution: boolean = false;
+
   /** The canvas element to render to */
   protected canvas: HTMLCanvasElement;
 

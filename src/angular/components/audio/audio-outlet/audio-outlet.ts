@@ -822,7 +822,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
    */
   private getRenderSize(canvas: HTMLCanvasElement): {width: number; height: number; pixelated: boolean} {
     const resolution: RenderResolution = this.settings.renderResolution();
-    if (resolution !== 'native') {
+    if (resolution !== 'native' && !this.visualization?.rendersAtNativeResolution) {
       const separator: number = resolution.indexOf('x');
       const width: number = parseInt(resolution.slice(0, separator), 10);
       const height: number = parseInt(resolution.slice(separator + 1), 10);

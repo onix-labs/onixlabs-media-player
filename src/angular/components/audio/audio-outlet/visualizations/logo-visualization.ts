@@ -15,8 +15,14 @@ export class LogoVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Logo';
   public readonly category: string = 'Simple';
 
-  /** Logo size as a fraction of the smaller canvas dimension. */
-  private readonly LOGO_SIZE_FRACTION: number = 0.4;
+  /** Max logo width as a fraction of the canvas width. */
+  private readonly LOGO_WIDTH_FRACTION: number = 0.7;
+
+  /** Max logo height as a fraction of the canvas height. */
+  private readonly LOGO_HEIGHT_FRACTION: number = 0.5;
+
+  /** Always render at the display's native resolution (never the pixelated render-resolution). */
+  public override readonly rendersAtNativeResolution: boolean = true;
 
   /** The logo image (served from the app root, same asset as the UI). */
   private readonly logo: HTMLImageElement;
@@ -40,18 +46,22 @@ export class LogoVisualization extends Canvas2DVisualization {
     ctx.clearRect(0, 0, width, height);
     if (!this.logoLoaded || this.logo.naturalWidth === 0) return;
 
-    // Fit the logo into a square of the target size, preserving aspect ratio.
-    const target: number = Math.min(width, height) * this.LOGO_SIZE_FRACTION;
+    // Fit the logo (preserving aspect ratio) inside a box that's a fraction of
+    // the canvas - width-led, since the logo is wide, but capped by height.
+    const maxWidth: number = width * this.LOGO_WIDTH_FRACTION;
+    const maxHeight: number = height * this.LOGO_HEIGHT_FRACTION;
     const aspect: number = this.logo.naturalWidth / this.logo.naturalHeight;
-    let drawWidth: number = target;
-    let drawHeight: number = target / aspect;
-    if (drawHeight > target) {
-      drawHeight = target;
-      drawWidth = target * aspect;
+    let drawWidth: number = maxWidth;
+    let drawHeight: number = drawWidth / aspect;
+    if (drawHeight > maxHeight) {
+      drawHeight = maxHeight;
+      drawWidth = maxHeight * aspect;
     }
 
     const x: number = (width - drawWidth) / 2;
     const y: number = (height - drawHeight) / 2;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(this.logo, x, y, drawWidth, drawHeight);
   }
 }
