@@ -110,7 +110,7 @@ describe('SettingsManager', () => {
       const settings: AppSettings = manager.getSettings();
 
       expect(settings.version).toBe(2);
-      expect(settings.visualization.defaultType).toBe('bars');
+      expect(settings.visualization.defaultType).toBe('water');
       expect(settings.visualization.maxFrameRate).toBe(0);
       expect(settings.visualization.fftSize).toBe(2048);
       expect(settings.application.serverPort).toBe(0);
@@ -134,7 +134,7 @@ describe('SettingsManager', () => {
       const manager: SettingsManager = new SettingsManager();
       const settings: AppSettings = manager.getSettings();
 
-      expect(settings.visualization.defaultType).toBe('bars');
+      expect(settings.visualization.defaultType).toBe('water');
       expect(settings.playback.defaultVolume).toBe(0.5);
     });
 
@@ -144,7 +144,7 @@ describe('SettingsManager', () => {
       const manager: SettingsManager = new SettingsManager();
       const settings: AppSettings = manager.getSettings();
 
-      expect(settings.visualization.defaultType).toBe('bars');
+      expect(settings.visualization.defaultType).toBe('water');
     });
 
     it('should load valid settings from an existing file', () => {
@@ -200,7 +200,7 @@ describe('SettingsManager', () => {
       const manager: SettingsManager = new SettingsManager();
       const settings: AppSettings = manager.getSettings();
 
-      expect(settings.visualization.defaultType).toBe('bars');
+      expect(settings.visualization.defaultType).toBe('water');
       expect(settings.application.serverPort).toBe(0);
       expect(settings.playback.defaultVolume).toBe(0.5);
       expect(settings.transcoding.videoQuality).toBe('medium');
@@ -221,7 +221,7 @@ describe('SettingsManager', () => {
       const manager: SettingsManager = new SettingsManager();
       const settings: AppSettings = manager.getSettings();
 
-      expect(settings.visualization.defaultType).toBe('bars');
+      expect(settings.visualization.defaultType).toBe('water');
       expect(settings.visualization.maxFrameRate).toBe(0);
       expect(settings.visualization.fftSize).toBe(2048);
       expect(settings.application.serverPort).toBe(0);
@@ -893,7 +893,7 @@ describe('SettingsManager', () => {
       const manager: SettingsManager = new SettingsManager();
       const settings: AppSettings = manager.getSettings();
 
-      expect(settings.visualization.defaultType).toBe('bars');
+      expect(settings.visualization.defaultType).toBe('water');
     });
 
     it('should preserve the version number from the file', () => {

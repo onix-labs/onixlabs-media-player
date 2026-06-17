@@ -193,31 +193,6 @@
               @if (selectedVisualization(); as vizId) {
                 <!-- Per-Visualization Settings -->
                 <div class="setting-group">
-                  <!-- Sensitivity (all visualizations) -->
-                  @if (hasApplicableSetting(vizId, 'sensitivity')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Sensitivity</label>
-                        <p class="setting-description">
-                          Controls how responsive this visualization is to audio.
-                        </p>
-                      </div>
-                      <div class="setting-control slider-control">
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          [value]="getEffectiveSetting(vizId, 'sensitivity')"
-                          (input)="onPerVizSettingChange(vizId, 'sensitivity', $event)"
-                        />
-                        <span class="slider-value">
-                          {{ formatPercentSetting(vizId, 'sensitivity') }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-
                   <!-- Bar Density (bars only) -->
                   @if (hasApplicableSetting(vizId, 'barDensity')) {
                     <div class="setting-row">
@@ -233,131 +208,6 @@
                             <option [value]="option.value" [selected]="option.value === getEffectiveSetting(vizId, 'barDensity')">{{ option.label }}</option>
                           }
                         </select>
-                      </div>
-                    </div>
-                  }
-
-                  <!-- Trail Intensity (waveform visualizations) -->
-                  @if (hasApplicableSetting(vizId, 'trailIntensity')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Trail Intensity</label>
-                        <p class="setting-description">
-                          Controls how long visual trails persist.
-                        </p>
-                      </div>
-                      <div class="setting-control slider-control">
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          [value]="getEffectiveSetting(vizId, 'trailIntensity')"
-                          (input)="onPerVizSettingChange(vizId, 'trailIntensity', $event)"
-                        />
-                        <span class="slider-value">
-                          {{ formatPercentSetting(vizId, 'trailIntensity') }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-
-                  <!-- Line Width (waveform visualizations) -->
-                  @if (hasApplicableSetting(vizId, 'lineWidth')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Line Width</label>
-                        <p class="setting-description">
-                          Controls the thickness of waveform lines.
-                        </p>
-                      </div>
-                      <div class="setting-control slider-control">
-                        <input
-                          type="range"
-                          min="1"
-                          max="5"
-                          step="0.5"
-                          [value]="getEffectiveSetting(vizId, 'lineWidth')"
-                          (input)="onPerVizSettingChange(vizId, 'lineWidth', $event)"
-                        />
-                        <span class="slider-value">
-                          {{ formatLineWidth(vizId) }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-
-                  <!-- Glow Intensity (waveform visualizations) -->
-                  @if (hasApplicableSetting(vizId, 'glowIntensity')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Glow Intensity</label>
-                        <p class="setting-description">
-                          Controls the intensity of glow effects.
-                        </p>
-                      </div>
-                      <div class="setting-control slider-control">
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          [value]="getEffectiveSetting(vizId, 'glowIntensity')"
-                          (input)="onPerVizSettingChange(vizId, 'glowIntensity', $event)"
-                        />
-                        <span class="slider-value">
-                          {{ formatPercentSetting(vizId, 'glowIntensity') }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-
-                  <!-- Waveform Smoothing (waveform visualizations) -->
-                  @if (hasApplicableSetting(vizId, 'waveformSmoothing')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Waveform Smoothing</label>
-                        <p class="setting-description">
-                          Controls curve smoothness. Lower is jagged, higher is smooth.
-                        </p>
-                      </div>
-                      <div class="setting-control slider-control">
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          [value]="getEffectiveSetting(vizId, 'waveformSmoothing')"
-                          (input)="onPerVizSettingChange(vizId, 'waveformSmoothing', $event)"
-                        />
-                        <span class="slider-value">
-                          {{ formatPercentSetting(vizId, 'waveformSmoothing') }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-
-                  <!-- Strobe Frequency -->
-                  @if (hasApplicableSetting(vizId, 'strobeFrequency')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Strobe Frequency</label>
-                        <p class="setting-description">
-                          Controls how fast the waveform strobes on/off (Hz).
-                        </p>
-                      </div>
-                      <div class="setting-control slider-control">
-                        <input
-                          type="range"
-                          min="1"
-                          max="20"
-                          step="1"
-                          [value]="getEffectiveSetting(vizId, 'strobeFrequency')"
-                          (input)="onPerVizSettingChange(vizId, 'strobeFrequency', $event)"
-                        />
-                        <span class="slider-value">
-                          {{ formatStrobeFrequency(vizId) }}
-                        </span>
                       </div>
                     </div>
                   }
@@ -431,25 +281,6 @@
               } @else {
                 <!-- Global Visualization Settings -->
                 <div class="setting-group">
-                  <div class="setting-row">
-                    <div class="setting-label">
-                      <label for="default-visualization">Default Visualization</label>
-                      <p class="setting-description">
-                        The visualization that plays when audio starts.
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <select
-                        id="default-visualization"
-                        (change)="onDefaultVisualizationChange($event)"
-                      >
-                        @for (option of visualizationOptions; track option.value) {
-                          <option [value]="option.value" [selected]="option.value === currentDefaultVisualization()">{{ option.label }}</option>
-                        }
-                      </select>
-                    </div>
-                  </div>
-
                   <div class="setting-row">
                     <div class="setting-label">
                       <label for="max-frame-rate">Max Frame Rate</label>

@@ -643,7 +643,7 @@ const VALID_PREFERRED_SUBTITLE_LANGUAGES: readonly PreferredSubtitleLanguage[] =
 const DEFAULT_SETTINGS: AppSettings = {
   version: SETTINGS_VERSION,
   visualization: {
-    defaultType: 'bars',
+    defaultType: 'water',  // Reactor (Signature) is the first-load default
     maxFrameRate: 0,  // 0 = uncapped
     fftSize: 2048,  // 2048 = balanced resolution/performance
     renderResolution: 'native',  // 'native' = render at display pixel size
@@ -776,7 +776,7 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
  * @example
  * const manager = new SettingsManager();
  * const settings = manager.getSettings();
- * console.log(settings.visualization.defaultType); // 'bars'
+ * console.log(settings.visualization.defaultType); // 'water'
  *
  * manager.updateVisualizationSettings({ defaultType: 'waveform' });
  */

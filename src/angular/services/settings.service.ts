@@ -414,7 +414,7 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
 const DEFAULT_SETTINGS: AppSettings = {
   version: 2,
   visualization: {
-    defaultType: 'bars',
+    defaultType: 'water',
     maxFrameRate: 0,
     fftSize: 2048,
     renderResolution: 'native',

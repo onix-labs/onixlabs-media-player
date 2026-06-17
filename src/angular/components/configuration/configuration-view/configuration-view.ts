@@ -15,7 +15,7 @@
 import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
 import type {InputSignal, EffectRef} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VISUALIZATION_OPTIONS, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, RenderResolution, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
+import {SettingsService, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, RenderResolution, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import {EQ_FREQUENCIES, EQ_PRESETS, EQ_GAIN_MIN, EQ_GAIN_MAX, type EqualizerPreset} from '../../../services/equalizer';
@@ -280,10 +280,6 @@ export class ConfigurationView {
     )
   );
 
-  /** Current default visualization type */
-  public readonly currentDefaultVisualization: ReturnType<typeof computed<string>> = computed(
-    (): string => this.settingsService.defaultVisualization()
-  );
 
   /** Current max frame rate (0 = uncapped) */
   public readonly currentMaxFrameRate: ReturnType<typeof computed<number>> = computed(
@@ -404,9 +400,6 @@ export class ConfigurationView {
   // ============================================================================
   // Template Data
   // ============================================================================
-
-  /** Available visualization options for the dropdown */
-  public readonly visualizationOptions: typeof VISUALIZATION_OPTIONS = VISUALIZATION_OPTIONS;
 
   /** Available frame rate options for the dropdown */
   public readonly frameRateOptions: readonly {value: number; label: string}[] = [
@@ -848,16 +841,6 @@ export class ConfigurationView {
   public onSelectVisualization(vizId: string): void {
     this.selectedCategory.set('visualisations');
     this.selectedVisualization.set(vizId);
-  }
-
-  /**
-   * Handles default visualization selection change.
-   *
-   * @param event - The change event from the select element
-   */
-  public async onDefaultVisualizationChange(event: Event): Promise<void> {
-    const type: string = getSelectValue(event);
-    await this.settingsService.setDefaultVisualization(type);
   }
 
   /**
@@ -1535,57 +1518,6 @@ export class ConfigurationView {
     }
     // Fall back to default value
     return VISUALIZATION_LOCAL_DEFAULTS[setting] as number | BarDensity;
-  }
-
-  /**
-   * Formats a numeric setting value as a percentage string.
-   * Uses getEffectiveSetting to ensure reactive updates.
-   *
-   * @param vizId - The visualization ID
-   * @param setting - The setting key
-   * @returns The value as a percentage (e.g., "50%")
-   */
-  public formatPercentSetting(vizId: string, setting: LocalSettingKey): string {
-    const value: number = this.getEffectiveSetting(vizId, setting) as number;
-    return `${Math.round(value * 100)}%`;
-  }
-
-  /**
-   * Formats the line width setting with units.
-   * Uses getEffectiveSetting to ensure reactive updates.
-   *
-   * @param vizId - The visualization ID
-   * @returns The line width with px units (e.g., "2.0px")
-   */
-  public formatLineWidth(vizId: string): string {
-    const value: number = this.getEffectiveSetting(vizId, 'lineWidth') as number;
-    return `${value.toFixed(1)}px`;
-  }
-
-  /**
-   * Formats the strobe frequency setting with units.
-   * Uses getEffectiveSetting to ensure reactive updates.
-   *
-   * @param vizId - The visualization ID
-   * @returns The strobe frequency with Hz units (e.g., "5 Hz")
-   */
-  public formatStrobeFrequency(vizId: string): string {
-    const value: number = this.getEffectiveSetting(vizId, 'strobeFrequency') as number;
-    return `${Math.round(value)} Hz`;
-  }
-
-  /**
-   * Handles per-visualization setting change.
-   *
-   * @param vizId - The visualization ID
-   * @param setting - The setting key
-   * @param event - The input event
-   */
-  public async onPerVizSettingChange(vizId: string, setting: LocalSettingKey, event: Event): Promise<void> {
-    const value: number = parseFloat(getInputValue(event));
-    if (!isNaN(value)) {
-      await this.settingsService.setVisualizationSetting(vizId, setting, value);
-    }
   }
 
   /**
