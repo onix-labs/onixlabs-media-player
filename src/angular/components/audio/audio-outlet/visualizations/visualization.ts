@@ -7,11 +7,11 @@
  * Visualization (abstract)
  * ├── Canvas2DVisualization (abstract) - For 2D canvas rendering
  * │   ├── BarsVisualization
- * │   ├── WaveformVisualization
+ * │   ├── ClassicVisualization
  * │   ├── TunnelVisualization
  * │   ├── NeonVisualization
  * │   ├── PulsarVisualization
- * │   └── WaterVisualization
+ * │   └── ReactorVisualization
  * └── WebGLVisualization (abstract) - For WebGL rendering
  * ```
  *

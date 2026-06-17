@@ -27,12 +27,12 @@ import { settingsLogger } from './logger.js';
  *
  * These correspond to the visualization classes in the Angular app:
  * - bars: BarsVisualization (frequency bars)
- * - waveform: WaveformVisualization (oscilloscope)
+ * - waveform: ClassicVisualization (oscilloscope)
  * - tether: SpectreVisualization (symmetrical bars with smoke effect)
  * - tunnel: TunnelVisualization (dual waveforms with zoom)
  * - neon: NeonVisualization (rotating cyan/magenta waveforms)
  * - pulsar: PulsarVisualization (pulsing concentric rings, waves category)
- * - water: WaterVisualization (water ripple effect, waves category)
+ * - water: ReactorVisualization (concentric tower with frequency rings, signature category)
  * - infinity: InfinityVisualization (dual orbiting circles with spectrum cycling)
  */
 

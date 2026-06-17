@@ -1,5 +1,5 @@
 /**
- * @fileoverview Water visualization (Ambience / Water).
+ * @fileoverview Reactor visualization (Signature / Reactor).
  *
  * Built from three layers over a slowly hue-cycling palette:
  *
@@ -32,7 +32,7 @@
  * hits also flash the frame white with the horizontal waveform painted a dark
  * shade of the new hue, lightening back to normal.
  *
- * @module app/components/audio/audio-outlet/visualizations/water-visualization
+ * @module app/components/audio/audio-outlet/visualizations/reactor-visualization
  */
 
 import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from './visualization';
@@ -52,7 +52,7 @@ interface Rgb {
 }
 
 /**
- * Water visualization: a concentric glowing tower wrapped in frequency rings and
+ * Reactor visualization: a concentric glowing tower wrapped in frequency rings and
  * mirrored horizontal waveforms, all spiralling about the centre.
  */
 export class ReactorVisualization extends Canvas2DVisualization {

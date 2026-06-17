@@ -12,7 +12,7 @@
  * - Multi-layer rendering: glow, main line, highlight
  * - Sensitivity scales the waveform amplitude
  *
- * @module app/components/audio/audio-outlet/visualizations/waveform-visualization
+ * @module app/components/audio/audio-outlet/visualizations/classic-visualization
  */
 
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
