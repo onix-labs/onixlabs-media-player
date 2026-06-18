@@ -84,12 +84,9 @@
     "wait-on": "^9.0.3"
   },
   "overrides": {
-    "@angular/build": {
-      "vite": "7.3.5",
-      "esbuild": "0.28.1"
-    },
     "@babel/core": "7.29.7",
-    "vite": "7.3.5"
+    "vite": "7.3.5",
+    "esbuild": "$esbuild"
   },
   "build": {
     "appId": "com.onixlabs.media-player",
