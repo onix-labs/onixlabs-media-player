@@ -33,7 +33,9 @@ import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdat
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
 import { SSEManager } from './sse-manager.js';
 import { PlaylistManager } from './playlist-manager.js';
-import type { PlaylistItem, PlaylistState, MediaInfo, PlaybackState, SubtitleTrack, AudioTrack } from './media-types.js';
+import { MediaDownloadManager } from './media-download-manager.js';
+import type { StreamSources } from './media-download-manager.js';
+import type { PlaylistItem, PlaylistState, MediaInfo, PlaybackState, SubtitleTrack, AudioTrack, DownloadJob, UrlMediaInfo, UrlMediaFormat } from './media-types.js';
 
 // Re-export types that were previously exported from this module
 export type { PlaylistItem, MediaInfo, SubtitleTrack, AudioTrack } from './media-types.js';
@@ -158,6 +160,19 @@ export class UnifiedMediaServer {
 
   /** Playlist manager instance */
   private readonly playlist: PlaylistManager;
+
+  /** Manager for downloading/streaming media from internet URLs via yt-dlp */
+  private readonly download: MediaDownloadManager;
+
+  /**
+   * Maps a resolved DASH video-stream URL to its separate audio-stream URL.
+   * Populated when a URL is resolved for streaming; the media stream handler
+   * looks the video URL up to mux the paired audio in via ffmpeg.
+   */
+  private readonly dashAudioPairs: Map<string, string> = new Map();
+
+  /** Maximum number of DASH audio pairs retained (FIFO eviction). */
+  private static readonly MAX_DASH_PAIRS: number = 50;
 
   /** Current playback state */
   private readonly playback: PlaybackState = {
@@ -330,6 +345,11 @@ export class UnifiedMediaServer {
    */
   public constructor(staticPath?: string) {
     this.playlist = new PlaylistManager(this.sse, this.handleModeChange.bind(this));
+    this.download = new MediaDownloadManager(
+      (): string | null => this.deps.getYtDlpPath(),
+      (): string | null => this.deps.getFfmpegPath(),
+      path.join(app.getPath('userData'), 'downloads')
+    );
     this.staticPath = staticPath ?? null;
   }
 
@@ -540,6 +560,16 @@ export class UnifiedMediaServer {
         this.handleMediaStream(req, res, url);
       } else if (pathname === '/media/info' && method === 'GET') {
         await this.handleMediaInfo(res, url);
+      } else if (pathname === '/media/url/info' && method === 'POST') {
+        await this.handleUrlInfo(req, res);
+      } else if (pathname === '/media/url/download' && method === 'POST') {
+        await this.handleUrlDownload(req, res);
+      } else if (pathname === '/media/url/resolve' && method === 'POST') {
+        await this.handleUrlResolve(req, res);
+      } else if (pathname.startsWith('/media/url/status/') && method === 'GET') {
+        this.handleUrlStatus(res, pathname);
+      } else if (pathname.startsWith('/media/url/cancel/') && method === 'POST') {
+        this.handleUrlCancel(res, pathname);
       } else if (pathname === '/media/subtitles' && method === 'GET') {
         this.handleSubtitles(req, res, url);
       } else if (pathname === '/media/subtitles/external' && method === 'GET') {
@@ -606,6 +636,8 @@ export class UnifiedMediaServer {
         await this.handleDependenciesInstall(req, res);
       } else if (pathname === '/dependencies/uninstall' && method === 'POST') {
         await this.handleDependenciesUninstall(req, res);
+      } else if (pathname === '/dependencies/update' && method === 'POST') {
+        await this.handleDependenciesUpdate(req, res);
       } else if (pathname === '/dependencies/soundfont/install' && method === 'POST') {
         await this.handleSoundFontInstall(req, res);
       } else if (pathname === '/dependencies/soundfont/remove' && method === 'POST') {
@@ -703,7 +735,21 @@ export class UnifiedMediaServer {
     return LANGUAGE_NAMES[code.toLowerCase()] || code.toUpperCase();
   }
 
+  /**
+   * Determines whether a media source is a remote http(s) URL rather than a
+   * local file path. Used to bypass filesystem checks and force transcoding.
+   */
+  private static isRemoteUrl(source: string): boolean {
+    return /^https?:\/\//i.test(source);
+  }
+
   private validateFilePath(filePath: string): { valid: boolean; error?: string } {
+    // Remote http(s) sources (resolved via yt-dlp) are valid as-is — they are
+    // consumed by ffprobe/ffmpeg, not the local filesystem. Skip path checks.
+    if (UnifiedMediaServer.isRemoteUrl(filePath)) {
+      return { valid: true };
+    }
+
     // Check for path traversal attempts
     if (filePath.includes('..')) {
       console.warn(`[Security] Path traversal attempt blocked: ${filePath}`);
@@ -768,6 +814,24 @@ export class UnifiedMediaServer {
     if (!validation.valid) {
       res.writeHead(validation.error === 'File not found' ? 404 : 400);
       res.end(JSON.stringify({ error: validation.error }));
+      return;
+    }
+
+    // Remote URLs cannot use range-based direct serving — ffmpeg reads the URL
+    // and remuxes/transcodes it to a fragmented MP4 stream (seekable via -ss).
+    if (UnifiedMediaServer.isRemoteUrl(filePath)) {
+      const audioUrl: string | undefined = this.dashAudioPairs.get(filePath);
+      const cachedInfo: MediaInfo | undefined = this.mediaInfoCache.get(filePath);
+      if (audioUrl) {
+        // DASH: mux the separate video and audio streams together.
+        this.serveDashStream(req, res, filePath, audioUrl, url);
+      } else if (cachedInfo?.type === 'audio') {
+        // Audio-only remote stream (no separate video to map).
+        this.serveRemoteAudioStream(req, res, filePath, url);
+      } else {
+        // Progressive single-file stream: remux/transcode as one input.
+        this.serveTranscodedFile(req, res, filePath, url);
+      }
       return;
     }
 
@@ -1175,6 +1239,134 @@ export class UnifiedMediaServer {
   }
 
   /**
+   * Streams a remote DASH source by muxing its separate video and audio streams
+   * into a fragmented MP4 with ffmpeg (stream copy — no re-encoding).
+   *
+   * This is what enables resolutions above 360p for sites like YouTube, which
+   * only offer combined audio+video up to 360p; higher resolutions arrive as
+   * separate adaptive streams that must be muxed.
+   *
+   * @param req - Incoming HTTP request
+   * @param res - HTTP response to write to
+   * @param videoUrl - Direct URL of the video-only stream
+   * @param audioUrl - Direct URL of the audio-only stream
+   * @param url - URL with optional 't' (seek time) parameter
+   */
+  private serveDashStream(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, videoUrl: string, audioUrl: string, url: Readonly<URL>): void {
+    const seekTime: string = url.searchParams.get('t') || '0';
+    const audioBitrate: number = this.settings.getSettings().transcoding.audioBitrate;
+    ffmpegLogger.info(`DASH mux stream (seek: ${seekTime}s)`);
+
+    // Video is stream-copied (keeps the original HD/4K quality, no CPU cost).
+    // Audio is transcoded to AAC because the adaptive audio is often Opus, which
+    // cannot be stream-copied into an MP4 container. Audio is cheap to encode.
+    const ffmpegArgs: string[] = [
+      '-hide_banner',
+      '-loglevel', 'warning',
+      '-ss', seekTime,            // Seek each input before reading (fast keyframe seek)
+      '-i', videoUrl,
+      '-ss', seekTime,
+      '-i', audioUrl,
+      '-map', '0:v:0',            // Video from the first input
+      '-map', '1:a:0',            // Audio from the second input
+      '-c:v', 'copy',             // Copy video as-is
+      '-c:a', 'aac',              // Transcode audio (handles Opus → AAC for MP4)
+      '-b:a', `${audioBitrate}k`,
+      '-avoid_negative_ts', 'make_zero',
+      '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
+      '-f', 'mp4',
+      'pipe:1'
+    ];
+    this.streamFfmpeg(req, res, ffmpegArgs, 'video/mp4');
+  }
+
+  /**
+   * Streams a remote audio-only source (single stream, no video to map) as a
+   * raw ADTS AAC stream. The audio is transcoded to AAC since the source is
+   * commonly Opus; ADTS (rather than fragmented MP4) is used because it plays
+   * progressively in an <audio> element over a chunked, non-seekable response —
+   * this mirrors the local audio-transcode path used for .wma/.ape/.tak files.
+   *
+   * @param req - Incoming HTTP request
+   * @param res - HTTP response to write to
+   * @param audioUrl - Direct URL of the audio stream
+   * @param url - URL with optional 't' (seek time) parameter
+   */
+  private serveRemoteAudioStream(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, audioUrl: string, url: Readonly<URL>): void {
+    const seekTime: string = url.searchParams.get('t') || '0';
+    const audioBitrate: number = this.settings.getSettings().transcoding.audioBitrate;
+    ffmpegLogger.info(`Remote audio stream (seek: ${seekTime}s)`);
+
+    const ffmpegArgs: string[] = [
+      '-hide_banner',
+      '-loglevel', 'warning',
+      '-ss', seekTime,
+      '-i', audioUrl,
+      '-c:a', 'aac',              // Transcode to AAC (Opus, Vorbis, etc.)
+      '-b:a', `${audioBitrate}k`,
+      '-ar', '48000',
+      '-f', 'adts',               // Raw AAC stream — plays progressively in <audio>
+      'pipe:1'
+    ];
+    this.streamFfmpeg(req, res, ffmpegArgs, 'audio/aac');
+  }
+
+  /**
+   * Spawns ffmpeg with the given arguments and pipes its stdout to the response
+   * as a chunked stream. Handles process errors and kills ffmpeg when the client
+   * disconnects. Shared by the remote DASH and audio stream handlers.
+   *
+   * @param req - Incoming HTTP request (used to detect client disconnect)
+   * @param res - HTTP response to stream to
+   * @param ffmpegArgs - Arguments for ffmpeg (must end with 'pipe:1')
+   * @param contentType - MIME type for the response
+   */
+  private streamFfmpeg(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, ffmpegArgs: string[], contentType: string): void {
+    const ffmpegBin: string | null = this.deps.getFfmpegPath();
+    if (!ffmpegBin) {
+      ffmpegLogger.error('ffmpeg binary not found');
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'ffmpeg not found' }));
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Transfer-Encoding': 'chunked',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache',
+    });
+
+    logProcessSpawn(ffmpegLogger, 'ffmpeg', ffmpegArgs);
+    const ffmpeg: ChildProcess = spawn(ffmpegBin, ffmpegArgs);
+    ffmpeg.stdout?.pipe(res);
+
+    ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
+      logProcessOutput(ffmpegLogger, 'stderr', data.toString());
+    });
+
+    ffmpeg.on('error', (err: Readonly<Error>): void => {
+      ffmpegLogger.error(`FFmpeg spawn error: ${err.message}`);
+      if (!res.headersSent) {
+        (res as ServerResponse).writeHead(500);
+      }
+      (res as ServerResponse).end();
+    });
+
+    ffmpeg.on('close', (code: number | null): void => {
+      logProcessExit(ffmpegLogger, 'ffmpeg', code, null);
+    });
+
+    const cleanup: () => void = (): void => {
+      if (ffmpeg.exitCode === null) {
+        ffmpeg.kill('SIGKILL');
+      }
+    };
+    req.on('close', cleanup);
+    res.on('close', cleanup);
+  }
+
+  /**
    * Computes a content-hash filename for a MIDI file.
    * Includes the soundfont path in the hash for cache invalidation when
    * the soundfont changes.
@@ -1481,6 +1673,154 @@ export class UnifiedMediaServer {
     } catch (err) {
       res.writeHead(500);
       res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+  }
+
+  // ============================================================================
+  // Internet URL Media (yt-dlp)
+  // ============================================================================
+
+  /**
+   * Handles POST /media/url/info — resolves metadata/quality formats for a URL.
+   *
+   * Body: { url: string }
+   */
+  private async handleUrlInfo(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const { url }: { url?: unknown } = JSON.parse(body);
+    if (typeof url !== 'string' || !url.trim()) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'No URL provided' }));
+      return;
+    }
+
+    try {
+      const info: UrlMediaInfo = await this.download.getInfo(url.trim());
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(info));
+    } catch (err) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+  }
+
+  /**
+   * Handles POST /media/url/download — starts a background download of a URL.
+   *
+   * Body: { url: string, format?: 'video'|'audio', formatId?: string, title?: string }
+   * Returns the job id immediately; progress, completion, and errors are
+   * broadcast over SSE (download:progress / download:complete / download:error).
+   */
+  private async handleUrlDownload(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const { url, format, formatId, title }: { url?: unknown; format?: unknown; formatId?: unknown; title?: unknown } = JSON.parse(body);
+    if (typeof url !== 'string' || !url.trim()) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'No URL provided' }));
+      return;
+    }
+
+    const mediaFormat: UrlMediaFormat = format === 'audio' ? 'audio' : 'video';
+    const jobId: string = this.download.startDownload(
+      url.trim(),
+      mediaFormat,
+      typeof formatId === 'string' ? formatId : null,
+      typeof title === 'string' ? title : '',
+      (job: Readonly<DownloadJob>): void => this.broadcastDownloadUpdate(job)
+    );
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ jobId }));
+  }
+
+  /**
+   * Handles POST /media/url/resolve — resolves a direct (progressive) stream URL.
+   *
+   * Body: { url: string, format?: 'video'|'audio', maxHeight?: number }
+   * Returns { url } pointing at a single media stream that ffprobe/ffmpeg can
+   * consume directly, so the renderer adds it like any other playlist item.
+   */
+  private async handleUrlResolve(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const { url, format, maxHeight }: { url?: unknown; format?: unknown; maxHeight?: unknown } = JSON.parse(body);
+    if (typeof url !== 'string' || !url.trim()) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'No URL provided' }));
+      return;
+    }
+
+    const mediaFormat: UrlMediaFormat = format === 'audio' ? 'audio' : 'video';
+    try {
+      const sources: StreamSources = await this.download.resolveStreamSources(
+        url.trim(),
+        mediaFormat,
+        typeof maxHeight === 'number' ? maxHeight : null
+      );
+      // Pair the separate DASH audio stream with the video URL so the stream
+      // handler muxes them together. The renderer only ever sees the video URL.
+      if (sources.audio) {
+        this.setDashAudioPair(sources.video, sources.audio);
+      } else {
+        this.dashAudioPairs.delete(sources.video);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ url: sources.video }));
+    } catch (err) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+  }
+
+  /**
+   * Records a DASH video→audio URL pairing, evicting the oldest entry when the
+   * cache is full (FIFO).
+   */
+  private setDashAudioPair(videoUrl: string, audioUrl: string): void {
+    if (this.dashAudioPairs.size >= UnifiedMediaServer.MAX_DASH_PAIRS) {
+      const oldest: string | undefined = this.dashAudioPairs.keys().next().value;
+      if (oldest !== undefined) {
+        this.dashAudioPairs.delete(oldest);
+      }
+    }
+    this.dashAudioPairs.set(videoUrl, audioUrl);
+  }
+
+  /**
+   * Handles GET /media/url/status/:jobId — returns the current download job state.
+   */
+  private handleUrlStatus(res: Readonly<ServerResponse>, pathname: string): void {
+    const jobId: string = decodeURIComponent(pathname.substring('/media/url/status/'.length));
+    const job: DownloadJob | undefined = this.download.getJob(jobId);
+    if (!job) {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: 'Job not found' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(job));
+  }
+
+  /**
+   * Handles POST /media/url/cancel/:jobId — cancels an in-flight download.
+   */
+  private handleUrlCancel(res: Readonly<ServerResponse>, pathname: string): void {
+    const jobId: string = decodeURIComponent(pathname.substring('/media/url/cancel/'.length));
+    const cancelled: boolean = this.download.cancelDownload(jobId);
+    res.writeHead(cancelled ? 200 : 404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ cancelled }));
+  }
+
+  /**
+   * Broadcasts a download job update over SSE, mapping job status to the
+   * appropriate event. The renderer adds completed files to the playlist.
+   */
+  private broadcastDownloadUpdate(job: Readonly<DownloadJob>): void {
+    if (job.status === 'done') {
+      this.sse.broadcast('download:complete', job);
+    } else if (job.status === 'error') {
+      this.sse.broadcast('download:error', job);
+    } else {
+      this.sse.broadcast('download:progress', job);
     }
   }
 
@@ -2878,7 +3218,7 @@ export class UnifiedMediaServer {
     const body: string = await this.readBody(req);
     const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
 
-    if (id !== 'ffmpeg' && id !== 'fluidsynth') {
+    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'yt-dlp') {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Invalid dependency id' }));
       return;
@@ -2902,7 +3242,7 @@ export class UnifiedMediaServer {
     const body: string = await this.readBody(req);
     const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
 
-    if (id !== 'ffmpeg' && id !== 'fluidsynth') {
+    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'yt-dlp') {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Invalid dependency id' }));
       return;
@@ -2912,6 +3252,30 @@ export class UnifiedMediaServer {
     res.end(JSON.stringify({ accepted: true }));
 
     await this.deps.uninstallDependency(id, (progress: InstallProgress): void => {
+      this.sse.broadcast('dependencies:progress', progress);
+    });
+
+    this.broadcastDependencyState();
+  }
+
+  /**
+   * Updates a dependency to the latest version asynchronously, streaming
+   * progress via SSE. Returns 202 Accepted immediately. Primarily for yt-dlp.
+   */
+  private async handleDependenciesUpdate(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
+
+    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'yt-dlp') {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Invalid dependency id' }));
+      return;
+    }
+
+    res.writeHead(202, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ accepted: true }));
+
+    await this.deps.updateDependency(id, (progress: InstallProgress): void => {
       this.sse.broadcast('dependencies:progress', progress);
     });
 

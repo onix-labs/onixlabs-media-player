@@ -7,6 +7,9 @@
 } @else if (isSetupWizardWindow) {
   <!-- Setup wizard window -->
   <app-setup-wizard/>
+} @else if (isOpenUrlWindow) {
+  <!-- Standalone Open URL window -->
+  <app-open-url-dialog/>
 } @else {
   <!-- Main application window -->
   @if (isHelpMode()) {

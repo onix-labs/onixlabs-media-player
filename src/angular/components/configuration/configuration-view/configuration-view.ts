@@ -781,6 +781,11 @@ export class ConfigurationView {
     (): DependencyStatus | null => this.depState()?.fluidsynth ?? null
   );
 
+  /** yt-dlp dependency status (required for internet URL playback) */
+  public readonly ytdlpStatus: ReturnType<typeof computed<DependencyStatus | null>> = computed(
+    (): DependencyStatus | null => this.depState()?.ytdlp ?? null
+  );
+
   /** Installed SoundFont files */
   public readonly soundFonts: ReturnType<typeof computed<SoundFontInfo[]>> = computed(
     (): SoundFontInfo[] => this.dependencyService.soundFonts()
@@ -1406,6 +1411,14 @@ export class ConfigurationView {
    */
   public async onUninstallDependency(id: DependencyId): Promise<void> {
     await this.dependencyService.uninstallDependency(id);
+  }
+
+  /**
+   * Updates a dependency to the latest version. Primarily for yt-dlp, which
+   * needs frequent updates to keep working against sites like YouTube.
+   */
+  public async onUpdateDependency(id: DependencyId): Promise<void> {
+    await this.dependencyService.updateDependency(id);
   }
 
   /**

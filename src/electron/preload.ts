@@ -221,6 +221,14 @@ export interface MediaPlayerAPI {
   readonly getWindowPosition: () => Promise<{x: number; y: number}>;
 
   /**
+   * Resizes the calling window's content area to the given height, keeping its
+   * current width. Used by secondary windows to fit their content.
+   *
+   * @param height - Desired content height in pixels
+   */
+  readonly setContentHeight: (height: number) => Promise<void>;
+
+  /**
    * Sets the visibility of the macOS traffic light buttons.
    * Only affects macOS; no-op on other platforms.
    *
@@ -442,6 +450,7 @@ const api: MediaPlayerAPI = {
   getViewMode: (): Promise<'desktop' | 'miniplayer' | 'fullscreen'> => ipcRenderer.invoke('window:getViewMode'),
   setWindowPosition: (position: Readonly<{x: number; y: number}>): Promise<{x: number; y: number}> => ipcRenderer.invoke('window:setWindowPosition', position),
   getWindowPosition: (): Promise<{x: number; y: number}> => ipcRenderer.invoke('window:getWindowPosition'),
+  setContentHeight: (height: number): Promise<void> => ipcRenderer.invoke('window:setContentHeight', height),
   setTrafficLightVisibility: (visible: boolean): Promise<void> => ipcRenderer.invoke('window:setTrafficLightVisibility', visible),
   saveMiniplayerBounds: (): Promise<void> => ipcRenderer.invoke('window:saveMiniplayerBounds'),
   onViewModeChange: (callback: (mode: 'desktop' | 'miniplayer' | 'fullscreen') => void): () => void => {

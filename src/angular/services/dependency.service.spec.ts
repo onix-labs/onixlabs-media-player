@@ -47,9 +47,10 @@ function createDependencyStatus(
   id: DependencyId,
   installed: boolean,
 ): DependencyStatus {
+  const names: Record<DependencyId, string> = {ffmpeg: 'FFmpeg', fluidsynth: 'FluidSynth', 'yt-dlp': 'yt-dlp'};
   return {
     id,
-    name: id === 'ffmpeg' ? 'FFmpeg' : 'FluidSynth',
+    name: names[id],
     installed,
     path: installed ? `/usr/local/bin/${id}` : null,
     description: `${id} dependency`,
@@ -63,10 +64,12 @@ function createDependencyStatus(
 function createDependencyState(
   ffmpegInstalled: boolean,
   fluidsynthInstalled: boolean,
+  ytdlpInstalled: boolean = false,
 ): DependencyState {
   return {
     ffmpeg: createDependencyStatus('ffmpeg', ffmpegInstalled),
     fluidsynth: createDependencyStatus('fluidsynth', fluidsynthInstalled),
+    ytdlp: createDependencyStatus('yt-dlp', ytdlpInstalled),
     soundfonts: [],
     activeSoundFont: null,
     hardwareEncoders: {available: false, encoders: []},

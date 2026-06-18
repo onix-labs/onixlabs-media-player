@@ -22,7 +22,7 @@ import {MEDIA_EXTENSIONS, FFMPEG_EXTENSIONS, MIDI_EXTENSIONS} from '../constants
 /**
  * Identifier for a managed dependency.
  */
-export type DependencyId = 'ffmpeg' | 'fluidsynth';
+export type DependencyId = 'ffmpeg' | 'fluidsynth' | 'yt-dlp';
 
 /**
  * Status of a single dependency.
@@ -42,6 +42,7 @@ export interface DependencyStatus {
 export interface DependencyState {
   readonly ffmpeg: DependencyStatus;
   readonly fluidsynth: DependencyStatus;
+  readonly ytdlp: DependencyStatus;
   readonly soundfonts: SoundFontInfo[];
   readonly activeSoundFont: string | null;
   readonly hardwareEncoders: HardwareEncoderInfo;
@@ -69,7 +70,7 @@ export interface HardwareEncoderInfo {
  */
 export interface InstallProgress {
   readonly dependencyId: DependencyId;
-  readonly status: 'installing' | 'uninstalling' | 'success' | 'error';
+  readonly status: 'installing' | 'uninstalling' | 'updating' | 'success' | 'error';
   readonly message: string;
   readonly output?: string;
 }
@@ -129,6 +130,11 @@ export class DependencyService implements OnDestroy {
   /** Whether FluidSynth is installed */
   public readonly fluidsynthInstalled: ReturnType<typeof computed<boolean>> = computed(
     (): boolean => this.dependencyState()?.fluidsynth.installed ?? false
+  );
+
+  /** Whether yt-dlp is installed (required for internet URL playback) */
+  public readonly ytdlpInstalled: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.dependencyState()?.ytdlp.installed ?? false
   );
 
   /** Whether all dependencies are installed */
@@ -194,7 +200,7 @@ export class DependencyService implements OnDestroy {
   public readonly isOperationInProgress: ReturnType<typeof computed<boolean>> = computed(
     (): boolean => {
       const progress: InstallProgress | null = this.installProgress();
-      return progress !== null && (progress.status === 'installing' || progress.status === 'uninstalling');
+      return progress !== null && (progress.status === 'installing' || progress.status === 'uninstalling' || progress.status === 'updating');
     }
   );
 
@@ -260,6 +266,24 @@ export class DependencyService implements OnDestroy {
     this.installProgress.set(null);
 
     await fetch(`${serverUrl}/dependencies/uninstall`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id}),
+    });
+  }
+
+  /**
+   * Updates a dependency to the latest version via the platform package manager.
+   * Progress is streamed via SSE events. Primarily for yt-dlp.
+   */
+  public async updateDependency(id: DependencyId): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Clear any previous progress
+    this.installProgress.set(null);
+
+    await fetch(`${serverUrl}/dependencies/update`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({id}),

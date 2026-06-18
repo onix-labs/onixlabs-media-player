@@ -121,6 +121,76 @@ export interface MediaInfo {
 }
 
 /**
+ * A single downloadable/streamable quality option for a remote URL.
+ *
+ * Derived from yt-dlp's format list, collapsed to one entry per resolution.
+ */
+export interface UrlFormat {
+  /** yt-dlp format id (passed back to yt-dlp via -f for download/stream) */
+  readonly id: string;
+  /** Human-readable label (e.g., '1080p', '720p') */
+  readonly label: string;
+  /** Video height in pixels (used for sorting; 0 for audio-only) */
+  readonly height: number;
+}
+
+/**
+ * Metadata for a remote media URL, resolved via `yt-dlp -j`.
+ *
+ * Mirrors the response shape of ReClip's /api/info endpoint, adapted to
+ * the media player's conventions. Used to populate the Open URL dialog.
+ */
+export interface UrlMediaInfo {
+  /** Display title from the source site */
+  readonly title: string;
+  /** Thumbnail image URL (may be empty) */
+  readonly thumbnail: string;
+  /** Duration in seconds (null if unknown, e.g., live streams) */
+  readonly duration: number | null;
+  /** Uploader/channel name (may be empty) */
+  readonly uploader: string;
+  /** Available video quality options, best first */
+  readonly formats: readonly UrlFormat[];
+}
+
+/**
+ * Requested output type when downloading or streaming a URL.
+ * - 'video' downloads/streams the best MP4 (optionally at a chosen height)
+ * - 'audio' extracts an MP3 audio track
+ */
+export type UrlMediaFormat = 'video' | 'audio';
+
+/**
+ * Lifecycle status of a URL download job.
+ */
+export type DownloadJobStatus = 'downloading' | 'done' | 'error' | 'cancelled';
+
+/**
+ * Tracks the state of a single in-flight or completed URL download.
+ *
+ * Analogous to the per-job dictionary in ReClip's app.py, but enriched with
+ * progress reporting for the renderer's progress UI.
+ */
+export interface DownloadJob {
+  /** Unique job identifier */
+  readonly id: string;
+  /** The source URL being downloaded */
+  readonly url: string;
+  /** Requested output format */
+  readonly format: UrlMediaFormat;
+  /** Current job status */
+  status: DownloadJobStatus;
+  /** Download progress as a fraction 0..1 (null until known) */
+  progress: number | null;
+  /** Human-readable title (for the resulting file and UI) */
+  title: string;
+  /** Absolute path to the downloaded file once status is 'done' */
+  filePath: string | null;
+  /** Error message when status is 'error' */
+  errorMessage: string | null;
+}
+
+/**
  * Complete playlist state for synchronization.
  *
  * This is the shape of data sent to clients when the playlist changes.
@@ -181,5 +251,8 @@ export type SSEEventType =
   | 'settings:updated'       // Application settings changed
   | 'dependencies:state'    // Dependency state changed
   | 'dependencies:progress' // Dependency install/uninstall progress
+  | 'download:progress'     // URL download progress update
+  | 'download:complete'     // URL download finished and added to playlist
+  | 'download:error'        // URL download failed
   | 'soundfont:changed'     // Active soundfont changed (MIDI cache invalidation)
   | 'heartbeat';            // Keep-alive ping

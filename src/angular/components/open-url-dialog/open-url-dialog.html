@@ -1,0 +1,123 @@
+<div class="url-dialog">
+    <header class="url-dialog-header">
+      <h2 class="url-dialog-title">Open URL</h2>
+    </header>
+
+    @if (!ytdlpInstalled()) {
+      <!-- yt-dlp missing: gate the whole flow -->
+      <div class="url-dialog-body">
+        <p class="url-dialog-notice">
+          Playing media from internet URLs requires <strong>yt-dlp</strong>, which isn't installed yet.
+        </p>
+        <button type="button" class="url-btn url-btn-primary" (click)="openDependencySettings()">
+          Open Dependency Settings
+        </button>
+      </div>
+    } @else {
+      <div class="url-dialog-body">
+        <!-- URL entry -->
+        <div class="url-input-row">
+          <input
+            type="text"
+            class="url-input"
+            placeholder="Paste a video or audio URL (YouTube, Vimeo, etc.)"
+            [ngModel]="url()"
+            (ngModelChange)="url.set($event)"
+            (keydown.enter)="fetchInfo()"
+            (paste)="onPaste()"
+            [disabled]="submitting()"
+          />
+          <button
+            type="button"
+            class="url-btn"
+            (click)="fetchInfo()"
+            [disabled]="loadingInfo() || submitting() || !url().trim()"
+          >
+            {{ loadingInfo() ? 'Loading…' : 'Fetch' }}
+          </button>
+        </div>
+
+        @if (error()) {
+          <p class="url-error">{{ error() }}</p>
+        }
+
+        <!-- Resolved metadata + options -->
+        @if (info(); as media) {
+          <div class="url-preview">
+            @if (media.thumbnail) {
+              <img class="url-thumb" [src]="media.thumbnail" alt="" />
+            }
+            <div class="url-meta">
+              <p class="url-meta-title">{{ media.title || 'Untitled' }}</p>
+              @if (media.uploader) {
+                <p class="url-meta-sub">{{ media.uploader }}</p>
+              }
+            </div>
+          </div>
+
+          <!-- Output format -->
+          <div class="url-row">
+            <label class="url-row-label">Format</label>
+            <select class="url-select" [ngModel]="mediaFormat()" (ngModelChange)="setFormat($event)">
+              <option value="video">Video (MP4)</option>
+              <option value="audio">Audio (MP3)</option>
+            </select>
+          </div>
+
+          <!-- Quality (video only) -->
+          @if (mediaFormat() === 'video' && media.formats.length > 0) {
+            <div class="url-row">
+              <label class="url-row-label">Quality</label>
+              <select
+                class="url-select"
+                [ngModel]="selectedFormatId()"
+                (ngModelChange)="selectedFormatId.set($event)"
+              >
+                @for (format of media.formats; track format.id) {
+                  <option [value]="format.id">{{ format.label }}</option>
+                }
+              </select>
+            </div>
+          }
+
+          <!-- Playback mode -->
+          <div class="url-row">
+            <label class="url-row-label">Mode</label>
+            <select class="url-select" [ngModel]="mode()" (ngModelChange)="setMode($event)">
+              <option value="download">Download</option>
+              <option value="stream">Stream</option>
+            </select>
+          </div>
+          <p class="url-mode-hint">
+            @if (mode() === 'download') {
+              Downloads the file first, then plays it — fully seekable and works offline afterwards.
+            } @else {
+              Plays directly from the source without saving. Faster to start; may be less reliable.
+            }
+          </p>
+
+          <!-- Progress (active download) -->
+          @if (submitting() && mode() === 'download') {
+            <div class="url-progress">
+              <div class="url-progress-bar">
+                <div class="url-progress-fill" [style.width.%]="progressPercent()"></div>
+              </div>
+              <span class="url-progress-label">{{ progress() === null ? 'Starting…' : progressPercent() + '%' }}</span>
+            </div>
+          }
+        }
+      </div>
+
+      <!-- Footer actions -->
+      <footer class="url-dialog-footer">
+        @if (submitting() && mode() === 'download') {
+          <button type="button" class="url-btn" (click)="cancel()">Cancel Download</button>
+        } @else {
+          <button type="button" class="url-btn" (click)="close()" [disabled]="submitting()">Cancel</button>
+          <button type="button" class="url-btn url-btn-primary" (click)="submit()" [disabled]="!canSubmit()">
+            {{ mode() === 'stream' ? 'Play' : 'Download & Play' }}
+          </button>
+        }
+      </footer>
+    }
+</div>

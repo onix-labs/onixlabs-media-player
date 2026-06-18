@@ -71,6 +71,7 @@ export interface MenuCallbacks {
   onShowAbout: () => void;
   onShowHelp: () => void;
   onOpenFile: () => void;
+  onOpenUrl: () => void;
   onOpenPlaylist: () => void;
   onOpenRecentFile: (filePath: string) => void;
   onOpenRecentPlaylist: (playlistPath: string) => void;
@@ -234,6 +235,12 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
         click: callbacks.onOpenFile
       },
       {
+        label: 'Open URL...',
+        accelerator: 'CmdOrCtrl+L',
+        enabled: state.openEnabled,
+        click: callbacks.onOpenUrl
+      },
+      {
         label: 'Open Playlist',
         accelerator: 'CmdOrCtrl+Shift+O',
         enabled: state.openEnabled,
@@ -277,6 +284,21 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
           click: (): void => app.quit()
         } as MenuItemConstructorOptions
       ] : [])
+    ]
+  });
+
+  // Edit Menu — provides the standard clipboard accelerators (Cmd/Ctrl+C/V/X,
+  // Select All) so they reach focused inputs (e.g., the Open URL field).
+  template.push({
+    label: 'Edit',
+    submenu: [
+      {role: 'undo'},
+      {role: 'redo'},
+      {type: 'separator'},
+      {role: 'cut'},
+      {role: 'copy'},
+      {role: 'paste'},
+      {role: 'selectAll'}
     ]
   });
 

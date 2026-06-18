@@ -23,7 +23,7 @@ import {createScopedLogger, logProcessSpawn, logProcessOutput, logProcessExit} f
 /**
  * Identifier for a managed dependency.
  */
-export type DependencyId = 'ffmpeg' | 'fluidsynth';
+export type DependencyId = 'ffmpeg' | 'fluidsynth' | 'yt-dlp';
 
 /**
  * Status of a single dependency.
@@ -51,6 +51,8 @@ export interface DependencyState {
   readonly ffmpeg: DependencyStatus;
   /** FluidSynth status (required for MIDI playback) */
   readonly fluidsynth: DependencyStatus;
+  /** yt-dlp status (required for playing media from internet URLs) */
+  readonly ytdlp: DependencyStatus;
   /** Installed SoundFont files in the app data directory */
   readonly soundfonts: SoundFontInfo[];
   /** Path to the active SoundFont (first available) */
@@ -88,7 +90,7 @@ export interface InstallProgress {
   /** Which dependency is being installed/uninstalled */
   readonly dependencyId: DependencyId;
   /** Current operation status */
-  readonly status: 'installing' | 'uninstalling' | 'success' | 'error';
+  readonly status: 'installing' | 'uninstalling' | 'updating' | 'success' | 'error';
   /** Human-readable status message */
   readonly message: string;
   /** Terminal output (stdout/stderr) */
@@ -106,18 +108,21 @@ const depsLogger: ReturnType<typeof createScopedLogger> = createScopedLogger('De
 const DEPENDENCY_DESCRIPTIONS: Readonly<Record<DependencyId, string>> = {
   ffmpeg: 'Required for audio and video playback',
   fluidsynth: 'Required for MIDI playback',
+  'yt-dlp': 'Required for playing video and audio from internet URLs',
 };
 
 /** Manual download URLs */
 const MANUAL_INSTALL_URLS: Readonly<Record<DependencyId, string>> = {
   ffmpeg: 'https://ffmpeg.org/download.html',
   fluidsynth: 'https://www.fluidsynth.org/download/',
+  'yt-dlp': 'https://github.com/yt-dlp/yt-dlp#installation',
 };
 
 /** Display names */
 const DEPENDENCY_NAMES: Readonly<Record<DependencyId, string>> = {
   ffmpeg: 'FFmpeg',
   fluidsynth: 'FluidSynth',
+  'yt-dlp': 'yt-dlp',
 };
 
 /**
@@ -166,6 +171,9 @@ export class DependencyManager {
   /** Resolved path to fluidsynth binary (mutable, refreshed after install) */
   private fluidsynthPath: string | null = null;
 
+  /** Resolved path to yt-dlp binary (mutable, refreshed after install) */
+  private ytdlpPath: string | null = null;
+
   /** Detected hardware video encoders (populated after detectBinaries) */
   private hardwareEncoders: HardwareEncoderInfo = {available: false, encoders: []};
 
@@ -201,10 +209,12 @@ export class DependencyManager {
     this.ffmpegPath = this.findBinary('ffmpeg');
     this.ffprobePath = this.findBinary('ffprobe');
     this.fluidsynthPath = this.findBinary('fluidsynth');
+    this.ytdlpPath = this.findBinary('yt-dlp');
 
     depsLogger.info(`FFmpeg: ${this.ffmpegPath ?? 'not found'}`);
     depsLogger.info(`FFprobe: ${this.ffprobePath ?? 'not found'}`);
     depsLogger.info(`FluidSynth: ${this.fluidsynthPath ?? 'not found'}`);
+    depsLogger.info(`yt-dlp: ${this.ytdlpPath ?? 'not found'}`);
 
     // Re-detect hardware encoders when binaries are re-scanned
     this.detectHardwareEncoders();
@@ -286,6 +296,14 @@ export class DependencyManager {
   }
 
   /**
+   * Gets the resolved path to the yt-dlp binary.
+   * @returns Absolute path or null if not found
+   */
+  public getYtDlpPath(): string | null {
+    return this.ytdlpPath;
+  }
+
+  /**
    * Gets the full dependency state for broadcasting to the renderer.
    * @param preferredSoundFont - Optional preferred SoundFont file name from settings
    * @returns Complete dependency state including SoundFont info
@@ -294,6 +312,7 @@ export class DependencyManager {
     return {
       ffmpeg: this.getDependencyStatus('ffmpeg'),
       fluidsynth: this.getDependencyStatus('fluidsynth'),
+      ytdlp: this.getDependencyStatus('yt-dlp'),
       soundfonts: this.getSoundFonts(),
       activeSoundFont: this.findSoundFont(preferredSoundFont) ?? null,
       hardwareEncoders: this.hardwareEncoders,
@@ -457,6 +476,40 @@ export class DependencyManager {
     return this.runCommand(cmd.command, cmd.args, id, 'uninstalling', onProgress);
   }
 
+  /**
+   * Updates a dependency to the latest version via the platform package manager.
+   *
+   * Primarily for yt-dlp, which must be updated frequently to keep working
+   * against sites like YouTube as their extraction changes.
+   *
+   * @param id - The dependency to update
+   * @param onProgress - Callback for progress updates (streamed to SSE)
+   * @returns True if the update succeeded
+   */
+  public async updateDependency(
+    id: DependencyId,
+    onProgress: (progress: InstallProgress) => void
+  ): Promise<boolean> {
+    const name: string = DEPENDENCY_NAMES[id];
+    depsLogger.info(`Updating ${name}...`);
+
+    const cmd: {command: string; args: string[]} | null = this.getUpdateCommand(id);
+    if (!cmd) {
+      const errorMsg: string = this.getPackageManagerErrorMessage(id, 'install');
+      depsLogger.error(errorMsg);
+      onProgress({dependencyId: id, status: 'error', message: errorMsg});
+      return false;
+    }
+
+    onProgress({
+      dependencyId: id,
+      status: 'updating',
+      message: `Updating ${name}...`,
+    });
+
+    return this.runCommand(cmd.command, cmd.args, id, 'updating', onProgress);
+  }
+
   // ============================================================================
   // SoundFont Management
   // ============================================================================
@@ -605,6 +658,8 @@ export class DependencyManager {
       binaryPath = this.ffmpegPath;
     } else if (id === 'fluidsynth') {
       binaryPath = this.fluidsynthPath;
+    } else if (id === 'yt-dlp') {
+      binaryPath = this.ytdlpPath;
     }
 
     return {
@@ -748,12 +803,46 @@ export class DependencyManager {
   }
 
   /**
+   * Gets the update command for a dependency on the current platform.
+   *
+   * On Linux, reinstalling via the package manager pulls the latest available
+   * version. On Windows, winget upgrade is used.
+   *
+   * @returns Command and args, or null if no package manager is available
+   */
+  private getUpdateCommand(id: DependencyId): {command: string; args: string[]} | null {
+    const packageName: string = this.getPackageName(id);
+
+    switch (this.platform) {
+      case 'darwin':
+        return {command: 'brew', args: ['upgrade', packageName]};
+
+      case 'linux':
+        // Re-running the install command upgrades to the latest available version.
+        return this.getLinuxInstallCommand(packageName);
+
+      case 'win32':
+        if (!this.isWingetAvailable()) {
+          return null;
+        }
+        return {
+          command: 'winget',
+          args: ['upgrade', this.getWingetId(id), '--accept-source-agreements', '--accept-package-agreements'],
+        };
+
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Gets the package name for a dependency (used by brew/apt/dnf/pacman).
    */
   private getPackageName(id: DependencyId): string {
     switch (id) {
       case 'ffmpeg': return 'ffmpeg';
       case 'fluidsynth': return this.platform === 'darwin' ? 'fluid-synth' : 'fluidsynth';
+      case 'yt-dlp': return 'yt-dlp';
     }
   }
 
@@ -764,6 +853,7 @@ export class DependencyManager {
     switch (id) {
       case 'ffmpeg': return 'Gyan.FFmpeg';
       case 'fluidsynth': return 'FluidSynth.FluidSynth';
+      case 'yt-dlp': return 'yt-dlp.yt-dlp';
     }
   }
 
@@ -938,7 +1028,7 @@ export class DependencyManager {
    * @param command - The command to run
    * @param args - Command arguments
    * @param id - The dependency being operated on
-   * @param operation - 'installing' or 'uninstalling'
+   * @param operation - 'installing', 'uninstalling', or 'updating'
    * @param onProgress - Progress callback
    * @returns True if the command succeeded (exit code 0)
    */
@@ -946,9 +1036,12 @@ export class DependencyManager {
     command: string,
     args: string[],
     id: DependencyId,
-    operation: 'installing' | 'uninstalling',
+    operation: 'installing' | 'uninstalling' | 'updating',
     onProgress: (progress: InstallProgress) => void
   ): Promise<boolean> {
+    const presentVerb: string = operation === 'installing' ? 'Installing' : operation === 'uninstalling' ? 'Uninstalling' : 'Updating';
+    const pastVerb: string = operation === 'installing' ? 'installed' : operation === 'uninstalling' ? 'uninstalled' : 'updated';
+
     return new Promise<boolean>((resolve: (value: boolean) => void): void => {
       logProcessSpawn(depsLogger, command, args);
 
@@ -965,7 +1058,7 @@ export class DependencyManager {
         onProgress({
           dependencyId: id,
           status: operation,
-          message: `${operation === 'installing' ? 'Installing' : 'Uninstalling'} ${DEPENDENCY_NAMES[id]}...`,
+          message: `${presentVerb} ${DEPENDENCY_NAMES[id]}...`,
           output: outputBuffer,
         });
       };
@@ -976,15 +1069,15 @@ export class DependencyManager {
       child.on('close', (code: number | null, signal: string | null): void => {
         logProcessExit(depsLogger, command, code, signal);
 
-        // Re-detect binaries after install/uninstall
+        // Re-detect binaries after install/uninstall/update
         this.detectBinaries();
 
         if (code === 0) {
-          depsLogger.info(`${DEPENDENCY_NAMES[id]} ${operation === 'installing' ? 'installed' : 'uninstalled'} successfully`);
+          depsLogger.info(`${DEPENDENCY_NAMES[id]} ${pastVerb} successfully`);
           onProgress({
             dependencyId: id,
             status: 'success',
-            message: `${DEPENDENCY_NAMES[id]} ${operation === 'installing' ? 'installed' : 'uninstalled'} successfully.`,
+            message: `${DEPENDENCY_NAMES[id]} ${pastVerb} successfully.`,
             output: outputBuffer,
           });
           resolve(true);

@@ -853,6 +853,16 @@
       }
     }
 
+    &.update {
+      background: rgba(109, 179, 242, 0.15);
+      border-color: rgba(109, 179, 242, 0.35);
+      color: $color-primary-light;
+
+      &:hover:not(:disabled) {
+        background: rgba(109, 179, 242, 0.25);
+      }
+    }
+
     &:disabled {
       opacity: 0.4;
       cursor: not-allowed;

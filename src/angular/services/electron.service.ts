@@ -17,14 +17,14 @@
  */
 
 import {Injectable, NgZone, OnDestroy, signal} from '@angular/core';
-import type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack, AudioTrack} from '../types/electron';
+import type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack, AudioTrack, UrlMediaInfo, UrlMediaFormat, DownloadJob} from '../types/electron';
 import type {AppSettings} from './settings.service';
 
 /**
  * Re-export types for consumers that import from this service.
  * This allows components to import both the service and types from one location.
  */
-export type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack, AudioTrack};
+export type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack, AudioTrack, UrlMediaInfo, UrlMediaFormat, DownloadJob};
 
 /**
  * Service that manages communication with Electron and the media server.
@@ -196,6 +196,16 @@ export class ElectronService implements OnDestroy {
 
   /** Signal emitted when "Open File" menu item is selected */
   public readonly menuOpenFile: ReturnType<typeof signal<number>> = signal<number>(0);
+
+  /** Latest URL download job update (progress/complete/error), null when idle */
+  public readonly downloadJob: ReturnType<typeof signal<DownloadJob | null>> = signal<DownloadJob | null>(null);
+
+  /**
+   * Whether this renderer is the main application window (not a secondary
+   * window such as ?window=open-url or ?window=configuration). Used to ensure
+   * window-wide side effects of broadcast SSE events run exactly once.
+   */
+  private readonly isMainWindow: boolean = !new URLSearchParams(window.location.search).has('window');
 
   /** Signal emitted when "Show Help" menu item is selected */
   public readonly menuShowHelp: ReturnType<typeof signal<number>> = signal<number>(0);
@@ -895,6 +905,41 @@ export class ElectronService implements OnDestroy {
       });
     });
 
+    // URL download progress
+    this.eventSource.addEventListener('download:progress', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
+        const job: DownloadJob | null = this.safeParseJSON<DownloadJob | null>(e.data, null);
+        if (job) {
+          this.downloadJob.set(job);
+        }
+      });
+    });
+
+    // URL download complete — add the finished file to the playlist and play it.
+    // Only the main window performs the add: SSE is broadcast to every window
+    // (e.g. the Open URL window), so guarding here avoids a double-add.
+    this.eventSource.addEventListener('download:complete', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
+        const job: DownloadJob | null = this.safeParseJSON<DownloadJob | null>(e.data, null);
+        if (job) {
+          this.downloadJob.set(job);
+          if (job.filePath && this.isMainWindow) {
+            void this.addFilesWithAutoPlay([job.filePath]);
+          }
+        }
+      });
+    });
+
+    // URL download error
+    this.eventSource.addEventListener('download:error', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
+        const job: DownloadJob | null = this.safeParseJSON<DownloadJob | null>(e.data, null);
+        if (job) {
+          this.downloadJob.set(job);
+        }
+      });
+    });
+
     // Soundfont changed event - invalidate cache and optionally restart MIDI playback
     this.eventSource.addEventListener('soundfont:changed', (e: MessageEvent): void => {
       this.ngZone.run((): void => {
@@ -1069,6 +1114,17 @@ export class ElectronService implements OnDestroy {
   public async setWindowPosition(position: {x: number; y: number}): Promise<{x: number; y: number}> {
     if (!this.isElectron || !this.api) return position;
     return this.api.setWindowPosition(position);
+  }
+
+  /**
+   * Resizes the current window's content area to the given height (keeping its
+   * width). Used by the Open URL window to grow/shrink to fit its content.
+   *
+   * @param height - Desired content height in pixels
+   */
+  public async setContentHeight(height: number): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.setContentHeight(height);
   }
 
   /**
@@ -1282,6 +1338,79 @@ export class ElectronService implements OnDestroy {
     }
 
     return result;
+  }
+
+  // ============================================================================
+  // Internet URL Media (yt-dlp)
+  // ============================================================================
+
+  /**
+   * Resolves metadata and available quality formats for a remote URL.
+   *
+   * @param url - The page URL to inspect (YouTube, Vimeo, etc.)
+   * @returns Title, thumbnail, duration, uploader, and quality options
+   * @throws Error with the yt-dlp failure message if the URL is unsupported
+   */
+  public async getUrlInfo(url: string): Promise<UrlMediaInfo> {
+    return this.postExpectingMessage<UrlMediaInfo>('/media/url/info', {url});
+  }
+
+  /**
+   * Starts a background download of a URL. Progress and completion arrive via
+   * the {@link downloadJob} signal (SSE); on completion the file is added to the
+   * playlist and played automatically.
+   *
+   * @param url - The page URL to download
+   * @param format - 'video' (MP4) or 'audio' (MP3)
+   * @param formatId - Optional yt-dlp format id for a chosen resolution
+   * @param title - Optional title used to name the downloaded file
+   * @returns The created job id
+   */
+  public async downloadUrl(url: string, format: UrlMediaFormat, formatId: string | null, title: string): Promise<{jobId: string}> {
+    this.downloadJob.set(null);
+    return this.postExpectingMessage<{jobId: string}>('/media/url/download', {url, format, formatId, title});
+  }
+
+  /**
+   * Resolves a direct stream URL and plays it immediately without downloading.
+   * The resolved URL is added to the playlist like any local file.
+   *
+   * @param url - The page URL to stream
+   * @param format - 'video' or 'audio'
+   * @param maxHeight - Optional cap on video height (e.g., 720)
+   * @returns The added playlist items
+   */
+  public async streamUrl(url: string, format: UrlMediaFormat, maxHeight: number | null): Promise<{added: PlaylistItem[]}> {
+    const resolved: {url: string} = await this.postExpectingMessage<{url: string}>('/media/url/resolve', {url, format, maxHeight});
+    return this.addFilesWithAutoPlay([resolved.url]);
+  }
+
+  /**
+   * Cancels an in-flight URL download.
+   *
+   * @param jobId - The download job id to cancel
+   */
+  public async cancelDownload(jobId: string): Promise<{cancelled: boolean}> {
+    return this.post<{cancelled: boolean}>(`/media/url/cancel/${encodeURIComponent(jobId)}`);
+  }
+
+  /**
+   * POSTs JSON and, on a non-2xx response, throws an Error carrying the server's
+   * `{ error }` message (yt-dlp failures are surfaced this way). Unlike the
+   * generic {@link post} helper, this preserves the human-readable reason.
+   */
+  private async postExpectingMessage<T>(endpoint: string, body: unknown): Promise<T> {
+    const response: Response = await fetch(`${this.serverUrl()}${endpoint}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data: unknown = await response.json().catch((): null => null);
+    if (!response.ok) {
+      const message: string = (data as {error?: string} | null)?.error ?? `HTTP ${response.status}`;
+      throw new Error(message);
+    }
+    return data as T;
   }
 
   /**

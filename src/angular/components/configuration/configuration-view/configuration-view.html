@@ -132,9 +132,41 @@
                   </div>
                 }
 
+                @if (ytdlpStatus(); as ytdlp) {
+                  <div class="dependency-row">
+                    <div class="dependency-indicator" [class.installed]="ytdlp.installed" [class.missing]="!ytdlp.installed">
+                      <i [class]="ytdlp.installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
+                    </div>
+                    <div class="dependency-info">
+                      <span class="dependency-name">{{ ytdlp.name }}</span>
+                      <span class="dependency-description">{{ ytdlp.description }}</span>
+                      @if (ytdlp.installed && ytdlp.path) {
+                        <span class="dependency-path">{{ ytdlp.path }}</span>
+                      }
+                    </div>
+                    <div class="dependency-actions">
+                      @if (ytdlp.installed) {
+                        <button class="dependency-button update" [disabled]="isDepOperationInProgress()" (click)="onUpdateDependency('yt-dlp')" (mouseup)="$any($event.currentTarget).blur()" title="Update yt-dlp to the latest version">
+                          Update
+                        </button>
+                        <button class="dependency-button uninstall" [disabled]="isDepOperationInProgress()" (click)="onUninstallDependency('yt-dlp')" (mouseup)="$any($event.currentTarget).blur()">
+                          Uninstall
+                        </button>
+                      } @else {
+                        <button class="dependency-button install" [disabled]="isDepOperationInProgress()" (click)="onInstallDependency('yt-dlp')" (mouseup)="$any($event.currentTarget).blur()">
+                          Install
+                        </button>
+                      }
+                      <button class="dependency-link" (click)="onOpenManualDownload(ytdlp.manualInstallUrl)" (mouseup)="$any($event.currentTarget).blur()" title="Manual download">
+                        <i class="fa-solid fa-external-link-alt"></i>
+                      </button>
+                    </div>
+                  </div>
+                }
+
                 <!-- Install/Uninstall Progress -->
                 @if (depProgress(); as progress) {
-                  @if (progress.status === 'installing' || progress.status === 'uninstalling') {
+                  @if (progress.status === 'installing' || progress.status === 'uninstalling' || progress.status === 'updating') {
                     <div class="install-progress">
                       <div class="install-progress-header">
                         <i class="fa-solid fa-spinner fa-spin"></i>

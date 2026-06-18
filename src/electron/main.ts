@@ -131,6 +131,9 @@ class Program {
   /** The about window instance, null when closed */
   private aboutWindow: BrowserWindow | null = null;
 
+  /** The "Open URL" window instance, null when closed */
+  private openUrlWindow: BrowserWindow | null = null;
+
   /** The setup wizard window instance, null when closed */
   private setupWizardWindow: BrowserWindow | null = null;
 
@@ -788,6 +791,103 @@ class Program {
   }
 
   /**
+   * Opens the "Open URL" window for playing internet media via yt-dlp.
+   *
+   * Renders the Angular app with the ?window=open-url parameter so only the
+   * Open URL dialog view is shown. The window communicates with the media
+   * server over HTTP/SSE like any renderer, and closes itself when the
+   * download/stream is started or cancelled.
+   *
+   * If the window already exists, it is focused instead of creating a new one.
+   */
+  private showOpenUrlWindow(): void {
+    if (this.openUrlWindow && !this.openUrlWindow.isDestroyed()) {
+      this.openUrlWindow.focus();
+      return;
+    }
+
+    const projectRoot: string = Program.getProjectRoot();
+    const preloadPath: string = path.join(projectRoot, "src", "electron", "dist", "preload.js");
+
+    const openUrlWindowWidth: number = 460;
+    // Initial content height; the renderer resizes this to fit its content.
+    const openUrlWindowHeight: number = 200;
+
+    // Platform-specific chrome (mirrors the About window) for native glass.
+    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
+    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? true;
+    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
+    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
+
+    let openUrlPlatformOptions: Electron.BrowserWindowConstructorOptions = {};
+    if (process.platform === 'darwin') {
+      openUrlPlatformOptions = {
+        titleBarStyle: 'hiddenInset',
+        trafficLightPosition: {x: 12, y: 13},
+        ...(glassEnabled
+          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
+          : { backgroundColor }
+        )
+      };
+    } else if (process.platform === 'win32') {
+      openUrlPlatformOptions = glassEnabled
+        ? { backgroundMaterial: 'acrylic' as const }
+        : { backgroundColor };
+    } else {
+      openUrlPlatformOptions = { backgroundColor };
+    }
+
+    this.openUrlWindow = new BrowserWindow({
+      width: openUrlWindowWidth,
+      height: openUrlWindowHeight,
+      useContentSize: true,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      center: true,
+      parent: this.window ?? undefined,
+      modal: false,
+      show: false,
+      title: 'Open URL',
+      ...openUrlPlatformOptions,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        preload: preloadPath,
+        zoomFactor: 1.0,
+        webSecurity: true
+      }
+    });
+
+    this.openUrlWindow.setMenuBarVisibility(false);
+
+    const baseUrl: string = app.isPackaged
+      ? `http://127.0.0.1:${this.serverPort}/`
+      : Program.DEVELOPMENT_SERVER_URL;
+    const openUrlUrl: string = `${baseUrl}?window=open-url`;
+
+    void this.openUrlWindow.loadURL(openUrlUrl);
+
+    this.openUrlWindow.once('ready-to-show', (): void => {
+      this.openUrlWindow?.show();
+    });
+
+    this.openUrlWindow.on('closed', (): void => {
+      this.openUrlWindow = null;
+    });
+
+    // Prevent zoom shortcuts
+    this.openUrlWindow.webContents.on('before-input-event', (_event: Electron.Event, input: Electron.Input): void => {
+      if ((input.control || input.meta) && (input.key === '+' || input.key === '-' || input.key === '=' || input.key === '0')) {
+        _event.preventDefault();
+      }
+    });
+    this.openUrlWindow.webContents.setVisualZoomLevelLimits(1, 1);
+  }
+
+  /**
    * Shows the setup wizard window.
    *
    * The setup wizard guides users through initial application configuration
@@ -1271,6 +1371,17 @@ class Program {
       this.window.setWindowButtonVisibility(visible);
     });
 
+    // Resize the calling window's content area to a requested height.
+    // Used by secondary windows (e.g. Open URL) to fit their content.
+    ipcMain.handle("window:setContentHeight", (event: Readonly<Electron.IpcMainInvokeEvent>, height: number): void => {
+      const win: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
+      if (!win || win.isDestroyed()) return;
+      const [width]: number[] = win.getContentSize();
+      const maxHeight: number = screen.getDisplayMatching(win.getBounds()).workAreaSize.height;
+      const target: number = Math.min(Math.max(1, Math.ceil(height)), maxHeight);
+      win.setContentSize(width, target);
+    });
+
     // Save mini-player bounds (called after drag ends or resize)
     ipcMain.handle("window:saveMiniplayerBounds", (): void => {
       if (!this.window || !this.isInMiniPlayerMode) return;
@@ -1533,6 +1644,9 @@ class Program {
       },
       onOpenFile: (): void => {
         this.window?.webContents.send('menu:openFile');
+      },
+      onOpenUrl: (): void => {
+        this.showOpenUrlWindow();
       },
       onOpenPlaylist: (): void => {
         this.window?.webContents.send('menu:openPlaylist');

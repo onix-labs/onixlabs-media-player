@@ -243,6 +243,62 @@ export interface PlaylistItem {
 }
 
 /**
+ * A single quality option for a remote URL (one entry per resolution).
+ */
+export interface UrlFormat {
+  /** yt-dlp format id */
+  id: string;
+  /** Human-readable label (e.g., '1080p') */
+  label: string;
+  /** Video height in pixels (0 for audio-only) */
+  height: number;
+}
+
+/**
+ * Metadata for a remote media URL, resolved via yt-dlp.
+ */
+export interface UrlMediaInfo {
+  /** Display title from the source site */
+  title: string;
+  /** Thumbnail image URL (may be empty) */
+  thumbnail: string;
+  /** Duration in seconds (null if unknown) */
+  duration: number | null;
+  /** Uploader/channel name (may be empty) */
+  uploader: string;
+  /** Available video quality options, best first */
+  formats: UrlFormat[];
+}
+
+/** Requested output type when downloading or streaming a URL. */
+export type UrlMediaFormat = 'video' | 'audio';
+
+/** Lifecycle status of a URL download job. */
+export type DownloadJobStatus = 'downloading' | 'done' | 'error' | 'cancelled';
+
+/**
+ * State of a URL download job, delivered to the renderer via SSE.
+ */
+export interface DownloadJob {
+  /** Unique job identifier */
+  id: string;
+  /** The source URL being downloaded */
+  url: string;
+  /** Requested output format */
+  format: UrlMediaFormat;
+  /** Current job status */
+  status: DownloadJobStatus;
+  /** Download progress as a fraction 0..1 (null until known) */
+  progress: number | null;
+  /** Human-readable title */
+  title: string;
+  /** Absolute path to the downloaded file once status is 'done' */
+  filePath: string | null;
+  /** Error message when status is 'error' */
+  errorMessage: string | null;
+}
+
+/**
  * Current state of the playlist.
  *
  * This is part of the unified state sent via SSE. It includes all tracks,
@@ -509,6 +565,12 @@ export interface MediaPlayerAPI {
    * @returns Promise resolving to the current position {x, y}
    */
   getWindowPosition: () => Promise<{x: number; y: number}>;
+
+  /**
+   * Resizes the calling window's content area to the given height.
+   * @param height - Desired content height in pixels
+   */
+  setContentHeight: (height: number) => Promise<void>;
 
   /**
    * Sets the visibility of macOS traffic light buttons.
