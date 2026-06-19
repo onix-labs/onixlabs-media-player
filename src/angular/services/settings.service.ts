@@ -404,6 +404,7 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   // Signature category
   {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
+  {id: 'blackhole', name: 'Black Hole', category: 'Signature', applicableSettings: []},
   {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: []},
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
   // Simple category
@@ -494,6 +495,7 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   // Signature category
   {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
+  {value: 'blackhole', label: 'Signature : Black Hole', description: 'Glowing accretion-disk waveform around a black core'},
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},
   {value: 'logo', label: 'Simple : Logo', description: 'The ONIXPlayer logo, centred'},

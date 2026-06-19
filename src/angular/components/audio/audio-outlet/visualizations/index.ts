@@ -16,6 +16,7 @@
  * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
+ * - blackhole: Black Hole - filled glowing accretion-disk waveform around a black core (signature category)
  *
  * @module app/components/audio/audio-outlet/visualizations
  */
@@ -32,6 +33,7 @@ export {InfinityVisualization} from './infinity-visualization';
 export {OnixVisualization} from './onix-visualization';
 export {ModernVisualization} from './modern-visualization';
 export {SpotlightVisualization} from './spotlight-visualization';
+export {BlackHoleVisualization} from './black-hole-visualization';
 export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
 
@@ -46,6 +48,7 @@ import {InfinityVisualization} from './infinity-visualization';
 import {OnixVisualization} from './onix-visualization';
 import {ModernVisualization} from './modern-visualization';
 import {SpotlightVisualization} from './spotlight-visualization';
+import {BlackHoleVisualization} from './black-hole-visualization';
 import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
 
@@ -64,6 +67,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   onix: OnixVisualization,
   modern: ModernVisualization,
   spotlight: SpotlightVisualization,
+  blackhole: BlackHoleVisualization,
   blank: BlankVisualization,
   logo: LogoVisualization,
 };
@@ -83,6 +87,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   onix: {name: 'Onix', category: 'Waves'},
   modern: {name: 'Modern', category: 'Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
+  blackhole: {name: 'Black Hole', category: 'Signature'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
@@ -130,7 +135,7 @@ export const VISUALIZATION_TYPES: string[] = [
   // Waves
   'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'pulsar',
   // Signature
-  'spotlight', 'water',
+  'spotlight', 'water', 'blackhole',
   // Simple
   'blank', 'logo',
 ];
