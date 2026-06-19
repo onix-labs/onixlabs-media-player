@@ -1,17 +1,17 @@
 /**
- * @fileoverview Black Hole visualization with an accretion-disk waveform.
+ * @fileoverview Black Hole visualization — accretion disk plus infalling matter.
  *
- * Renders a black event-horizon circle at the centre surrounded by a filled,
- * glowing circular waveform that forms an accretion disk. The disk's outer
- * edge is driven by the time-domain audio signal:
+ * A bright, hue-cycling circular waveform sits on the event horizon and drives
+ * two complementary effects from the same signal:
  *
- * - Peaks bulge outward, flare into bright glowing blobs, then blur and fade
- *   away as the persistent trail layer drifts them outward over time.
- * - Troughs are pulled inward toward the centre and trail glowing suction
- *   streaks that point at the event horizon, as if matter is being drawn in.
+ * - Peaks bulge *outward* into a filled, glowing accretion disk that drifts
+ *   outward, blurs and fades slowly (an orbiting disk of matter).
+ * - Troughs dip *inward* past the horizon and are slowly sucked toward the
+ *   singularity, blurring and fading as they spiral in.
  *
- * The disk swirls slowly (trail rotation) for an orbiting-matter feel, and the
- * hue drifts gently through a hot palette so the disk subtly shifts colour.
+ * Each effect has its own persistent trail: the disk's trail zooms outward, the
+ * infall's trail zooms inward (Pulsar run in reverse). A solid black core sits
+ * between them as the event horizon.
  *
  * Performance optimizations (mirrors the Pulsar visualization):
  * - Reuses trail/temp canvases instead of recreating them each frame.
@@ -27,54 +27,52 @@ import {DEGREES_FULL_CIRCLE, HALF, MULTIPLIER_DOUBLE, MULTIPLIER_QUADRUPLE, RGB_
 /**
  * Black Hole visualization.
  *
- * A black centre circle ringed by a filled glowing circular waveform whose
- * peaks radiate outward and fade, and whose troughs are sucked toward the core.
+ * An accretion disk formed by the waveform's outward peaks, ringing a black
+ * core, with the waveform's troughs falling inward and dissolving at the centre.
  */
 export class BlackHoleVisualization extends Canvas2DVisualization {
-  /** Radians the persistent trail rotates per frame (disk swirl). */
-  private static readonly ROTATION_SPEED: number = 0.002;
-
-  /** Per-frame outward zoom applied to the trail so peak glow drifts away. */
-  private static readonly ZOOM_SCALE: number = 1.005;
-
-  /** Base per-frame fade rate of the trail layer (scaled by trail intensity). */
-  private static readonly FADE_RATE: number = 0.15;
+  // ----- Shared waveform / layout -----
 
   /** Degrees the hue advances per frame. */
-  private static readonly HUE_CYCLE_SPEED: number = 0.06;
+  private static readonly HUE_CYCLE_SPEED: number = 0.1;
 
-  /** Starting hue (warm orange) for the accretion disk. */
+  /** Starting hue for the waveform. */
   private static readonly START_HUE: number = 0;
 
-  /** Number of angular samples around the disk edge (curve resolution). */
+  /** Saturation (%) of the cycling hue. */
+  private static readonly SAT_FULL: number = 100;
+
+  /** Number of angular samples around the ring (curve resolution). */
   private static readonly NUM_SAMPLES: number = 256;
 
-  /**
-   * Low-pass passes applied around the ring of samples. A few passes polish the
-   * contiguous trace into flowing waves, independent of NUM_SAMPLES.
-   */
+  /** Low-pass passes around the ring; polishes the trace into flowing waves. */
   private static readonly SMOOTHING_PASSES: number = 3;
 
-  /**
-   * Fraction of the waveform buffer wrapped around each half of the ring.
-   * Smaller keeps neighbouring points more correlated (smoother).
-   */
+  /** Fraction of the waveform buffer wrapped around each half of the ring. */
   private static readonly WAVEFORM_WINDOW_FRACTION: number = 0.2;
 
-  /** Event-horizon (black circle) diameter as a fraction of the canvas height. */
-  private static readonly EVENT_HORIZON_HEIGHT_FRACTION: number = 0.75;
+  /** Event-horizon (black core) diameter as a fraction of the canvas height. */
+  private static readonly EVENT_HORIZON_HEIGHT_FRACTION: number = 0.6;
+
+  /** Per-frame blur applied to both trails so matter blurs slowly. */
+  private static readonly TRAIL_BLUR: number = 1;
+
+  // ----- Accretion disk (outward peaks) -----
 
   /** Gap from the horizon to the resting disk edge (fraction of half-height). */
   private static readonly DISK_GAP_FRACTION: number = 0.15;
 
-  /** How far peaks/troughs push the edge (fraction of half-height). */
-  private static readonly AMPLITUDE_HEIGHT_FRACTION: number = 0.1;
+  /** How far disk peaks/troughs push the edge (fraction of half-height). */
+  private static readonly DISK_AMPLITUDE_FRACTION: number = 0.1;
 
-  /** Per-frame blur applied to the persistent trail so the disk blurs slowly. */
-  private static readonly TRAIL_BLUR: number = 1;
+  /** Radians the disk trail rotates per frame. */
+  private static readonly DISK_ROTATION_SPEED: number = 0.002;
 
-  /** Glow blur for the photon ring around the event horizon (pixels). */
-  private static readonly RIM_GLOW_BLUR: number = 18;
+  /** Per-frame outward zoom of the disk trail (above 1 drifts outward). */
+  private static readonly DISK_ZOOM_SCALE: number = 1.004;
+
+  /** Base per-frame fade rate of the disk trail. */
+  private static readonly DISK_FADE_RATE: number = 0.06;
 
   /** Alpha of the bright inner stop of the disk fill gradient. */
   private static readonly DISK_INNER_ALPHA: number = 0.85;
@@ -82,35 +80,59 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
   /** Alpha of the mid (body) stop of the disk fill gradient. */
   private static readonly DISK_BODY_ALPHA: number = 0.45;
 
-  /** Alpha of the photon ring around the event horizon. */
-  private static readonly RIM_ALPHA: number = 0.1;
-
-  /** Saturation (%) used across the hot palette. */
-  private static readonly SAT_FULL: number = 95;
-
   /** Lightness (%) of the bright inner disk. */
   private static readonly LIGHT_HOT: number = 72;
 
   /** Lightness (%) of the disk body. */
   private static readonly LIGHT_BODY: number = 50;
 
-  /** Lightness (%) of the photon ring. */
-  private static readonly LIGHT_RIM: number = 82;
+  // ----- Infall (inward troughs) -----
 
-  /** Line width of the photon ring. */
-  private static readonly RIM_LINE_WIDTH: number = 2;
+  /** Deepest a trough dips inward, as a fraction of the horizon radius. */
+  private static readonly WAVE_DEPTH_FRACTION: number = 0.2;
+
+  /** Multiplier turning a trough's depth into an inward dip (0..1). */
+  private static readonly WAVE_GAIN: number = 2;
+
+  /** Radians the infall trail rotates per frame. */
+  private static readonly INFALL_ROTATION_SPEED: number = 0.01;
+
+  /** Per-frame zoom of the infall trail (below 1 sucks toward the centre). */
+  private static readonly INFALL_ZOOM_SCALE: number = 0.99;
+
+  /** Base per-frame fade rate of the infall trail. */
+  private static readonly INFALL_FADE_RATE: number = 0.05;
+
+  /** Lightness (%) of the bright infall waveform. */
+  private static readonly LIGHT_WAVE: number = 32;
+
+  /** Base glow blur radius for the infall waveform (pixels). */
+  private static readonly BASE_GLOW_BLUR: number = 16;
+
+  /** Extra line width added to the soft glow layer. */
+  private static readonly GLOW_LINE_WIDTH: number = 3;
+
+  /** Stroke alpha of the soft glow layer. */
+  private static readonly GLOW_STROKE_ALPHA: number = 0.5;
+
+  /** Shadow alpha used for the infall glow. */
+  private static readonly GLOW_SHADOW_ALPHA: number = 0.85;
 
   public readonly name: string = 'Black Hole';
   public readonly category: string = 'Signature';
 
-  /** Time-domain audio buffer driving the disk edge. */
+  /** Time-domain audio buffer driving the waveform. */
   private dataArray: Uint8Array<ArrayBuffer>;
 
-  /** Trail canvas holding persistent peak glow (reused, not recreated). */
-  private trailCanvas: HTMLCanvasElement | null = null;
-  private trailCtx: CanvasRenderingContext2D | null = null;
+  /** Persistent trail for the outward accretion disk. */
+  private diskCanvas: HTMLCanvasElement | null = null;
+  private diskCtx: CanvasRenderingContext2D | null = null;
 
-  /** Temp canvas for the zoom/rotate effect (reused, not recreated). */
+  /** Persistent trail for the inward infall. */
+  private infallCanvas: HTMLCanvasElement | null = null;
+  private infallCtx: CanvasRenderingContext2D | null = null;
+
+  /** Shared temp canvas for the zoom/rotate effect (reused, not recreated). */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
 
@@ -119,10 +141,11 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
   private cachedHue: number = -1;
   private cachedInner: {r: number; g: number; b: number} = {r: 0, g: 0, b: 0};
   private cachedBody: {r: number; g: number; b: number} = {r: 0, g: 0, b: 0};
-  private cachedRim: {r: number; g: number; b: number} = {r: 0, g: 0, b: 0};
+  private cachedWave: {r: number; g: number; b: number} = {r: 0, g: 0, b: 0};
 
-  /** Pre-allocated edge points and their normalized samples. */
+  /** Pre-allocated points and their normalized samples. */
   private readonly edgePoints: Array<{x: number; y: number}>;
+  private readonly innerPoints: Array<{x: number; y: number}>;
   private readonly edgeSamples: Float32Array;
   /** Scratch buffer for the circular low-pass smoothing passes. */
   private readonly edgeSmoothBuffer: Float32Array;
@@ -130,11 +153,11 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
   /** Pre-computed layout values (updated on resize). */
   private centerX: number = 0;
   private centerY: number = 0;
-  private maxRadius: number = 0;
   private eventHorizonRadius: number = 0;
   private diskBaseRadius: number = 0;
-  private amplitudeScale: number = 0;
-  private minEdgeRadius: number = 0;
+  private diskAmplitude: number = 0;
+  private diskMaxRadius: number = 0;
+  private waveDepth: number = 0;
 
   public constructor(config: VisualizationConfig) {
     super(config);
@@ -143,13 +166,15 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     const samples: number = BlackHoleVisualization.NUM_SAMPLES;
     // One extra point closes the loop for buildSmoothPath (last == first).
     this.edgePoints = new Array(samples + 1);
+    this.innerPoints = new Array(samples + 1);
     this.edgeSamples = new Float32Array(samples);
     this.edgeSmoothBuffer = new Float32Array(samples);
     for (let i: number = 0; i <= samples; i++) {
       this.edgePoints[i] = {x: 0, y: 0};
+      this.innerPoints[i] = {x: 0, y: 0};
     }
 
-    // Maximum curve smoothing so the sampled edge reads as a flowing disk.
+    // Maximum curve smoothing so the sampled ring reads as a flowing waveform.
     this.waveformSmoothing = 1;
   }
 
@@ -160,51 +185,38 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     const width: number = this.width;
     const height: number = this.height;
 
-    // Advance and cache the hot palette.
+    // Advance and cache the bright cycling hue.
     this.hueOffset = (this.hueOffset + BlackHoleVisualization.HUE_CYCLE_SPEED) % DEGREES_FULL_CIRCLE;
     this.updateColors();
 
     // Ensure offscreen canvases exist.
-    if (!this.trailCanvas || !this.trailCtx || !this.tempCanvas || !this.tempCtx) {
+    if (!this.diskCanvas || !this.infallCanvas || !this.tempCanvas) {
       this.onResize();
     }
-    const trailCtx: CanvasRenderingContext2D = this.trailCtx!;
-    const trailCanvas: HTMLCanvasElement = this.trailCanvas!;
-    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
-    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
 
-    // Sample the waveform and compute the wavy disk edge.
+    // Sample the waveform and compute the disk edge (outward) and infall (inward).
     this.analyser.getByteTimeDomainData(this.dataArray);
     this.computeEdge();
 
-    // Redraw the persistent disk: rotate it (swirl), drift it, fade it, and
-    // apply a small blur each frame so the disk progressively blurs over time.
-    const effectiveFadeRate: number = BlackHoleVisualization.FADE_RATE * this.getFadeMultiplier();
-    tempCtx.clearRect(0, 0, width, height);
-    tempCtx.drawImage(trailCanvas, 0, 0);
-    trailCtx.clearRect(0, 0, width, height);
-    trailCtx.save();
-    trailCtx.imageSmoothingEnabled = true;
-    trailCtx.imageSmoothingQuality = 'high';
-    trailCtx.filter = `blur(${BlackHoleVisualization.TRAIL_BLUR}px)`;
-    trailCtx.globalAlpha = 1 - effectiveFadeRate;
-    const floorX: number = Math.floor(this.centerX);
-    const floorY: number = Math.floor(this.centerY);
-    trailCtx.translate(floorX, floorY);
-    trailCtx.rotate(BlackHoleVisualization.ROTATION_SPEED);
-    trailCtx.scale(BlackHoleVisualization.ZOOM_SCALE, BlackHoleVisualization.ZOOM_SCALE);
-    trailCtx.translate(-floorX, -floorY);
-    trailCtx.drawImage(tempCanvas, 0, 0);
-    trailCtx.restore();
+    // Advance each trail, then deposit the fresh frame on top of it.
+    this.advanceTrail(
+      this.diskCanvas!, this.diskCtx!,
+      BlackHoleVisualization.DISK_ROTATION_SPEED, BlackHoleVisualization.DISK_ZOOM_SCALE, BlackHoleVisualization.DISK_FADE_RATE
+    );
+    this.drawDisk(this.diskCtx!);
 
-    // Draw the fresh, crisp filled disk onto the persistent trail so it blurs,
-    // drifts and fades slowly behind each new frame.
-    this.drawDisk(trailCtx);
+    this.advanceTrail(
+      this.infallCanvas!, this.infallCtx!,
+      BlackHoleVisualization.INFALL_ROTATION_SPEED, BlackHoleVisualization.INFALL_ZOOM_SCALE, BlackHoleVisualization.INFALL_FADE_RATE
+    );
+    this.drawInfallWave(this.infallCtx!);
 
-    // Composite the blurred, persistent disk, then the crisp black core on top.
+    // Composite: accretion disk, then the black core, then the infall on top of
+    // the core so the matter falling inside the horizon is visible.
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(trailCanvas, 0, 0);
+    ctx.drawImage(this.diskCanvas!, 0, 0);
     this.drawEventHorizon(ctx);
+    ctx.drawImage(this.infallCanvas!, 0, 0);
 
     this.applyFadeOverlay();
   }
@@ -218,30 +230,37 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     this.centerX = this.width * HALF;
     this.centerY = halfHeight;
     // Event-horizon diameter is a fraction of the full height, so its radius is
-    // that fraction of the half-height (e.g. 0.8 => an 80%-of-height circle).
+    // that fraction of the half-height (0.75 => a 75%-of-height circle).
     this.eventHorizonRadius = halfHeight * BlackHoleVisualization.EVENT_HORIZON_HEIGHT_FRACTION;
-    this.amplitudeScale = halfHeight * BlackHoleVisualization.AMPLITUDE_HEIGHT_FRACTION;
+    this.diskAmplitude = halfHeight * BlackHoleVisualization.DISK_AMPLITUDE_FRACTION;
     this.diskBaseRadius = this.eventHorizonRadius + halfHeight * BlackHoleVisualization.DISK_GAP_FRACTION;
-    this.maxRadius = this.diskBaseRadius + this.amplitudeScale;
-    // Troughs are pulled right down to the horizon, where they vanish behind it.
-    this.minEdgeRadius = this.eventHorizonRadius;
+    this.diskMaxRadius = this.diskBaseRadius + this.diskAmplitude;
+    this.waveDepth = this.eventHorizonRadius * BlackHoleVisualization.WAVE_DEPTH_FRACTION;
 
-    if (!this.trailCanvas) {
-      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
-      this.trailCanvas = offscreen.canvas;
-      this.trailCtx = offscreen.ctx;
-    }
+    this.diskCanvas = this.ensureCanvas(this.diskCanvas);
+    this.diskCtx = this.diskCanvas.getContext('2d', {alpha: true});
+    this.infallCanvas = this.ensureCanvas(this.infallCanvas);
+    this.infallCtx = this.infallCanvas.getContext('2d', {alpha: true});
+
     if (!this.tempCanvas) {
       const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
       this.tempCanvas = offscreen.canvas;
       this.tempCtx = offscreen.ctx;
     }
-
-    this.resizeCanvasPreserving(this.trailCanvas, this.trailCtx!, this.width, this.height);
     this.tempCanvas.width = this.width;
     this.tempCanvas.height = this.height;
 
     this.ctx.clearRect(0, 0, this.width, this.height);
+  }
+
+  /** Creates or content-preserving-resizes one trail canvas to the current size. */
+  private ensureCanvas(canvas: HTMLCanvasElement | null): HTMLCanvasElement {
+    if (!canvas) {
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      return offscreen.canvas;
+    }
+    this.resizeCanvasPreserving(canvas, canvas.getContext('2d', {alpha: true})!, this.width, this.height);
+    return canvas;
   }
 
   /** Recomputes the cached palette when the hue changes by at least 1 degree. */
@@ -249,14 +268,53 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     const hueInt: number = Math.floor(this.hueOffset);
     if (hueInt === this.cachedHue) return;
     this.cachedHue = hueInt;
-
     const sat: number = BlackHoleVisualization.SAT_FULL;
     this.cachedInner = this.hslToRgb(this.hueOffset, sat, BlackHoleVisualization.LIGHT_HOT);
     this.cachedBody = this.hslToRgb(this.hueOffset, sat, BlackHoleVisualization.LIGHT_BODY);
-    this.cachedRim = this.hslToRgb(this.hueOffset, sat, BlackHoleVisualization.LIGHT_RIM);
+    this.cachedWave = this.hslToRgb(this.hueOffset, sat, BlackHoleVisualization.LIGHT_WAVE);
   }
 
-  /** Computes each angular edge point and its normalized sample. */
+  /**
+   * Advances a persistent trail: copies it to the temp canvas, then redraws it
+   * rotated, zoomed, blurred and faded. Zoom above 1 drifts outward; below 1
+   * sucks inward toward the centre.
+   */
+  private advanceTrail(
+    trailCanvas: HTMLCanvasElement,
+    trailCtx: CanvasRenderingContext2D,
+    rotation: number,
+    zoom: number,
+    fadeRate: number
+  ): void {
+    const width: number = this.width;
+    const height: number = this.height;
+    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
+    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
+
+    tempCtx.clearRect(0, 0, width, height);
+    tempCtx.drawImage(trailCanvas, 0, 0);
+    trailCtx.clearRect(0, 0, width, height);
+
+    trailCtx.save();
+    trailCtx.imageSmoothingEnabled = true;
+    trailCtx.imageSmoothingQuality = 'high';
+    trailCtx.filter = `blur(${BlackHoleVisualization.TRAIL_BLUR}px)`;
+    trailCtx.globalAlpha = 1 - fadeRate * this.getFadeMultiplier();
+    const floorX: number = Math.floor(this.centerX);
+    const floorY: number = Math.floor(this.centerY);
+    trailCtx.translate(floorX, floorY);
+    trailCtx.rotate(rotation);
+    trailCtx.scale(zoom, zoom);
+    trailCtx.translate(-floorX, -floorY);
+    trailCtx.drawImage(tempCanvas, 0, 0);
+    trailCtx.restore();
+  }
+
+  /**
+   * Computes the disk edge and the infall ring from the same smoothed waveform.
+   * Peaks (positive displacement) push the disk edge outward; troughs (negative)
+   * pull the disk edge toward the horizon and dip the infall ring inward.
+   */
   private computeEdge(): void {
     const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
     const dataLength: number = dataArray.length;
@@ -268,27 +326,32 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     // noise spread across the whole buffer.
     const step: number = Math.max(1, (dataLength * BlackHoleVisualization.WAVEFORM_WINDOW_FRACTION / half) | 0);
 
-    // Mirror the trace across the ring (0..half..0) so the circumference is
-    // seamless and periodic, with no discontinuity at the wrap point.
-    // Signed displacement: peaks (>0) push outward, troughs (<0) pull inward.
+    // Mirror the trace across the ring (0..half..0) so it is seamless/periodic.
     for (let i: number = 0; i < samples; i++) {
       const pos: number = i < half ? i : samples - i;
-      const dataIndex: number = pos * step;
-      this.edgeSamples[i] = ((dataArray[dataIndex] - RGB_MID) / RGB_MID) * sensitivityFactor;
+      this.edgeSamples[i] = ((dataArray[pos * step] - RGB_MID) / RGB_MID) * sensitivityFactor;
     }
     this.smoothSamples();
 
-    // Build the closed edge from the smoothed displacements. Iterate one past
-    // the end so the final point closes back onto the first.
+    // Iterate one past the end so the final point closes back onto the first.
     for (let i: number = 0; i <= samples; i++) {
       const smoothed: number = this.edgeSamples[i % samples];
       const angle: number = (i / samples) * TWO_PI;
-      let radius: number = this.diskBaseRadius + smoothed * this.amplitudeScale;
-      if (radius < this.minEdgeRadius) radius = this.minEdgeRadius;
-      if (radius > this.maxRadius) radius = this.maxRadius;
+      const cos: number = Math.cos(angle);
+      const sin: number = Math.sin(angle);
 
-      this.edgePoints[i].x = this.centerX + radius * Math.cos(angle);
-      this.edgePoints[i].y = this.centerY + radius * Math.sin(angle);
+      // Accretion disk edge: outward on peaks, clamped to the horizon on troughs.
+      let radius: number = this.diskBaseRadius + smoothed * this.diskAmplitude;
+      if (radius < this.eventHorizonRadius) radius = this.eventHorizonRadius;
+      if (radius > this.diskMaxRadius) radius = this.diskMaxRadius;
+      this.edgePoints[i].x = this.centerX + radius * cos;
+      this.edgePoints[i].y = this.centerY + radius * sin;
+
+      // Infall ring: flat at the horizon on peaks, dipping inward on troughs.
+      const dip: number = smoothed < 0 ? Math.min(1, -smoothed * BlackHoleVisualization.WAVE_GAIN) : 0;
+      const innerRadius: number = this.eventHorizonRadius - dip * this.waveDepth;
+      this.innerPoints[i].x = this.centerX + innerRadius * cos;
+      this.innerPoints[i].y = this.centerY + innerRadius * sin;
     }
   }
 
@@ -310,44 +373,67 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     }
   }
 
-  /** Builds the closed smooth disk-edge path on the given context. */
-  private buildEdgePath(ctx: CanvasRenderingContext2D): void {
-    this.buildSmoothPath(ctx, this.edgePoints, BlackHoleVisualization.NUM_SAMPLES);
-    ctx.closePath();
-  }
-
-  /** Draws the filled, glowing accretion disk (no outline). */
+  /** Draws the filled, glowing accretion disk (bright at horizon, dim outward). */
   private drawDisk(ctx: CanvasRenderingContext2D): void {
     const inner: {r: number; g: number; b: number} = this.cachedInner;
     const body: {r: number; g: number; b: number} = this.cachedBody;
 
-    // Radial gradient: brightest right at the event horizon, decreasing
-    // smoothly to a dim, transparent outer circumference.
     const gradient: CanvasGradient = ctx.createRadialGradient(
       this.centerX, this.centerY, this.eventHorizonRadius,
-      this.centerX, this.centerY, this.maxRadius
+      this.centerX, this.centerY, this.diskMaxRadius
     );
-    const span: number = this.maxRadius - this.eventHorizonRadius;
+    const span: number = this.diskMaxRadius - this.eventHorizonRadius;
     const midOffset: number = span > 0 ? (this.diskBaseRadius - this.eventHorizonRadius) / span : HALF;
     gradient.addColorStop(0, `rgba(${inner.r}, ${inner.g}, ${inner.b}, ${BlackHoleVisualization.DISK_INNER_ALPHA})`);
     gradient.addColorStop(midOffset, `rgba(${body.r}, ${body.g}, ${body.b}, ${BlackHoleVisualization.DISK_BODY_ALPHA})`);
     gradient.addColorStop(1, `rgba(${body.r}, ${body.g}, ${body.b}, 0)`);
 
-    // Filled glowing body. Uses normal (source-over) compositing rather than
-    // additive blending: layering the disk over its own persistent, faded copy
-    // additively would sum every channel up to 255 and wash the disk white,
-    // hiding the cycling hue. Source-over blends instead, preserving colour.
+    // Source-over (not additive) so the cycling hue is preserved across frames.
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = gradient;
-    this.buildEdgePath(ctx);
+    this.buildSmoothPath(ctx, this.edgePoints, BlackHoleVisualization.NUM_SAMPLES);
+    ctx.closePath();
     ctx.fill();
     ctx.restore();
   }
 
-  /** Draws the solid black event horizon and its glowing photon ring. */
+  /** Draws the bright, glowing infall waveform stroke (troughs facing inward). */
+  private drawInfallWave(ctx: CanvasRenderingContext2D): void {
+    const color: {r: number; g: number; b: number} = this.cachedWave;
+    const glowBlur: number = this.getScaledGlowBlur(BlackHoleVisualization.BASE_GLOW_BLUR);
+    const buildPath: () => void = (): void => {
+      this.buildSmoothPath(ctx, this.innerPoints, BlackHoleVisualization.NUM_SAMPLES);
+      ctx.closePath();
+    };
+
+    // Soft glow layer.
+    ctx.save();
+    ctx.shadowBlur = glowBlur;
+    ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${BlackHoleVisualization.GLOW_SHADOW_ALPHA})`;
+    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${BlackHoleVisualization.GLOW_STROKE_ALPHA})`;
+    ctx.lineWidth = this.lineWidth + BlackHoleVisualization.GLOW_LINE_WIDTH;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    buildPath();
+    ctx.stroke();
+    ctx.restore();
+
+    // Bright main line.
+    ctx.save();
+    ctx.shadowBlur = glowBlur;
+    ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${BlackHoleVisualization.GLOW_SHADOW_ALPHA})`;
+    ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+    ctx.lineWidth = this.lineWidth;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    buildPath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Draws the solid black event-horizon core between the disk and the infall. */
   private drawEventHorizon(ctx: CanvasRenderingContext2D): void {
-    // Solid black core masks any glow that bled toward the centre.
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = `rgb(0, 0, 0)`;
@@ -355,24 +441,13 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     ctx.arc(this.centerX, this.centerY, this.eventHorizonRadius, 0, TWO_PI);
     ctx.fill();
     ctx.restore();
-
-    // Bright photon ring around the horizon.
-    const rim: {r: number; g: number; b: number} = this.cachedRim;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.shadowBlur = this.getScaledGlowBlur(BlackHoleVisualization.RIM_GLOW_BLUR);
-    ctx.shadowColor = `rgba(${rim.r}, ${rim.g}, ${rim.b}, ${BlackHoleVisualization.RIM_ALPHA})`;
-    ctx.strokeStyle = `rgba(${rim.r}, ${rim.g}, ${rim.b}, ${BlackHoleVisualization.RIM_ALPHA})`;
-    ctx.lineWidth = this.lineWidth + BlackHoleVisualization.RIM_LINE_WIDTH;
-    ctx.beginPath();
-    ctx.arc(this.centerX, this.centerY, this.eventHorizonRadius, 0, TWO_PI);
-    ctx.stroke();
-    ctx.restore();
   }
 
   public override destroy(): void {
-    this.trailCanvas = null;
-    this.trailCtx = null;
+    this.diskCanvas = null;
+    this.diskCtx = null;
+    this.infallCanvas = null;
+    this.infallCtx = null;
     this.tempCanvas = null;
     this.tempCtx = null;
   }
