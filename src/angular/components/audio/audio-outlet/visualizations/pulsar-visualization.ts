@@ -33,36 +33,24 @@ export class PulsarVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Pulsar';
   public readonly category: string = 'Waves';
 
-  private readonly ROTATION_SPEED: number = 0.009;
+  private readonly ROTATION_SPEED: number = 0.005;
   private readonly WAVEFORM_ROTATION_SPEED: number = 0.005;
-  private readonly FADE_RATE: number = 0.008;
+  private readonly FADE_RATE: number = 0.001;
   private readonly ZOOM_SCALE: number = 1.02;
   private readonly HUE_CYCLE_SPEED: number = 0.15;
 
-  // Bass transient detection. A strong bass hit flips the spin direction (at
-  // most once per DIRECTION_COOLDOWN) and, less often, triggers a color switch.
+  // Bass transient detection. A strong bass hit produces a transient that is
+  // detected here so it remains available as a trigger, but currently drives
+  // no visual change.
   private readonly BASS_BINS: number = 16;
   private readonly TRANSIENT_THRESHOLD: number = 15;
   private readonly MIN_LEVEL: number = 50;
-  private readonly DIRECTION_COOLDOWN: number = 5000;
-  // A bass transient can also trigger a sudden color switch, gated to at most
-  // once per COLOR_SHIFT_COOLDOWN: the background flashes white then eases back
-  // to black/transparent and the spinning waveforms invert to black then ease
-  // back to their normal light color over COLOR_SNAP_DURATION. The cycling hue
-  // is not changed.
-  private readonly COLOR_SHIFT_COOLDOWN: number = 10000;
-  private readonly COLOR_SNAP_DURATION: number = 1500;
 
   private frequencyData: Uint8Array<ArrayBuffer>;
   private prevBass: number = 0;
-  private rotationDirection: number = 1;
-  private lastDirectionChange: number = 0;
-  private lastColorShift: number = 0;
-  // 1 at the instant of a color switch, easing to 0 as the snap resolves.
-  private colorSnapProgress: number = 0;
 
   // Balanced sample count (was 1024, reduced to 256 for performance while keeping smoothness)
-  private readonly WAVEFORM_SAMPLES: number = 256;
+  private readonly WAVEFORM_SAMPLES: number = 16;
   private readonly CENTER_CIRCLE_POINTS: number = 64;
 
   // Saturation and lightness levels for gradient
@@ -211,9 +199,10 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
     const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
 
-    // Analyze bass frequencies to detect transients. A strong bass hit flips the
-    // spin direction (gated by DIRECTION_COOLDOWN) and, gated more loosely by
-    // COLOR_SHIFT_COOLDOWN, also triggers a color switch.
+    // Analyze bass frequencies to detect transients. A strong bass hit produces
+    // a transient that we still detect here (so the trigger remains available),
+    // but for now it is a no-op: it no longer flips the spin direction or fires
+    // a color switch.
     this.analyser.getByteFrequencyData(this.frequencyData);
     let bassSum: number = 0;
     for (let i: number = 0; i < this.BASS_BINS; i++) {
@@ -223,29 +212,13 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const bassIncrease: number = bassAvg - this.prevBass;
     this.prevBass = bassAvg;
 
-    const now: number = performance.now();
-    const canChangeDirection: boolean = (now - this.lastDirectionChange) > this.DIRECTION_COOLDOWN;
-    const canShiftColor: boolean = (now - this.lastColorShift) > this.COLOR_SHIFT_COOLDOWN;
     const isTransient: boolean = bassIncrease > this.TRANSIENT_THRESHOLD && bassAvg > this.MIN_LEVEL;
 
-    const rotationChanged: boolean = isTransient && canChangeDirection;
-    if (rotationChanged) {
-      this.rotationDirection *= -1;
-      this.lastDirectionChange = now;
+    // Trigger detected. Intentionally a no-op for now - the direction flip and
+    // color switch it used to drive have been removed.
+    if (isTransient) {
+      // no-op
     }
-
-    // A color switch flashes the background white and inverts the spinning
-    // waveforms (black -> white) - never without an accompanying direction
-    // change, so it always coincides with a spin flip. The cycling hue is left
-    // untouched; only the lightness flips.
-    if (rotationChanged && canShiftColor) {
-      this.lastColorShift = now;
-    }
-
-    // Invert progress for the color-switch flash: 1 at the switch, easing to 0.
-    this.colorSnapProgress = this.lastColorShift > 0
-      ? Math.max(0, 1 - (now - this.lastColorShift) / this.COLOR_SNAP_DURATION)
-      : 0;
 
     // Copy current trails to temp canvas (reused, not recreated)
     tempCtx.clearRect(0, 0, width, height);
@@ -266,7 +239,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const floorCenterX: number = Math.floor(centerX);
     const floorCenterY: number = Math.floor(centerY);
     trailCtx.translate(floorCenterX, floorCenterY);
-    trailCtx.rotate(this.ROTATION_SPEED * this.rotationDirection);
+    trailCtx.rotate(this.ROTATION_SPEED);
     trailCtx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
     trailCtx.translate(-floorCenterX, -floorCenterY);
     trailCtx.drawImage(tempCanvas, 0, 0);
@@ -275,8 +248,8 @@ export class PulsarVisualization extends Canvas2DVisualization {
     // Get waveform data
     this.analyser.getByteTimeDomainData(this.dataArray);
 
-    // Update waveform rotation (follows the bass-reactive spin direction)
-    this.waveformAngle -= this.WAVEFORM_ROTATION_SPEED * this.rotationDirection;
+    // Update waveform rotation
+    this.waveformAngle -= this.WAVEFORM_ROTATION_SPEED;
 
     // Draw the mirrored waveforms with rotation
     trailCtx.save();
@@ -286,17 +259,8 @@ export class PulsarVisualization extends Canvas2DVisualization {
     this.drawMirroredWaveform(trailCtx);
     trailCtx.restore();
 
-    // Clear main canvas, then on a color switch paint a white background veil
-    // that fades out as the snap resolves (background goes white -> black/
-    // transparent). Drawn under the trail so the waveforms stay visible over it.
+    // Clear main canvas and composite the trail onto it.
     ctx.clearRect(0, 0, width, height);
-    if (this.colorSnapProgress > 0) {
-      ctx.save();
-      ctx.globalAlpha = this.colorSnapProgress;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, width, height);
-      ctx.restore();
-    }
     ctx.drawImage(trailCanvas, 0, 0);
 
     this.applyFadeOverlay();
@@ -352,16 +316,8 @@ export class PulsarVisualization extends Canvas2DVisualization {
       this.rightPoints[i].y = centerY + arcRadius * Math.sin(arcAngle);
     }
 
-    // The spinning waveforms normally use the lighter cycling color, but during
-    // a color switch they invert to black and ease back to that light color as
-    // the snap resolves (black -> white), matching the white background flash.
-    const baseColor: {r: number; g: number; b: number} = this.cachedLighterColor;
-    const snap: number = this.colorSnapProgress;
-    const color: {r: number; g: number; b: number} = {
-      r: Math.round(baseColor.r * (1 - snap)),
-      g: Math.round(baseColor.g * (1 - snap)),
-      b: Math.round(baseColor.b * (1 - snap))
-    };
+    // The spinning waveforms use the lighter cycling color.
+    const color: {r: number; g: number; b: number} = this.cachedLighterColor;
 
     // Draw left and right waveforms with glow
     this.drawWaveformSegment(ctx, this.leftPoints, numSamples, color, 0.6);
