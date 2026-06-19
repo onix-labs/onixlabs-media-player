@@ -143,8 +143,17 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
   /** Number of background stars. */
   private static readonly NUM_STARS: number = 400;
 
-  /** Pixels each star pans left per frame (the orbital camera move). */
-  private static readonly STAR_SPEED: number = 0.8;
+  /** Half field-of-view (radians) the starfield is projected through. */
+  private static readonly STAR_HALF_FOV: number = 1.1;
+
+  /** Radians the field's azimuth pans per frame (the orbital camera move). */
+  private static readonly STAR_ANGULAR_SPEED: number = 0.004;
+
+  /** Vertical spread of the field as a fraction of the half-height. */
+  private static readonly STAR_VERTICAL_SPREAD: number = 0.7;
+
+  /** Fraction of the FOV over which stars fade in/out at the edges. */
+  private static readonly STAR_EDGE_FADE: number = 0.15;
 
   /** Einstein (lensing) radius as a multiple of the horizon radius. */
   private static readonly EINSTEIN_RADIUS_FACTOR: number = 1.4;
@@ -168,7 +177,7 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
   private static readonly SECONDARY_STAR_ALPHA: number = 0.45;
 
   public readonly name: string = 'Black Hole';
-  public readonly category: string = 'Signature';
+  public readonly category: string = 'Waves';
 
   /** Time-domain audio buffer driving the waveform. */
   private dataArray: Uint8Array<ArrayBuffer>;
@@ -204,9 +213,9 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
   /** Scratch buffer for the circular low-pass smoothing passes. */
   private readonly edgeSmoothBuffer: Float32Array;
 
-  /** Background star positions (screen space) and per-star brightness. */
-  private readonly starX: Float32Array;
-  private readonly starY: Float32Array;
+  /** Background stars in viewer space: azimuth angle, elevation (-1..1), brightness. */
+  private readonly starAngle: Float32Array;
+  private readonly starElev: Float32Array;
   private readonly starBright: Float32Array;
   private starsSeeded: boolean = false;
 
@@ -241,8 +250,8 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     }
 
     const stars: number = BlackHoleVisualization.NUM_STARS;
-    this.starX = new Float32Array(stars);
-    this.starY = new Float32Array(stars);
+    this.starAngle = new Float32Array(stars);
+    this.starElev = new Float32Array(stars);
     this.starBright = new Float32Array(stars);
 
     // Maximum curve smoothing so the sampled ring reads as a flowing waveform.
@@ -337,6 +346,8 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     this.tempCanvas.width = this.width;
     this.tempCanvas.height = this.height;
 
+    // Stars live in resolution-independent angle/elevation, so a resize needs no
+    // repositioning — they re-project to the new size automatically.
     if (!this.starsSeeded) {
       this.seedStars();
       this.starsSeeded = true;
@@ -345,14 +356,15 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
-  /** Seeds the background stars at random screen positions and brightnesses. */
+  /** Seeds the background stars at random azimuth/elevation and brightness. */
   private seedStars(): void {
     const n: number = BlackHoleVisualization.NUM_STARS;
+    const halfFov: number = BlackHoleVisualization.STAR_HALF_FOV;
     const minB: number = BlackHoleVisualization.STAR_MIN_BRIGHTNESS;
     const range: number = BlackHoleVisualization.STAR_MAX_BRIGHTNESS - minB;
     for (let i: number = 0; i < n; i++) {
-      this.starX[i] = Math.random() * this.width;
-      this.starY[i] = Math.random() * this.height;
+      this.starAngle[i] = (Math.random() * MULTIPLIER_DOUBLE - 1) * halfFov;
+      this.starElev[i] = Math.random() * MULTIPLIER_DOUBLE - 1;
       this.starBright[i] = minB + Math.random() * range;
     }
   }
@@ -582,20 +594,24 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
   }
 
   /**
-   * Pans the starfield right-to-left and draws each star gravitationally lensed
-   * by the black hole. A point-mass lens produces two images of every star,
-   * both displaced away from the shadow, so stars bend and warp around the hole
-   * as they sweep behind it. The black core (drawn later) hides anything that
-   * would fall inside the shadow.
+   * Pans the starfield's azimuth and projects each star through a field of view:
+   * `tan(angle)` for the horizontal position (slow in the distant centre, fast at
+   * the near edges) and a `1/cos(angle)` depth that enlarges stars and spreads
+   * them vertically toward the edges, so each traces an elliptical arc — closer
+   * at the sides, receding into the distance in the middle. Each projected star
+   * is then gravitationally lensed by the hole (a primary and secondary image).
    */
   private drawStarfield(ctx: CanvasRenderingContext2D): void {
     const cx: number = this.centerX;
     const cy: number = this.centerY;
-    const width: number = this.width;
-    const height: number = this.height;
+    const halfW: number = this.width * HALF;
+    const halfH: number = this.height * HALF;
     const horizon: number = this.eventHorizonRadius;
     const rs2: number = this.einsteinRadius * this.einsteinRadius;
     const n: number = BlackHoleVisualization.NUM_STARS;
+    const halfFov: number = BlackHoleVisualization.STAR_HALF_FOV;
+    const focal: number = halfW / Math.tan(halfFov);
+    const spread: number = halfH * BlackHoleVisualization.STAR_VERTICAL_SPREAD;
     const minB: number = BlackHoleVisualization.STAR_MIN_BRIGHTNESS;
     const range: number = BlackHoleVisualization.STAR_MAX_BRIGHTNESS - minB;
 
@@ -603,18 +619,29 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = `rgb(255, 255, 255)`;
     for (let i: number = 0; i < n; i++) {
-      let x: number = this.starX[i] - BlackHoleVisualization.STAR_SPEED;
-      if (x < 0) {
-        x += width;
-        this.starY[i] = Math.random() * height;
+      // Advance the azimuth right-to-left; wrap back to the far edge.
+      let angle: number = this.starAngle[i] - BlackHoleVisualization.STAR_ANGULAR_SPEED;
+      if (angle < -halfFov) {
+        angle += halfFov * MULTIPLIER_DOUBLE;
+        this.starElev[i] = Math.random() * MULTIPLIER_DOUBLE - 1;
         this.starBright[i] = minB + Math.random() * range;
       }
-      this.starX[i] = x;
-      const y: number = this.starY[i];
-      const bright: number = this.starBright[i];
+      this.starAngle[i] = angle;
 
-      const dx: number = x - cx;
-      const dy: number = y - cy;
+      // Perspective projection: depth grows toward the edges of the field.
+      const depth: number = 1 / Math.cos(angle);
+      const sx: number = cx + Math.tan(angle) * focal;
+      const sy: number = cy + this.starElev[i] * spread * depth;
+
+      // Fade in/out at the edges so stars don't pop in/out abruptly.
+      const edge: number = 1 - Math.abs(angle) / halfFov;
+      const edgeAlpha: number = Math.min(1, edge / BlackHoleVisualization.STAR_EDGE_FADE);
+      const bright: number = this.starBright[i] * edgeAlpha;
+      const baseRadius: number = BlackHoleVisualization.STAR_BASE_RADIUS * depth;
+
+      // Gravitational lensing of the projected star around the hole.
+      const dx: number = sx - cx;
+      const dy: number = sy - cy;
       let r: number = Math.sqrt(dx * dx + dy * dy);
       if (r < 1) r = 1;
       const ux: number = dx / r;
@@ -624,14 +651,14 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
       // Primary image: always outside the Einstein ring.
       const r1: number = (r + root) / MULTIPLIER_DOUBLE;
       const mag1: number = (r1 * r1) / (r1 * r1 - rs2);
-      this.drawStar(ctx, cx + ux * r1, cy + uy * r1, mag1, bright, 1);
+      this.drawStar(ctx, cx + ux * r1, cy + uy * r1, mag1, bright, 1, baseRadius);
 
       // Secondary image: opposite side, inside the ring; skip if behind shadow.
       const r2: number = (root - r) / MULTIPLIER_DOUBLE;
       if (r2 > horizon) {
         const denom: number = rs2 - r2 * r2;
         const mag2: number = denom > 0 ? (r2 * r2) / denom : BlackHoleVisualization.STAR_MAX_MAGNIFICATION;
-        this.drawStar(ctx, cx - ux * r2, cy - uy * r2, mag2, bright, BlackHoleVisualization.SECONDARY_STAR_ALPHA);
+        this.drawStar(ctx, cx - ux * r2, cy - uy * r2, mag2, bright, BlackHoleVisualization.SECONDARY_STAR_ALPHA, baseRadius);
       }
     }
     ctx.restore();
@@ -644,10 +671,11 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     y: number,
     mag: number,
     brightness: number,
-    alphaScale: number
+    alphaScale: number,
+    baseRadius: number
   ): void {
     const m: number = Math.min(mag, BlackHoleVisualization.STAR_MAX_MAGNIFICATION);
-    const radius: number = BlackHoleVisualization.STAR_BASE_RADIUS * Math.sqrt(m);
+    const radius: number = baseRadius * Math.sqrt(m);
     ctx.globalAlpha = Math.min(1, brightness * alphaScale * (1 + (m - 1) * BlackHoleVisualization.STAR_MAG_BOOST));
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, TWO_PI);

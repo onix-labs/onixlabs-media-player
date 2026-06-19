@@ -401,10 +401,10 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'tunnel', name: 'Plasma', category: 'Waves', applicableSettings: []},
   {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: []},
   {id: 'pulsar', name: 'Pulsar', category: 'Waves', applicableSettings: []},
+  {id: 'blackhole', name: 'Black Hole', category: 'Waves', applicableSettings: []},
   // Signature category
   {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
-  {id: 'blackhole', name: 'Black Hole', category: 'Signature', applicableSettings: []},
   {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: []},
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
   // Simple category
@@ -492,10 +492,10 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'onix', label: 'Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
   {value: 'pulsar', label: 'Waves : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
+  {value: 'blackhole', label: 'Waves : Black Hole', description: 'Glowing accretion-disk waveform around a black core'},
   // Signature category
   {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
-  {value: 'blackhole', label: 'Signature : Black Hole', description: 'Glowing accretion-disk waveform around a black core'},
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},
   {value: 'logo', label: 'Simple : Logo', description: 'The ONIXPlayer logo, centred'},

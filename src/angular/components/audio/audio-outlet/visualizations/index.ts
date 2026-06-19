@@ -16,7 +16,7 @@
  * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
- * - blackhole: Black Hole - filled glowing accretion-disk waveform around a black core (signature category)
+ * - blackhole: Black Hole - filled glowing accretion-disk waveform around a black core (waves category)
  *
  * @module app/components/audio/audio-outlet/visualizations
  */
@@ -87,7 +87,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   onix: {name: 'Onix', category: 'Waves'},
   modern: {name: 'Modern', category: 'Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
-  blackhole: {name: 'Black Hole', category: 'Signature'},
+  blackhole: {name: 'Black Hole', category: 'Waves'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
@@ -125,7 +125,7 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  *
  * Categories (in order):
  * - Bars: bars
- * - Waves: waveform, modern, tunnel, infinity, neon, onix, pulsar
+ * - Waves: waveform, modern, tunnel, infinity, neon, onix, pulsar, blackhole
  * - Signature: spotlight, water (Reactor)
  * - Simple: blank, logo
  */
@@ -133,9 +133,9 @@ export const VISUALIZATION_TYPES: string[] = [
   // Bars
   'bars',
   // Waves
-  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'pulsar',
+  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'pulsar', 'blackhole',
   // Signature
-  'spotlight', 'water', 'blackhole',
+  'spotlight', 'water',
   // Simple
   'blank', 'logo',
 ];

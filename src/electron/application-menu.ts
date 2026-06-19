@@ -35,6 +35,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'neon', name: 'Neon'},
       {id: 'onix', name: 'Onix'},
       {id: 'pulsar', name: 'Pulsar'},
+      {id: 'blackhole', name: 'Black Hole'},
     ],
   },
   {
@@ -42,7 +43,6 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     items: [
       {id: 'spotlight', name: 'Spotlight'},
       {id: 'water', name: 'Reactor'},
-      {id: 'blackhole', name: 'Black Hole'},
     ],
   },
   {
