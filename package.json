@@ -10,6 +10,7 @@
   "type": "module",
   "scripts": {
     "ng": "ng",
+    "postinstall": "node scripts/ensure-electron-binary.mjs",
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
