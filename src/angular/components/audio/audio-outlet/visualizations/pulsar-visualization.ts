@@ -30,31 +30,41 @@ import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from '.
  * pulsating circle, with smooth color cycling.
  */
 export class PulsarVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Pulsar';
-  public readonly category: string = 'Waves';
+  /** Radians the trail rotates per frame. */
+  private static readonly ROTATION_SPEED: number = 0.005;
 
-  private readonly ROTATION_SPEED: number = 0.005;
-  private readonly WAVEFORM_ROTATION_SPEED: number = 0.005;
-  private readonly FADE_RATE: number = 0.001;
-  private readonly ZOOM_SCALE: number = 1.02;
-  private readonly HUE_CYCLE_SPEED: number = 0.15;
+  /** Radians the waveforms rotate per frame. */
+  private static readonly WAVEFORM_ROTATION_SPEED: number = 0.005;
 
-  // Bass transient detection. A strong bass hit produces a transient that is
-  // detected here so it remains available as a trigger, but currently drives
-  // no visual change.
-  private readonly BASS_BINS: number = 16;
-  private readonly TRANSIENT_THRESHOLD: number = 15;
-  private readonly MIN_LEVEL: number = 50;
+  /** Per-frame trail fade rate. */
+  private static readonly FADE_RATE: number = 0.001;
 
-  private frequencyData: Uint8Array<ArrayBuffer>;
-  private prevBass: number = 0;
+  /** Per-frame outward zoom applied to the trail. */
+  private static readonly ZOOM_SCALE: number = 1.02;
 
-  // Balanced sample count (was 1024, reduced to 256 for performance while keeping smoothness)
-  private readonly WAVEFORM_SAMPLES: number = 16;
-  private readonly CENTER_CIRCLE_POINTS: number = 64;
+  /** Degrees the hue advances per frame. */
+  private static readonly HUE_CYCLE_SPEED: number = 0.15;
 
-  // Saturation and lightness levels for gradient
-  private readonly GRADIENT_LEVELS: ReadonlyArray<{s: number; l: number}> = [
+  /** Number of low-frequency bins averaged for bass transient detection. */
+  private static readonly BASS_BINS: number = 16;
+
+  /** Minimum frame-over-frame bass rise that counts as a transient. */
+  private static readonly TRANSIENT_THRESHOLD: number = 15;
+
+  /** Minimum bass level required before a transient is considered. */
+  private static readonly MIN_LEVEL: number = 50;
+
+  /** Number of points sampled across each mirrored waveform half. */
+  private static readonly WAVEFORM_SAMPLES: number = 16;
+
+  /** Number of points around the pulsating center circle. */
+  private static readonly CENTER_CIRCLE_POINTS: number = 64;
+
+  /** Base glow blur radius in pixels. */
+  private static readonly BASE_GLOW_BLUR: number = 15;
+
+  /** Saturation and lightness levels for the center-circle gradient. */
+  private static readonly GRADIENT_LEVELS: ReadonlyArray<{s: number; l: number}> = [
     {s: 85, l: 12},
     {s: 80, l: 22},
     {s: 75, l: 35},
@@ -62,32 +72,39 @@ export class PulsarVisualization extends Canvas2DVisualization {
     {s: 75, l: 50}
   ];
 
-  // Audio data buffer
+  public readonly name: string = 'Pulsar';
+  public readonly category: string = 'Waves';
+
+  /** Frequency buffer for bass transient detection. */
+  private frequencyData: Uint8Array<ArrayBuffer>;
+  private prevBass: number = 0;
+
+  /** Time-domain audio buffer. */
   private dataArray: Uint8Array<ArrayBuffer>;
 
-  // Trail canvas (reused, not recreated each frame) - THIS IS THE KEY OPTIMIZATION
+  /** Trail canvas (reused, not recreated each frame) - THIS IS THE KEY OPTIMIZATION. */
   private trailCanvas: HTMLCanvasElement | null = null;
   private trailCtx: CanvasRenderingContext2D | null = null;
 
-  // Temp canvas for zoom/rotate effect (reused, not recreated each frame)
+  /** Temp canvas for the zoom/rotate effect (reused, not recreated each frame). */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
 
-  // Hue cycling with caching
+  /** Hue cycling with caching. */
   private hueOffset: number = 210;
   private cachedHue: number = -1;
   private cachedGradientColors: Array<{r: number; g: number; b: number}> = [];
   private cachedLighterColor: {r: number; g: number; b: number} = {r: 0, g: 0, b: 0};
 
-  // Waveform rotation
+  /** Current waveform rotation angle. */
   private waveformAngle: number = 0;
 
-  // Pre-allocated arrays to avoid GC pressure
+  /** Pre-allocated point arrays to avoid GC pressure. */
   private readonly leftPoints: Array<{x: number; y: number}>;
   private readonly rightPoints: Array<{x: number; y: number}>;
   private readonly centerPoints: Array<{x: number; y: number}>;
 
-  // Pre-computed values (updated on resize)
+  /** Pre-computed layout values (updated on resize). */
   private centerX: number = 0;
   private centerY: number = 0;
   private halfWidth: number = 0;
@@ -100,15 +117,15 @@ export class PulsarVisualization extends Canvas2DVisualization {
     this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
 
     // Pre-allocate point arrays
-    this.leftPoints = new Array(this.WAVEFORM_SAMPLES);
-    this.rightPoints = new Array(this.WAVEFORM_SAMPLES);
-    this.centerPoints = new Array(this.CENTER_CIRCLE_POINTS + 1);
+    this.leftPoints = new Array(PulsarVisualization.WAVEFORM_SAMPLES);
+    this.rightPoints = new Array(PulsarVisualization.WAVEFORM_SAMPLES);
+    this.centerPoints = new Array(PulsarVisualization.CENTER_CIRCLE_POINTS + 1);
 
-    for (let i: number = 0; i < this.WAVEFORM_SAMPLES; i++) {
+    for (let i: number = 0; i < PulsarVisualization.WAVEFORM_SAMPLES; i++) {
       this.leftPoints[i] = {x: 0, y: 0};
       this.rightPoints[i] = {x: 0, y: 0};
     }
-    for (let i: number = 0; i <= this.CENTER_CIRCLE_POINTS; i++) {
+    for (let i: number = 0; i <= PulsarVisualization.CENTER_CIRCLE_POINTS; i++) {
       this.centerPoints[i] = {x: 0, y: 0};
     }
 
@@ -118,6 +135,96 @@ export class PulsarVisualization extends Canvas2DVisualization {
     this.lineWidth = 1;           // 1px
     this.glowIntensity = 1;       // 100%
     this.waveformSmoothing = 1;   // 100%
+  }
+
+  public draw(): void {
+    this.updateFade();
+
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const height: number = this.height;
+    const centerX: number = this.centerX;
+    const centerY: number = this.centerY;
+
+    // Cycle hue and update cached colors if needed
+    this.hueOffset = (this.hueOffset + PulsarVisualization.HUE_CYCLE_SPEED) % 360;
+    this.updateGradientColors();
+
+    // Ensure canvases exist
+    if (!this.trailCanvas || !this.trailCtx || !this.tempCanvas || !this.tempCtx) {
+      this.onResize();
+    }
+
+    const trailCtx: CanvasRenderingContext2D = this.trailCtx!;
+    const trailCanvas: HTMLCanvasElement = this.trailCanvas!;
+    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
+    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
+
+    // Analyze bass frequencies to detect transients. A strong bass hit produces
+    // a transient that we still detect here (so the trigger remains available),
+    // but for now it is a no-op: it no longer flips the spin direction or fires
+    // a color switch.
+    this.analyser.getByteFrequencyData(this.frequencyData);
+    let bassSum: number = 0;
+    for (let i: number = 0; i < PulsarVisualization.BASS_BINS; i++) {
+      bassSum += this.frequencyData[i];
+    }
+    const bassAvg: number = bassSum / PulsarVisualization.BASS_BINS;
+    const bassIncrease: number = bassAvg - this.prevBass;
+    this.prevBass = bassAvg;
+
+    const isTransient: boolean = bassIncrease > PulsarVisualization.TRANSIENT_THRESHOLD && bassAvg > PulsarVisualization.MIN_LEVEL;
+
+    // Trigger detected. Intentionally a no-op for now - the direction flip and
+    // color switch it used to drive have been removed.
+    if (isTransient) {
+      // no-op
+    }
+
+    // Copy current trails to temp canvas (reused, not recreated)
+    tempCtx.clearRect(0, 0, width, height);
+    tempCtx.drawImage(trailCanvas, 0, 0);
+
+    // Clear trail canvas
+    trailCtx.clearRect(0, 0, width, height);
+
+    // Draw back previous trails with rotation, zoom, and fade.
+    // Apply trail intensity multiplier to fade rate.
+    const effectiveFadeRate: number = PulsarVisualization.FADE_RATE * this.getFadeMultiplier();
+    trailCtx.save();
+    // Use high-quality image smoothing to reduce artifacts from repeated scaling
+    trailCtx.imageSmoothingEnabled = true;
+    trailCtx.imageSmoothingQuality = 'high';
+    trailCtx.globalAlpha = 1 - effectiveFadeRate;
+    // Use floor to avoid sub-pixel center point which causes quadrant artifacts
+    const floorCenterX: number = Math.floor(centerX);
+    const floorCenterY: number = Math.floor(centerY);
+    trailCtx.translate(floorCenterX, floorCenterY);
+    trailCtx.rotate(PulsarVisualization.ROTATION_SPEED);
+    trailCtx.scale(PulsarVisualization.ZOOM_SCALE, PulsarVisualization.ZOOM_SCALE);
+    trailCtx.translate(-floorCenterX, -floorCenterY);
+    trailCtx.drawImage(tempCanvas, 0, 0);
+    trailCtx.restore();
+
+    // Get waveform data
+    this.analyser.getByteTimeDomainData(this.dataArray);
+
+    // Update waveform rotation
+    this.waveformAngle -= PulsarVisualization.WAVEFORM_ROTATION_SPEED;
+
+    // Draw the mirrored waveforms with rotation
+    trailCtx.save();
+    trailCtx.translate(centerX, centerY);
+    trailCtx.rotate(this.waveformAngle);
+    trailCtx.translate(-centerX, -centerY);
+    this.drawMirroredWaveform(trailCtx);
+    trailCtx.restore();
+
+    // Clear main canvas and composite the trail onto it.
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(trailCanvas, 0, 0);
+
+    this.applyFadeOverlay();
   }
 
   protected override onFftSizeChanged(): void {
@@ -131,19 +238,6 @@ export class PulsarVisualization extends Canvas2DVisualization {
   public override setLineWidth(): void { /* fixed */ }
   public override setGlowIntensity(): void { /* fixed */ }
   public override setWaveformSmoothing(): void { /* fixed */ }
-
-  // Cache gradient colors - only recalculate when hue changes by >= 1 degree
-  private updateGradientColors(): void {
-    const hueInt: number = Math.floor(this.hueOffset);
-    if (hueInt === this.cachedHue) return;
-
-    this.cachedHue = hueInt;
-    this.cachedGradientColors = this.GRADIENT_LEVELS.map(
-      (level: {s: number; l: number}): {r: number; g: number; b: number} =>
-        this.hslToRgb(this.hueOffset, level.s, level.l)
-    );
-    this.cachedLighterColor = this.hslToRgb(this.hueOffset, 60, 75);
-  }
 
   protected override onResize(): void {
     // Pre-compute center values
@@ -176,94 +270,17 @@ export class PulsarVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
-  public draw(): void {
-    this.updateFade();
+  /** Cache gradient colors - only recalculate when hue changes by >= 1 degree. */
+  private updateGradientColors(): void {
+    const hueInt: number = Math.floor(this.hueOffset);
+    if (hueInt === this.cachedHue) return;
 
-    const ctx: CanvasRenderingContext2D = this.ctx;
-    const width: number = this.width;
-    const height: number = this.height;
-    const centerX: number = this.centerX;
-    const centerY: number = this.centerY;
-
-    // Cycle hue and update cached colors if needed
-    this.hueOffset = (this.hueOffset + this.HUE_CYCLE_SPEED) % 360;
-    this.updateGradientColors();
-
-    // Ensure canvases exist
-    if (!this.trailCanvas || !this.trailCtx || !this.tempCanvas || !this.tempCtx) {
-      this.onResize();
-    }
-
-    const trailCtx: CanvasRenderingContext2D = this.trailCtx!;
-    const trailCanvas: HTMLCanvasElement = this.trailCanvas!;
-    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
-    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
-
-    // Analyze bass frequencies to detect transients. A strong bass hit produces
-    // a transient that we still detect here (so the trigger remains available),
-    // but for now it is a no-op: it no longer flips the spin direction or fires
-    // a color switch.
-    this.analyser.getByteFrequencyData(this.frequencyData);
-    let bassSum: number = 0;
-    for (let i: number = 0; i < this.BASS_BINS; i++) {
-      bassSum += this.frequencyData[i];
-    }
-    const bassAvg: number = bassSum / this.BASS_BINS;
-    const bassIncrease: number = bassAvg - this.prevBass;
-    this.prevBass = bassAvg;
-
-    const isTransient: boolean = bassIncrease > this.TRANSIENT_THRESHOLD && bassAvg > this.MIN_LEVEL;
-
-    // Trigger detected. Intentionally a no-op for now - the direction flip and
-    // color switch it used to drive have been removed.
-    if (isTransient) {
-      // no-op
-    }
-
-    // Copy current trails to temp canvas (reused, not recreated)
-    tempCtx.clearRect(0, 0, width, height);
-    tempCtx.drawImage(trailCanvas, 0, 0);
-
-    // Clear trail canvas
-    trailCtx.clearRect(0, 0, width, height);
-
-    // Draw back previous trails with rotation, zoom, and fade
-    // Apply trail intensity multiplier to fade rate
-    const effectiveFadeRate: number = this.FADE_RATE * this.getFadeMultiplier();
-    trailCtx.save();
-    // Use high-quality image smoothing to reduce artifacts from repeated scaling
-    trailCtx.imageSmoothingEnabled = true;
-    trailCtx.imageSmoothingQuality = 'high';
-    trailCtx.globalAlpha = 1 - effectiveFadeRate;
-    // Use floor to avoid sub-pixel center point which causes quadrant artifacts
-    const floorCenterX: number = Math.floor(centerX);
-    const floorCenterY: number = Math.floor(centerY);
-    trailCtx.translate(floorCenterX, floorCenterY);
-    trailCtx.rotate(this.ROTATION_SPEED);
-    trailCtx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
-    trailCtx.translate(-floorCenterX, -floorCenterY);
-    trailCtx.drawImage(tempCanvas, 0, 0);
-    trailCtx.restore();
-
-    // Get waveform data
-    this.analyser.getByteTimeDomainData(this.dataArray);
-
-    // Update waveform rotation
-    this.waveformAngle -= this.WAVEFORM_ROTATION_SPEED;
-
-    // Draw the mirrored waveforms with rotation
-    trailCtx.save();
-    trailCtx.translate(centerX, centerY);
-    trailCtx.rotate(this.waveformAngle);
-    trailCtx.translate(-centerX, -centerY);
-    this.drawMirroredWaveform(trailCtx);
-    trailCtx.restore();
-
-    // Clear main canvas and composite the trail onto it.
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(trailCanvas, 0, 0);
-
-    this.applyFadeOverlay();
+    this.cachedHue = hueInt;
+    this.cachedGradientColors = PulsarVisualization.GRADIENT_LEVELS.map(
+      (level: {s: number; l: number}): {r: number; g: number; b: number} =>
+        this.hslToRgb(this.hueOffset, level.s, level.l)
+    );
+    this.cachedLighterColor = this.hslToRgb(this.hueOffset, 60, 75);
   }
 
   private drawMirroredWaveform(ctx: CanvasRenderingContext2D): void {
@@ -277,7 +294,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const sensitivityFactor: number = this.sensitivityFactor;
     const amplitudeScale: number = height * 0.3;
     const bendStrength: number = 1.2;
-    const numSamples: number = this.WAVEFORM_SAMPLES;
+    const numSamples: number = PulsarVisualization.WAVEFORM_SAMPLES;
 
     // Calculate downsampling step
     const sampleStep: number = (dataLength * 0.5) / numSamples;
@@ -334,7 +351,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const centerX: number = this.centerX;
     const centerY: number = this.centerY;
     const baseRadius: number = this.baseCircleRadius;
-    const numPoints: number = this.CENTER_CIRCLE_POINTS;
+    const numPoints: number = PulsarVisualization.CENTER_CIRCLE_POINTS;
     const sensitivityFactor: number = this.sensitivityFactor;
     const amplitudeScale: number = height * 0.08;
     const sampleStep: number = (dataLength * 0.25) / numPoints;
@@ -359,7 +376,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
       ctx.closePath();
     };
 
-    const glowBlur: number = this.getScaledGlowBlur(15);
+    const glowBlur: number = this.getScaledGlowBlur(PulsarVisualization.BASE_GLOW_BLUR);
 
     // Draw glow layer
     ctx.save();
@@ -402,7 +419,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
       this.buildSmoothPath(ctx, points, count - 1);
     };
 
-    const glowBlur: number = this.getScaledGlowBlur(15);
+    const glowBlur: number = this.getScaledGlowBlur(PulsarVisualization.BASE_GLOW_BLUR);
 
     // Draw glow layer (restored for visual quality)
     ctx.save();

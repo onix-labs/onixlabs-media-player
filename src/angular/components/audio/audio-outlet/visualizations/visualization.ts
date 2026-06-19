@@ -704,6 +704,9 @@ export abstract class Canvas2DVisualization extends Visualization {
   /** Whether the visualization has drawn at least one frame. Used with preserveContentOnResize. */
   protected hasDrawn: boolean = false;
 
+  /** Frame counter backing periodicClearLowAlpha(). */
+  private persistenceFrameCount: number = 0;
+
   /** Cached color values for dual-hue cycling visualizations. */
   private cachedColor1: {main: string; glow: string} | null = null;
   private cachedColor2: {main: string; glow: string} | null = null;
@@ -820,6 +823,40 @@ export abstract class Canvas2DVisualization extends Visualization {
     }
 
     ctx.putImageData(imageData, 0, 0);
+  }
+
+  /**
+   * Applies an LCD-style persistence fade to the main canvas.
+   *
+   * Fills the canvas with a destination-out black at the given (trail-intensity
+   * adjusted) rate, fading existing content toward transparent each frame to
+   * create a ghosting/persistence trail.
+   *
+   * @param fadeRate - Base per-frame fade rate (scaled by getFadeMultiplier()).
+   */
+  protected applyPersistenceFade(fadeRate: number): void {
+    const effectiveFadeRate: number = fadeRate * this.getFadeMultiplier();
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'destination-out';
+    this.ctx.fillStyle = `rgba(0, 0, 0, ${effectiveFadeRate})`;
+    this.ctx.fillRect(0, 0, this.width, this.height);
+    this.ctx.restore();
+  }
+
+  /**
+   * Clears low-alpha pixels once every `interval` frames.
+   *
+   * The persistence fade is asymptotic and never reaches zero alpha, so faint
+   * ghost pixels accumulate. Calling this each frame removes them on a cadence
+   * without paying the getImageData cost every frame.
+   *
+   * @param interval - Number of frames between clears.
+   */
+  protected periodicClearLowAlpha(interval: number): void {
+    if (++this.persistenceFrameCount >= interval) {
+      this.persistenceFrameCount = 0;
+      this.clearLowAlphaPixels();
+    }
   }
 
   /**

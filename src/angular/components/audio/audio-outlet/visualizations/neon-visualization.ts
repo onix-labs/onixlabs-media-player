@@ -24,53 +24,70 @@ import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from '.
  * vertical waveforms of equal length with expanding trails.
  */
 export class NeonVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Neon';
-  public readonly category: string = 'Waves';
+  /** Per-frame trail fade rate. */
+  private static readonly FADE_RATE: number = 0.025;
 
-  private readonly FADE_RATE: number = 0.025;
-  private readonly ZOOM_SCALE: number = 1.03;
-  private readonly BASE_GLOW_BLUR: number = 15;
-  private readonly WAVEFORM_POINTS: number = 128;
-  private readonly ROTATION_SPEED: number = 0.005;
+  /** Per-frame outward zoom applied to the trails. */
+  private static readonly ZOOM_SCALE: number = 1.03;
 
-  /** Fixed colors for waveforms */
-  private readonly CYAN_COLOR: {main: string; glow: string} = {
+  /** Base glow blur radius in pixels. */
+  private static readonly BASE_GLOW_BLUR: number = 15;
+
+  /** Number of points sampled across each waveform. */
+  private static readonly WAVEFORM_POINTS: number = 32;
+
+  /** Radians each cross rotates per frame. */
+  private static readonly ROTATION_SPEED: number = 0.005;
+
+  /** Probability of toggling the color swap at each intersection. */
+  private static readonly SWAP_CHANCE: number = 0.5;
+
+  /** Cyan cross color (main + glow). */
+  private static readonly CYAN_COLOR: {main: string; glow: string} = {
     main: 'rgb(0, 255, 255)',
     glow: 'rgba(0, 255, 255, 0.8)'
   };
-  private readonly MAGENTA_COLOR: {main: string; glow: string} = {
+
+  /** Magenta cross color (main + glow). */
+  private static readonly MAGENTA_COLOR: {main: string; glow: string} = {
     main: 'rgb(255, 0, 255)',
     glow: 'rgba(255, 0, 255, 0.8)'
   };
 
-  /** Current rotation angle in radians */
+  /** Highlight stroke color shared by all waveforms. */
+  private static readonly COLOR_HIGHLIGHT: string = 'rgba(255, 255, 255, 0.5)';
+
+  public readonly name: string = 'Neon';
+  public readonly category: string = 'Waves';
+
+  /** Current rotation angle in radians. */
   private rotationAngle: number = 0;
 
-  /** Tracks which intersection zone we're in (0-3) to detect crossings */
+  /** Tracks which intersection zone we're in (0-3) to detect crossings. */
   private lastIntersectionZone: number = 0;
 
-  /** Whether colors are currently swapped */
+  /** Whether colors are currently swapped. */
   private colorsSwapped: boolean = false;
 
   private dataArray: Uint8Array<ArrayBuffer>;
 
-  /** Trail canvases for each cross */
+  /** Trail canvases for each cross. */
   private cyanTrailCanvas: HTMLCanvasElement | null = null;
   private cyanTrailCtx: CanvasRenderingContext2D | null = null;
   private magentaTrailCanvas: HTMLCanvasElement | null = null;
   private magentaTrailCtx: CanvasRenderingContext2D | null = null;
 
-  /** Temp canvas for zoom effect */
+  /** Temp canvas for the zoom effect. */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
 
-  /** Pre-allocated point arrays for waveforms (2 per cross) */
+  /** Pre-allocated point arrays for waveforms (2 per cross). */
   private readonly cyanHorizontalPoints: Array<{x: number; y: number}>;
   private readonly cyanVerticalPoints: Array<{x: number; y: number}>;
   private readonly magentaHorizontalPoints: Array<{x: number; y: number}>;
   private readonly magentaVerticalPoints: Array<{x: number; y: number}>;
 
-  /** Layout values */
+  /** Layout values (recomputed on resize). */
   private screenCenterX: number = 0;
   private screenCenterY: number = 0;
   private waveformLength: number = 0;
@@ -83,7 +100,7 @@ export class NeonVisualization extends Canvas2DVisualization {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
-    this.sensitivity = 0.2;       // 20%
+    this.sensitivity = 0.3;       // 30%
     this.trailIntensity = 0.5;    // 50%
     this.lineWidth = 1;           // 1px
     this.glowIntensity = 0.5;     // 50%
@@ -94,12 +111,107 @@ export class NeonVisualization extends Canvas2DVisualization {
     this.cyanVerticalPoints = [];
     this.magentaHorizontalPoints = [];
     this.magentaVerticalPoints = [];
-    for (let i: number = 0; i <= this.WAVEFORM_POINTS; i++) {
+    for (let i: number = 0; i <= NeonVisualization.WAVEFORM_POINTS; i++) {
       this.cyanHorizontalPoints.push({x: 0, y: 0});
       this.cyanVerticalPoints.push({x: 0, y: 0});
       this.magentaHorizontalPoints.push({x: 0, y: 0});
       this.magentaVerticalPoints.push({x: 0, y: 0});
     }
+  }
+
+  public draw(): void {
+    this.updateFade();
+
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const height: number = this.height;
+
+    if (width <= 0 || height <= 0) return;
+
+    // Ensure canvases exist
+    if (!this.cyanTrailCanvas || !this.magentaTrailCanvas || !this.tempCanvas) {
+      this.onResize();
+    }
+
+    // Get time domain data
+    this.analyser.getByteTimeDomainData(this.dataArray);
+
+    // Update rotation angle
+    this.rotationAngle += NeonVisualization.ROTATION_SPEED;
+
+    // Detect intersection crossings and randomly swap colors.
+    // Crosses align (intersect) every π/4 radians (45°) since one rotates
+    // clockwise and the other counter-clockwise.
+    const quarterPi: number = Math.PI / 4;
+    // Determine which intersection zone we're in (0, 1, 2, or 3 within each π cycle)
+    const currentZone: number = Math.floor(((this.rotationAngle % Math.PI) + Math.PI) % Math.PI / quarterPi);
+
+    // When we cross into a new zone (intersection point), randomly decide to swap
+    if (currentZone !== this.lastIntersectionZone) {
+      this.lastIntersectionZone = currentZone;
+      if (Math.random() < NeonVisualization.SWAP_CHANCE) {
+        this.colorsSwapped = !this.colorsSwapped;
+      }
+    }
+
+    // Select colors based on swap state
+    const color1: {main: string; glow: string} = this.colorsSwapped ? NeonVisualization.MAGENTA_COLOR : NeonVisualization.CYAN_COLOR;
+    const color2: {main: string; glow: string} = this.colorsSwapped ? NeonVisualization.CYAN_COLOR : NeonVisualization.MAGENTA_COLOR;
+
+    // Apply zoom effect to both trail canvases
+    this.applyDirectionalZoom(
+      this.cyanTrailCanvas!, this.cyanTrailCtx!,
+      this.tempCanvas!, this.tempCtx!,
+      this.screenCenterX, this.screenCenterY,
+      NeonVisualization.FADE_RATE, NeonVisualization.ZOOM_SCALE
+    );
+    this.applyDirectionalZoom(
+      this.magentaTrailCanvas!, this.magentaTrailCtx!,
+      this.tempCanvas!, this.tempCtx!,
+      this.screenCenterX, this.screenCenterY,
+      NeonVisualization.FADE_RATE, NeonVisualization.ZOOM_SCALE
+    );
+
+    // Cross 1 (rotates clockwise)
+    this.calculateHorizontalWaveformPoints(this.cyanHorizontalPoints, 0);
+    this.calculateVerticalWaveformPoints(this.cyanVerticalPoints, 0);
+    this.rotatePoints(this.cyanHorizontalPoints, this.rotationAngle);
+    this.rotatePoints(this.cyanVerticalPoints, this.rotationAngle);
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.cyanTrailCtx!, this.cyanHorizontalPoints, NeonVisualization.WAVEFORM_POINTS); },
+      color1.main, color1.glow, NeonVisualization.COLOR_HIGHLIGHT,
+      {ctx: this.cyanTrailCtx!, baseGlowBlur: NeonVisualization.BASE_GLOW_BLUR}
+    );
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.cyanTrailCtx!, this.cyanVerticalPoints, NeonVisualization.WAVEFORM_POINTS); },
+      color1.main, color1.glow, NeonVisualization.COLOR_HIGHLIGHT,
+      {ctx: this.cyanTrailCtx!, baseGlowBlur: NeonVisualization.BASE_GLOW_BLUR}
+    );
+
+    // Cross 2 (rotates counter-clockwise)
+    this.calculateHorizontalWaveformPoints(this.magentaHorizontalPoints, NeonVisualization.WAVEFORM_POINTS / 2);
+    this.calculateVerticalWaveformPoints(this.magentaVerticalPoints, NeonVisualization.WAVEFORM_POINTS / 2);
+    this.rotatePoints(this.magentaHorizontalPoints, -this.rotationAngle);
+    this.rotatePoints(this.magentaVerticalPoints, -this.rotationAngle);
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.magentaTrailCtx!, this.magentaHorizontalPoints, NeonVisualization.WAVEFORM_POINTS); },
+      color2.main, color2.glow, NeonVisualization.COLOR_HIGHLIGHT,
+      {ctx: this.magentaTrailCtx!, baseGlowBlur: NeonVisualization.BASE_GLOW_BLUR}
+    );
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.magentaTrailCtx!, this.magentaVerticalPoints, NeonVisualization.WAVEFORM_POINTS); },
+      color2.main, color2.glow, NeonVisualization.COLOR_HIGHLIGHT,
+      {ctx: this.magentaTrailCtx!, baseGlowBlur: NeonVisualization.BASE_GLOW_BLUR}
+    );
+
+    // Composite both trail canvases to main canvas with additive blending
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(this.cyanTrailCanvas!, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(this.magentaTrailCanvas!, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+
+    this.applyFadeOverlay();
   }
 
   protected override onFftSizeChanged(): void {
@@ -124,7 +236,7 @@ export class NeonVisualization extends Canvas2DVisualization {
     // Both waveforms use 8/9 of the shorter axis so they stay visible when rotating
     this.waveformLength = Math.min(width, height) * 8 / 9;
     this.waveformAmplitude = this.waveformLength * 0.15;
-    this.sliceSize = this.waveformLength / this.WAVEFORM_POINTS;
+    this.sliceSize = this.waveformLength / NeonVisualization.WAVEFORM_POINTS;
 
     // Center the waveforms on screen
     this.horizontalStartX = (width - this.waveformLength) / 2;
@@ -159,107 +271,11 @@ export class NeonVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, width, height);
   }
 
-  public draw(): void {
-    this.updateFade();
-
-    const ctx: CanvasRenderingContext2D = this.ctx;
-    const width: number = this.width;
-    const height: number = this.height;
-
-    if (width <= 0 || height <= 0) return;
-
-    // Ensure canvases exist
-    if (!this.cyanTrailCanvas || !this.magentaTrailCanvas || !this.tempCanvas) {
-      this.onResize();
-    }
-
-    // Get time domain data
-    this.analyser.getByteTimeDomainData(this.dataArray);
-
-    // Update rotation angle
-    this.rotationAngle += this.ROTATION_SPEED;
-
-    // Detect intersection crossings and randomly swap colors.
-    // Crosses align (intersect) every π/4 radians (45°) since one rotates
-    // clockwise and the other counter-clockwise.
-    const quarterPi: number = Math.PI / 4;
-    // Determine which intersection zone we're in (0, 1, 2, or 3 within each π cycle)
-    const currentZone: number = Math.floor(((this.rotationAngle % Math.PI) + Math.PI) % Math.PI / quarterPi);
-
-    // When we cross into a new zone (intersection point), randomly decide to swap
-    if (currentZone !== this.lastIntersectionZone) {
-      this.lastIntersectionZone = currentZone;
-      // 50% chance to toggle the swap state on each intersection
-      if (Math.random() < 0.5) {
-        this.colorsSwapped = !this.colorsSwapped;
-      }
-    }
-
-    // Select colors based on swap state
-    const color1: {main: string; glow: string} = this.colorsSwapped ? this.MAGENTA_COLOR : this.CYAN_COLOR;
-    const color2: {main: string; glow: string} = this.colorsSwapped ? this.CYAN_COLOR : this.MAGENTA_COLOR;
-
-    // Apply zoom effect to both trail canvases
-    this.applyDirectionalZoom(
-      this.cyanTrailCanvas!, this.cyanTrailCtx!,
-      this.tempCanvas!, this.tempCtx!,
-      this.screenCenterX, this.screenCenterY,
-      this.FADE_RATE, this.ZOOM_SCALE
-    );
-    this.applyDirectionalZoom(
-      this.magentaTrailCanvas!, this.magentaTrailCtx!,
-      this.tempCanvas!, this.tempCtx!,
-      this.screenCenterX, this.screenCenterY,
-      this.FADE_RATE, this.ZOOM_SCALE
-    );
-
-    // Cross 1 (rotates clockwise)
-    this.calculateHorizontalWaveformPoints(this.cyanHorizontalPoints, 0);
-    this.calculateVerticalWaveformPoints(this.cyanVerticalPoints, 0);
-    this.rotatePoints(this.cyanHorizontalPoints, this.rotationAngle);
-    this.rotatePoints(this.cyanVerticalPoints, this.rotationAngle);
-    this.drawPathWithLayers(
-      (): void => { this.buildSmoothPath(this.cyanTrailCtx!, this.cyanHorizontalPoints, this.WAVEFORM_POINTS); },
-      color1.main, color1.glow, 'rgba(255, 255, 255, 0.5)',
-      {ctx: this.cyanTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR}
-    );
-    this.drawPathWithLayers(
-      (): void => { this.buildSmoothPath(this.cyanTrailCtx!, this.cyanVerticalPoints, this.WAVEFORM_POINTS); },
-      color1.main, color1.glow, 'rgba(255, 255, 255, 0.5)',
-      {ctx: this.cyanTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR}
-    );
-
-    // Cross 2 (rotates counter-clockwise)
-    this.calculateHorizontalWaveformPoints(this.magentaHorizontalPoints, this.WAVEFORM_POINTS / 2);
-    this.calculateVerticalWaveformPoints(this.magentaVerticalPoints, this.WAVEFORM_POINTS / 2);
-    this.rotatePoints(this.magentaHorizontalPoints, -this.rotationAngle);
-    this.rotatePoints(this.magentaVerticalPoints, -this.rotationAngle);
-    this.drawPathWithLayers(
-      (): void => { this.buildSmoothPath(this.magentaTrailCtx!, this.magentaHorizontalPoints, this.WAVEFORM_POINTS); },
-      color2.main, color2.glow, 'rgba(255, 255, 255, 0.5)',
-      {ctx: this.magentaTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR}
-    );
-    this.drawPathWithLayers(
-      (): void => { this.buildSmoothPath(this.magentaTrailCtx!, this.magentaVerticalPoints, this.WAVEFORM_POINTS); },
-      color2.main, color2.glow, 'rgba(255, 255, 255, 0.5)',
-      {ctx: this.magentaTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR}
-    );
-
-    // Composite both trail canvases to main canvas with additive blending
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(this.cyanTrailCanvas!, 0, 0);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(this.magentaTrailCanvas!, 0, 0);
-    ctx.globalCompositeOperation = 'source-over';
-
-    this.applyFadeOverlay();
-  }
-
   private calculateHorizontalWaveformPoints(
     points: Array<{x: number; y: number}>,
     dataOffset: number
   ): void {
-    const numPoints: number = this.WAVEFORM_POINTS;
+    const numPoints: number = NeonVisualization.WAVEFORM_POINTS;
     const dataLength: number = this.dataArray.length;
     const sliceSize: number = this.sliceSize;
     const startX: number = this.horizontalStartX;
@@ -281,7 +297,7 @@ export class NeonVisualization extends Canvas2DVisualization {
     points: Array<{x: number; y: number}>,
     dataOffset: number
   ): void {
-    const numPoints: number = this.WAVEFORM_POINTS;
+    const numPoints: number = NeonVisualization.WAVEFORM_POINTS;
     const dataLength: number = this.dataArray.length;
     const sliceSize: number = this.sliceSize;
     const centerX: number = this.screenCenterX;

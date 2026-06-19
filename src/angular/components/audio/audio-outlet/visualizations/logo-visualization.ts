@@ -12,14 +12,14 @@ import {Canvas2DVisualization, VisualizationConfig} from './visualization';
 
 /** Logo visualization: the ONIXPlayer logo, centred and scaled to fit. */
 export class LogoVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Logo';
-  public readonly category: string = 'Simple';
-
   /** Max logo width as a fraction of the canvas width. */
-  private readonly LOGO_WIDTH_FRACTION: number = 0.7;
+  private static readonly LOGO_WIDTH_FRACTION: number = 0.7;
 
   /** Max logo height as a fraction of the canvas height. */
-  private readonly LOGO_HEIGHT_FRACTION: number = 0.5;
+  private static readonly LOGO_HEIGHT_FRACTION: number = 0.5;
+
+  public readonly name: string = 'Logo';
+  public readonly category: string = 'Simple';
 
   /** Always render at the display's native resolution (never the pixelated render-resolution). */
   public override readonly rendersAtNativeResolution: boolean = true;
@@ -48,8 +48,8 @@ export class LogoVisualization extends Canvas2DVisualization {
 
     // Fit the logo (preserving aspect ratio) inside a box that's a fraction of
     // the canvas - width-led, since the logo is wide, but capped by height.
-    const maxWidth: number = width * this.LOGO_WIDTH_FRACTION;
-    const maxHeight: number = height * this.LOGO_HEIGHT_FRACTION;
+    const maxWidth: number = width * LogoVisualization.LOGO_WIDTH_FRACTION;
+    const maxHeight: number = height * LogoVisualization.LOGO_HEIGHT_FRACTION;
     const aspect: number = this.logo.naturalWidth / this.logo.naturalHeight;
     let drawWidth: number = maxWidth;
     let drawHeight: number = drawWidth / aspect;

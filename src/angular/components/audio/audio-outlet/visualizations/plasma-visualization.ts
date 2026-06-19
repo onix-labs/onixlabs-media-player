@@ -22,36 +22,54 @@ import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from '.
  * from the center, creating a tunnel-like effect.
  */
 export class PlasmaVisualization extends Canvas2DVisualization {
+  /** Per-frame trail fade rate. */
+  private static readonly FADE_RATE: number = 0.025;
+
+  /** Per-frame outward zoom applied to the trails. */
+  private static readonly ZOOM_SCALE: number = 1.02;
+
+  /** Base glow blur radius in pixels. */
+  private static readonly BASE_GLOW_BLUR: number = 15;
+
+  /** Number of points sampled across each waveform. */
+  private static readonly WAVEFORM_POINTS: number = 128;
+
+  /** Degrees the hue advances per frame. */
+  private static readonly HUE_CYCLE_SPEED: number = 0.5;
+
+  /** Initial hue for the top waveform (blue). */
+  private static readonly START_HUE_TOP: number = 240;
+
+  /** Initial hue for the bottom waveform (green, 120 degrees away). */
+  private static readonly START_HUE_BOTTOM: number = 120;
+
+  /** Highlight stroke color shared by both waveforms. */
+  private static readonly COLOR_HIGHLIGHT: string = 'rgba(255, 255, 255, 0.5)';
+
   public readonly name: string = 'Plasma';
   public readonly category: string = 'Waves';
 
-  private readonly FADE_RATE: number = 0.025;
-  private readonly ZOOM_SCALE: number = 1.02;
-  private readonly BASE_GLOW_BLUR: number = 15;
-  private readonly WAVEFORM_POINTS: number = 128;
-  private readonly HUE_CYCLE_SPEED: number = 0.5;
-
-  /** Current hue values for each waveform (0-360) */
-  private hue1: number = 240;  // Start at blue
-  private hue2: number = 120;  // Start at green (180 degrees apart)
+  /** Current hue values for each waveform (0-360). */
+  private hue1: number = PlasmaVisualization.START_HUE_TOP;
+  private hue2: number = PlasmaVisualization.START_HUE_BOTTOM;
 
   private dataArray: Uint8Array<ArrayBuffer>;
 
-  /** Trail canvases for each waveform */
+  /** Trail canvases for each waveform. */
   private topTrailCanvas: HTMLCanvasElement | null = null;
   private topTrailCtx: CanvasRenderingContext2D | null = null;
   private bottomTrailCanvas: HTMLCanvasElement | null = null;
   private bottomTrailCtx: CanvasRenderingContext2D | null = null;
 
-  /** Temp canvas for zoom effect */
+  /** Temp canvas for the zoom effect. */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
 
-  /** Pre-allocated point arrays for waveforms */
+  /** Pre-allocated point arrays for the waveforms. */
   private readonly topPoints: Array<{x: number; y: number}>;
   private readonly bottomPoints: Array<{x: number; y: number}>;
 
-  /** Layout values */
+  /** Layout values (recomputed on resize). */
   private screenCenterX: number = 0;
   private screenCenterY: number = 0;
   private topCenterY: number = 0;
@@ -72,10 +90,73 @@ export class PlasmaVisualization extends Canvas2DVisualization {
     // Pre-allocate point arrays
     this.topPoints = [];
     this.bottomPoints = [];
-    for (let i: number = 0; i <= this.WAVEFORM_POINTS; i++) {
+    for (let i: number = 0; i <= PlasmaVisualization.WAVEFORM_POINTS; i++) {
       this.topPoints.push({x: 0, y: 0});
       this.bottomPoints.push({x: 0, y: 0});
     }
+  }
+
+  public draw(): void {
+    this.updateFade();
+
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const height: number = this.height;
+
+    if (width <= 0 || height <= 0) return;
+
+    // Ensure canvases exist
+    if (!this.topTrailCanvas || !this.bottomTrailCanvas || !this.tempCanvas) {
+      this.onResize();
+    }
+
+    // Get time domain data
+    this.analyser.getByteTimeDomainData(this.dataArray);
+
+    // Cycle hues through the spectrum
+    this.hue1 = (this.hue1 + PlasmaVisualization.HUE_CYCLE_SPEED) % 360;
+    this.hue2 = (this.hue2 + PlasmaVisualization.HUE_CYCLE_SPEED) % 360;
+
+    // Get current colors (cached with hue shift)
+    const color1: {main: string; glow: string} = this.getCachedColor(1, this.hue1);
+    const color2: {main: string; glow: string} = this.getCachedColor(2, this.hue2);
+
+    // Process top waveform (trails expand outward from center)
+    this.applyDirectionalZoom(
+      this.topTrailCanvas!, this.topTrailCtx!,
+      this.tempCanvas!, this.tempCtx!,
+      this.screenCenterX, this.screenCenterY,
+      PlasmaVisualization.FADE_RATE, PlasmaVisualization.ZOOM_SCALE
+    );
+    this.calculateWaveformPoints(this.topPoints, this.topCenterY, 0);
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.topTrailCtx!, this.topPoints, PlasmaVisualization.WAVEFORM_POINTS); },
+      color1.main, color1.glow, PlasmaVisualization.COLOR_HIGHLIGHT,
+      {ctx: this.topTrailCtx!, baseGlowBlur: PlasmaVisualization.BASE_GLOW_BLUR}
+    );
+
+    // Process bottom waveform (trails expand outward from center)
+    this.applyDirectionalZoom(
+      this.bottomTrailCanvas!, this.bottomTrailCtx!,
+      this.tempCanvas!, this.tempCtx!,
+      this.screenCenterX, this.screenCenterY,
+      PlasmaVisualization.FADE_RATE, PlasmaVisualization.ZOOM_SCALE
+    );
+    this.calculateWaveformPoints(this.bottomPoints, this.bottomCenterY, PlasmaVisualization.WAVEFORM_POINTS / 2);
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.bottomTrailCtx!, this.bottomPoints, PlasmaVisualization.WAVEFORM_POINTS); },
+      color2.main, color2.glow, PlasmaVisualization.COLOR_HIGHLIGHT,
+      {ctx: this.bottomTrailCtx!, baseGlowBlur: PlasmaVisualization.BASE_GLOW_BLUR}
+    );
+
+    // Composite both trail canvases to main canvas with additive blending
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(this.topTrailCanvas!, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(this.bottomTrailCanvas!, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+
+    this.applyFadeOverlay();
   }
 
   protected override onFftSizeChanged(): void {
@@ -105,7 +186,7 @@ export class PlasmaVisualization extends Canvas2DVisualization {
     this.waveformAmplitude = height * 0.15;
 
     // Width per point
-    this.sliceWidth = width / this.WAVEFORM_POINTS;
+    this.sliceWidth = width / PlasmaVisualization.WAVEFORM_POINTS;
 
     // Create trail canvases if needed
     if (!this.topTrailCanvas) {
@@ -136,75 +217,12 @@ export class PlasmaVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, width, height);
   }
 
-  public draw(): void {
-    this.updateFade();
-
-    const ctx: CanvasRenderingContext2D = this.ctx;
-    const width: number = this.width;
-    const height: number = this.height;
-
-    if (width <= 0 || height <= 0) return;
-
-    // Ensure canvases exist
-    if (!this.topTrailCanvas || !this.bottomTrailCanvas || !this.tempCanvas) {
-      this.onResize();
-    }
-
-    // Get time domain data
-    this.analyser.getByteTimeDomainData(this.dataArray);
-
-    // Cycle hues through the spectrum
-    this.hue1 = (this.hue1 + this.HUE_CYCLE_SPEED) % 360;
-    this.hue2 = (this.hue2 + this.HUE_CYCLE_SPEED) % 360;
-
-    // Get current colors (cached with hue shift)
-    const color1: {main: string; glow: string} = this.getCachedColor(1, this.hue1);
-    const color2: {main: string; glow: string} = this.getCachedColor(2, this.hue2);
-
-    // Process top waveform (trails expand outward from center)
-    this.applyDirectionalZoom(
-      this.topTrailCanvas!, this.topTrailCtx!,
-      this.tempCanvas!, this.tempCtx!,
-      this.screenCenterX, this.screenCenterY,
-      this.FADE_RATE, this.ZOOM_SCALE
-    );
-    this.calculateWaveformPoints(this.topPoints, this.topCenterY, 0);
-    this.drawPathWithLayers(
-      (): void => { this.buildSmoothPath(this.topTrailCtx!, this.topPoints, this.WAVEFORM_POINTS); },
-      color1.main, color1.glow, 'rgba(255, 255, 255, 0.5)',
-      {ctx: this.topTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR}
-    );
-
-    // Process bottom waveform (trails expand outward from center)
-    this.applyDirectionalZoom(
-      this.bottomTrailCanvas!, this.bottomTrailCtx!,
-      this.tempCanvas!, this.tempCtx!,
-      this.screenCenterX, this.screenCenterY,
-      this.FADE_RATE, this.ZOOM_SCALE
-    );
-    this.calculateWaveformPoints(this.bottomPoints, this.bottomCenterY, this.WAVEFORM_POINTS / 2);
-    this.drawPathWithLayers(
-      (): void => { this.buildSmoothPath(this.bottomTrailCtx!, this.bottomPoints, this.WAVEFORM_POINTS); },
-      color2.main, color2.glow, 'rgba(255, 255, 255, 0.5)',
-      {ctx: this.bottomTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR}
-    );
-
-    // Composite both trail canvases to main canvas with additive blending
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(this.topTrailCanvas!, 0, 0);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(this.bottomTrailCanvas!, 0, 0);
-    ctx.globalCompositeOperation = 'source-over';
-
-    this.applyFadeOverlay();
-  }
-
   private calculateWaveformPoints(
     points: Array<{x: number; y: number}>,
     centerY: number,
     dataOffset: number
   ): void {
-    const numPoints: number = this.WAVEFORM_POINTS;
+    const numPoints: number = PlasmaVisualization.WAVEFORM_POINTS;
     const dataLength: number = this.dataArray.length;
     const sliceWidth: number = this.sliceWidth;
     const amplitude: number = this.waveformAmplitude;

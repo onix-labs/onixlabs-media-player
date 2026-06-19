@@ -26,21 +26,32 @@ import {ONIX_COLORS_FLAT, ONIX_COLOR_COUNT} from './visualization-constants';
  * but with ONIXLabs brand colors instead of solid green.
  */
 export class ModernVisualization extends Canvas2DVisualization {
+  /** Very slow fade for the LCD ghosting effect. */
+  private static readonly FADE_RATE: number = 0.03;
+
+  /** Base glow blur radius in pixels. */
+  private static readonly BASE_GLOW_BLUR: number = 15;
+
+  /** Number of points sampled across the waveform. */
+  private static readonly WAVEFORM_POINTS: number = 32;
+
+  /** Clear low-alpha pixels every N frames to suppress ghosting. */
+  private static readonly THRESHOLD_CLEAR_INTERVAL: number = 10;
+
+  /** Number of layered strokes used to build the soft glow. */
+  private static readonly GLOW_PASSES: number = 3;
+
   public readonly name: string = 'Modern';
   public readonly category: string = 'Waves';
 
-  private readonly FADE_RATE: number = 0.03; // Very slow fade for LCD ghosting effect
-  private readonly BASE_GLOW_BLUR: number = 15;
-  private readonly WAVEFORM_POINTS: number = 32;
-  private readonly THRESHOLD_CLEAR_INTERVAL: number = 10; // Clear low-alpha pixels every N frames
   private dataArray: Uint8Array<ArrayBuffer>;
-  private frameCount: number = 0;
 
-  /** Pre-allocated point array for waveform */
+  /** Pre-allocated point array for the waveform. */
   private readonly points: Array<{x: number; y: number}>;
 
-  /** Cached gradient for performance */
+  /** Cached gradients (rebuilt only when width changes). */
   private cachedGradient: CanvasGradient | null = null;
+  private cachedGlowGradient: CanvasGradient | null = null;
   private cachedGradientWidth: number = 0;
 
   public constructor(config: VisualizationConfig) {
@@ -56,68 +67,9 @@ export class ModernVisualization extends Canvas2DVisualization {
 
     // Pre-allocate point array
     this.points = [];
-    for (let i: number = 0; i <= this.WAVEFORM_POINTS; i++) {
+    for (let i: number = 0; i <= ModernVisualization.WAVEFORM_POINTS; i++) {
       this.points.push({x: 0, y: 0});
     }
-  }
-
-  protected override onFftSizeChanged(): void {
-    this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
-  }
-
-  // Fixed visual parameters: ignore the global controls (values set in constructor).
-  public override setSensitivity(): void { /* fixed */ }
-  public override setTrailIntensity(): void { /* fixed */ }
-  public override setLineWidth(): void { /* fixed */ }
-  public override setGlowIntensity(): void { /* fixed */ }
-  public override setWaveformSmoothing(): void { /* fixed */ }
-
-  protected override onResize(): void {
-    this.cachedGradient = null;
-  }
-
-  /**
-   * Creates or returns cached horizontal gradient using ONIXLabs brand colors.
-   */
-  private getGradient(): CanvasGradient {
-    if (this.cachedGradient && this.cachedGradientWidth === this.width) {
-      return this.cachedGradient;
-    }
-
-    const gradient: CanvasGradient = this.ctx.createLinearGradient(0, 0, this.width, 0);
-
-    // Add color stops for each brand color
-    for (let i: number = 0; i < ONIX_COLOR_COUNT; i++) {
-      const idx: number = i * 3;
-      const r: number = ONIX_COLORS_FLAT[idx];
-      const g: number = ONIX_COLORS_FLAT[idx + 1];
-      const b: number = ONIX_COLORS_FLAT[idx + 2];
-      const stop: number = i / (ONIX_COLOR_COUNT - 1);
-      gradient.addColorStop(stop, `rgb(${r}, ${g}, ${b})`);
-    }
-
-    this.cachedGradient = gradient;
-    this.cachedGradientWidth = this.width;
-    return gradient;
-  }
-
-  /**
-   * Creates a glow gradient with reduced opacity.
-   */
-  private getGlowGradient(): CanvasGradient {
-    const gradient: CanvasGradient = this.ctx.createLinearGradient(0, 0, this.width, 0);
-
-    // Add color stops for each brand color with reduced opacity
-    for (let i: number = 0; i < ONIX_COLOR_COUNT; i++) {
-      const idx: number = i * 3;
-      const r: number = ONIX_COLORS_FLAT[idx];
-      const g: number = ONIX_COLORS_FLAT[idx + 1];
-      const b: number = ONIX_COLORS_FLAT[idx + 2];
-      const stop: number = i / (ONIX_COLOR_COUNT - 1);
-      gradient.addColorStop(stop, `rgba(${r}, ${g}, ${b}, 0.8)`);
-    }
-
-    return gradient;
   }
 
   public draw(): void {
@@ -129,27 +81,17 @@ export class ModernVisualization extends Canvas2DVisualization {
 
     if (width <= 0 || height <= 0) return;
 
-    // Slow fade effect - creates the LCD ghosting/persistence (transparent background)
-    // Apply trail intensity multiplier to fade rate
-    const effectiveFadeRate: number = this.FADE_RATE * this.getFadeMultiplier();
-    ctx.save();
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = `rgba(0, 0, 0, ${effectiveFadeRate})`;
-    ctx.fillRect(0, 0, width, height);
-    ctx.restore();
+    // Slow fade creates the LCD ghosting/persistence (transparent background).
+    this.applyPersistenceFade(ModernVisualization.FADE_RATE);
 
-    // Periodically clear low-alpha pixels to prevent ghosting artifacts
-    this.frameCount++;
-    if (this.frameCount >= this.THRESHOLD_CLEAR_INTERVAL) {
-      this.frameCount = 0;
-      this.clearLowAlphaPixels();
-    }
+    // Periodically clear low-alpha pixels to prevent ghosting artifacts.
+    this.periodicClearLowAlpha(ModernVisualization.THRESHOLD_CLEAR_INTERVAL);
 
     // Get time domain data (waveform)
     this.analyser.getByteTimeDomainData(this.dataArray);
 
     const centerY: number = height / 2;
-    const numPoints: number = this.WAVEFORM_POINTS;
+    const numPoints: number = ModernVisualization.WAVEFORM_POINTS;
     const amplitudeScale: number = height * 0.4;
     const sensitivityFactor: number = this.sensitivityFactor;
     const dataLength: number = this.dataArray.length;
@@ -168,14 +110,15 @@ export class ModernVisualization extends Canvas2DVisualization {
       this.buildSmoothPath(ctx, this.points, numPoints);
     };
 
-    // Get gradients for drawing
-    const mainGradient: CanvasGradient = this.getGradient();
-    const glowGradient: CanvasGradient = this.getGlowGradient();
+    // Ensure gradients exist and match the current width
+    this.ensureGradients();
+    const mainGradient: CanvasGradient = this.cachedGradient!;
+    const glowGradient: CanvasGradient = this.cachedGlowGradient!;
 
-    // Draw glow layer (multiple passes for soft glow effect)
-    // Canvas shadowColor only supports single colors, so we use layered strokes
-    const glowBlur: number = this.getScaledGlowBlur(this.BASE_GLOW_BLUR);
-    const glowPasses: number = 3;
+    // Draw glow layer (multiple passes for soft glow effect).
+    // Canvas shadowColor only supports single colors, so we use layered strokes.
+    const glowBlur: number = this.getScaledGlowBlur(ModernVisualization.BASE_GLOW_BLUR);
+    const glowPasses: number = ModernVisualization.GLOW_PASSES;
     for (let i: number = glowPasses; i >= 1; i--) {
       ctx.save();
       ctx.globalAlpha = 0.3 / i;
@@ -208,4 +151,50 @@ export class ModernVisualization extends Canvas2DVisualization {
     this.hasDrawn = true;
   }
 
+  protected override onFftSizeChanged(): void {
+    this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
+  }
+
+  protected override onResize(): void {
+    this.cachedGradient = null;
+    this.cachedGlowGradient = null;
+  }
+
+  // Fixed visual parameters: ignore the global controls (values set in constructor).
+  public override setSensitivity(): void { /* fixed */ }
+  public override setTrailIntensity(): void { /* fixed */ }
+  public override setLineWidth(): void { /* fixed */ }
+  public override setGlowIntensity(): void { /* fixed */ }
+  public override setWaveformSmoothing(): void { /* fixed */ }
+
+  /**
+   * Rebuilds the cached main/glow gradients if the width has changed.
+   */
+  private ensureGradients(): void {
+    if (this.cachedGradient && this.cachedGlowGradient && this.cachedGradientWidth === this.width) {
+      return;
+    }
+
+    this.cachedGradient = this.buildBrandGradient(1);
+    this.cachedGlowGradient = this.buildBrandGradient(0.8);
+    this.cachedGradientWidth = this.width;
+  }
+
+  /**
+   * Builds a horizontal ONIXLabs brand-color gradient at the given opacity.
+   *
+   * @param opacity - Stroke opacity (1 for the main line, < 1 for the glow).
+   */
+  private buildBrandGradient(opacity: number): CanvasGradient {
+    const gradient: CanvasGradient = this.ctx.createLinearGradient(0, 0, this.width, 0);
+    for (let i: number = 0; i < ONIX_COLOR_COUNT; i++) {
+      const idx: number = i * 3;
+      const r: number = ONIX_COLORS_FLAT[idx];
+      const g: number = ONIX_COLORS_FLAT[idx + 1];
+      const b: number = ONIX_COLORS_FLAT[idx + 2];
+      const stop: number = i / (ONIX_COLOR_COUNT - 1);
+      gradient.addColorStop(stop, `rgba(${r}, ${g}, ${b}, ${opacity})`);
+    }
+    return gradient;
+  }
 }

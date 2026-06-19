@@ -24,43 +24,63 @@ import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from '.
  * that extend outward from the center.
  */
 export class InfinityVisualization extends Canvas2DVisualization {
+  /** Per-frame trail fade rate. */
+  private static readonly FADE_RATE: number = 0.025;
+
+  /** Per-frame outward zoom applied to the trails. */
+  private static readonly ZOOM_SCALE: number = 1.03;
+
+  /** Base glow blur radius in pixels. */
+  private static readonly BASE_GLOW_BLUR: number = 15;
+
+  /** Number of points sampled around each circle. */
+  private static readonly CIRCLE_POINTS: number = 96;
+
+  /** Radians the orbit advances per frame. */
+  private static readonly ORBIT_SPEED: number = 0.012;
+
+  /** Degrees the hue advances per frame. */
+  private static readonly HUE_CYCLE_SPEED: number = 0.5;
+
+  /** Initial hue for the first circle (blue). */
+  private static readonly START_HUE_1: number = 240;
+
+  /** Initial hue for the second circle (green, 120 degrees away). */
+  private static readonly START_HUE_2: number = 120;
+
+  /** Highlight stroke color shared by both circles. */
+  private static readonly COLOR_HIGHLIGHT: string = 'rgba(255, 255, 255, 0.5)';
+
   public readonly name: string = 'Infinity';
   public readonly category: string = 'Waves';
 
-  private readonly FADE_RATE: number = 0.025;
-  private readonly ZOOM_SCALE: number = 1.03;
-  private readonly BASE_GLOW_BLUR: number = 15;
-  private readonly CIRCLE_POINTS: number = 96;
-  private readonly ORBIT_SPEED: number = 0.012;
-  private readonly HUE_CYCLE_SPEED: number = 0.5;
-
-  /** Current hue values for each circle (0-360) */
-  private hue1: number = 240;  // Start at blue
-  private hue2: number = 120;  // Start at green (180 degrees apart)
+  /** Current hue values for each circle (0-360). */
+  private hue1: number = InfinityVisualization.START_HUE_1;
+  private hue2: number = InfinityVisualization.START_HUE_2;
 
   private dataArray: Uint8Array<ArrayBuffer>;
 
-  /** Trail canvases for each circle */
+  /** Trail canvases for each circle. */
   private leftTrailCanvas: HTMLCanvasElement | null = null;
   private leftTrailCtx: CanvasRenderingContext2D | null = null;
   private rightTrailCanvas: HTMLCanvasElement | null = null;
   private rightTrailCtx: CanvasRenderingContext2D | null = null;
 
-  /** Temp canvas for zoom effect */
+  /** Temp canvas for the zoom effect. */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
 
-  /** Pre-allocated point arrays for circles */
+  /** Pre-allocated point arrays for the circles. */
   private readonly leftPoints: Array<{x: number; y: number}>;
   private readonly rightPoints: Array<{x: number; y: number}>;
 
-  /** Screen center and radii */
+  /** Screen center and radii (recomputed on resize). */
   private screenCenterX: number = 0;
   private screenCenterY: number = 0;
   private orbitRadius: number = 0;
   private baseRadius: number = 0;
 
-  /** Current orbit angle */
+  /** Current orbit angle. */
   private orbitAngle: number = 0;
 
   public constructor(config: VisualizationConfig) {
@@ -76,10 +96,85 @@ export class InfinityVisualization extends Canvas2DVisualization {
     // Pre-allocate point arrays
     this.leftPoints = [];
     this.rightPoints = [];
-    for (let i: number = 0; i <= this.CIRCLE_POINTS; i++) {
+    for (let i: number = 0; i <= InfinityVisualization.CIRCLE_POINTS; i++) {
       this.leftPoints.push({x: 0, y: 0});
       this.rightPoints.push({x: 0, y: 0});
     }
+  }
+
+  public draw(): void {
+    this.updateFade();
+
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const height: number = this.height;
+
+    if (width <= 0 || height <= 0) return;
+
+    // Ensure canvases exist
+    if (!this.leftTrailCanvas || !this.rightTrailCanvas || !this.tempCanvas) {
+      this.onResize();
+    }
+
+    // Get time domain data
+    this.analyser.getByteTimeDomainData(this.dataArray);
+
+    // Update orbit angle
+    this.orbitAngle += InfinityVisualization.ORBIT_SPEED;
+
+    // Cycle hues through the spectrum
+    this.hue1 = (this.hue1 + InfinityVisualization.HUE_CYCLE_SPEED) % 360;
+    this.hue2 = (this.hue2 + InfinityVisualization.HUE_CYCLE_SPEED) % 360;
+
+    // Get current colors (cached with hue shift)
+    const color1: {main: string; glow: string} = this.getCachedColor(1, this.hue1);
+    const color2: {main: string; glow: string} = this.getCachedColor(2, this.hue2);
+
+    // Calculate current circle positions (180 degrees apart on orbit)
+    const circle1X: number = this.screenCenterX + this.orbitRadius * Math.cos(this.orbitAngle);
+    const circle1Y: number = this.screenCenterY + this.orbitRadius * Math.sin(this.orbitAngle);
+    const circle2X: number = this.screenCenterX + this.orbitRadius * Math.cos(this.orbitAngle + Math.PI);
+    const circle2Y: number = this.screenCenterY + this.orbitRadius * Math.sin(this.orbitAngle + Math.PI);
+
+    const amplitudeScale: number = this.baseRadius * 0.4;
+
+    // Process first circle (trails expand outward from center)
+    this.applyDirectionalZoom(
+      this.leftTrailCanvas!, this.leftTrailCtx!,
+      this.tempCanvas!, this.tempCtx!,
+      this.screenCenterX, this.screenCenterY,
+      InfinityVisualization.FADE_RATE, InfinityVisualization.ZOOM_SCALE
+    );
+    this.calculateCirclePoints(this.leftPoints, circle1X, circle1Y, amplitudeScale, 0);
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.leftTrailCtx!, this.leftPoints, InfinityVisualization.CIRCLE_POINTS); },
+      color1.main, color1.glow, InfinityVisualization.COLOR_HIGHLIGHT,
+      {ctx: this.leftTrailCtx!, baseGlowBlur: InfinityVisualization.BASE_GLOW_BLUR, closePath: true}
+    );
+
+    // Process second circle (trails expand outward from center)
+    this.applyDirectionalZoom(
+      this.rightTrailCanvas!, this.rightTrailCtx!,
+      this.tempCanvas!, this.tempCtx!,
+      this.screenCenterX, this.screenCenterY,
+      InfinityVisualization.FADE_RATE, InfinityVisualization.ZOOM_SCALE
+    );
+    this.calculateCirclePoints(this.rightPoints, circle2X, circle2Y, amplitudeScale, InfinityVisualization.CIRCLE_POINTS / 2);
+    this.drawPathWithLayers(
+      (): void => { this.buildSmoothPath(this.rightTrailCtx!, this.rightPoints, InfinityVisualization.CIRCLE_POINTS); },
+      color2.main, color2.glow, InfinityVisualization.COLOR_HIGHLIGHT,
+      {ctx: this.rightTrailCtx!, baseGlowBlur: InfinityVisualization.BASE_GLOW_BLUR, closePath: true}
+    );
+
+    // Composite both trail canvases to main canvas with additive blending
+    // This makes overlapping trails mix together rather than one covering the other
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(this.leftTrailCanvas!, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(this.rightTrailCanvas!, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+
+    this.applyFadeOverlay();
   }
 
   protected override onFftSizeChanged(): void {
@@ -137,81 +232,6 @@ export class InfinityVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, width, height);
   }
 
-  public draw(): void {
-    this.updateFade();
-
-    const ctx: CanvasRenderingContext2D = this.ctx;
-    const width: number = this.width;
-    const height: number = this.height;
-
-    if (width <= 0 || height <= 0) return;
-
-    // Ensure canvases exist
-    if (!this.leftTrailCanvas || !this.rightTrailCanvas || !this.tempCanvas) {
-      this.onResize();
-    }
-
-    // Get time domain data
-    this.analyser.getByteTimeDomainData(this.dataArray);
-
-    // Update orbit angle
-    this.orbitAngle += this.ORBIT_SPEED;
-
-    // Cycle hues through the spectrum
-    this.hue1 = (this.hue1 + this.HUE_CYCLE_SPEED) % 360;
-    this.hue2 = (this.hue2 + this.HUE_CYCLE_SPEED) % 360;
-
-    // Get current colors (cached with hue shift)
-    const color1: {main: string; glow: string} = this.getCachedColor(1, this.hue1);
-    const color2: {main: string; glow: string} = this.getCachedColor(2, this.hue2);
-
-    // Calculate current circle positions (180 degrees apart on orbit)
-    const circle1X: number = this.screenCenterX + this.orbitRadius * Math.cos(this.orbitAngle);
-    const circle1Y: number = this.screenCenterY + this.orbitRadius * Math.sin(this.orbitAngle);
-    const circle2X: number = this.screenCenterX + this.orbitRadius * Math.cos(this.orbitAngle + Math.PI);
-    const circle2Y: number = this.screenCenterY + this.orbitRadius * Math.sin(this.orbitAngle + Math.PI);
-
-    const amplitudeScale: number = this.baseRadius * 0.4;
-
-    // Process first circle (trails expand outward from center)
-    this.applyDirectionalZoom(
-      this.leftTrailCanvas!, this.leftTrailCtx!,
-      this.tempCanvas!, this.tempCtx!,
-      this.screenCenterX, this.screenCenterY,
-      this.FADE_RATE, this.ZOOM_SCALE
-    );
-    this.calculateCirclePoints(this.leftPoints, circle1X, circle1Y, amplitudeScale, 0);
-    this.drawPathWithLayers(
-      (): void => { this.buildSmoothPath(this.leftTrailCtx!, this.leftPoints, this.CIRCLE_POINTS); },
-      color1.main, color1.glow, 'rgba(255, 255, 255, 0.5)',
-      {ctx: this.leftTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR, closePath: true}
-    );
-
-    // Process second circle (trails expand outward from center)
-    this.applyDirectionalZoom(
-      this.rightTrailCanvas!, this.rightTrailCtx!,
-      this.tempCanvas!, this.tempCtx!,
-      this.screenCenterX, this.screenCenterY,
-      this.FADE_RATE, this.ZOOM_SCALE
-    );
-    this.calculateCirclePoints(this.rightPoints, circle2X, circle2Y, amplitudeScale, this.CIRCLE_POINTS / 2);
-    this.drawPathWithLayers(
-      (): void => { this.buildSmoothPath(this.rightTrailCtx!, this.rightPoints, this.CIRCLE_POINTS); },
-      color2.main, color2.glow, 'rgba(255, 255, 255, 0.5)',
-      {ctx: this.rightTrailCtx!, baseGlowBlur: this.BASE_GLOW_BLUR, closePath: true}
-    );
-
-    // Composite both trail canvases to main canvas with additive blending
-    // This makes overlapping trails mix together rather than one covering the other
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(this.leftTrailCanvas!, 0, 0);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(this.rightTrailCanvas!, 0, 0);
-    ctx.globalCompositeOperation = 'source-over';
-
-    this.applyFadeOverlay();
-  }
-
   private calculateCirclePoints(
     points: Array<{x: number; y: number}>,
     centerX: number,
@@ -219,7 +239,7 @@ export class InfinityVisualization extends Canvas2DVisualization {
     amplitudeScale: number,
     dataOffset: number
   ): void {
-    const numPoints: number = this.CIRCLE_POINTS;
+    const numPoints: number = InfinityVisualization.CIRCLE_POINTS;
     const dataLength: number = this.dataArray.length;
 
     for (let i: number = 0; i <= numPoints; i++) {

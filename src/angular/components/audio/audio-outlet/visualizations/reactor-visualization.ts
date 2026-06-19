@@ -56,83 +56,80 @@ interface Rgb {
  * mirrored horizontal waveforms, all spiralling about the centre.
  */
 export class ReactorVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Reactor';
-  public readonly category: string = 'Signature';
-
   // --- Concentric tower -----------------------------------------------------
 
   /** Number of stacked concentric circles. */
-  private readonly CIRCLE_COUNT: number = 8;
+  private static readonly CIRCLE_COUNT: number = 8;
 
   /**
    * The largest (outermost) circle's radius as a multiple of half the screen
    * width, so its circumference overlaps the left and right edges slightly.
    * The six circles are then equally spaced from the centre out to it.
    */
-  private readonly EDGE_OVERLAP_FACTOR: number = 1.05;
+  private static readonly EDGE_OVERLAP_FACTOR: number = 1.05;
 
   /** Saturation used for every circle (percent). */
-  private readonly CIRCLE_SATURATION: number = 80;
+  private static readonly CIRCLE_SATURATION: number = 80;
 
   /** Lightness of the innermost (brightest) circle (percent). */
-  private readonly INNER_LIGHTNESS: number = 64;
+  private static readonly INNER_LIGHTNESS: number = 64;
 
   /** Lightness of the outermost (darkest) circle (percent). */
-  private readonly OUTER_LIGHTNESS: number = 8;
+  private static readonly OUTER_LIGHTNESS: number = 8;
 
   /** Lightness of the background fill - a shade darker than the darkest circle. */
-  private readonly BACKGROUND_LIGHTNESS: number = 2;
+  private static readonly BACKGROUND_LIGHTNESS: number = 2;
 
   // --- Waveforms ------------------------------------------------------------
 
   /** Glow blur radius for the waveforms and rings (pixels). */
-  private readonly WAVE_GLOW_BLUR: number = 128;
+  private static readonly WAVE_GLOW_BLUR: number = 128;
 
   /** Samples per horizontal waveform (edge to centre). */
-  private readonly HORIZONTAL_SAMPLES: number = 32;
+  private static readonly HORIZONTAL_SAMPLES: number = 32;
 
   /** Horizontal amplitude as a fraction of screen height. */
-  private readonly HORIZONTAL_AMP_FRACTION: number = 0.5;
+  private static readonly HORIZONTAL_AMP_FRACTION: number = 0.5;
 
   /** How hard the horizontal waveform bends around the core. */
-  private readonly BEND_STRENGTH: number = 1.5;
+  private static readonly BEND_STRENGTH: number = 1.5;
 
   /** Maximum bend angle so the waveform never wraps over the core (radians). */
-  private readonly MAX_BEND_ANGLE: number = 1.5;
+  private static readonly MAX_BEND_ANGLE: number = 1.5;
 
   // --- Frequency rings ------------------------------------------------------
 
   /** Angular samples around each ring. */
-  private readonly CIRCULAR_SAMPLES: number = 128;
+  private static readonly CIRCULAR_SAMPLES: number = 128;
 
   /** Number of frequency-bucket rings (one per inner circle). */
-  private readonly RING_COUNT: number = 7;
+  private static readonly RING_COUNT: number = 7;
 
   /** Times each ring's waveform repeats around the circle (rotational symmetry). */
-  private readonly RING_REPEAT: number = 2;
+  private static readonly RING_REPEAT: number = 2;
 
   /** Fraction of FFT bins trimmed from each end before bucketing (low & high). */
-  private readonly FREQ_TRIM_FRACTION: number = 0.05;
+  private static readonly FREQ_TRIM_FRACTION: number = 0.05;
 
   /** Magnitude (after sensitivity) at/above which a sample jumps to the ceiling. */
-  private readonly PEAK_THRESHOLD: number = 0.115;
+  private static readonly PEAK_THRESHOLD: number = 0.115;
 
   /** Opacity of the filled interior of each peak (1 = solid). */
-  private readonly PEAK_FILL_ALPHA: number = 0.15;
+  private static readonly PEAK_FILL_ALPHA: number = 0.15;
 
   /** Corner radius for each peak's rounded edges (pixels, border-radius style). */
-  private readonly PEAK_CORNER_RADIUS: number = 16;
+  private static readonly PEAK_CORNER_RADIUS: number = 16;
 
   // --- Trails (spiral / blur / fade) ----------------------------------------
 
   /** Per-frame rotation of the trail surfaces (radians). */
-  private readonly TRAIL_ROTATION: number = 0.005;
+  private static readonly TRAIL_ROTATION: number = 0.005;
 
   /** Per-frame fade of the horizontal-waveform trail (low = long-lived trails). */
-  private readonly HORIZONTAL_FADE: number = 0.02;
+  private static readonly HORIZONTAL_FADE: number = 0.02;
 
   /** Per-frame fade of the rings trail (the squashed peaks need some persistence to show). */
-  private readonly RING_FADE: number = 0.03;
+  private static readonly RING_FADE: number = 0.03;
 
   /**
    * How far up its band each ring's trail climbs toward the ceiling over the
@@ -141,47 +138,53 @@ export class ReactorVisualization extends Canvas2DVisualization {
    * longer hides the squash. The ceiling (next circle) is the fixed point: a radius
    * x moves to x + push * (top - x), so the band bunches against the next circle.
    */
-  private readonly RING_SQUASH_FRACTION: number = 0.3;
+  private static readonly RING_SQUASH_FRACTION: number = 0.3;
 
   /** Slices per ring band used to approximate the squash (more = smoother). */
-  private readonly RING_PUSH_SLICES: number = 32;
+  private static readonly RING_PUSH_SLICES: number = 32;
 
   /** Extra trail-canvas margin beyond the outer circle, for glow (pixels). */
-  private readonly TRAIL_MARGIN: number = 16;
+  private static readonly TRAIL_MARGIN: number = 16;
 
   // --- Colour cycling -------------------------------------------------------
 
   /** Per-frame hue drift (degrees). */
-  private readonly HUE_CYCLE_SPEED: number = 0.05;
+  private static readonly HUE_CYCLE_SPEED: number = 0.05;
 
   /** Starting hue (degrees) - blue, matching the reference. */
-  private readonly START_HUE: number = 220;
+  private static readonly START_HUE: number = 220;
 
   // --- Bass trigger ---------------------------------------------------------
 
   /** Fraction of the lowest FFT bins treated as the "bass" band. */
-  private readonly BASS_BIN_FRACTION: number = 0.03;
+  private static readonly BASS_BIN_FRACTION: number = 0.03;
 
   /** Average bass magnitude (0-1) at/above which the trigger fires. */
-  private readonly BASS_THRESHOLD: number = 0.5;
+  private static readonly BASS_THRESHOLD: number = 0.5;
 
   /** Minimum time between bass triggers (milliseconds). */
-  private readonly BASS_COOLDOWN_MS: number = 10000;
+  private static readonly BASS_COOLDOWN_MS: number = 10000;
 
   /** Hue jump applied on each bass trigger (degrees; golden angle for variety). */
-  private readonly HUE_JUMP_DEGREES: number = 137.5;
+  private static readonly HUE_JUMP_DEGREES: number = 137.5;
 
   /** Chance (0-1) that a bass trigger also starts a white/black flash. */
-  private readonly FLASH_PROBABILITY: number = 0.5;
+  private static readonly FLASH_PROBABILITY: number = 0.5;
 
   /** Per-frame decay of the flash (lower = slower fade back to normal). */
-  private readonly FLASH_FADE: number = 0.01;
+  private static readonly FLASH_FADE: number = 0.01;
 
   /** Lightness (%) of the flash waveform at full intensity; it lightens as the flash fades. */
-  private readonly FLASH_WAVE_DARK_LIGHTNESS: number = 10;
+  private static readonly FLASH_WAVE_DARK_LIGHTNESS: number = 10;
 
   /** Per-frame decay of the hue-jump cross-fade (lower = slower colour change). */
-  private readonly HUE_TRANSITION_FADE: number = 0.005;
+  private static readonly HUE_TRANSITION_FADE: number = 0.005;
+
+  /** Highlight stroke colour shared by the horizontal waveforms. */
+  private static readonly COLOR_HIGHLIGHT: string = 'rgba(255, 255, 255, 0.5)';
+
+  public readonly name: string = 'Reactor';
+  public readonly category: string = 'Signature';
 
   // --- State ----------------------------------------------------------------
 
@@ -265,7 +268,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
-    this.hue = this.START_HUE;
+    this.hue = ReactorVisualization.START_HUE;
     // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
     this.sensitivity = 0.1;       // 10%
     this.trailIntensity = 1;      // 100%
@@ -273,16 +276,83 @@ export class ReactorVisualization extends Canvas2DVisualization {
     this.glowIntensity = 0;       // no glow
     this.waveformSmoothing = 1;   // 100%
 
-    this.radii = new Array<number>(this.CIRCLE_COUNT).fill(0);
+    this.radii = new Array<number>(ReactorVisualization.CIRCLE_COUNT).fill(0);
     this.circleColors = [];
-    this.circleColorStrings = new Array<string>(this.CIRCLE_COUNT).fill('rgb(0, 0, 0)');
-    for (let i: number = 0; i < this.CIRCLE_COUNT; i++) {
+    this.circleColorStrings = new Array<string>(ReactorVisualization.CIRCLE_COUNT).fill('rgb(0, 0, 0)');
+    for (let i: number = 0; i < ReactorVisualization.CIRCLE_COUNT; i++) {
       this.circleColors.push({r: 0, g: 0, b: 0});
     }
 
-    this.leftPoints = ReactorVisualization.allocatePoints(this.HORIZONTAL_SAMPLES);
-    this.rightPoints = ReactorVisualization.allocatePoints(this.HORIZONTAL_SAMPLES);
-    this.ringRadii = new Array<number>(this.CIRCULAR_SAMPLES).fill(0);
+    this.leftPoints = ReactorVisualization.allocatePoints(ReactorVisualization.HORIZONTAL_SAMPLES);
+    this.rightPoints = ReactorVisualization.allocatePoints(ReactorVisualization.HORIZONTAL_SAMPLES);
+    this.ringRadii = new Array<number>(ReactorVisualization.CIRCULAR_SAMPLES).fill(0);
+  }
+
+  public override draw(): void {
+    if (this.destroyed) return;
+    this.updateFade();
+
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const height: number = this.height;
+    if (width <= 0 || height <= 0) return;
+
+    if (!this.ringsCanvas || !this.horizontalCanvas || !this.tempCanvas
+      || !this.towerCanvas || !this.freezeCanvas) {
+      this.onResize();
+    }
+    if (!this.ringsCtx || !this.horizontalCtx || !this.towerCtx || !this.freezeCtx) return;
+    const ringsCtx: CanvasRenderingContext2D = this.ringsCtx;
+    const horizontalCtx: CanvasRenderingContext2D = this.horizontalCtx;
+
+    // Advance time-based state. A bass hit may flip the swirl and jump the hue.
+    this.updateBassTrigger();
+    this.hue = (this.hue + ReactorVisualization.HUE_CYCLE_SPEED) % 360;
+    this.updateColors();
+
+    this.analyser.getByteTimeDomainData(this.dataArray);
+
+    // Age both trails with a rotate/fade/blur spiral on independent layers. The
+    // rings additionally drift outward and squash against the rim as they age.
+    this.spinRingsTrail(this.ringsCanvas!, ringsCtx, ReactorVisualization.RING_FADE);
+    this.spinTrail(this.horizontalCanvas!, horizontalCtx, ReactorVisualization.HORIZONTAL_FADE);
+
+    // Fresh data: every ring onto its trail, the horizontal onto its trail.
+    for (let ring: number = 0; ring < ReactorVisualization.RING_COUNT; ring++) {
+      this.drawFrequencyRing(ringsCtx, ring);
+    }
+    this.drawHorizontalWaveforms(horizontalCtx);
+
+    // Tower (background + circles) on its own layer so a hue jump can cross-fade
+    // the old colours out beneath the new ones, rather than snapping the whole
+    // scene to the new hue in a single frame.
+    const towerCtx: CanvasRenderingContext2D = this.towerCtx!;
+    towerCtx.fillStyle = this.backgroundColorString;
+    towerCtx.fillRect(0, 0, width, height);
+    this.drawConcentricCircles(towerCtx);
+
+    ctx.drawImage(this.towerCanvas!, 0, 0);
+    if (this.hueTransition > 0) {
+      // Lay the snapshot of the old-hue tower over the new one and fade it out, so
+      // the new colour is drawn over the old instead of replacing it outright.
+      ctx.save();
+      ctx.globalAlpha = this.hueTransition;
+      ctx.drawImage(this.freezeCanvas!, 0, 0);
+      ctx.restore();
+      this.hueTransition -= ReactorVisualization.HUE_TRANSITION_FADE;
+      if (this.hueTransition < 0) this.hueTransition = 0;
+    }
+
+    const trailOffsetX: number = this.centerX - this.trailCx;
+    const trailOffsetY: number = this.centerY - this.trailCy;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(this.ringsCanvas!, trailOffsetX, trailOffsetY);
+    ctx.drawImage(this.horizontalCanvas!, trailOffsetX, trailOffsetY);
+    ctx.restore();
+
+    this.applyFlash(ctx, width, height, trailOffsetX, trailOffsetY);
+    this.applyFadeOverlay();
   }
 
   /** Allocates a fresh array of zeroed points. */
@@ -315,15 +385,15 @@ export class ReactorVisualization extends Canvas2DVisualization {
 
     // The outermost circle slightly overlaps the left/right edges; the six
     // circles are then equally spaced from the centre out to it.
-    const outerRadius: number = (width / 2) * this.EDGE_OVERLAP_FACTOR;
-    for (let i: number = 0; i < this.CIRCLE_COUNT; i++) {
-      this.radii[i] = outerRadius * (i + 1) / this.CIRCLE_COUNT;
+    const outerRadius: number = (width / 2) * ReactorVisualization.EDGE_OVERLAP_FACTOR;
+    for (let i: number = 0; i < ReactorVisualization.CIRCLE_COUNT; i++) {
+      this.radii[i] = outerRadius * (i + 1) / ReactorVisualization.CIRCLE_COUNT;
     }
 
     // Trail surface is a square big enough to hold the whole outer circle (and
     // cover the visible canvas), so a waveform survives going out of bounds and
     // re-emerges on the outer circle in the corners.
-    const trailHalf: number = Math.ceil(Math.max(outerRadius, this.centerX, this.centerY) + this.TRAIL_MARGIN);
+    const trailHalf: number = Math.ceil(Math.max(outerRadius, this.centerX, this.centerY) + ReactorVisualization.TRAIL_MARGIN);
     this.trailSize = trailHalf * 2;
     this.trailCx = trailHalf;
     this.trailCy = trailHalf;
@@ -375,73 +445,6 @@ export class ReactorVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, width, height);
   }
 
-  public override draw(): void {
-    if (this.destroyed) return;
-    this.updateFade();
-
-    const ctx: CanvasRenderingContext2D = this.ctx;
-    const width: number = this.width;
-    const height: number = this.height;
-    if (width <= 0 || height <= 0) return;
-
-    if (!this.ringsCanvas || !this.horizontalCanvas || !this.tempCanvas
-      || !this.towerCanvas || !this.freezeCanvas) {
-      this.onResize();
-    }
-    if (!this.ringsCtx || !this.horizontalCtx || !this.towerCtx || !this.freezeCtx) return;
-    const ringsCtx: CanvasRenderingContext2D = this.ringsCtx;
-    const horizontalCtx: CanvasRenderingContext2D = this.horizontalCtx;
-
-    // Advance time-based state. A bass hit may flip the swirl and jump the hue.
-    this.updateBassTrigger();
-    this.hue = (this.hue + this.HUE_CYCLE_SPEED) % 360;
-    this.updateColors();
-
-    this.analyser.getByteTimeDomainData(this.dataArray);
-
-    // Age both trails with a rotate/fade/blur spiral on independent layers. The
-    // rings additionally drift outward and squash against the rim as they age.
-    this.spinRingsTrail(this.ringsCanvas!, ringsCtx, this.RING_FADE);
-    this.spinTrail(this.horizontalCanvas!, horizontalCtx, this.HORIZONTAL_FADE);
-
-    // Fresh data: every ring onto its trail, the horizontal onto its trail.
-    for (let ring: number = 0; ring < this.RING_COUNT; ring++) {
-      this.drawFrequencyRing(ringsCtx, ring);
-    }
-    this.drawHorizontalWaveforms(horizontalCtx);
-
-    // Tower (background + circles) on its own layer so a hue jump can cross-fade
-    // the old colours out beneath the new ones, rather than snapping the whole
-    // scene to the new hue in a single frame.
-    const towerCtx: CanvasRenderingContext2D = this.towerCtx!;
-    towerCtx.fillStyle = this.backgroundColorString;
-    towerCtx.fillRect(0, 0, width, height);
-    this.drawConcentricCircles(towerCtx);
-
-    ctx.drawImage(this.towerCanvas!, 0, 0);
-    if (this.hueTransition > 0) {
-      // Lay the snapshot of the old-hue tower over the new one and fade it out, so
-      // the new colour is drawn over the old instead of replacing it outright.
-      ctx.save();
-      ctx.globalAlpha = this.hueTransition;
-      ctx.drawImage(this.freezeCanvas!, 0, 0);
-      ctx.restore();
-      this.hueTransition -= this.HUE_TRANSITION_FADE;
-      if (this.hueTransition < 0) this.hueTransition = 0;
-    }
-
-    const trailOffsetX: number = this.centerX - this.trailCx;
-    const trailOffsetY: number = this.centerY - this.trailCy;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(this.ringsCanvas!, trailOffsetX, trailOffsetY);
-    ctx.drawImage(this.horizontalCanvas!, trailOffsetX, trailOffsetY);
-    ctx.restore();
-
-    this.applyFlash(ctx, width, height, trailOffsetX, trailOffsetY);
-    this.applyFadeOverlay();
-  }
-
   // === Concentric tower =====================================================
 
   /**
@@ -449,7 +452,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
    * brighter circles stack on top, each feathered into the next with a blur.
    */
   private drawConcentricCircles(ctx: CanvasRenderingContext2D): void {
-    for (let i: number = this.CIRCLE_COUNT - 1; i >= 0; i--) {
+    for (let i: number = ReactorVisualization.CIRCLE_COUNT - 1; i >= 0; i--) {
       const colorString: string = this.circleColorStrings[i];
       ctx.save();
       ctx.shadowColor = colorString;
@@ -471,16 +474,15 @@ export class ReactorVisualization extends Canvas2DVisualization {
   private drawHorizontalWaveforms(ctx: CanvasRenderingContext2D): void {
     this.calculateHorizontalPoints();
 
-    const highlight: string = 'rgba(255, 255, 255, 0.5)';
     this.drawPathWithLayers(
       (): void => { this.buildSmoothPath(ctx, this.leftPoints, this.leftPoints.length - 1); },
-      this.waveColorMain, this.waveColorGlow, highlight,
-      {ctx, baseGlowBlur: this.WAVE_GLOW_BLUR}
+      this.waveColorMain, this.waveColorGlow, ReactorVisualization.COLOR_HIGHLIGHT,
+      {ctx, baseGlowBlur: ReactorVisualization.WAVE_GLOW_BLUR}
     );
     this.drawPathWithLayers(
       (): void => { this.buildSmoothPath(ctx, this.rightPoints, this.rightPoints.length - 1); },
-      this.waveColorMain, this.waveColorGlow, highlight,
-      {ctx, baseGlowBlur: this.WAVE_GLOW_BLUR}
+      this.waveColorMain, this.waveColorGlow, ReactorVisualization.COLOR_HIGHLIGHT,
+      {ctx, baseGlowBlur: ReactorVisualization.WAVE_GLOW_BLUR}
     );
   }
 
@@ -491,12 +493,12 @@ export class ReactorVisualization extends Canvas2DVisualization {
   private calculateHorizontalPoints(): void {
     const data: Uint8Array<ArrayBuffer> = this.dataArray;
     const dataLength: number = data.length;
-    const numSamples: number = this.HORIZONTAL_SAMPLES;
+    const numSamples: number = ReactorVisualization.HORIZONTAL_SAMPLES;
     const centerX: number = this.trailCx;
     const centerY: number = this.trailCy;
     const coreRadius: number = this.radii[0];
-    const outerRadius: number = this.radii[this.CIRCLE_COUNT - 1];
-    const amplitudeScale: number = this.height * this.HORIZONTAL_AMP_FRACTION;
+    const outerRadius: number = this.radii[ReactorVisualization.CIRCLE_COUNT - 1];
+    const amplitudeScale: number = this.height * ReactorVisualization.HORIZONTAL_AMP_FRACTION;
     const sensitivityFactor: number = this.sensitivityFactor;
     // Sample the first half of the buffer across the edge-to-centre span.
     const sampleStep: number = (dataLength / 2) / numSamples;
@@ -512,9 +514,9 @@ export class ReactorVisualization extends Canvas2DVisualization {
       // spills past the left/right screen edges.
       const arcRadius: number = outerRadius - t * (outerRadius - coreRadius);
 
-      let arcAngle: number = (amplitude * this.BEND_STRENGTH) / arcRadius;
-      if (arcAngle > this.MAX_BEND_ANGLE) arcAngle = this.MAX_BEND_ANGLE;
-      else if (arcAngle < -this.MAX_BEND_ANGLE) arcAngle = -this.MAX_BEND_ANGLE;
+      let arcAngle: number = (amplitude * ReactorVisualization.BEND_STRENGTH) / arcRadius;
+      if (arcAngle > ReactorVisualization.MAX_BEND_ANGLE) arcAngle = ReactorVisualization.MAX_BEND_ANGLE;
+      else if (arcAngle < -ReactorVisualization.MAX_BEND_ANGLE) arcAngle = -ReactorVisualization.MAX_BEND_ANGLE;
 
       // Left waveform sweeps in along the left, bending around the core.
       const angle: number = Math.PI - arcAngle;
@@ -543,17 +545,17 @@ export class ReactorVisualization extends Canvas2DVisualization {
     this.analyser.getByteFrequencyData(this.freqArray);
 
     const binCount: number = this.freqArray.length;
-    const numSamples: number = this.CIRCULAR_SAMPLES;
+    const numSamples: number = ReactorVisualization.CIRCULAR_SAMPLES;
     const sensitivityFactor: number = this.sensitivityFactor;
 
     // Logarithmic (octave-like) bucket for this ring so each ring spans a similar
     // perceptual range, with a per-ring gain compensating the high-frequency
     // rolloff - both spread activity more evenly than equal linear buckets.
-    const lo: number = Math.max(1, binCount * this.FREQ_TRIM_FRACTION);
-    const hi: number = binCount * (1 - this.FREQ_TRIM_FRACTION);
+    const lo: number = Math.max(1, binCount * ReactorVisualization.FREQ_TRIM_FRACTION);
+    const hi: number = binCount * (1 - ReactorVisualization.FREQ_TRIM_FRACTION);
     const ratio: number = hi / lo;
-    const binLo: number = lo * Math.pow(ratio, ring / this.RING_COUNT);
-    const binHi: number = lo * Math.pow(ratio, (ring + 1) / this.RING_COUNT);
+    const binLo: number = lo * Math.pow(ratio, ring / ReactorVisualization.RING_COUNT);
+    const binHi: number = lo * Math.pow(ratio, (ring + 1) / ReactorVisualization.RING_COUNT);
     const bucketSpan: number = binHi - binLo;
 
     const baseRadius: number = this.radii[ring];
@@ -563,22 +565,22 @@ export class ReactorVisualization extends Canvas2DVisualization {
 
     // Map the bucket across one segment, then repeat it around the circle so the
     // ring is rotationally symmetric (RING_REPEAT copies).
-    const segLen: number = (numSamples / this.RING_REPEAT) | 0;
+    const segLen: number = (numSamples / ReactorVisualization.RING_REPEAT) | 0;
     for (let i: number = 0; i < segLen; i++) {
       // Map this segment sample to a frequency bin inside the ring's bucket.
       const bin: number = Math.min(binCount - 1, (binLo + (i / segLen) * bucketSpan) | 0);
       const magnitude: number = this.freqArray[bin] / 255;
       // Two positions only: ceiling (next circle) when the bin is loud enough,
       // otherwise baseline (this ring's own circle).
-      const radius: number = magnitude * sensitivityFactor >= this.PEAK_THRESHOLD ? ceilRadius : baseRadius;
-      for (let rep: number = 0; rep < this.RING_REPEAT; rep++) {
+      const radius: number = magnitude * sensitivityFactor >= ReactorVisualization.PEAK_THRESHOLD ? ceilRadius : baseRadius;
+      for (let rep: number = 0; rep < ReactorVisualization.RING_REPEAT; rep++) {
         this.ringRadii[i + rep * segLen] = radius;
       }
     }
 
     // Fill each peak as a rounded sector (solid interior); no outline.
     ctx.save();
-    ctx.globalAlpha = this.PEAK_FILL_ALPHA;
+    ctx.globalAlpha = ReactorVisualization.PEAK_FILL_ALPHA;
     ctx.fillStyle = mainColor;
     this.appendRoundedPeaks(ctx, baseRadius, ceilRadius, true);
     ctx.fill();
@@ -598,7 +600,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     ceilRadius: number,
     withBottom: boolean
   ): void {
-    const numSamples: number = this.CIRCULAR_SAMPLES;
+    const numSamples: number = ReactorVisualization.CIRCULAR_SAMPLES;
     const radii: number[] = this.ringRadii;
 
     ctx.beginPath();
@@ -646,7 +648,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     ceilRadius: number,
     withBottom: boolean
   ): void {
-    const angleStep: number = TWO_PI / this.CIRCULAR_SAMPLES;
+    const angleStep: number = TWO_PI / ReactorVisualization.CIRCULAR_SAMPLES;
     const cx: number = this.trailCx;
     const cy: number = this.trailCy;
 
@@ -654,7 +656,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     let a1: number = (endIdx + 1) * angleStep;
     if (a1 <= a0) a1 += TWO_PI; // run wrapped the seam
 
-    let cr: number = this.PEAK_CORNER_RADIUS;
+    let cr: number = ReactorVisualization.PEAK_CORNER_RADIUS;
     const maxByWall: number = (ceilRadius - baseRadius) * 0.5;
     const maxByArc: number = (a1 - a0) * baseRadius * 0.5;
     if (cr > maxByWall) cr = maxByWall;
@@ -705,15 +707,15 @@ export class ReactorVisualization extends Canvas2DVisualization {
     this.analyser.getByteFrequencyData(this.freqArray);
 
     const binCount: number = this.freqArray.length;
-    const bassBins: number = Math.max(1, (binCount * this.BASS_BIN_FRACTION) | 0);
+    const bassBins: number = Math.max(1, (binCount * ReactorVisualization.BASS_BIN_FRACTION) | 0);
     let sum: number = 0;
     for (let b: number = 0; b < bassBins; b++) sum += this.freqArray[b];
     const bassLevel: number = sum / bassBins / 255;
 
-    if (bassLevel < this.BASS_THRESHOLD) return;
+    if (bassLevel < ReactorVisualization.BASS_THRESHOLD) return;
 
     const now: number = performance.now();
-    if (now - this.lastBassTriggerTime < this.BASS_COOLDOWN_MS) return;
+    if (now - this.lastBassTriggerTime < ReactorVisualization.BASS_COOLDOWN_MS) return;
 
     this.lastBassTriggerTime = now;
     this.trailDirection = -this.trailDirection;
@@ -725,10 +727,10 @@ export class ReactorVisualization extends Canvas2DVisualization {
       this.freezeCtx.drawImage(this.towerCanvas, 0, 0);
       this.hueTransition = 1;
     }
-    this.hue = (this.hue + this.HUE_JUMP_DEGREES) % 360;
+    this.hue = (this.hue + ReactorVisualization.HUE_JUMP_DEGREES) % 360;
 
     // Only some hits flash the scene white/black.
-    if (Math.random() < this.FLASH_PROBABILITY) {
+    if (Math.random() < ReactorVisualization.FLASH_PROBABILITY) {
       this.flashAmount = 1;
     }
   }
@@ -761,8 +763,8 @@ export class ReactorVisualization extends Canvas2DVisualization {
     // Recolour the horizontal trail to a dark shade of the current hue on the
     // scratch surface; the shade lightens toward the normal wave colour as it fades.
     const lightness: number =
-      this.INNER_LIGHTNESS - (this.INNER_LIGHTNESS - this.FLASH_WAVE_DARK_LIGHTNESS) * f;
-    const waveColor: Rgb = this.hslToRgb(this.hue, this.CIRCLE_SATURATION, lightness);
+      ReactorVisualization.INNER_LIGHTNESS - (ReactorVisualization.INNER_LIGHTNESS - ReactorVisualization.FLASH_WAVE_DARK_LIGHTNESS) * f;
+    const waveColor: Rgb = this.hslToRgb(this.hue, ReactorVisualization.CIRCLE_SATURATION, lightness);
     const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
     const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
     tempCtx.save();
@@ -780,7 +782,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     ctx.drawImage(tempCanvas, offsetX, offsetY);
     ctx.restore();
 
-    this.flashAmount -= this.FLASH_FADE;
+    this.flashAmount -= ReactorVisualization.FLASH_FADE;
     if (this.flashAmount < 0) this.flashAmount = 0;
   }
 
@@ -805,16 +807,16 @@ export class ReactorVisualization extends Canvas2DVisualization {
     const effectiveFade: number = fadeRate * this.getFadeMultiplier();
     const cx: number = this.trailCx;
     const cy: number = this.trailCy;
-    const subSlices: number = this.RING_PUSH_SLICES;
+    const subSlices: number = ReactorVisualization.RING_PUSH_SLICES;
     // Derive the per-frame climb from the fade so the squash reaches the same
     // fraction up the band over the trail's visible lifetime, whatever the fade.
-    const push: number = 1 - Math.pow(1 - this.RING_SQUASH_FRACTION, effectiveFade);
+    const push: number = 1 - Math.pow(1 - ReactorVisualization.RING_SQUASH_FRACTION, effectiveFade);
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.globalAlpha = 1 - effectiveFade;
-    for (let r: number = 0; r < this.RING_COUNT; r++) {
+    for (let r: number = 0; r < ReactorVisualization.RING_COUNT; r++) {
       const bottom: number = this.radii[r];
       const top: number = this.radii[r + 1];
       const band: number = top - bottom;
@@ -834,7 +836,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
         ctx.arc(cx, cy, dX0, 0, TWO_PI, true);
         ctx.clip();
         ctx.translate(cx, cy);
-        ctx.rotate(this.TRAIL_ROTATION * this.trailDirection);
+        ctx.rotate(ReactorVisualization.TRAIL_ROTATION * this.trailDirection);
         ctx.scale(scale, scale);
         ctx.translate(-cx, -cy);
         ctx.drawImage(tempCanvas, 0, 0);
@@ -868,7 +870,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     ctx.imageSmoothingQuality = 'high';
     ctx.globalAlpha = 1 - effectiveFade;
     ctx.translate(pivotX, pivotY);
-    ctx.rotate(this.TRAIL_ROTATION * this.trailDirection);
+    ctx.rotate(ReactorVisualization.TRAIL_ROTATION * this.trailDirection);
     ctx.translate(-pivotX, -pivotY);
     ctx.drawImage(tempCanvas, 0, 0);
     ctx.restore();
@@ -880,12 +882,12 @@ export class ReactorVisualization extends Canvas2DVisualization {
     if (hueInt === this.cachedHue) return;
     this.cachedHue = hueInt;
 
-    const span: number = this.CIRCLE_COUNT - 1;
-    for (let i: number = 0; i < this.CIRCLE_COUNT; i++) {
+    const span: number = ReactorVisualization.CIRCLE_COUNT - 1;
+    for (let i: number = 0; i < ReactorVisualization.CIRCLE_COUNT; i++) {
       // Brightness fraction: 1 at the innermost circle, 0 at the outermost.
       const brightness: number = (span - i) / span;
-      const lightness: number = this.OUTER_LIGHTNESS + (this.INNER_LIGHTNESS - this.OUTER_LIGHTNESS) * brightness;
-      const rgb: Rgb = this.hslToRgb(this.hue, this.CIRCLE_SATURATION, lightness);
+      const lightness: number = ReactorVisualization.OUTER_LIGHTNESS + (ReactorVisualization.INNER_LIGHTNESS - ReactorVisualization.OUTER_LIGHTNESS) * brightness;
+      const rgb: Rgb = this.hslToRgb(this.hue, ReactorVisualization.CIRCLE_SATURATION, lightness);
       this.circleColors[i].r = rgb.r;
       this.circleColors[i].g = rgb.g;
       this.circleColors[i].b = rgb.b;
@@ -898,7 +900,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     this.waveColorGlow = `rgba(${wave.r}, ${wave.g}, ${wave.b}, 0.8)`;
 
     // Background: same hue, a shade darker than the darkest circle.
-    const background: Rgb = this.hslToRgb(this.hue, this.CIRCLE_SATURATION, this.BACKGROUND_LIGHTNESS);
+    const background: Rgb = this.hslToRgb(this.hue, ReactorVisualization.CIRCLE_SATURATION, ReactorVisualization.BACKGROUND_LIGHTNESS);
     this.backgroundColorString = `rgb(${background.r}, ${background.g}, ${background.b})`;
   }
 

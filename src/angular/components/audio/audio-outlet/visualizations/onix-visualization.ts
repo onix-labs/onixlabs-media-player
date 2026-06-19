@@ -31,50 +31,63 @@ import {ONIX_COLORS_FLAT, ONIX_COLOR_COUNT, TWO_PI} from './visualization-consta
  * gradient stroke, creating mesmerizing rotating trail effects.
  */
 export class OnixVisualization extends Canvas2DVisualization {
+  /** Radians the trail rotates per frame. */
+  private static readonly ROTATION_SPEED: number = 0.009;
+
+  /** Radians the waveform circle rotates per frame. */
+  private static readonly WAVEFORM_ROTATION_SPEED: number = 0.015;
+
+  /** Per-frame trail fade rate. */
+  private static readonly FADE_RATE: number = 0.025;
+
+  /** Per-frame outward zoom applied to the trail. */
+  private static readonly ZOOM_SCALE: number = 1.02;
+
+  /** Exponent applied to the fade multiplier for more aggressive low-intensity fading. */
+  private static readonly FADE_POWER: number = 1.5;
+
+  /** Number of points around the pulsating center circle. */
+  private static readonly CENTER_CIRCLE_POINTS: number = 64;
+
+  /** Base glow blur radius in pixels. */
+  private static readonly BASE_GLOW_BLUR: number = 15;
+
   public readonly name: string = 'Onix';
   public readonly category: string = 'Waves';
 
-  private readonly ROTATION_SPEED: number = 0.009;
-  private readonly WAVEFORM_ROTATION_SPEED: number = 0.015;
-  private readonly FADE_RATE: number = 0.025;
-  private readonly ZOOM_SCALE: number = 1.02;
-  private readonly FADE_POWER: number = 1.5;
-
-  private readonly CENTER_CIRCLE_POINTS: number = 64;
-
-  // Audio data buffers
+  /** Audio data buffers. */
   private dataArray: Uint8Array<ArrayBuffer>;
   private frequencyData: Uint8Array<ArrayBuffer>;
 
-  // Trail canvas (reused, not recreated each frame) - THIS IS THE KEY OPTIMIZATION
+  /** Trail canvas (reused, not recreated each frame) - THIS IS THE KEY OPTIMIZATION. */
   private trailCanvas: HTMLCanvasElement | null = null;
   private trailCtx: CanvasRenderingContext2D | null = null;
 
-  // Temp canvas for zoom/rotate effect (reused, not recreated each frame)
+  /** Temp canvas for the zoom/rotate effect (reused, not recreated each frame). */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
 
-  // Waveform rotation
+  /** Current waveform rotation angle. */
   private waveformAngle: number = 0;
 
-  // Pre-allocated arrays to avoid GC pressure
+  /** Pre-allocated point array to avoid GC pressure. */
   private readonly centerPoints: Array<{x: number; y: number}>;
 
-  // Pre-computed values (updated on resize)
+  /** Pre-computed trigonometric lookup tables for the center circle. */
+  private readonly cosTable: Float32Array;
+  private readonly sinTable: Float32Array;
+
+  /** Pre-computed layout values (updated on resize). */
   private centerX: number = 0;
   private centerY: number = 0;
   private baseCircleRadius: number = 0;
-
-  // Pre-computed trigonometric lookup tables for center circle
-  private readonly cosTable: Float32Array;
-  private readonly sinTable: Float32Array;
 
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
 
-    const numPoints: number = this.CENTER_CIRCLE_POINTS;
+    const numPoints: number = OnixVisualization.CENTER_CIRCLE_POINTS;
 
     // Pre-allocate point arrays
     this.centerPoints = new Array(numPoints + 1);
@@ -97,6 +110,79 @@ export class OnixVisualization extends Canvas2DVisualization {
     this.lineWidth = 1;           // 1px
     this.glowIntensity = 0;       // no glow
     this.waveformSmoothing = 1;   // 100%
+  }
+
+  public draw(): void {
+    this.updateFade();
+
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const height: number = this.height;
+    const centerX: number = this.centerX;
+    const centerY: number = this.centerY;
+
+    // Ensure canvases exist
+    if (!this.trailCanvas || !this.trailCtx || !this.tempCanvas || !this.tempCtx) {
+      this.onResize();
+    }
+
+    const trailCtx: CanvasRenderingContext2D = this.trailCtx!;
+    const trailCanvas: HTMLCanvasElement = this.trailCanvas!;
+    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
+    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
+
+    // Copy current trails to temp canvas (reused, not recreated)
+    tempCtx.clearRect(0, 0, width, height);
+    tempCtx.drawImage(trailCanvas, 0, 0);
+
+    // Clear trail canvas
+    trailCtx.clearRect(0, 0, width, height);
+
+    // Draw back previous trails with rotation, zoom, and fade.
+    // Apply power curve to fade multiplier for more aggressive low-intensity fading.
+    const baseMultiplier: number = this.getFadeMultiplier();
+    const scaledMultiplier: number = Math.pow(baseMultiplier, OnixVisualization.FADE_POWER);
+    const effectiveFadeRate: number = OnixVisualization.FADE_RATE * scaledMultiplier;
+    trailCtx.save();
+    // Use high-quality image smoothing to reduce artifacts from repeated scaling
+    trailCtx.imageSmoothingEnabled = true;
+    trailCtx.imageSmoothingQuality = 'high';
+    trailCtx.globalAlpha = 1 - effectiveFadeRate;
+    // Use floor to avoid sub-pixel center point which causes quadrant artifacts
+    const floorCenterX: number = Math.floor(centerX);
+    const floorCenterY: number = Math.floor(centerY);
+    trailCtx.translate(floorCenterX, floorCenterY);
+    trailCtx.rotate(OnixVisualization.ROTATION_SPEED);
+    trailCtx.scale(OnixVisualization.ZOOM_SCALE, OnixVisualization.ZOOM_SCALE);
+    trailCtx.translate(-floorCenterX, -floorCenterY);
+    trailCtx.drawImage(tempCanvas, 0, 0);
+    trailCtx.restore();
+
+    // Get waveform data
+    this.analyser.getByteTimeDomainData(this.dataArray);
+
+    // Get frequency data for bass detection
+    this.analyser.getByteFrequencyData(this.frequencyData);
+
+    // Update waveform rotation
+    this.waveformAngle -= OnixVisualization.WAVEFORM_ROTATION_SPEED;
+
+    // Draw the center circle with rotation
+    trailCtx.save();
+    trailCtx.translate(centerX, centerY);
+    trailCtx.rotate(this.waveformAngle);
+    trailCtx.translate(-centerX, -centerY);
+    this.drawCenterCircle(trailCtx);
+    trailCtx.restore();
+
+    // Clear main canvas and draw trails
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(trailCanvas, 0, 0);
+
+    // Draw the bass-reactive white circle on main canvas (no trail effect)
+    this.drawBassCircle(ctx);
+
+    this.applyFadeOverlay();
   }
 
   protected override onFftSizeChanged(): void {
@@ -140,79 +226,6 @@ export class OnixVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
-  public draw(): void {
-    this.updateFade();
-
-    const ctx: CanvasRenderingContext2D = this.ctx;
-    const width: number = this.width;
-    const height: number = this.height;
-    const centerX: number = this.centerX;
-    const centerY: number = this.centerY;
-
-    // Ensure canvases exist
-    if (!this.trailCanvas || !this.trailCtx || !this.tempCanvas || !this.tempCtx) {
-      this.onResize();
-    }
-
-    const trailCtx: CanvasRenderingContext2D = this.trailCtx!;
-    const trailCanvas: HTMLCanvasElement = this.trailCanvas!;
-    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
-    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
-
-    // Copy current trails to temp canvas (reused, not recreated)
-    tempCtx.clearRect(0, 0, width, height);
-    tempCtx.drawImage(trailCanvas, 0, 0);
-
-    // Clear trail canvas
-    trailCtx.clearRect(0, 0, width, height);
-
-    // Draw back previous trails with rotation, zoom, and fade
-    // Apply power curve to fade multiplier for more aggressive low-intensity fading
-    const baseMultiplier: number = this.getFadeMultiplier();
-    const scaledMultiplier: number = Math.pow(baseMultiplier, this.FADE_POWER);
-    const effectiveFadeRate: number = this.FADE_RATE * scaledMultiplier;
-    trailCtx.save();
-    // Use high-quality image smoothing to reduce artifacts from repeated scaling
-    trailCtx.imageSmoothingEnabled = true;
-    trailCtx.imageSmoothingQuality = 'high';
-    trailCtx.globalAlpha = 1 - effectiveFadeRate;
-    // Use floor to avoid sub-pixel center point which causes quadrant artifacts
-    const floorCenterX: number = Math.floor(centerX);
-    const floorCenterY: number = Math.floor(centerY);
-    trailCtx.translate(floorCenterX, floorCenterY);
-    trailCtx.rotate(this.ROTATION_SPEED);
-    trailCtx.scale(this.ZOOM_SCALE, this.ZOOM_SCALE);
-    trailCtx.translate(-floorCenterX, -floorCenterY);
-    trailCtx.drawImage(tempCanvas, 0, 0);
-    trailCtx.restore();
-
-    // Get waveform data
-    this.analyser.getByteTimeDomainData(this.dataArray);
-
-    // Get frequency data for bass detection
-    this.analyser.getByteFrequencyData(this.frequencyData);
-
-    // Update waveform rotation
-    this.waveformAngle -= this.WAVEFORM_ROTATION_SPEED;
-
-    // Draw the center circle with rotation
-    trailCtx.save();
-    trailCtx.translate(centerX, centerY);
-    trailCtx.rotate(this.waveformAngle);
-    trailCtx.translate(-centerX, -centerY);
-    this.drawCenterCircle(trailCtx);
-    trailCtx.restore();
-
-    // Clear main canvas and draw trails
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(trailCanvas, 0, 0);
-
-    // Draw the bass-reactive white circle on main canvas (no trail effect)
-    this.drawBassCircle(ctx);
-
-    this.applyFadeOverlay();
-  }
-
   private drawCenterCircle(ctx: CanvasRenderingContext2D): void {
     const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
     const dataLength: number = dataArray.length;
@@ -220,7 +233,7 @@ export class OnixVisualization extends Canvas2DVisualization {
     const centerX: number = this.centerX;
     const centerY: number = this.centerY;
     const baseRadius: number = this.baseCircleRadius;
-    const numPoints: number = this.CENTER_CIRCLE_POINTS;
+    const numPoints: number = OnixVisualization.CENTER_CIRCLE_POINTS;
     const sensitivityFactor: number = this.sensitivityFactor;
     const amplitudeScale: number = height * 0.08;
     const sampleStep: number = (dataLength * 0.25) / numPoints;
@@ -285,7 +298,7 @@ export class OnixVisualization extends Canvas2DVisualization {
       ctx.closePath();
     };
 
-    const glowBlur: number = this.getScaledGlowBlur(15);
+    const glowBlur: number = this.getScaledGlowBlur(OnixVisualization.BASE_GLOW_BLUR);
 
     // Draw glow layer - use white shadow so glow complements all spectrum colors
     ctx.save();

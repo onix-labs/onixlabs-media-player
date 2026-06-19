@@ -40,106 +40,109 @@ interface Rgb {
  * that spiral about the centre.
  */
 export class SpotlightVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Spotlight';
-  public readonly category: string = 'Signature';
-
   // --- Concentric tower -----------------------------------------------------
 
   /** Number of stacked concentric circles. */
-  private readonly CIRCLE_COUNT: number = 14;
+  private static readonly CIRCLE_COUNT: number = 14;
 
   /**
    * The largest (outermost) circle's radius as a multiple of half the screen
    * width, so its circumference overlaps the left and right edges slightly.
    * The six circles are then equally spaced from the centre out to it.
    */
-  private readonly EDGE_OVERLAP_FACTOR: number = 1.25;
+  private static readonly EDGE_OVERLAP_FACTOR: number = 1.25;
 
   /** Saturation used for every circle (percent). */
-  private readonly CIRCLE_SATURATION: number = 80;
+  private static readonly CIRCLE_SATURATION: number = 80;
 
   /** Lightness of the innermost (brightest) circle (percent). */
-  private readonly INNER_LIGHTNESS: number = 76;
+  private static readonly INNER_LIGHTNESS: number = 76;
 
   /** Lightness of the outermost (darkest) circle (percent). */
-  private readonly OUTER_LIGHTNESS: number = 16;
+  private static readonly OUTER_LIGHTNESS: number = 16;
 
   /** Lightness of the background fill - a shade darker than the darkest circle. */
-  private readonly BACKGROUND_LIGHTNESS: number = 2;
+  private static readonly BACKGROUND_LIGHTNESS: number = 2;
 
   /** Base blur radius used to feather one circle into the next (pixels). */
-  private readonly CIRCLE_BASE_BLUR: number = 0;
+  private static readonly CIRCLE_BASE_BLUR: number = 0;
 
   /**
    * Minimum feather between circles, applied even when the user glow control is
    * zero, so the "mild blur from one circle to the next" is intrinsic.
    */
-  private readonly CIRCLE_MIN_BLUR: number = 0;
+  private static readonly CIRCLE_MIN_BLUR: number = 0;
 
   /** Width of the soft drop-shadow border drawn at each circle's circumference (pixels). */
-  private readonly CIRCLE_BORDER_WIDTH: number = 1.5;
+  private static readonly CIRCLE_BORDER_WIDTH: number = 1.5;
 
   /** Opacity of that border (0-1). */
-  private readonly CIRCLE_BORDER_ALPHA: number = 0.15;
+  private static readonly CIRCLE_BORDER_ALPHA: number = 0.15;
 
   // --- Frequency rings ------------------------------------------------------
 
   /** Angular samples around each ring. */
-  private readonly CIRCULAR_SAMPLES: number = 512;
+  private static readonly CIRCULAR_SAMPLES: number = 512;
 
   /** Number of frequency-bucket rings (one per inner circle). */
-  private readonly RING_COUNT: number = 14;
+  private static readonly RING_COUNT: number = 14;
 
   /** Times each ring's waveform repeats around the circle (rotational symmetry). */
-  private readonly RING_REPEAT: number = 2;
+  private static readonly RING_REPEAT: number = 2;
 
   /** Fraction of FFT bins trimmed from each end before bucketing (low & high). */
-  private readonly FREQ_TRIM_FRACTION: number = 0.1;
+  private static readonly FREQ_TRIM_FRACTION: number = 0.1;
 
   /** Magnitude (after sensitivity) at/above which a sample jumps to the ceiling. */
-  private readonly PEAK_THRESHOLD: number = 0.1;
+  private static readonly PEAK_THRESHOLD: number = 0.1;
 
   /** Opacity of the filled interior of each peak (1 = solid). */
-  private readonly PEAK_FILL_ALPHA: number = 0.1;
+  private static readonly PEAK_FILL_ALPHA: number = 0.1;
 
   /** Corner radius for each peak's rounded edges (pixels, border-radius style). */
-  private readonly PEAK_CORNER_RADIUS: number = 12;
+  private static readonly PEAK_CORNER_RADIUS: number = 12;
 
   // --- Trails (spiral / blur / fade) ----------------------------------------
 
   /** Per-frame rotation of the trail surfaces (radians). */
-  private readonly TRAIL_ROTATION: number = 0.004;
+  private static readonly TRAIL_ROTATION: number = 0.004;
 
   /** Per-frame fade of the rings trail (high, so layered peaks clear, not pile up). */
-  private readonly RING_FADE: number = 0.03;
+  private static readonly RING_FADE: number = 0.03;
 
   /** Extra trail-canvas margin beyond the outer circle, for glow (pixels). */
-  private readonly TRAIL_MARGIN: number = 20;
+  private static readonly TRAIL_MARGIN: number = 20;
 
   // --- Colour cycling -------------------------------------------------------
 
   /** Per-frame hue drift (degrees). */
-  private readonly HUE_CYCLE_SPEED: number = 0.08;
+  private static readonly HUE_CYCLE_SPEED: number = 0.08;
 
   /** Starting hue (degrees) - blue, matching the reference. */
-  private readonly START_HUE: number = 220;
+  private static readonly START_HUE: number = 220;
 
   // --- Bass-triggered hue jump ----------------------------------------------
 
   /** Fraction of the lowest FFT bins treated as the "bass" band. */
-  private readonly BASS_BIN_FRACTION: number = 0.03;
+  private static readonly BASS_BIN_FRACTION: number = 0.03;
 
   /** Average bass magnitude (0-1) at/above which the trigger fires. */
-  private readonly BASS_THRESHOLD: number = 0.5;
+  private static readonly BASS_THRESHOLD: number = 0.5;
 
   /** Minimum time between bass triggers (milliseconds). */
-  private readonly BASS_COOLDOWN_MS: number = 10000;
+  private static readonly BASS_COOLDOWN_MS: number = 10000;
 
   /** Hue jump applied on each bass trigger (degrees; golden angle for variety). */
-  private readonly HUE_JUMP_DEGREES: number = 137.5;
+  private static readonly HUE_JUMP_DEGREES: number = 137.5;
 
   /** Per-frame fade of the old-hue tower cross-fade after a hue jump. */
-  private readonly HUE_TRANSITION_FADE: number = 0.005;
+  private static readonly HUE_TRANSITION_FADE: number = 0.005;
+
+  /** Probability used for each random spin re-roll on a bass trigger. */
+  private static readonly SPIN_REROLL_CHANCE: number = 0.5;
+
+  public readonly name: string = 'Spotlight';
+  public readonly category: string = 'Signature';
 
   // --- State ----------------------------------------------------------------
 
@@ -211,21 +214,79 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   public constructor(config: VisualizationConfig) {
     super(config);
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
-    this.hue = this.START_HUE;
+    this.hue = SpotlightVisualization.START_HUE;
     // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
     this.sensitivity = 0.1;       // 10%
     this.trailIntensity = 0;      // minimal trails
     this.lineWidth = 1;           // 1px
     this.glowIntensity = 0;       // no glow
 
-    this.radii = new Array<number>(this.CIRCLE_COUNT).fill(0);
+    this.radii = new Array<number>(SpotlightVisualization.CIRCLE_COUNT).fill(0);
     this.circleColors = [];
-    this.circleColorStrings = new Array<string>(this.CIRCLE_COUNT).fill('rgb(0, 0, 0)');
-    for (let i: number = 0; i < this.CIRCLE_COUNT; i++) {
+    this.circleColorStrings = new Array<string>(SpotlightVisualization.CIRCLE_COUNT).fill('rgb(0, 0, 0)');
+    for (let i: number = 0; i < SpotlightVisualization.CIRCLE_COUNT; i++) {
       this.circleColors.push({r: 0, g: 0, b: 0});
     }
 
-    this.ringRadii = new Array<number>(this.CIRCULAR_SAMPLES).fill(0);
+    this.ringRadii = new Array<number>(SpotlightVisualization.CIRCULAR_SAMPLES).fill(0);
+  }
+
+  public override draw(): void {
+    if (this.destroyed) return;
+    this.updateFade();
+
+    const ctx: CanvasRenderingContext2D = this.ctx;
+    const width: number = this.width;
+    const height: number = this.height;
+    if (width <= 0 || height <= 0) return;
+
+    if (!this.ringsCanvas || !this.tempCanvas || !this.towerCanvas || !this.freezeCanvas) {
+      this.onResize();
+    }
+    if (!this.ringsCtx || !this.towerCtx || !this.freezeCtx) return;
+    const ringsCtx: CanvasRenderingContext2D = this.ringsCtx;
+    const towerCtx: CanvasRenderingContext2D = this.towerCtx;
+
+    // Advance time-based state. A bass hit jumps the hue and starts a cross-fade.
+    this.updateBassTrigger();
+    this.hue = (this.hue + SpotlightVisualization.HUE_CYCLE_SPEED) % 360;
+    this.updateColors();
+
+    // Age the rings trail with the rotate/fade/blur spiral (rings counter-spin).
+    this.spinTrail(this.ringsCanvas!, ringsCtx, SpotlightVisualization.RING_FADE);
+
+    // Fresh data: every ring onto its trail.
+    for (let ring: number = 0; ring < SpotlightVisualization.RING_COUNT; ring++) {
+      this.drawFrequencyRing(ringsCtx, ring);
+    }
+
+    // Tower (background + circles) on its own layer so a hue jump can cross-fade
+    // the old colours out beneath the new ones, rather than snapping the whole
+    // scene to the new hue in a single frame.
+    towerCtx.fillStyle = this.backgroundColorString;
+    towerCtx.fillRect(0, 0, width, height);
+    this.drawConcentricCircles(towerCtx);
+
+    ctx.drawImage(this.towerCanvas!, 0, 0);
+    if (this.hueTransition > 0) {
+      // Lay the snapshot of the old-hue tower over the new one and fade it out, so
+      // the new colour is drawn over the old instead of replacing it outright.
+      ctx.save();
+      ctx.globalAlpha = this.hueTransition;
+      ctx.drawImage(this.freezeCanvas!, 0, 0);
+      ctx.restore();
+      this.hueTransition -= SpotlightVisualization.HUE_TRANSITION_FADE;
+      if (this.hueTransition < 0) this.hueTransition = 0;
+    }
+
+    const trailOffsetX: number = this.centerX - this.trailCx;
+    const trailOffsetY: number = this.centerY - this.trailCy;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(this.ringsCanvas!, trailOffsetX, trailOffsetY);
+    ctx.restore();
+
+    this.applyFadeOverlay();
   }
 
   protected override onFftSizeChanged(): void {
@@ -247,15 +308,15 @@ export class SpotlightVisualization extends Canvas2DVisualization {
 
     // The outermost circle slightly overlaps the left/right edges; the six
     // circles are then equally spaced from the centre out to it.
-    const outerRadius: number = (width / 2) * this.EDGE_OVERLAP_FACTOR;
-    for (let i: number = 0; i < this.CIRCLE_COUNT; i++) {
-      this.radii[i] = outerRadius * (i + 1) / this.CIRCLE_COUNT;
+    const outerRadius: number = (width / 2) * SpotlightVisualization.EDGE_OVERLAP_FACTOR;
+    for (let i: number = 0; i < SpotlightVisualization.CIRCLE_COUNT; i++) {
+      this.radii[i] = outerRadius * (i + 1) / SpotlightVisualization.CIRCLE_COUNT;
     }
 
     // Trail surface is a square big enough to hold the whole outer circle (and
     // cover the visible canvas), so a waveform survives going out of bounds and
     // re-emerges on the outer circle in the corners.
-    const trailHalf: number = Math.ceil(Math.max(outerRadius, this.centerX, this.centerY) + this.TRAIL_MARGIN);
+    const trailHalf: number = Math.ceil(Math.max(outerRadius, this.centerX, this.centerY) + SpotlightVisualization.TRAIL_MARGIN);
     this.trailSize = trailHalf * 2;
     this.trailCx = trailHalf;
     this.trailCy = trailHalf;
@@ -300,64 +361,6 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     this.ctx.clearRect(0, 0, width, height);
   }
 
-  public override draw(): void {
-    if (this.destroyed) return;
-    this.updateFade();
-
-    const ctx: CanvasRenderingContext2D = this.ctx;
-    const width: number = this.width;
-    const height: number = this.height;
-    if (width <= 0 || height <= 0) return;
-
-    if (!this.ringsCanvas || !this.tempCanvas || !this.towerCanvas || !this.freezeCanvas) {
-      this.onResize();
-    }
-    if (!this.ringsCtx || !this.towerCtx || !this.freezeCtx) return;
-    const ringsCtx: CanvasRenderingContext2D = this.ringsCtx;
-    const towerCtx: CanvasRenderingContext2D = this.towerCtx;
-
-    // Advance time-based state. A bass hit jumps the hue and starts a cross-fade.
-    this.updateBassTrigger();
-    this.hue = (this.hue + this.HUE_CYCLE_SPEED) % 360;
-    this.updateColors();
-
-    // Age the rings trail with the rotate/fade/blur spiral (rings counter-spin).
-    this.spinTrail(this.ringsCanvas!, ringsCtx, this.RING_FADE);
-
-    // Fresh data: every ring onto its trail.
-    for (let ring: number = 0; ring < this.RING_COUNT; ring++) {
-      this.drawFrequencyRing(ringsCtx, ring);
-    }
-
-    // Tower (background + circles) on its own layer so a hue jump can cross-fade
-    // the old colours out beneath the new ones, rather than snapping the whole
-    // scene to the new hue in a single frame.
-    towerCtx.fillStyle = this.backgroundColorString;
-    towerCtx.fillRect(0, 0, width, height);
-    this.drawConcentricCircles(towerCtx);
-
-    ctx.drawImage(this.towerCanvas!, 0, 0);
-    if (this.hueTransition > 0) {
-      // Lay the snapshot of the old-hue tower over the new one and fade it out, so
-      // the new colour is drawn over the old instead of replacing it outright.
-      ctx.save();
-      ctx.globalAlpha = this.hueTransition;
-      ctx.drawImage(this.freezeCanvas!, 0, 0);
-      ctx.restore();
-      this.hueTransition -= this.HUE_TRANSITION_FADE;
-      if (this.hueTransition < 0) this.hueTransition = 0;
-    }
-
-    const trailOffsetX: number = this.centerX - this.trailCx;
-    const trailOffsetY: number = this.centerY - this.trailCy;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(this.ringsCanvas!, trailOffsetX, trailOffsetY);
-    ctx.restore();
-
-    this.applyFadeOverlay();
-  }
-
   // === Concentric tower =====================================================
 
   /**
@@ -365,11 +368,11 @@ export class SpotlightVisualization extends Canvas2DVisualization {
    * brighter circles stack on top, each feathered into the next with a blur.
    */
   private drawConcentricCircles(ctx: CanvasRenderingContext2D): void {
-    for (let i: number = this.CIRCLE_COUNT - 1; i >= 0; i--) {
+    for (let i: number = SpotlightVisualization.CIRCLE_COUNT - 1; i >= 0; i--) {
       const colorString: string = this.circleColorStrings[i];
       ctx.save();
       // Keep an intrinsic feather even when the user glow control is at zero.
-      ctx.shadowBlur = Math.max(this.CIRCLE_MIN_BLUR, this.getScaledGlowBlur(this.CIRCLE_BASE_BLUR));
+      ctx.shadowBlur = Math.max(SpotlightVisualization.CIRCLE_MIN_BLUR, this.getScaledGlowBlur(SpotlightVisualization.CIRCLE_BASE_BLUR));
       ctx.shadowColor = colorString;
       ctx.fillStyle = colorString;
       ctx.beginPath();
@@ -378,10 +381,10 @@ export class SpotlightVisualization extends Canvas2DVisualization {
 
       // A small half-transparent dark border at the rim, softened by its own dark
       // shadow, reads as a drop shadow where each circle sits over the one beneath.
-      ctx.shadowColor = `rgba(0, 0, 0, ${this.CIRCLE_BORDER_ALPHA})`;
-      ctx.shadowBlur = this.CIRCLE_BORDER_WIDTH;
-      ctx.strokeStyle = `rgba(0, 0, 0, ${this.CIRCLE_BORDER_ALPHA})`;
-      ctx.lineWidth = this.CIRCLE_BORDER_WIDTH;
+      ctx.shadowColor = `rgba(0, 0, 0, ${SpotlightVisualization.CIRCLE_BORDER_ALPHA})`;
+      ctx.shadowBlur = SpotlightVisualization.CIRCLE_BORDER_WIDTH;
+      ctx.strokeStyle = `rgba(0, 0, 0, ${SpotlightVisualization.CIRCLE_BORDER_ALPHA})`;
+      ctx.lineWidth = SpotlightVisualization.CIRCLE_BORDER_WIDTH;
       ctx.stroke();
       ctx.restore();
     }
@@ -401,17 +404,17 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     this.analyser.getByteFrequencyData(this.freqArray);
 
     const binCount: number = this.freqArray.length;
-    const numSamples: number = this.CIRCULAR_SAMPLES;
+    const numSamples: number = SpotlightVisualization.CIRCULAR_SAMPLES;
     const sensitivityFactor: number = this.sensitivityFactor;
 
     // Logarithmic (octave-like) bucket for this ring so each ring spans a similar
     // perceptual range, with a per-ring gain compensating the high-frequency
     // rolloff - both spread activity more evenly than equal linear buckets.
-    const lo: number = Math.max(1, binCount * this.FREQ_TRIM_FRACTION);
-    const hi: number = binCount * (1 - this.FREQ_TRIM_FRACTION);
+    const lo: number = Math.max(1, binCount * SpotlightVisualization.FREQ_TRIM_FRACTION);
+    const hi: number = binCount * (1 - SpotlightVisualization.FREQ_TRIM_FRACTION);
     const ratio: number = hi / lo;
-    const binLo: number = lo * Math.pow(ratio, ring / this.RING_COUNT);
-    const binHi: number = lo * Math.pow(ratio, (ring + 1) / this.RING_COUNT);
+    const binLo: number = lo * Math.pow(ratio, ring / SpotlightVisualization.RING_COUNT);
+    const binHi: number = lo * Math.pow(ratio, (ring + 1) / SpotlightVisualization.RING_COUNT);
     const bucketSpan: number = binHi - binLo;
 
     const baseRadius: number = this.radii[ring];
@@ -421,22 +424,22 @@ export class SpotlightVisualization extends Canvas2DVisualization {
 
     // Map the bucket across one segment, then repeat it around the circle so the
     // ring is rotationally symmetric (RING_REPEAT copies).
-    const segLen: number = (numSamples / this.RING_REPEAT) | 0;
+    const segLen: number = (numSamples / SpotlightVisualization.RING_REPEAT) | 0;
     for (let i: number = 0; i < segLen; i++) {
       // Map this segment sample to a frequency bin inside the ring's bucket.
       const bin: number = Math.min(binCount - 1, (binLo + (i / segLen) * bucketSpan) | 0);
       const magnitude: number = this.freqArray[bin] / 255;
       // Two positions only: ceiling (next circle) when the bin is loud enough,
       // otherwise baseline (this ring's own circle).
-      const radius: number = magnitude * sensitivityFactor >= this.PEAK_THRESHOLD ? ceilRadius : baseRadius;
-      for (let rep: number = 0; rep < this.RING_REPEAT; rep++) {
+      const radius: number = magnitude * sensitivityFactor >= SpotlightVisualization.PEAK_THRESHOLD ? ceilRadius : baseRadius;
+      for (let rep: number = 0; rep < SpotlightVisualization.RING_REPEAT; rep++) {
         this.ringRadii[i + rep * segLen] = radius;
       }
     }
 
     // Fill each peak as a rounded sector (solid interior); no outline.
     ctx.save();
-    ctx.globalAlpha = this.PEAK_FILL_ALPHA;
+    ctx.globalAlpha = SpotlightVisualization.PEAK_FILL_ALPHA;
     ctx.fillStyle = mainColor;
     this.appendRoundedPeaks(ctx, baseRadius, ceilRadius, true);
     ctx.fill();
@@ -456,7 +459,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     ceilRadius: number,
     withBottom: boolean
   ): void {
-    const numSamples: number = this.CIRCULAR_SAMPLES;
+    const numSamples: number = SpotlightVisualization.CIRCULAR_SAMPLES;
     const radii: number[] = this.ringRadii;
 
     ctx.beginPath();
@@ -504,7 +507,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     ceilRadius: number,
     withBottom: boolean
   ): void {
-    const angleStep: number = TWO_PI / this.CIRCULAR_SAMPLES;
+    const angleStep: number = TWO_PI / SpotlightVisualization.CIRCULAR_SAMPLES;
     const cx: number = this.trailCx;
     const cy: number = this.trailCy;
 
@@ -512,7 +515,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     let a1: number = (endIdx + 1) * angleStep;
     if (a1 <= a0) a1 += TWO_PI; // run wrapped the seam
 
-    let cr: number = this.PEAK_CORNER_RADIUS;
+    let cr: number = SpotlightVisualization.PEAK_CORNER_RADIUS;
     const maxByWall: number = (ceilRadius - baseRadius) * 0.5;
     const maxByArc: number = (a1 - a0) * baseRadius * 0.5;
     if (cr > maxByWall) cr = maxByWall;
@@ -576,7 +579,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     const cx: number = this.trailCx;
     const cy: number = this.trailCy;
     // Only bands with both bounding circles can be spun (one annulus per ring).
-    const bands: number = Math.min(this.RING_COUNT, this.CIRCLE_COUNT - 1);
+    const bands: number = Math.min(SpotlightVisualization.RING_COUNT, SpotlightVisualization.CIRCLE_COUNT - 1);
 
     for (let ring: number = 0; ring < bands; ring++) {
       const inner: number = this.radii[ring];
@@ -598,7 +601,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
       ctx.clip();
 
       ctx.translate(cx, cy);
-      ctx.rotate(this.TRAIL_ROTATION * direction);
+      ctx.rotate(SpotlightVisualization.TRAIL_ROTATION * direction);
       ctx.translate(-cx, -cy);
       ctx.drawImage(tempCanvas, 0, 0);
       ctx.restore();
@@ -616,15 +619,15 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     this.analyser.getByteFrequencyData(this.freqArray);
 
     const binCount: number = this.freqArray.length;
-    const bassBins: number = Math.max(1, (binCount * this.BASS_BIN_FRACTION) | 0);
+    const bassBins: number = Math.max(1, (binCount * SpotlightVisualization.BASS_BIN_FRACTION) | 0);
     let sum: number = 0;
     for (let b: number = 0; b < bassBins; b++) sum += this.freqArray[b];
     const bassLevel: number = sum / bassBins / 255;
 
-    if (bassLevel < this.BASS_THRESHOLD) return;
+    if (bassLevel < SpotlightVisualization.BASS_THRESHOLD) return;
 
     const now: number = performance.now();
-    if (now - this.lastBassTriggerTime < this.BASS_COOLDOWN_MS) return;
+    if (now - this.lastBassTriggerTime < SpotlightVisualization.BASS_COOLDOWN_MS) return;
 
     this.lastBassTriggerTime = now;
 
@@ -635,12 +638,12 @@ export class SpotlightVisualization extends Canvas2DVisualization {
       this.freezeCtx.drawImage(this.towerCanvas, 0, 0);
       this.hueTransition = 1;
     }
-    this.hue = (this.hue + this.HUE_JUMP_DEGREES) % 360;
+    this.hue = (this.hue + SpotlightVisualization.HUE_JUMP_DEGREES) % 360;
 
     // Re-roll the ring spin: sometimes every ring shares a direction, sometimes
     // neighbours counter-rotate, and the overall direction may flip.
-    this.ringsAligned = Math.random() < 0.5;
-    this.spinSign = Math.random() < 0.5 ? 1 : -1;
+    this.ringsAligned = Math.random() < SpotlightVisualization.SPIN_REROLL_CHANCE;
+    this.spinSign = Math.random() < SpotlightVisualization.SPIN_REROLL_CHANCE ? 1 : -1;
   }
 
   /** Recomputes the cached circle, waveform and background colours on hue change. */
@@ -649,12 +652,12 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     if (hueInt === this.cachedHue) return;
     this.cachedHue = hueInt;
 
-    const span: number = this.CIRCLE_COUNT - 1;
-    for (let i: number = 0; i < this.CIRCLE_COUNT; i++) {
+    const span: number = SpotlightVisualization.CIRCLE_COUNT - 1;
+    for (let i: number = 0; i < SpotlightVisualization.CIRCLE_COUNT; i++) {
       // Brightness fraction: 1 at the innermost circle, 0 at the outermost.
       const brightness: number = (span - i) / span;
-      const lightness: number = this.OUTER_LIGHTNESS + (this.INNER_LIGHTNESS - this.OUTER_LIGHTNESS) * brightness;
-      const rgb: Rgb = this.hslToRgb(this.hue, this.CIRCLE_SATURATION, lightness);
+      const lightness: number = SpotlightVisualization.OUTER_LIGHTNESS + (SpotlightVisualization.INNER_LIGHTNESS - SpotlightVisualization.OUTER_LIGHTNESS) * brightness;
+      const rgb: Rgb = this.hslToRgb(this.hue, SpotlightVisualization.CIRCLE_SATURATION, lightness);
       this.circleColors[i].r = rgb.r;
       this.circleColors[i].g = rgb.g;
       this.circleColors[i].b = rgb.b;
@@ -662,7 +665,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     }
 
     // Background: same hue, a shade darker than the darkest circle.
-    const background: Rgb = this.hslToRgb(this.hue, this.CIRCLE_SATURATION, this.BACKGROUND_LIGHTNESS);
+    const background: Rgb = this.hslToRgb(this.hue, SpotlightVisualization.CIRCLE_SATURATION, SpotlightVisualization.BACKGROUND_LIGHTNESS);
     this.backgroundColorString = `rgb(${background.r}, ${background.g}, ${background.b})`;
   }
 
