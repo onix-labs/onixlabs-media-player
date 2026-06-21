@@ -7,6 +7,8 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  box-sizing: border-box;
+  padding: 1rem;
 }
 
 .wizard-container {
@@ -35,74 +37,149 @@
   }
 }
 
-// Progress indicator (in footer)
-.wizard-progress {
+// Body: left column (stepper + nav) + content
+.wizard-body {
   display: flex;
-  align-items: center;
-  gap: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  gap: 1.25rem;
 }
 
-.progress-pill {
+// Right column: content area + navigation buttons
+.wizard-main {
   display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.75rem;
-  border-radius: 1rem;
-  background: var(--text-8);
-  color: var(--text-40);
-  font-size: 0.75rem;
-  font-weight: 500;
-  transition: background 0.2s ease, color 0.2s ease;
-
-  i {
-    font-size: 0.625rem;
-  }
-
-  &.current {
-    background: rgba(96, 165, 250, 0.15);
-    color: rgb(96, 165, 250);
-
-    @include light-mode {
-      background: rgba(59, 130, 246, 0.15);
-      color: rgb(59, 130, 246);
-    }
-  }
-
-  &.completed {
-    background: rgba(74, 222, 128, 0.12);
-    color: rgb(74, 222, 128);
-
-    @include light-mode {
-      background: rgba(34, 197, 94, 0.12);
-      color: rgb(34, 197, 94);
-    }
-  }
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
-.progress-connector {
-  width: 1rem;
-  height: 2px;
-  background: var(--text-15);
-  margin: 0 0.25rem;
+// Vertical stepper — left column, bordered box, recessed (darker) background
+.wizard-stepper {
+  display: flex;
+  flex-direction: column;
   flex-shrink: 0;
+  box-sizing: border-box;
+  width: 13rem;
+  padding: 1.5rem 1.25rem;
+  border: 1px solid var(--text-12);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  overflow-y: auto;
+
+  @include light-mode {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: var(--text-10);
+  }
+}
+
+.stepper-item {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.stepper-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.stepper-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 2px solid var(--text-20);
+  background: var(--text-5);
+  color: transparent;
+  font-size: 0.625rem;
+  flex-shrink: 0;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+
+  .current & {
+    border-color: rgb(96, 165, 250);
+    background: rgba(96, 165, 250, 0.18);
+    box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.12);
+
+    @include light-mode {
+      border-color: rgb(59, 130, 246);
+      background: rgba(59, 130, 246, 0.15);
+      box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+    }
+
+    &::after {
+      content: '';
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 50%;
+      background: rgb(96, 165, 250);
+
+      @include light-mode {
+        background: rgb(59, 130, 246);
+      }
+    }
+  }
+
+  .completed & {
+    border-color: rgb(74, 222, 128);
+    background: rgb(74, 222, 128);
+    color: #0b3d1c;
+
+    @include light-mode {
+      border-color: rgb(34, 197, 94);
+      background: rgb(34, 197, 94);
+      color: white;
+    }
+  }
+}
+
+.stepper-line {
+  flex: 1;
+  width: 2px;
+  min-height: 1.25rem;
+  margin: 0.25rem 0;
+  background: var(--text-15);
   transition: background 0.2s ease;
 
   &.completed {
-    background: rgba(74, 222, 128, 0.4);
+    background: rgba(74, 222, 128, 0.5);
 
     @include light-mode {
-      background: rgba(34, 197, 94, 0.5);
+      background: rgba(34, 197, 94, 0.55);
     }
+  }
+}
+
+.stepper-label {
+  padding-top: 0.1875rem;
+  padding-bottom: 1.25rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-40);
+  user-select: none;
+  transition: color 0.2s ease;
+
+  .current & {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .completed & {
+    color: var(--text-60);
   }
 }
 
 // Content area
 .wizard-content {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 2rem;
+  padding: 1rem 1.5rem 1.5rem;
 }
 
 .step-content {
@@ -810,10 +887,8 @@
 // Footer
 .wizard-footer {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem;
-  border-top: 1px solid var(--text-10);
+  justify-content: flex-end;
+  margin-top: 1rem;
 }
 
 .nav-buttons {
@@ -824,6 +899,7 @@
 .nav-button {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   padding: 0.625rem 1.25rem;
   border-radius: 6px;

@@ -4,8 +4,10 @@
  * This wizard guides users through initial application setup including:
  * 1. Welcome - Introduction to ONIXPlayer
  * 2. Server Port - Configure the media server port
- * 3. Dependencies - Install FFmpeg and FluidSynth
- * 4. Complete - Summary and finish
+ * 3. FFmpeg - Install the required media engine
+ * 4. FluidSynth - Install MIDI synthesis and manage SoundFonts
+ * 5. yt-dlp - Install the internet streaming downloader
+ * 6. Complete - Summary and finish
  *
  * The wizard appears on first launch or when launched with --first-run flag.
  *
@@ -18,7 +20,7 @@ import {DependencyService, DependencyId} from '../../services/dependency.service
 import type {MediaPlayerAPI} from '../../types/electron';
 
 /** Wizard step identifiers */
-type WizardStep = 'welcome' | 'port' | 'dependencies' | 'complete';
+type WizardStep = 'welcome' | 'port' | 'ffmpeg' | 'fluidsynth' | 'ytdlp' | 'complete';
 
 /**
  * Setup wizard component for first-run configuration.
@@ -52,7 +54,7 @@ export class SetupWizard {
   public readonly currentStep: WritableSignal<WizardStep> = signal<WizardStep>('welcome');
 
   /** All wizard steps in order */
-  public readonly steps: readonly WizardStep[] = ['welcome', 'port', 'dependencies', 'complete'];
+  public readonly steps: readonly WizardStep[] = ['welcome', 'port', 'ffmpeg', 'fluidsynth', 'ytdlp', 'complete'];
 
   /** Server port value */
   public readonly serverPort: WritableSignal<number> = signal<number>(0);
@@ -100,6 +102,12 @@ export class SetupWizard {
   public readonly fluidsynthStatus: Signal<{installed: boolean; path: string | null}> = computed((): {installed: boolean; path: string | null} => {
     const state: ReturnType<typeof this.deps.dependencyState> = this.deps.dependencyState();
     return state ? {installed: state.fluidsynth.installed, path: state.fluidsynth.path} : {installed: false, path: null};
+  });
+
+  /** yt-dlp status from dependency service */
+  public readonly ytdlpStatus: Signal<{installed: boolean; path: string | null}> = computed((): {installed: boolean; path: string | null} => {
+    const state: ReturnType<typeof this.deps.dependencyState> = this.deps.dependencyState();
+    return state ? {installed: state.ytdlp.installed, path: state.ytdlp.path} : {installed: false, path: null};
   });
 
   /** Whether a dependency operation is in progress */
@@ -330,6 +338,12 @@ export class SetupWizard {
         case 'darwin': return 'brew install ffmpeg';
         case 'win32': return 'winget install Gyan.FFmpeg';
         default: return 'sudo apt install ffmpeg';
+      }
+    } else if (id === 'yt-dlp') {
+      switch (platform) {
+        case 'darwin': return 'brew install yt-dlp';
+        case 'win32': return 'winget install yt-dlp.yt-dlp';
+        default: return 'sudo apt install yt-dlp';
       }
     } else {
       switch (platform) {
