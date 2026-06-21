@@ -1,6 +1,6 @@
 {
   "name": "onixlabs-media-player",
-  "version": "2026.3.1",
+  "version": "2026.4.0",
   "description": "Cross-platform media player with real-time audio visualizations, video playback, and MIDI synthesis",
   "author": {
     "name": "ONIXLabs",
@@ -121,11 +121,17 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ]
     },
