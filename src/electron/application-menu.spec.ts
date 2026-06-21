@@ -231,7 +231,7 @@ describe('application-menu', (): void => {
       expect(wavesCategory).toBeDefined();
 
       const wavesItems: Record<string, unknown>[] = getSubmenu(wavesCategory!);
-      const expectedNames: readonly string[] = ['Classic', 'Modern', 'Plasma', 'Infinity', 'Neon', 'Onix', 'Pulsar'];
+      const expectedNames: readonly string[] = ['Classic', 'Modern', 'Plasma', 'Infinity', 'Neon', 'Onix', 'Pulsar', 'Black Hole'];
 
       for (const name of expectedNames) {
         const item: Record<string, unknown> | undefined = findSubmenuItem(wavesItems, name);
