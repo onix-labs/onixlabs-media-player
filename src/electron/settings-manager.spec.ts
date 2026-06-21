@@ -1402,6 +1402,50 @@ describe('SettingsManager', () => {
         expect(result.application.serverPort).toBe(8080);
         expect(result.application.setupCompleted).toBe(true);
       });
+
+      it('should record the supplied app version', () => {
+        const manager: SettingsManager = new SettingsManager();
+        const result: AppSettings = manager.markSetupComplete('2026.1.0');
+        expect(result.application.setupCompletedVersion).toBe('2026.1.0');
+        expect(manager.getSetupCompletedVersion()).toBe('2026.1.0');
+      });
+
+      it('should persist the completed version to disk', () => {
+        const manager1: SettingsManager = new SettingsManager();
+        manager1.markSetupComplete('2026.1.0');
+
+        const manager2: SettingsManager = new SettingsManager();
+        expect(manager2.getSetupCompletedVersion()).toBe('2026.1.0');
+      });
+    });
+
+    describe('isSetupCompleteForVersion', () => {
+      it('should return false on a fresh install', () => {
+        const manager: SettingsManager = new SettingsManager();
+        expect(manager.isSetupCompleteForVersion('2026.1.0')).toBe(false);
+      });
+
+      it('should return true when the completed version matches', () => {
+        const manager: SettingsManager = new SettingsManager();
+        manager.markSetupComplete('2026.1.0');
+        expect(manager.isSetupCompleteForVersion('2026.1.0')).toBe(true);
+      });
+
+      it('should return false after an upgrade to a newer version', () => {
+        const manager: SettingsManager = new SettingsManager();
+        manager.markSetupComplete('2026.1.0');
+        // Simulates upgrading the app: setup must run again for the new version.
+        expect(manager.isSetupCompleteForVersion('2026.2.0')).toBe(false);
+      });
+
+      it('should return false when setup completed without a recorded version', () => {
+        writeSettingsFile({
+          version: 2,
+          application: { setupCompleted: true },
+        });
+        const manager: SettingsManager = new SettingsManager();
+        expect(manager.isSetupCompleteForVersion('2026.1.0')).toBe(false);
+      });
     });
 
     describe('setupCompleted default value', () => {

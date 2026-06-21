@@ -321,12 +321,19 @@ class Program {
     // Setup core IPC handlers needed by any window (including setup wizard)
     this.setupCoreIpcHandlers();
 
-    // Check if this is a first run or if --first-run flag was passed
-    const isFirstRun: boolean = !this.mediaServer.getSettingsManager().isSetupComplete();
+    // Show the setup wizard on first run, after an app upgrade, or with --first-run.
+    // The wizard is re-run whenever the version that completed it differs from the
+    // current app version (e.g. upgrading 2026.1.0 -> 2026.2.0).
+    const settingsManager: SettingsManager = this.mediaServer.getSettingsManager();
+    const currentVersion: string = app.getVersion();
+    const isFirstRun: boolean = !settingsManager.isSetupCompleteForVersion(currentVersion);
     const forceFirstRun: boolean = process.argv.includes('--first-run');
 
     if (isFirstRun || forceFirstRun) {
-      mainLogger.info(`Showing setup wizard (firstRun=${isFirstRun}, forceFirstRun=${forceFirstRun})`);
+      mainLogger.info(
+        `Showing setup wizard (firstRun=${isFirstRun}, forceFirstRun=${forceFirstRun}, ` +
+        `currentVersion=${currentVersion}, completedVersion='${settingsManager.getSetupCompletedVersion()}')`
+      );
       this.setupSetupWizardIpcHandlers();
       await this.showSetupWizard();
     }
@@ -1482,8 +1489,9 @@ class Program {
 
     // Complete the setup wizard
     ipcMain.handle("setup:complete", (): void => {
-      ipcLogger.info('Setup wizard completed');
-      this.mediaServer?.getSettingsManager().markSetupComplete();
+      const completedVersion: string = app.getVersion();
+      ipcLogger.info(`Setup wizard completed (version=${completedVersion})`);
+      this.mediaServer?.getSettingsManager().markSetupComplete(completedVersion);
       this.setupWizardClosedLegitimately = true;
       this.setupWizardWindow?.close();
     });

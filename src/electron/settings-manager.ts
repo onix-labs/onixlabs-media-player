@@ -260,6 +260,9 @@ export interface ApplicationSettings {
   readonly controlsAutoHideDelay: number;
   /** Whether the setup wizard has been completed (default false) */
   readonly setupCompleted: boolean;
+  /** App version that last completed the setup wizard ('' = never / pre-versioning).
+   *  The wizard re-runs when this does not match the current app version. */
+  readonly setupCompletedVersion: string;
   /** Active SoundFont file name (null = auto-select first available) */
   readonly activeSoundFontFileName: string | null;
 }
@@ -478,6 +481,7 @@ export interface ApplicationSettingsUpdate {
   readonly serverPort?: number;
   readonly controlsAutoHideDelay?: number;
   readonly setupCompleted?: boolean;
+  readonly setupCompletedVersion?: string;
   readonly activeSoundFontFileName?: string | null;
 }
 
@@ -653,6 +657,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     serverPort: 0,  // 0 = auto-assign
     controlsAutoHideDelay: 5,  // 5 seconds default
     setupCompleted: false,  // false = show setup wizard on first run
+    setupCompletedVersion: '',  // '' = wizard never completed for any version
     activeSoundFontFileName: null,  // null = auto-select first available
   },
   playback: {
@@ -918,6 +923,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate setupCompletedVersion if provided
+    if (update.setupCompletedVersion !== undefined) {
+      if (typeof update.setupCompletedVersion !== 'string') {
+        console.warn(`[SettingsManager] Invalid setupCompletedVersion: ${update.setupCompletedVersion}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update (use hasOwnProperty to distinguish undefined from explicit null)
     this.settings = {
       ...this.settings,
@@ -926,6 +939,7 @@ export class SettingsManager {
         serverPort: update.serverPort ?? this.settings.application.serverPort,
         controlsAutoHideDelay: update.controlsAutoHideDelay ?? this.settings.application.controlsAutoHideDelay,
         setupCompleted: update.setupCompleted ?? this.settings.application.setupCompleted,
+        setupCompletedVersion: update.setupCompletedVersion ?? this.settings.application.setupCompletedVersion,
         activeSoundFontFileName: Object.prototype.hasOwnProperty.call(update, 'activeSoundFontFileName')
           ? update.activeSoundFontFileName ?? null
           : this.settings.application.activeSoundFontFileName,
@@ -957,12 +971,15 @@ export class SettingsManager {
 
   /**
    * Marks the setup wizard as completed.
-   * Sets the setupCompleted flag to true and persists to disk.
+   * Sets the setupCompleted flag to true, records the app version that
+   * completed it, and persists to disk.
    *
+   * @param version - The current app version completing the wizard
+   *                   (omit to record an empty version)
    * @returns The updated complete settings object
    */
-  public markSetupComplete(): AppSettings {
-    return this.updateApplicationSettings({setupCompleted: true});
+  public markSetupComplete(version: string = ''): AppSettings {
+    return this.updateApplicationSettings({setupCompleted: true, setupCompletedVersion: version});
   }
 
   /**
@@ -972,6 +989,30 @@ export class SettingsManager {
    */
   public isSetupComplete(): boolean {
     return this.settings.application.setupCompleted;
+  }
+
+  /**
+   * Gets the app version that last completed the setup wizard.
+   *
+   * @returns The recorded version, or '' if never completed / pre-versioning
+   */
+  public getSetupCompletedVersion(): string {
+    return this.settings.application.setupCompletedVersion;
+  }
+
+  /**
+   * Checks if the setup wizard has been completed for the given app version.
+   *
+   * Returns true only when setup was completed AND the version that completed
+   * it matches the supplied current version. This makes the wizard re-run after
+   * an app upgrade (e.g. 2026.1.0 -> 2026.2.0).
+   *
+   * @param currentVersion - The current app version to check against
+   * @returns True if setup is complete for this exact version
+   */
+  public isSetupCompleteForVersion(currentVersion: string): boolean {
+    return this.settings.application.setupCompleted
+      && this.settings.application.setupCompletedVersion === currentVersion;
   }
 
   /**
@@ -1938,6 +1979,7 @@ export class SettingsManager {
     const serverPort: unknown = appObj['serverPort'];
     const controlsAutoHideDelay: unknown = appObj['controlsAutoHideDelay'];
     const setupCompleted: unknown = appObj['setupCompleted'];
+    const setupCompletedVersion: unknown = appObj['setupCompletedVersion'];
     const activeSoundFontFileName: unknown = appObj['activeSoundFontFileName'];
 
     return {
@@ -1950,6 +1992,9 @@ export class SettingsManager {
       setupCompleted: typeof setupCompleted === 'boolean'
         ? setupCompleted
         : DEFAULT_SETTINGS.application.setupCompleted,
+      setupCompletedVersion: typeof setupCompletedVersion === 'string'
+        ? setupCompletedVersion
+        : DEFAULT_SETTINGS.application.setupCompletedVersion,
       activeSoundFontFileName: activeSoundFontFileName === null || typeof activeSoundFontFileName === 'string'
         ? activeSoundFontFileName
         : DEFAULT_SETTINGS.application.activeSoundFontFileName,
