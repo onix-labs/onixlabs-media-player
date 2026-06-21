@@ -78,6 +78,12 @@ export class MediaPlayerService implements OnDestroy {
   /** Effect reference for cleanup */
   private readonly defaultVolumeEffect: EffectRef;
 
+  /** Debounce timer for persisting volume changes to settings */
+  private volumePersistTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Debounce delay (ms) before a volume change is written to settings */
+  private readonly volumePersistDebounceMs: number = 400;
+
   /**
    * Constructor - sets up reactive effects for settings initialization.
    */
@@ -100,6 +106,9 @@ export class MediaPlayerService implements OnDestroy {
    */
   public ngOnDestroy(): void {
     this.defaultVolumeEffect.destroy();
+    if (this.volumePersistTimer !== null) {
+      clearTimeout(this.volumePersistTimer);
+    }
   }
 
   // ============================================================================
@@ -393,6 +402,26 @@ export class MediaPlayerService implements OnDestroy {
     // Volume is handled client-side in AudioOutlet/VideoOutlet
     // but we also tell the server for persistence
     await this.electron.setVolume(normalized);
+    // Persist the level so it is restored on the next app launch. Debounced
+    // because the slider fires rapidly while dragging.
+    this.persistVolume(normalized);
+  }
+
+  /**
+   * Persists the given volume to settings as the default volume, debounced to
+   * avoid a settings write on every drag frame. The persisted value is applied
+   * on the next app launch by the default-volume startup effect.
+   *
+   * @param volume - Normalized volume level (0-1) to persist
+   */
+  private persistVolume(volume: number): void {
+    if (this.volumePersistTimer !== null) {
+      clearTimeout(this.volumePersistTimer);
+    }
+    this.volumePersistTimer = setTimeout((): void => {
+      this.volumePersistTimer = null;
+      void this.settings.setDefaultVolume(volume);
+    }, this.volumePersistDebounceMs);
   }
 
   /**
