@@ -918,8 +918,8 @@ class Program {
     const iconPath: string = path.join(projectRoot, "public", "icon-windows-linux.png");
 
     // Fixed size wizard dialog
-    const wizardWidth: number = 700;
-    const wizardHeight: number = 500;
+    const wizardWidth: number = 800;
+    const wizardHeight: number = 600;
 
     // Get appearance settings for consistent styling
     const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;

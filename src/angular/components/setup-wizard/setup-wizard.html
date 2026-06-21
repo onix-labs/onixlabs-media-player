@@ -4,8 +4,42 @@
     <span class="header-title">ONIXPlayer</span>
   </div>
 
-  <!-- Step content -->
-  <div class="wizard-content">
+  <!-- Body: stepper (left) + main column (content + nav) -->
+  <div class="wizard-body">
+    <!-- Vertical stepper (left column) -->
+    <nav class="wizard-stepper">
+      @for (step of steps; track step; let i = $index) {
+        <div class="stepper-item"
+             [class.completed]="isStepCompleted(step)"
+             [class.current]="isCurrentStep(step)">
+          <div class="stepper-marker">
+            <div class="stepper-dot">
+              @if (isStepCompleted(step)) {
+                <i class="fa-solid fa-check"></i>
+              }
+            </div>
+            @if (i < steps.length - 1) {
+              <div class="stepper-line" [class.completed]="isStepCompleted(steps[i + 1])"></div>
+            }
+          </div>
+          <span class="stepper-label">
+            @switch (step) {
+              @case ('welcome') { Welcome }
+              @case ('port') { Port }
+              @case ('ffmpeg') { FFmpeg }
+              @case ('fluidsynth') { FluidSynth }
+              @case ('ytdlp') { yt-dlp }
+              @case ('complete') { Complete }
+            }
+          </span>
+        </div>
+      }
+    </nav>
+
+    <!-- Right column: content + navigation -->
+    <div class="wizard-main">
+    <!-- Step content -->
+    <div class="wizard-content">
     @switch (currentStep()) {
       <!-- Welcome Step -->
       @case ('welcome') {
@@ -81,13 +115,13 @@
         </div>
       }
 
-      <!-- Dependencies Step -->
-      @case ('dependencies') {
+      <!-- FFmpeg Step -->
+      @case ('ffmpeg') {
         <div class="step-content dependencies-step">
-          <h2>Dependencies</h2>
+          <h2>FFmpeg</h2>
           <p class="step-description">
-            ONIXPlayer requires FFmpeg for media playback. FluidSynth is optional but
-            enables MIDI file playback.
+            FFmpeg is the media engine ONIXPlayer uses to decode and stream audio and
+            video. It is required for playback.
           </p>
 
           <div class="dependency-list">
@@ -132,6 +166,47 @@
               }
             </div>
 
+            <!-- Install Progress -->
+            @if (installProgress(); as progress) {
+              @if (progress.dependencyId === 'ffmpeg' && progress.status === 'installing') {
+                <div class="install-progress">
+                  <div class="install-progress-header">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>{{ progress.message }}</span>
+                  </div>
+                  @if (progress.output) {
+                    <pre class="install-output">{{ progress.output }}</pre>
+                  }
+                </div>
+              } @else if (progress.dependencyId === 'ffmpeg' && progress.status === 'error') {
+                <div class="install-progress error">
+                  <i class="fa-solid fa-circle-xmark"></i>
+                  <span>{{ progress.message }}</span>
+                  @if (progress.output) {
+                    <pre class="install-output">{{ progress.output }}</pre>
+                  }
+                </div>
+              }
+            }
+          </div>
+
+          <div class="info-notice">
+            <i class="fa-solid fa-info-circle"></i>
+            <span>You can manage dependencies later from the Configuration panel.</span>
+          </div>
+        </div>
+      }
+
+      <!-- FluidSynth Step -->
+      @case ('fluidsynth') {
+        <div class="step-content dependencies-step">
+          <h2>FluidSynth &amp; SoundFonts</h2>
+          <p class="step-description">
+            FluidSynth is optional. It enables MIDI file playback using SoundFont files
+            for software synthesis.
+          </p>
+
+          <div class="dependency-list">
             <!-- FluidSynth -->
             <div class="dependency-card" [class.installed]="fluidsynthStatus().installed">
               <div class="dependency-header">
@@ -175,7 +250,7 @@
 
             <!-- Install Progress -->
             @if (installProgress(); as progress) {
-              @if (progress.status === 'installing') {
+              @if (progress.dependencyId === 'fluidsynth' && progress.status === 'installing') {
                 <div class="install-progress">
                   <div class="install-progress-header">
                     <i class="fa-solid fa-spinner fa-spin"></i>
@@ -185,7 +260,7 @@
                     <pre class="install-output">{{ progress.output }}</pre>
                   }
                 </div>
-              } @else if (progress.status === 'error') {
+              } @else if (progress.dependencyId === 'fluidsynth' && progress.status === 'error') {
                 <div class="install-progress error">
                   <i class="fa-solid fa-circle-xmark"></i>
                   <span>{{ progress.message }}</span>
@@ -240,6 +315,88 @@
         </div>
       }
 
+      <!-- yt-dlp Step -->
+      @case ('ytdlp') {
+        <div class="step-content dependencies-step">
+          <h2>yt-dlp</h2>
+          <p class="step-description">
+            yt-dlp is optional. It lets ONIXPlayer stream and download media from
+            internet URLs such as YouTube and other supported sites.
+          </p>
+
+          <div class="dependency-list">
+            <!-- yt-dlp -->
+            <div class="dependency-card" [class.installed]="ytdlpStatus().installed">
+              <div class="dependency-header">
+                <div class="dependency-indicator" [class.installed]="ytdlpStatus().installed" [class.missing]="!ytdlpStatus().installed">
+                  <i [class]="ytdlpStatus().installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
+                </div>
+                <div class="dependency-info">
+                  <span class="dependency-name">yt-dlp</span>
+                  <span class="dependency-status-text">
+                    @if (ytdlpStatus().installed) {
+                      Installed
+                    } @else {
+                      Not installed (optional)
+                    }
+                  </span>
+                  @if (ytdlpStatus().installed && ytdlpStatus().path) {
+                    <span class="dependency-path">{{ ytdlpStatus().path }}</span>
+                  }
+                </div>
+                <div class="dependency-actions">
+                  @if (!ytdlpStatus().installed) {
+                    <button class="dep-button install" [disabled]="isOperationInProgress()" (click)="installDependency('yt-dlp')">
+                      Install
+                    </button>
+                  }
+                  <button class="dep-button link" (click)="openExternalUrl('https://github.com/yt-dlp/yt-dlp')" title="yt-dlp website">
+                    <i class="fa-solid fa-external-link-alt"></i>
+                  </button>
+                </div>
+              </div>
+              <p class="dependency-description">
+                Optional. Enables streaming and downloading media from internet URLs, including YouTube and other supported sites.
+              </p>
+              @if (!ytdlpStatus().installed) {
+                <div class="manual-install">
+                  <span class="manual-label">Manual install:</span>
+                  <code>{{ getManualInstallCommand('yt-dlp') }}</code>
+                </div>
+              }
+            </div>
+
+            <!-- Install Progress -->
+            @if (installProgress(); as progress) {
+              @if (progress.dependencyId === 'yt-dlp' && progress.status === 'installing') {
+                <div class="install-progress">
+                  <div class="install-progress-header">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>{{ progress.message }}</span>
+                  </div>
+                  @if (progress.output) {
+                    <pre class="install-output">{{ progress.output }}</pre>
+                  }
+                </div>
+              } @else if (progress.dependencyId === 'yt-dlp' && progress.status === 'error') {
+                <div class="install-progress error">
+                  <i class="fa-solid fa-circle-xmark"></i>
+                  <span>{{ progress.message }}</span>
+                  @if (progress.output) {
+                    <pre class="install-output">{{ progress.output }}</pre>
+                  }
+                </div>
+              }
+            }
+          </div>
+
+          <div class="info-notice">
+            <i class="fa-solid fa-info-circle"></i>
+            <span>You can manage dependencies later from the Configuration panel.</span>
+          </div>
+        </div>
+      }
+
       <!-- Complete Step -->
       @case ('complete') {
         <div class="step-content complete-step">
@@ -283,54 +440,43 @@
                 }
               </span>
             </div>
+            <div class="summary-item">
+              <span class="summary-label">yt-dlp:</span>
+              <span class="summary-value" [class.installed]="deps.ytdlpInstalled()" [class.missing]="!deps.ytdlpInstalled()">
+                @if (deps.ytdlpInstalled()) {
+                  Installed
+                } @else {
+                  Not installed
+                }
+              </span>
+            </div>
           </div>
         </div>
       }
     }
-  </div>
-
-  <!-- Footer with navigation -->
-  <div class="wizard-footer">
-    <!-- Progress indicator -->
-    <div class="wizard-progress">
-      @for (step of steps; track step; let i = $index) {
-        <div class="progress-pill"
-             [class.completed]="isStepCompleted(step)"
-             [class.current]="isCurrentStep(step)">
-          @if (isStepCompleted(step)) {
-            <i class="fa-solid fa-check"></i>
-          }
-          <span>
-            @switch (step) {
-              @case ('welcome') { Welcome }
-              @case ('port') { Port }
-              @case ('dependencies') { Dependencies }
-              @case ('complete') { Complete }
-            }
-          </span>
-        </div>
-        @if (i < steps.length - 1) {
-          <div class="progress-connector" [class.completed]="isStepCompleted(steps[i + 1])"></div>
-        }
-      }
     </div>
-    <div class="nav-buttons">
-      @if (!isFirstStep) {
-        <button class="nav-button back" (click)="back()">
-          <i class="fa-solid fa-chevron-left"></i>
-          Back
-        </button>
-      }
-      @if (isLastStep) {
-        <button class="nav-button primary" (click)="finish()">
-          Finish
-        </button>
-      } @else {
-        <button class="nav-button primary" (click)="next()" [disabled]="currentStep() === 'port' && !portValid()">
-          Next
-          <i class="fa-solid fa-chevron-right"></i>
-        </button>
-      }
+
+      <!-- Navigation buttons (under the content) -->
+      <div class="wizard-footer">
+        <div class="nav-buttons">
+          @if (!isFirstStep) {
+            <button class="nav-button back" (click)="back()">
+              <i class="fa-solid fa-chevron-left"></i>
+              Back
+            </button>
+          }
+          @if (isLastStep) {
+            <button class="nav-button primary" (click)="finish()">
+              Finish
+            </button>
+          } @else {
+            <button class="nav-button primary" (click)="next()" [disabled]="currentStep() === 'port' && !portValid()">
+              Next
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          }
+        </div>
+      </div>
     </div>
   </div>
 </div>
