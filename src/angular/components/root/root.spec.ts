@@ -48,6 +48,7 @@ function createMockElectronService(): Record<string, unknown> {
     fadeOutRequested: signal(0),
     platformInfo: signal({platform: 'darwin', supportsGlass: false, systemTheme: 'dark' as const}),
     playlist: signal({items: [], currentIndex: -1, shuffleEnabled: false, repeatEnabled: false}),
+    streamingBusy: signal(false),
     exitFullscreen: vi.fn().mockResolvedValue(undefined),
     exitMiniplayer: vi.fn().mockResolvedValue(undefined),
     openFileDialog: vi.fn().mockResolvedValue([]),

@@ -11,6 +11,9 @@
       <button tabindex="-1" (click)="onEject()" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!canOpenFiles()" title="">
         <i class="fa-solid fa-eject"></i>
       </button>
+      <button tabindex="-1" (click)="onOpenUrl()" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!canOpenFiles()" title="Open URL">
+        <i class="fa-solid fa-link"></i>
+      </button>
       <button tabindex="-1" (click)="onShuffle()" (mouseup)="$any($event.currentTarget).blur()" [disabled]="!hasTrack()" [class.active]="isShuffleEnabled()" title="Shuffle">
         <i class="fa-solid fa-shuffle"></i>
       </button>
@@ -31,10 +34,7 @@
     </div>
     <div class="button-group right">
       <button tabindex="-1" (click)="onMuteToggle()" (mouseup)="$any($event.currentTarget).blur()" [class.muted]="isMuted()" title="Mute/Unmute">
-        <i [class]="isMuted()
-      ? 'fa-solid fa-volume-xmark'
-      : (volume() < 50 ? 'fa-solid fa-volume-low'
-      : 'fa-solid fa-volume-high')"></i>
+        <i [class]="volumeIcon()"></i>
       </button>
       <div class="volume-container">
         <div class="volume-slider" (mousedown)="onVolumeMouseDown($event)">

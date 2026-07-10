@@ -308,6 +308,12 @@ export interface MediaPlayerAPI {
   readonly showConfigurationWindow: (initialCategory?: string) => Promise<void>;
 
   /**
+   * Shows the standalone Open URL window.
+   * Opens a new window (or focuses the existing one) for playing internet media.
+   */
+  readonly showOpenUrlWindow: () => Promise<void>;
+
+  /**
    * Registers a callback for when the close button is pressed in configuration mode.
    * The main process intercepts the close and tells the renderer to exit config mode instead.
    *
@@ -486,6 +492,7 @@ const api: MediaPlayerAPI = {
   },
   setConfigurationMode: (enabled: boolean): Promise<void> => ipcRenderer.invoke('app:setConfigurationMode', enabled),
   showConfigurationWindow: (initialCategory?: string): Promise<void> => ipcRenderer.invoke('window:showConfigurationWindow', initialCategory),
+  showOpenUrlWindow: (): Promise<void> => ipcRenderer.invoke('window:showOpenUrlWindow'),
   onExitConfigurationMode: (callback: () => void): () => void => {
     const listener: () => void = (): void => callback();
     ipcRenderer.on('app:exitConfigurationMode', listener);

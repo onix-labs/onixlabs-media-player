@@ -177,14 +177,16 @@
     align-items: center;
     justify-content: center;
     background: $btn-glass;
-    width: 4rem;
+    // Sized so the right group (mute + volume) matches the width of the
+    // left group's four 2rem buttons, keeping the transport group centred
+    width: 6rem;
     corner-shape: squircle;
     border-top-right-radius: 0.675rem;
     border-bottom-right-radius: 0.675rem;
 
     .volume-slider {
       position: relative;
-      width: 2.5rem;
+      width: 4.5rem;
       height: 0.5rem;
       cursor: pointer;
 

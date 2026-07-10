@@ -645,6 +645,12 @@ export interface MediaPlayerAPI {
   showConfigurationWindow: (initialCategory?: string) => Promise<void>;
 
   /**
+   * Opens the standalone Open URL window for playing internet media.
+   * If the window is already open, it will be focused.
+   */
+  showOpenUrlWindow: () => Promise<void>;
+
+  /**
    * Registers a callback for when the close button is pressed in configuration mode.
    * The main process intercepts the close and tells the renderer to exit config mode instead.
    * @param callback - Function called when close is pressed in configuration mode

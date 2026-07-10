@@ -533,6 +533,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
     if (audio) {
       this.onAudioPlaying = (): void => {
         this.stopStallClockHold();
+        // Playback has (re)started — drop the waiting cursor
+        this.electron.setStreamingBusy(false);
         // Remote stream seek completed — anchor the server clock to the
         // actual stream position (FFmpeg startup time passed while loading)
         if (this.streamSeekPending) {
@@ -643,6 +645,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.onAudioWaiting = null;
     }
     this.stopStallClockHold();
+    this.electron.setStreamingBusy(false);
   }
 
   // ============================================================================
@@ -731,6 +734,12 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.streamSeekPending = false;
     this.mediaLoadedAt = Date.now();
 
+    // Remote streams take a while to spin up (yt-dlp URL fetch + FFmpeg) —
+    // show the waiting cursor until the element starts playing
+    if (this.isRemoteStream) {
+      this.electron.setStreamingBusy(true);
+    }
+
     // Build the stream URL with cache-buster to force fresh fetch after soundfont change
     const cacheBuster: number = this.electron.forceReloadCounter();
     let url: string = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}&r=${cacheBuster}`;
@@ -797,6 +806,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
     this.streamSeekOffset = seekTime;
     this.mediaLoadedAt = Date.now();
+    // Waiting cursor while the stream pipeline restarts for the seek
+    this.electron.setStreamingBusy(true);
     audio.src = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}&r=${cacheBuster}&t=${seekTime}`;
     audio.load();
 

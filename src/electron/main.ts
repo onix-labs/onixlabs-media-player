@@ -1411,6 +1411,11 @@ class Program {
       this.showConfigurationWindow(initialCategory);
     });
 
+    // Show Open URL window (can be called from renderer)
+    ipcMain.handle("window:showOpenUrlWindow", (): void => {
+      this.showOpenUrlWindow();
+    });
+
     // Minimize window
     ipcMain.handle("window:minimize", (): void => {
       windowLogger.debug('Minimizing window');

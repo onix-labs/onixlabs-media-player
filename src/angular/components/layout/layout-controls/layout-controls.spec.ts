@@ -81,6 +81,7 @@ function createMockElectronService(): Record<string, unknown> {
     }),
     toggleFullscreen: vi.fn().mockResolvedValue(undefined),
     enterMiniplayer: vi.fn().mockResolvedValue(undefined),
+    showOpenUrlWindow: vi.fn().mockResolvedValue(undefined),
   };
 }
 

@@ -371,6 +371,16 @@ export class Root implements OnDestroy {
     return this.cursorHidden();
   }
 
+  /**
+   * Adds 'cursor-busy' CSS class to the host element while streamed media is
+   * starting or seeking, showing the system waiting cursor until playback
+   * (re)begins.
+   */
+  @HostBinding('class.cursor-busy')
+  public get cursorBusyClass(): boolean {
+    return this.electron.streamingBusy();
+  }
+
   // ============================================================================
   // Event Listeners
   // ============================================================================

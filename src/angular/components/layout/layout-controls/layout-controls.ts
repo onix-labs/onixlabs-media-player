@@ -80,6 +80,25 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
   /** Whether audio is muted (affects mute button icon) */
   public readonly isMuted: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.isMuted());
 
+  /** Upper bound (%) of the low-volume icon tier */
+  private readonly volumeLowMaxPercent: number = 33;
+
+  /** Upper bound (%) of the medium-volume icon tier */
+  private readonly volumeMediumMaxPercent: number = 66;
+
+  /**
+   * FontAwesome icon classes for the mute/volume button, tiered by state:
+   * muted → xmark, zero → off, 1-33% → low, 34-66% → medium, 67-100% → high.
+   */
+  public readonly volumeIcon: ReturnType<typeof computed<string>> = computed((): string => {
+    if (this.isMuted()) return 'fa-solid fa-volume-xmark';
+    const level: number = this.volume();
+    if (level <= 0) return 'fa-solid fa-volume-off';
+    if (level <= this.volumeLowMaxPercent) return 'fa-solid fa-volume-low';
+    if (level <= this.volumeMediumMaxPercent) return 'fa-solid fa-volume';
+    return 'fa-solid fa-volume-high';
+  });
+
   /** Whether shuffle mode is enabled (affects shuffle button styling) */
   public readonly isShuffleEnabled: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.isShuffleEnabled());
 
@@ -108,6 +127,13 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
    */
   public async onEject(): Promise<void> {
     await this.mediaPlayer.eject();
+  }
+
+  /**
+   * Opens the standalone Open URL window for playing internet media.
+   */
+  public async onOpenUrl(): Promise<void> {
+    await this.electron.showOpenUrlWindow();
   }
 
   // ============================================================================

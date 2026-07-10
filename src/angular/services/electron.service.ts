@@ -115,6 +115,40 @@ export class ElectronService implements OnDestroy {
    */
   public readonly seekAlignment: ReturnType<typeof signal<{requested: number; actual: number} | null>> = signal<{requested: number; actual: number} | null>(null);
 
+  /**
+   * Whether streamed media is busy starting or seeking (drives the busy
+   * cursor). Set by the outlets while a remote/transcoded pipeline spins up;
+   * auto-clears after a safety timeout so the cursor can never get stuck.
+   */
+  public readonly streamingBusy: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /** Safety timeout (ms) after which streamingBusy auto-clears */
+  private readonly streamingBusyTimeoutMs: number = 20000;
+
+  /** Timeout handle for the streamingBusy auto-clear */
+  private streamingBusyTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Sets the streaming-busy state (busy cursor). Setting it busy arms a
+   * safety timeout that clears the state even if no completion event ever
+   * arrives (e.g. a stream that silently dies).
+   *
+   * @param busy - Whether streamed media is busy starting/seeking
+   */
+  public setStreamingBusy(busy: boolean): void {
+    if (this.streamingBusyTimeoutId !== null) {
+      clearTimeout(this.streamingBusyTimeoutId);
+      this.streamingBusyTimeoutId = null;
+    }
+    if (busy) {
+      this.streamingBusyTimeoutId = setTimeout((): void => {
+        this.streamingBusyTimeoutId = null;
+        this.streamingBusy.set(false);
+      }, this.streamingBusyTimeoutMs);
+    }
+    this.streamingBusy.set(busy);
+  }
+
   /** Counter that increments when media source should be force-reloaded (e.g., soundfont change) */
   public readonly forceReloadCounter: ReturnType<typeof signal<number>> = signal<number>(0);
 
@@ -1206,6 +1240,15 @@ export class ElectronService implements OnDestroy {
   }
 
   /**
+   * Opens the standalone Open URL window for playing internet media.
+   * If the window is already open, it will be focused.
+   */
+  public async showOpenUrlWindow(): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.showOpenUrlWindow();
+  }
+
+  /**
    * Minimizes the window to the taskbar/dock.
    */
   public async minimizeWindow(): Promise<void> {
@@ -1762,6 +1805,9 @@ export class ElectronService implements OnDestroy {
     }
     if (this.mediaEndedTimeoutId) {
       clearTimeout(this.mediaEndedTimeoutId);
+    }
+    if (this.streamingBusyTimeoutId) {
+      clearTimeout(this.streamingBusyTimeoutId);
     }
   }
 }

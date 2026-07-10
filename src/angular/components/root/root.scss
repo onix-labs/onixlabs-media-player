@@ -17,6 +17,16 @@
     }
   }
 
+  // Waiting cursor while streamed media starts or seeks (defined after
+  // cursor-hidden so busy wins when both apply)
+  &.cursor-busy {
+    cursor: wait;
+
+    * {
+      cursor: wait !important;
+    }
+  }
+
   app-configuration-view,
   app-about-view,
   app-help-topics-view {

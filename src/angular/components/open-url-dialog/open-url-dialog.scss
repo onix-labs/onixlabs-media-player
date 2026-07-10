@@ -10,6 +10,15 @@
 :host {
   display: block;
   color: var(--text-primary);
+
+  // Waiting cursor while a stream is being started (yt-dlp URL resolve)
+  &.cursor-busy {
+    cursor: wait;
+
+    * {
+      cursor: wait !important;
+    }
+  }
 }
 
 .url-dialog {

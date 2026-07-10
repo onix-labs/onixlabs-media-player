@@ -14,7 +14,7 @@
  * @module app/components/open-url-dialog
  */
 
-import {Component, ChangeDetectionStrategy, inject, signal, computed, effect, ElementRef, type AfterViewInit, type OnDestroy, type WritableSignal, type Signal} from '@angular/core';
+import {Component, ChangeDetectionStrategy, HostBinding, inject, signal, computed, effect, ElementRef, type AfterViewInit, type OnDestroy, type WritableSignal, type Signal} from '@angular/core';
 import {FormsModule} from '@angular/forms';
 import {ElectronService, type UrlMediaInfo, type UrlMediaFormat, type DownloadJob} from '../../services/electron.service';
 import {DependencyService} from '../../services/dependency.service';
@@ -109,6 +109,16 @@ export class OpenUrlDialog implements AfterViewInit, OnDestroy {
   public readonly canSubmit: Signal<boolean> = computed((): boolean =>
     !this.submitting() && this.info() !== null && this.ytdlpInstalled()
   );
+
+  /**
+   * Shows the waiting cursor while a stream is being started (the window
+   * stays open through the yt-dlp URL resolve, then closes once playback is
+   * handed to the main window). Downloads show a progress bar instead.
+   */
+  @HostBinding('class.cursor-busy')
+  public get cursorBusyClass(): boolean {
+    return this.submitting() && this.mode() === 'stream';
+  }
 
   public constructor() {
     // React to download job completion/failure for the active job.

@@ -757,6 +757,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
       this.seekLoadingTimeoutId = null;
     }
     this.seekSpinner?.stop();
+    this.electron.setStreamingBusy(false);
 
     const video: HTMLVideoElement = this.videoRef.nativeElement;
     video.pause();
@@ -1215,6 +1216,13 @@ export class VideoOutlet implements OnInit, OnDestroy {
     this.currentFilePath = filePath;
     this.mediaLoadedAt = Date.now();
 
+    // Remote streams take a while to spin up (yt-dlp URL fetch + FFmpeg) —
+    // show the waiting cursor until the element can play (cleared alongside
+    // the seek-loading overlay on canplay/playing/error)
+    if (/^https?:\/\//i.test(filePath)) {
+      this.electron.setStreamingBusy(true);
+    }
+
     // Determine if this format needs transcoding based on container AND canRemux flag
     const ext: string = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
     const isNativeContainer: boolean = NATIVE_VIDEO_FORMATS.has(ext);
@@ -1499,6 +1507,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
     }
 
     this.isSeekLoading.set(true);
+    // Waiting cursor while the stream pipeline restarts
+    this.electron.setStreamingBusy(true);
 
     // Start the segmented spinner animation (idempotent while running)
     if (!this.seekSpinner && this.seekSpinnerRef) {
@@ -1526,6 +1536,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     }
     this.seekSpinner?.stop();
     this.isSeekLoading.set(false);
+    this.electron.setStreamingBusy(false);
   }
 
   /**
