@@ -97,20 +97,23 @@
   }
 }
 
-// Spinner centered over the frozen frame while the stream reloads
+// Segmented spinner centered over the frozen frame while the stream reloads
+// (canvas animation driven by SeekSpinner; CSS size must match its
+// CANVAS_SIZE constant — the internal resolution is dpr-scaled)
 .seek-loading-spinner {
   position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  left: 50%;
+  top: 50%;
+  width: 256px;
+  height: 256px;
+  transform: translate(-50%, -50%);
+  display: none;
   pointer-events: none;
+  filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.8));
   z-index: 6;
 
-  i {
-    font-size: 3rem;
-    color: rgba(255, 255, 255, 0.9);
-    filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.8));
+  &.active {
+    display: block;
   }
 }
 

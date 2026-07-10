@@ -16,11 +16,9 @@
   <!-- Frozen last frame shown while a seek reloads the stream (kept in the
        DOM so the frame can be captured before the source is swapped) -->
   <canvas #freezeFrame class="seek-loading-frame" [class.active]="isSeekLoading()" [style.filter]="freezeFrameFilter()"></canvas>
-  @if (isSeekLoading()) {
-    <div class="seek-loading-spinner">
-      <i class="fa-solid fa-circle-notch fa-spin"></i>
-    </div>
-  }
+  <!-- Segmented spinner animated by SeekSpinner (kept in the DOM so the
+       animation can start in the same tick the overlay is shown) -->
+  <canvas #seekSpinner class="seek-loading-spinner" [class.active]="isSeekLoading()"></canvas>
   @if (subtitleText()) {
     <div class="subtitle-overlay" [innerHTML]="sanitizedSubtitleHtml()"></div>
   }

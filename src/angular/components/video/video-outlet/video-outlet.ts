@@ -27,6 +27,7 @@ import {FileDropService} from '../../../services/file-drop.service';
 import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS, SubtitleFontFamily, PreferredAudioLanguage, PreferredSubtitleLanguage} from '../../../services/settings.service';
 import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equalizer';
 import {buildVideoFilter} from '../../../services/video-adjustments';
+import {SeekSpinner} from './seek-spinner';
 import type {PlaylistItem, SubtitleTrack, AudioTrack} from '../../../services/electron.service';
 
 /**
@@ -149,6 +150,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /** Canvas that freezes the last frame while a seek reloads the stream */
   @ViewChild('freezeFrame', {static: true}) public freezeFrameRef!: ElementRef<HTMLCanvasElement>;
+
+  /** Canvas hosting the segmented seek-loading spinner animation */
+  @ViewChild('seekSpinner', {static: true}) public seekSpinnerRef!: ElementRef<HTMLCanvasElement>;
 
   // ============================================================================
   // Services
@@ -339,6 +343,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /** Timeout handle for the seek-loading overlay safety hide */
   private seekLoadingTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  /** Segmented spinner animation for the seek-loading overlay (lazy) */
+  private seekSpinner: SeekSpinner | null = null;
 
   /** Video 'waiting' handler (stored for cleanup) */
   private videoWaitingHandler: (() => void) | null = null;
@@ -744,11 +751,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
       this.fadeInterval = null;
     }
 
-    // Clear any pending seek-loading overlay timeout
+    // Clear any pending seek-loading overlay timeout and stop the spinner
     if (this.seekLoadingTimeoutId !== null) {
       clearTimeout(this.seekLoadingTimeoutId);
       this.seekLoadingTimeoutId = null;
     }
+    this.seekSpinner?.stop();
 
     const video: HTMLVideoElement = this.videoRef.nativeElement;
     video.pause();
@@ -1492,6 +1500,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     this.isSeekLoading.set(true);
 
+    // Start the segmented spinner animation (idempotent while running)
+    if (!this.seekSpinner && this.seekSpinnerRef) {
+      this.seekSpinner = new SeekSpinner(this.seekSpinnerRef.nativeElement);
+    }
+    this.seekSpinner?.start();
+
     // Safety net: never leave a stale overlay if the stream fails silently
     if (this.seekLoadingTimeoutId !== null) {
       clearTimeout(this.seekLoadingTimeoutId);
@@ -1510,6 +1524,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
       clearTimeout(this.seekLoadingTimeoutId);
       this.seekLoadingTimeoutId = null;
     }
+    this.seekSpinner?.stop();
     this.isSeekLoading.set(false);
   }
 
