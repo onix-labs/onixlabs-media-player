@@ -203,6 +203,9 @@ export class UnifiedMediaServer {
   /** Window (ms) after a track start during which clock syncs are ignored */
   private readonly TRACK_START_SYNC_GUARD_MS: number = 1500;
 
+  /** Timeout (ms) for the DASH seek keyframe probe */
+  private readonly KEYFRAME_PROBE_TIMEOUT_MS: number = 5000;
+
   /** Callback for playlist mode changes (shuffle/repeat) */
   private onModeChangeCallback: ((shuffle: boolean, repeat: boolean) => void) | null = null;
 
@@ -832,7 +835,14 @@ export class UnifiedMediaServer {
       const cachedInfo: MediaInfo | undefined = this.mediaInfoCache.get(filePath);
       if (audioUrl) {
         // DASH: mux the separate video and audio streams together.
-        this.serveDashStream(req, res, filePath, audioUrl, url);
+        // Async because it may probe the video's seek keyframe first.
+        this.serveDashStream(req, res, filePath, audioUrl, url).catch((err: unknown): void => {
+          ffmpegLogger.error(`DASH stream failed: ${err instanceof Error ? err.message : String(err)}`);
+          if (!res.headersSent) {
+            (res as ServerResponse).writeHead(500);
+          }
+          (res as ServerResponse).end();
+        });
       } else if (cachedInfo?.type === 'audio') {
         // Audio-only remote stream (no separate video to map).
         this.serveRemoteAudioStream(req, res, filePath, url);
@@ -1260,10 +1270,31 @@ export class UnifiedMediaServer {
    * @param audioUrl - Direct URL of the audio-only stream
    * @param url - URL with optional 't' (seek time) parameter
    */
-  private serveDashStream(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, videoUrl: string, audioUrl: string, url: Readonly<URL>): void {
-    const seekTime: string = url.searchParams.get('t') || '0';
+  private async serveDashStream(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, videoUrl: string, audioUrl: string, url: Readonly<URL>): Promise<void> {
+    const requestedSeek: number = parseFloat(url.searchParams.get('t') || '0') || 0;
     const audioBitrate: number = this.settings.getSettings().transcoding.audioBitrate;
-    ffmpegLogger.info(`DASH mux stream (seek: ${seekTime}s)`);
+
+    // A/V SYNC ON SEEK: the two inputs seek independently — the video input's
+    // -ss snaps to the nearest keyframe BEFORE the target (up to a full GOP
+    // early) while the audio input lands almost exactly on it. FFmpeg resets
+    // each input's timestamps to zero at its own landing point and the
+    // browser plays both tracks from their first samples together, so audio
+    // ends up ahead of video by the keyframe gap on every seek. (Encoding
+    // the gap as a timestamp offset via -copyts doesn't help — Chromium's
+    // progressive fMP4 playback aligns the track starts regardless.)
+    //
+    // Fix: probe where the video seek will actually land (its keyframe) and
+    // seek BOTH inputs to that exact time, so the streams genuinely start at
+    // the same instant. Falls back to the requested time if the probe fails.
+    let seekTime: number = requestedSeek;
+    if (requestedSeek > 0) {
+      const keyframeTime: number | null = await this.probeSeekKeyframe(videoUrl, requestedSeek);
+      if (keyframeTime !== null) {
+        seekTime = keyframeTime;
+      }
+    }
+
+    ffmpegLogger.info(`DASH mux stream (seek: ${requestedSeek}s → keyframe: ${seekTime}s)`);
 
     // Video is stream-copied (keeps the original HD/4K quality, no CPU cost).
     // Audio is transcoded to AAC because the adaptive audio is often Opus, which
@@ -1271,9 +1302,9 @@ export class UnifiedMediaServer {
     const ffmpegArgs: string[] = [
       '-hide_banner',
       '-loglevel', 'warning',
-      '-ss', seekTime,            // Seek each input before reading (fast keyframe seek)
+      '-ss', String(seekTime),    // Seek each input before reading (fast keyframe seek)
       '-i', videoUrl,
-      '-ss', seekTime,
+      '-ss', String(seekTime),
       '-i', audioUrl,
       '-map', '0:v:0',            // Video from the first input
       '-map', '1:a:0',            // Audio from the second input
@@ -1286,6 +1317,76 @@ export class UnifiedMediaServer {
       'pipe:1'
     ];
     this.streamFfmpeg(req, res, ffmpegArgs, 'video/mp4');
+  }
+
+  /**
+   * Probes where an input-side -ss seek will actually land in a video stream:
+   * ffprobe seeks the same way ffmpeg does (nearest keyframe before the
+   * target) and reports the first packet's timestamp.
+   *
+   * Used by the DASH muxer to seek the separate video and audio inputs to the
+   * SAME instant, keeping them in sync after a seek.
+   *
+   * @param videoUrl - The video stream URL to probe
+   * @param seekTime - The requested seek position in seconds
+   * @returns The keyframe timestamp the seek lands on, or null if the probe
+   *   fails or times out (caller falls back to the requested time)
+   */
+  private probeSeekKeyframe(videoUrl: string, seekTime: number): Promise<number | null> {
+    const ffprobeBin: string | null = this.deps.getFfprobePath();
+    if (!ffprobeBin) {
+      return Promise.resolve(null);
+    }
+
+    return new Promise<number | null>((resolve: (value: number | null) => void): void => {
+      const args: string[] = [
+        '-v', 'error',
+        '-select_streams', 'v:0',
+        '-read_intervals', `${seekTime}%+#1`,   // Seek to the target, read one packet
+        '-show_entries', 'packet=pts_time',
+        '-of', 'csv=p=0',
+        videoUrl,
+      ];
+
+      logProcessSpawn(ffmpegLogger, 'ffprobe', args);
+      const probe: ChildProcess = spawn(ffprobeBin, args);
+
+      let output: string = '';
+      let settled: boolean = false;
+
+      const finish: (value: number | null) => void = (value: number | null): void => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+
+      const timeout: ReturnType<typeof setTimeout> = setTimeout((): void => {
+        ffmpegLogger.warn(`Keyframe probe timed out after ${this.KEYFRAME_PROBE_TIMEOUT_MS}ms`);
+        probe.kill('SIGKILL');
+        finish(null);
+      }, this.KEYFRAME_PROBE_TIMEOUT_MS);
+
+      probe.stdout?.on('data', (data: Readonly<Buffer>): void => {
+        output += data.toString();
+      });
+
+      probe.on('close', (): void => {
+        clearTimeout(timeout);
+        const value: number = parseFloat(output.trim().split('\n')[0]);
+        if (Number.isFinite(value) && value >= 0) {
+          finish(value);
+        } else {
+          ffmpegLogger.warn(`Keyframe probe returned no usable timestamp (output: "${output.trim()}")`);
+          finish(null);
+        }
+      });
+
+      probe.on('error', (err: Readonly<Error>): void => {
+        clearTimeout(timeout);
+        ffmpegLogger.warn(`Keyframe probe failed: ${err.message}`);
+        finish(null);
+      });
+    });
   }
 
   /**
