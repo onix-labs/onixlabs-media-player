@@ -312,6 +312,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Interval holding the server clock at the element position while stalled */
   private stallSyncInterval: ReturnType<typeof setInterval> | null = null;
 
+  /** Max difference (s) for a seek alignment to match this outlet's pending seek */
+  private readonly seekAlignMatchEpsilon: number = 0.01;
+
   /** Video 'waiting' handler (stored for cleanup) */
   private videoWaitingHandler: (() => void) | null = null;
 
@@ -414,6 +417,20 @@ export class VideoOutlet implements OnInit, OnDestroy {
           this.flipMode.set('none');
         }
         void this.loadVideo(track.filePath, startTime);
+      }
+    });
+
+    // React to seek alignments from the server: when a streamed (DASH) seek
+    // lands on a keyframe before the requested position, adopt the actual
+    // stream start as the transcode offset so the seek bar, drift sync, and
+    // subtitles line up with the content instead of sitting a keyframe ahead.
+    effect((): void => {
+      const alignment: {requested: number; actual: number} | null = this.electron.seekAlignment();
+      if (!alignment || !this.isTranscoded) return;
+
+      // Only adopt if it corresponds to the seek this outlet just issued
+      if (Math.abs(this.transcodeSeekOffset - alignment.requested) < this.seekAlignMatchEpsilon) {
+        this.transcodeSeekOffset = alignment.actual;
       }
     });
 

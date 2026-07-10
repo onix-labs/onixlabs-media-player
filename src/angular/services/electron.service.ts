@@ -108,6 +108,13 @@ export class ElectronService implements OnDestroy {
   /** Brief pulse signal when media ends (true for 100ms) */
   public readonly mediaEnded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
+  /**
+   * Latest seek alignment from the server: when a streamed (DASH) seek lands
+   * on a keyframe before the requested position, the server reports both so
+   * outlets can adopt the actual stream start as their time offset.
+   */
+  public readonly seekAlignment: ReturnType<typeof signal<{requested: number; actual: number} | null>> = signal<{requested: number; actual: number} | null>(null);
+
   /** Counter that increments when media source should be force-reloaded (e.g., soundfont change) */
   public readonly forceReloadCounter: ReturnType<typeof signal<number>> = signal<number>(0);
 
@@ -778,6 +785,15 @@ export class ElectronService implements OnDestroy {
         const data: { volume: number; muted: boolean } = this.safeParseJSON<{ volume: number; muted: boolean }>(e.data, { volume: 1, muted: false });
         this.volume.set(data.volume);
         this.muted.set(data.muted);
+      });
+    });
+
+    this.eventSource.addEventListener('playback:seek:aligned', (e: MessageEvent): void => {
+      this.ngZone.run((): void => {
+        const data: {requested: number; actual: number} | null = this.safeParseJSON<{requested: number; actual: number} | null>(e.data, null);
+        if (data && typeof data.requested === 'number' && typeof data.actual === 'number') {
+          this.seekAlignment.set(data);
+        }
       });
     });
 

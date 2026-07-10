@@ -206,6 +206,9 @@ export class UnifiedMediaServer {
   /** Timeout (ms) for the DASH seek keyframe probe */
   private readonly KEYFRAME_PROBE_TIMEOUT_MS: number = 5000;
 
+  /** Max clock-vs-request gap (s) for a stream request to count as the active seek */
+  private readonly SEEK_ALIGN_WINDOW_S: number = 3;
+
   /** Callback for playlist mode changes (shuffle/repeat) */
   private onModeChangeCallback: ((shuffle: boolean, repeat: boolean) => void) | null = null;
 
@@ -1291,6 +1294,10 @@ export class UnifiedMediaServer {
       const keyframeTime: number | null = await this.probeSeekKeyframe(videoUrl, requestedSeek);
       if (keyframeTime !== null) {
         seekTime = keyframeTime;
+        // Snap the playback clock (and the client's stream offset, via the
+        // aligned broadcast) to where the content actually starts, so the
+        // seek bar matches the content instead of sitting a keyframe ahead
+        this.alignPlaybackToKeyframe(requestedSeek, keyframeTime);
       }
     }
 
@@ -1317,6 +1324,40 @@ export class UnifiedMediaServer {
       'pipe:1'
     ];
     this.streamFfmpeg(req, res, ffmpegArgs, 'video/mp4');
+  }
+
+  /**
+   * Snaps the playback clock to the keyframe a DASH seek actually landed on,
+   * and broadcasts the alignment so the client can adopt the keyframe time
+   * as its stream offset. Without this the seek bar (anchored to the
+   * requested time) would sit up to a full GOP ahead of the content for the
+   * rest of playback.
+   *
+   * Only rebases when this stream request is serving the player's current
+   * seek — a stale or retried stream request must not move the clock.
+   *
+   * @param requestedTime - The seek position the client asked for
+   * @param keyframeTime - The keyframe position the stream actually starts at
+   */
+  private alignPlaybackToKeyframe(requestedTime: number, keyframeTime: number): void {
+    if (this.playback.state === 'playing') {
+      // The clock has kept running since the seek (probe + request latency)
+      if (Math.abs(this.playback.currentTime - requestedTime) < this.SEEK_ALIGN_WINDOW_S) {
+        this.playback.currentTime = keyframeTime;
+        this.startTime = Date.now() - (keyframeTime * 1000);
+        this.broadcastTime();
+      }
+    } else if (this.playback.state === 'paused' || this.playback.state === 'stopped') {
+      if (Math.abs(this.playback.currentTime - requestedTime) < this.SEEK_ALIGN_WINDOW_S) {
+        this.playback.currentTime = keyframeTime;
+        this.pausedTime = keyframeTime;
+        this.broadcastTime();
+      }
+    }
+
+    // Tell the client where the stream really starts so its offset-based
+    // time math (seek bar, drift sync) matches the content
+    this.sse.broadcast('playback:seek:aligned', {requested: requestedTime, actual: keyframeTime});
   }
 
   /**
