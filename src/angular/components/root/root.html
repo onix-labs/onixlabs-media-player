@@ -15,23 +15,23 @@
   @if (isHelpMode()) {
     <app-help-topics-view/>
   }
-  @if (isMiniplayer()) {
-    <div class="miniplayer-container"
-         [class.hidden]="isHelpMode()"
-         (mouseenter)="onMiniplayerMouseEnter()"
-         (mouseleave)="onMiniplayerMouseLeave()">
-      <app-layout-outlet class="miniplayer-content" (openDependencySettings)="onOpenDependencySettings()"/>
+  <!-- Single persistent view for desktop, fullscreen, and miniplayer modes.
+       The layout outlet (and its audio/video elements) must not be destroyed
+       and re-created when switching modes, or playback visibly stutters while
+       the media element reloads. Only the surrounding chrome changes. -->
+  <div class="media-player-view"
+       [class.miniplayer-container]="isMiniplayer()"
+       [class.hidden]="isHelpMode()"
+       (mouseenter)="onMiniplayerMouseEnter()"
+       (mouseleave)="onMiniplayerMouseLeave()">
+    @if (!isFullscreen() && !isMiniplayer() && isMacOS()) {
+      <app-layout-header/>
+    }
+    <app-layout-outlet [class.miniplayer-content]="isMiniplayer()" (openDependencySettings)="onOpenDependencySettings()"/>
+    @if (isMiniplayer()) {
       <app-miniplayer-controls class="miniplayer-overlay" [class.controls-visible]="showControls()"/>
-    </div>
-  } @else {
-    <div class="media-player-view" [class.hidden]="isHelpMode()">
-      @if (!isFullscreen() && isMacOS()) {
-        <app-layout-header/>
-      }
-      <app-layout-outlet (openDependencySettings)="onOpenDependencySettings()"/>
-      @if (!isFullscreen() || showControls()) {
-        <app-layout-controls [class.fullscreen-overlay]="isFullscreen()"/>
-      }
-    </div>
-  }
+    } @else if (!isFullscreen() || showControls()) {
+      <app-layout-controls [class.fullscreen-overlay]="isFullscreen()"/>
+    }
+  </div>
 }

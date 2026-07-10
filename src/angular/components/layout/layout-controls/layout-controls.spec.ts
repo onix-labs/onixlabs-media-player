@@ -496,53 +496,63 @@ describe('LayoutControls', (): void => {
   // ==========================================================================
 
   describe('onProgressMouseDown', (): void => {
-    it('should call seekToProgress with calculated percentage on mousedown', (): void => {
+    /** Creates a progress element with a mocked bounding rect. */
+    function createSeekBar(left: number, width: number): HTMLProgressElement {
       const target: HTMLProgressElement = document.createElement('progress');
       Object.defineProperty(target, 'getBoundingClientRect', {
         value: (): DOMRect => ({
-          left: 0,
-          width: 200,
+          left,
+          width,
           top: 0,
-          right: 200,
+          right: left + width,
           bottom: 10,
           height: 10,
-          x: 0,
+          x: left,
           y: 0,
           toJSON: (): void => {},
         }),
       });
-      const event: MouseEvent = new MouseEvent('mousedown', {clientX: 100});
+      return target;
+    }
+
+    /** Dispatches a mousedown on the seek bar at the given X position. */
+    function pressSeekBar(target: HTMLProgressElement, clientX: number): void {
+      const event: MouseEvent = new MouseEvent('mousedown', {clientX});
       Object.defineProperty(event, 'currentTarget', {value: target, writable: false});
       component.onProgressMouseDown(event);
-      expect(mockMediaPlayer['seekToProgress']).toHaveBeenCalledWith(50);
+    }
+
+    it('should preview the pressed position without seeking until release', (): void => {
+      pressSeekBar(createSeekBar(0, 200), 100);
+
+      // No seek yet — only a local preview of the drag position
+      expect(mockMediaPlayer['seekToProgress']).not.toHaveBeenCalled();
+      expect(component.progress()).toBe(50);
+    });
+
+    it('should seek once to the release position on mouseup', (): void => {
+      pressSeekBar(createSeekBar(0, 200), 100);
+
+      // Drag to 75% then release there
+      document.dispatchEvent(new MouseEvent('mousemove', {clientX: 150}));
+      expect(mockMediaPlayer['seekToProgress']).not.toHaveBeenCalled();
+
+      document.dispatchEvent(new MouseEvent('mouseup', {clientX: 150}));
+      expect(mockMediaPlayer['seekToProgress']).toHaveBeenCalledTimes(1);
+      expect(mockMediaPlayer['seekToProgress']).toHaveBeenCalledWith(75);
     });
 
     it('should clamp percentage to 0-100 range', (): void => {
-      const target: HTMLProgressElement = document.createElement('progress');
-      Object.defineProperty(target, 'getBoundingClientRect', {
-        value: (): DOMRect => ({
-          left: 100,
-          width: 200,
-          top: 0,
-          right: 300,
-          bottom: 10,
-          height: 10,
-          x: 100,
-          y: 0,
-          toJSON: (): void => {},
-        }),
-      });
+      const target: HTMLProgressElement = createSeekBar(100, 200);
 
-      // Click before the progress bar (should clamp to 0)
-      const eventBefore: MouseEvent = new MouseEvent('mousedown', {clientX: 50});
-      Object.defineProperty(eventBefore, 'currentTarget', {value: target, writable: false});
-      component.onProgressMouseDown(eventBefore);
+      // Release before the progress bar (should clamp to 0)
+      pressSeekBar(target, 50);
+      document.dispatchEvent(new MouseEvent('mouseup', {clientX: 50}));
       expect(mockMediaPlayer['seekToProgress']).toHaveBeenCalledWith(0);
 
-      // Click after the progress bar (should clamp to 100)
-      const eventAfter: MouseEvent = new MouseEvent('mousedown', {clientX: 400});
-      Object.defineProperty(eventAfter, 'currentTarget', {value: target, writable: false});
-      component.onProgressMouseDown(eventAfter);
+      // Release after the progress bar (should clamp to 100)
+      pressSeekBar(target, 400);
+      document.dispatchEvent(new MouseEvent('mouseup', {clientX: 400}));
       expect(mockMediaPlayer['seekToProgress']).toHaveBeenCalledWith(100);
     });
   });

@@ -22,7 +22,7 @@
  * @module app/components/layout/layout-controls
  */
 
-import {Component, inject, computed, ChangeDetectionStrategy, OnDestroy} from '@angular/core';
+import {Component, inject, computed, signal, ChangeDetectionStrategy, OnDestroy} from '@angular/core';
 import {DependencyService} from '../../../services/dependency.service';
 import {TransportControlsBase} from '../../shared/transport-controls-base';
 
@@ -67,8 +67,12 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
   /** Whether file opening is possible (at least one dependency installed) */
   public readonly canOpenFiles: ReturnType<typeof computed<boolean>> = computed((): boolean => !this.deps.noDependenciesInstalled());
 
-  /** Current playback progress as percentage (0-100) for the seek bar */
-  public readonly progress: ReturnType<typeof computed<number>> = computed((): number => this.mediaPlayer.progress());
+  /**
+   * Current playback progress as percentage (0-100) for the seek bar.
+   * While the user is dragging, shows the drag position instead of the
+   * server's playback position (the seek is only sent on release).
+   */
+  public readonly progress: ReturnType<typeof computed<number>> = computed((): number => this.seekDragPercent() ?? this.mediaPlayer.progress());
 
   /** Current volume as percentage (0-100) for the volume slider */
   public readonly volume: ReturnType<typeof computed<number>> = computed((): number => this.mediaPlayer.currentVolume() * 100);
@@ -249,6 +253,14 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
   /** Reference to the progress element being dragged */
   private seekBarElement: HTMLElement | null = null;
 
+  /**
+   * Seek bar position (0-100) while dragging, or null when not dragging.
+   * The actual seek is only sent to the server on release — seeking on every
+   * mousemove would restart transcode/stream pipelines repeatedly and, when
+   * the drag crosses the end of the track, trigger a media-ended stop.
+   */
+  private readonly seekDragPercent: ReturnType<typeof signal<number | null>> = signal<number | null>(null);
+
   /** Bound handler for mousemove during drag (stored for cleanup) */
   private readonly boundOnSeekMouseMove: (e: MouseEvent) => void = this.onSeekMouseMove.bind(this);
 
@@ -261,7 +273,10 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
 
   /**
    * Handles mousedown on the progress bar to start drag seeking.
-   * Also handles single clicks by immediately seeking to the clicked position.
+   *
+   * The seek bar immediately previews the pressed position, but the seek
+   * itself is deferred until mouseup so playback continues undisturbed
+   * from the current position while the user drags.
    *
    * @param event - Mouse down event on the progress bar
    */
@@ -273,8 +288,8 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
     this.isDraggingSeek = true;
     this.seekBarElement = target;
 
-    // Seek to clicked position immediately
-    this.seekToPosition(event.clientX);
+    // Preview the pressed position (no seek yet)
+    this.seekDragPercent.set(this.percentFromPosition(event.clientX));
 
     // Add document-level listeners for drag tracking
     document.addEventListener('mousemove', this.boundOnSeekMouseMove);
@@ -283,28 +298,27 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
 
   /**
    * Handles mousemove during seek bar drag.
-   * Updates the seek position as the user drags.
+   * Updates the previewed seek position as the user drags.
    *
    * @param event - Mouse move event
    */
   private onSeekMouseMove(event: MouseEvent): void {
     if (!this.isDraggingSeek || !this.seekBarElement) return;
-    this.seekToPosition(event.clientX);
+    this.seekDragPercent.set(this.percentFromPosition(event.clientX));
   }
 
   /**
    * Handles mouseup to end seek bar drag.
-   * Cleans up document event listeners.
+   * Sends the single, final seek to the release position and cleans up
+   * document event listeners.
    *
    * @param event - Mouse up event
    */
   private onSeekMouseUp(event: MouseEvent): void {
     if (!this.isDraggingSeek) return;
 
-    // Final seek to release position
-    if (this.seekBarElement) {
-      this.seekToPosition(event.clientX);
-    }
+    // Seek once, to the release position
+    const percent: number | null = this.seekBarElement ? this.percentFromPosition(event.clientX) : this.seekDragPercent();
 
     this.isDraggingSeek = false;
     this.seekBarElement = null;
@@ -312,18 +326,30 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
     // Remove document-level listeners
     document.removeEventListener('mousemove', this.boundOnSeekMouseMove);
     document.removeEventListener('mouseup', this.boundOnSeekMouseUp);
+
+    if (percent === null) {
+      this.seekDragPercent.set(null);
+      return;
+    }
+
+    // Keep showing the drag position until the seek round-trips, so the bar
+    // doesn't briefly snap back to the pre-seek position.
+    this.seekDragPercent.set(percent);
+    void this.mediaPlayer.seekToProgress(percent).finally((): void => {
+      this.seekDragPercent.set(null);
+    });
   }
 
   /**
-   * Calculates and seeks to a position based on mouse X coordinate.
+   * Calculates the seek bar percentage for a mouse X coordinate.
    *
    * @param clientX - The mouse X position relative to the viewport
+   * @returns Position along the seek bar as a percentage (0-100)
    */
-  private seekToPosition(clientX: number): void {
-    if (!this.seekBarElement) return;
+  private percentFromPosition(clientX: number): number {
+    if (!this.seekBarElement) return 0;
     const rect: DOMRect = this.seekBarElement.getBoundingClientRect();
-    const percent: number = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
-    void this.mediaPlayer.seekToProgress(percent);
+    return Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
   }
 
   // ============================================================================

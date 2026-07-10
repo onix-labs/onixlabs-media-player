@@ -117,12 +117,20 @@ function createMockDependencyService(): Record<string, unknown> {
 }
 
 /**
- * Creates a mock SettingsService exposing the videoAspectMode signal that
- * drives the aspect-ratio dropdown's selected value.
+ * Creates a mock SettingsService exposing the signals that drive the media
+ * bar dropdowns (aspect ratio, equalizer preset, video adjustment preset).
  */
 function createMockSettingsService(): Record<string, unknown> {
   return {
     videoAspectMode: signal<string>('default'),
+    equalizerEnabled: signal<boolean>(false),
+    equalizerPreset: signal<string>('flat'),
+    videoAdjustmentsEnabled: signal<boolean>(false),
+    videoAdjustmentsPreset: signal<string>('default'),
+    setEqualizerEnabled: vi.fn().mockResolvedValue(undefined),
+    setEqualizerPreset: vi.fn().mockResolvedValue(undefined),
+    setVideoAdjustmentsEnabled: vi.fn().mockResolvedValue(undefined),
+    setVideoAdjustmentPreset: vi.fn().mockResolvedValue(undefined),
   };
 }
 

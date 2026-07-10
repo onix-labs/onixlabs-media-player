@@ -1232,13 +1232,39 @@ export class ElectronService implements OnDestroy {
     await this.post('/player/started');
   }
 
+  /** Timestamp (ms epoch) of the last user-initiated seek request */
+  private lastSeekRequestAt: number = 0;
+
+  /**
+   * Gets the timestamp (ms epoch) of the last user-initiated seek request.
+   * Outlets use this to suppress clock syncs right after a seek, so a stale
+   * element position never overrides the seek target.
+   */
+  public get lastSeekAt(): number {
+    return this.lastSeekRequestAt;
+  }
+
   /**
    * Seeks to a specific position in the current track.
    *
    * @param timeSeconds - Target position in seconds
    */
   public async seek(timeSeconds: number): Promise<void> {
+    this.lastSeekRequestAt = Date.now();
     await this.post('/player/seek', {time: timeSeconds});
+  }
+
+  /**
+   * Reports the media element's actual playback position so the server can
+   * re-anchor its wall-clock time tracking. Fire-and-forget; errors are
+   * logged but never disrupt playback.
+   *
+   * @param timeSeconds - The element's actual position in seconds
+   */
+  public syncPlaybackTime(timeSeconds: number): void {
+    void this.post('/player/sync', {time: timeSeconds}).catch((err: unknown): void => {
+      console.warn('Failed to sync playback time:', err);
+    });
   }
 
   /**

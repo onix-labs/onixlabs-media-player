@@ -45,14 +45,12 @@
       cursor: grabbing;
     }
 
-    .miniplayer-container {
+    // The persistent media-player-view becomes the miniplayer container:
+    // the outlet fills the window and the controls float on top.
+    .media-player-view.miniplayer-container {
       position: relative;
       width: 100%;
       height: 100%;
-
-      &.hidden {
-        display: none;
-      }
 
       .miniplayer-content {
         position: absolute;

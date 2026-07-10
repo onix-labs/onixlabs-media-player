@@ -26,7 +26,7 @@
  * @module app/components/audio/audio-outlet
  */
 
-import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, HostBinding, ChangeDetectionStrategy, Output, EventEmitter} from '@angular/core';
+import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, untracked, HostBinding, ChangeDetectionStrategy, Output, EventEmitter} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {SettingsService, PerVisualizationSettings, RenderResolution} from '../../../services/settings.service';
@@ -181,6 +181,52 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** File path of currently loaded audio (for change detection) */
   private currentFilePath: string | null = null;
 
+  /** Path of the last successfully loaded audio (state reached 'playing') */
+  private lastSuccessfullyLoadedPath: string | null = null;
+
+  /** Playback state that preceded the current 'loading' transition */
+  private stateBeforeLoading: string = 'idle';
+
+  /** Whether the current source is a remote URL streamed through FFmpeg */
+  private isRemoteStream: boolean = false;
+
+  /** Media time at which the current remote stream starts (seek offset) */
+  private streamSeekOffset: number = 0;
+
+  /** Whether a remote stream reload (seek) is in flight */
+  private streamSeekPending: boolean = false;
+
+  /** Timestamp of the last remote stream seek (for debouncing) */
+  private lastStreamSeekAt: number = 0;
+
+  /** Timestamp when the current audio source was loaded */
+  private mediaLoadedAt: number = 0;
+
+  /** Timestamp of the last clock sync sent to the server (for throttling) */
+  private lastSyncSentAt: number = 0;
+
+  /** Minimum drift (seconds) between element and server clock before syncing */
+  private readonly syncDriftThreshold: number = 0.75;
+
+  /** Minimum interval (ms) between clock syncs */
+  private readonly syncThrottleMs: number = 1000;
+
+  /** Settle time (ms) after a load or seek before clock syncs resume */
+  private readonly syncSettleMs: number = 2000;
+
+  /** Grace period (ms) after a user seek during which stall holds are skipped */
+  private readonly stallSeekGraceMs: number = 500;
+
+  /**
+   * Window (ms) after a source (re)load during which server-time corrections
+   * are ignored — the time signal may still hold the previous track's
+   * position until the server broadcasts the new track's reset.
+   */
+  private readonly postLoadGuardMs: number = 500;
+
+  /** Interval holding the server clock at the element position while stalled */
+  private stallSyncInterval: ReturnType<typeof setInterval> | null = null;
+
   /** Whether the default visualization from settings has been applied */
   private defaultVisualizationApplied: boolean = false;
 
@@ -227,13 +273,37 @@ export class AudioOutlet implements OnInit, OnDestroy {
       const state: string = this.mediaPlayer.playbackState();
       const forceReload: number = this.electron.forceReloadCounter();
 
+      // Track when we successfully loaded this file (state reached 'playing')
+      // so re-loading the same file can resume at the server position
+      if (state === 'playing' && this.currentFilePath) {
+        this.lastSuccessfullyLoadedPath = this.currentFilePath;
+      }
+
+      // Remember the state that preceded a 'loading' transition. This
+      // distinguishes resuming after a stop (stopped → loading) from a
+      // restart or re-selection (playing → loading), which must start at 0.
+      if (state !== 'loading') {
+        this.stateBeforeLoading = state;
+      }
+
       // Clear cached path on loading or force reload (soundfont change)
       if (state === 'loading' || forceReload > 0) {
         this.currentFilePath = null;
       }
 
       if (track?.type === 'audio' && track.filePath !== this.currentFilePath) {
-        void this.loadAudioSource(track.filePath);
+        // Resume after stop: replaying the same track when the state before
+        // 'loading' was 'stopped' resumes at the server position — the user
+        // may have dragged the seek bar while stopped before pressing play
+        // (the server keeps that position on play). All other loads start
+        // from 0 (the server resets its clock for those flows).
+        const isStopResume: boolean = state === 'loading'
+          && this.stateBeforeLoading === 'stopped'
+          && track.filePath === this.lastSuccessfullyLoadedPath;
+        const resumeTime: number = isStopResume
+          ? untracked((): number => this.mediaPlayer.currentTime())
+          : 0;
+        void this.loadAudioSource(track.filePath, resumeTime);
       }
     });
 
@@ -275,8 +345,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
     });
 
     // React to seek events - synchronize audio element position with server time.
-    // All formats (including pre-rendered MIDI) support range requests, so
-    // native audio.currentTime seeking works universally.
+    // Local formats (including pre-rendered MIDI) support range requests, so
+    // native audio.currentTime seeking works. Remote streams are chunked and
+    // non-seekable — those are reloaded at the target position instead.
     // The `audio.seeking` guard prevents re-triggering seeks while a seek is
     // in progress (audio.currentTime hasn't updated yet, causing drift detection
     // to fire repeatedly and create a seek loop).
@@ -285,7 +356,28 @@ export class AudioOutlet implements OnInit, OnDestroy {
       const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
       if (!audio || !audio.src || audio.seeking) return;
 
-      if (Math.abs(audio.currentTime - time) > 1) {
+      // Don't reposition the element while a stop/pause crossfade is still
+      // playing it out (state already left 'playing' but the element hasn't
+      // been paused yet). Seeking it now — e.g. to 0 on stop — audibly
+      // replays the start of the track for the remainder of the fade. Once
+      // the fade pauses the element, corrections apply again (silently).
+      if (!this.mediaPlayer.isPlaying() && !audio.paused) return;
+
+      // Ignore corrections just after a (re)load: the time signal may still
+      // hold the PREVIOUS track's position until the server broadcasts the
+      // new track's reset (e.g. switching from a video at 15s to an audio
+      // file must not seek the fresh audio element to 15s).
+      if (Date.now() - this.mediaLoadedAt < this.postLoadGuardMs) return;
+
+      if (this.isRemoteStream) {
+        const actualTime: number = this.streamSeekOffset + audio.currentTime;
+        const now: number = Date.now();
+        if (Math.abs(actualTime - time) > 2 && !this.streamSeekPending && now - this.lastStreamSeekAt > 1000 && this.currentFilePath) {
+          this.streamSeekPending = true;
+          this.lastStreamSeekAt = now;
+          this.reloadRemoteStream(this.currentFilePath, time);
+        }
+      } else if (Math.abs(audio.currentTime - time) > 1) {
         audio.currentTime = time;
       }
     });
@@ -440,14 +532,75 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
     if (audio) {
       this.onAudioPlaying = (): void => {
+        this.stopStallClockHold();
+        // Remote stream seek completed — anchor the server clock to the
+        // actual stream position (FFmpeg startup time passed while loading)
+        if (this.streamSeekPending) {
+          this.streamSeekPending = false;
+          this.lastStreamSeekAt = Date.now();
+          this.electron.syncPlaybackTime(this.streamSeekOffset + audio.currentTime);
+        }
         void this.electron.signalPlaybackStarted();
       };
       audio.addEventListener('playing', this.onAudioPlaying);
+
+      // Keep the server clock anchored to the element's real position
+      this.onAudioTimeUpdate = (): void => {
+        this.maybeSyncServerClock(audio);
+      };
+      audio.addEventListener('timeupdate', this.onAudioTimeUpdate);
+
+      // While the element stalls to buffer (mainly remote streams), hold the
+      // server clock at the element's position until playback resumes
+      this.onAudioWaiting = (): void => {
+        this.startStallClockHold();
+      };
+      audio.addEventListener('waiting', this.onAudioWaiting);
     }
   }
 
   /** Handler for audio 'playing' event - stored for cleanup */
   private onAudioPlaying: (() => void) | null = null;
+
+  /** Handler for audio 'timeupdate' event - stored for cleanup */
+  private onAudioTimeUpdate: (() => void) | null = null;
+
+  /** Handler for audio 'waiting' event - stored for cleanup */
+  private onAudioWaiting: (() => void) | null = null;
+
+  /**
+   * Starts periodically anchoring the server clock to the element's current
+   * position while the element is stalled buffering. Skips ticks in a short
+   * grace window after a user seek so a stale element position can never
+   * cancel the seek target.
+   */
+  private startStallClockHold(): void {
+    if (this.stallSyncInterval !== null) return;
+
+    const audio: HTMLAudioElement = this.audioRef.nativeElement;
+    const holdClock: () => void = (): void => {
+      if (!this.mediaPlayer.isPlaying()) return;
+      if (Date.now() - this.electron.lastSeekAt < this.stallSeekGraceMs) return;
+      // Never report a freshly (re)loaded element — its position may not
+      // reflect the new track yet (the server ignores such syncs too)
+      if (Date.now() - this.mediaLoadedAt < this.syncSettleMs) return;
+      const actualTime: number = (this.isRemoteStream ? this.streamSeekOffset : 0) + audio.currentTime;
+      this.electron.syncPlaybackTime(actualTime);
+    };
+
+    holdClock();
+    this.stallSyncInterval = setInterval(holdClock, this.syncThrottleMs);
+  }
+
+  /**
+   * Stops the stall clock hold once the element is playing again.
+   */
+  private stopStallClockHold(): void {
+    if (this.stallSyncInterval !== null) {
+      clearInterval(this.stallSyncInterval);
+      this.stallSyncInterval = null;
+    }
+  }
 
   /**
    * Cleanup when component is destroyed.
@@ -477,6 +630,19 @@ export class AudioOutlet implements OnInit, OnDestroy {
       audio?.removeEventListener('playing', this.onAudioPlaying);
       this.onAudioPlaying = null;
     }
+    // Clean up audio timeupdate event listener
+    if (this.onAudioTimeUpdate) {
+      const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
+      audio?.removeEventListener('timeupdate', this.onAudioTimeUpdate);
+      this.onAudioTimeUpdate = null;
+    }
+    // Clean up audio waiting event listener and any active stall hold
+    if (this.onAudioWaiting) {
+      const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
+      audio?.removeEventListener('waiting', this.onAudioWaiting);
+      this.onAudioWaiting = null;
+    }
+    this.stopStallClockHold();
   }
 
   // ============================================================================
@@ -550,18 +716,31 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * are served with HTTP range request support for native seeking.
    *
    * @param filePath - Absolute path to the audio file
+   * @param resumeTime - Position (seconds) to start playback from; non-zero
+   *   when resuming the same track after a stop-seek (see track effect)
    */
-  private async loadAudioSource(filePath: string): Promise<void> {
+  private async loadAudioSource(filePath: string, resumeTime: number = 0): Promise<void> {
     const audio: HTMLAudioElement = this.audioRef.nativeElement;
     const serverUrl: string = this.mediaPlayer.serverUrl();
 
     if (!serverUrl) return;
 
     this.currentFilePath = filePath;
+    this.isRemoteStream = /^https?:\/\//i.test(filePath);
+    this.streamSeekOffset = 0;
+    this.streamSeekPending = false;
+    this.mediaLoadedAt = Date.now();
 
     // Build the stream URL with cache-buster to force fresh fetch after soundfont change
     const cacheBuster: number = this.electron.forceReloadCounter();
-    const url: string = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}&r=${cacheBuster}`;
+    let url: string = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}&r=${cacheBuster}`;
+
+    // Remote streams are non-seekable — bake the resume position into the
+    // stream request instead of seeking the element
+    if (this.isRemoteStream && resumeTime > 0) {
+      this.streamSeekOffset = resumeTime;
+      url += `&t=${resumeTime}`;
+    }
 
     // Initialize audio context if needed (must be after user gesture)
     if (!this.isInitialized) {
@@ -571,6 +750,16 @@ export class AudioOutlet implements OnInit, OnDestroy {
     // Set the source and load
     audio.src = url;
     audio.load();
+
+    // For local formats, position the element once it can play (HTTP range
+    // requests make this instant)
+    if (!this.isRemoteStream && resumeTime > 0) {
+      const onCanPlay: () => void = (): void => {
+        audio.currentTime = resumeTime;
+        audio.removeEventListener('canplay', onCanPlay);
+      };
+      audio.addEventListener('canplay', onCanPlay);
+    }
 
     console.log(`Audio source loaded: ${filePath}`);
 
@@ -582,6 +771,72 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.resumeAudioContext();
       this.fadeToVolume(this.mediaPlayer.muted() ? 0 : this.mediaPlayer.volume());
       audio.play().catch(console.error);
+    }
+  }
+
+  /**
+   * Reloads a remote (streamed) audio source at a new position.
+   *
+   * Remote streams are transcoded on-the-fly into a chunked, non-seekable
+   * response, so seeking is done by requesting a new stream with a 't'
+   * offset — the same approach the video outlet uses for transcoded video.
+   *
+   * @param filePath - The remote media URL
+   * @param seekTime - Target position in seconds
+   */
+  private reloadRemoteStream(filePath: string, seekTime: number): void {
+    const audio: HTMLAudioElement = this.audioRef.nativeElement;
+    // Use untracked() so URL inputs aren't tracked by the calling seek effect
+    const serverUrl: string = untracked((): string => this.mediaPlayer.serverUrl());
+    const cacheBuster: number = untracked((): number => this.electron.forceReloadCounter());
+
+    if (!serverUrl) {
+      this.streamSeekPending = false;
+      return;
+    }
+
+    this.streamSeekOffset = seekTime;
+    this.mediaLoadedAt = Date.now();
+    audio.src = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}&r=${cacheBuster}&t=${seekTime}`;
+    audio.load();
+
+    console.log(`Seeking remote audio stream to ${seekTime}s`);
+
+    if (untracked((): boolean => this.mediaPlayer.isPlaying())) {
+      audio.play().catch(console.error);
+    }
+  }
+
+  /**
+   * Reports the audio element's actual playback position to the server when
+   * it has drifted from the server's wall-clock time.
+   *
+   * Drift happens when the element stalls to buffer (mainly remote streams)
+   * while the server clock keeps running, pushing the seek bar ahead of the
+   * audible content. Anchoring the clock to the element keeps them in sync.
+   *
+   * Syncs are suppressed while the element is settling after a load or a
+   * seek, so a stale element position never cancels a user's seek.
+   *
+   * @param audio - The audio element to read the position from
+   */
+  private maybeSyncServerClock(audio: Readonly<HTMLAudioElement>): void {
+    if (!this.mediaPlayer.isPlaying()) return;
+    if (audio.paused || audio.seeking || this.streamSeekPending) return;
+    if (audio.readyState < 3) return;
+
+    const now: number = Date.now();
+    if (now - this.lastSyncSentAt < this.syncThrottleMs) return;
+    if (now - this.mediaLoadedAt < this.syncSettleMs) return;
+    if (now - this.lastStreamSeekAt < this.syncSettleMs) return;
+    if (now - this.electron.lastSeekAt < this.syncSettleMs) return;
+
+    const actualTime: number = (this.isRemoteStream ? this.streamSeekOffset : 0) + audio.currentTime;
+    const drift: number = actualTime - this.mediaPlayer.currentTime();
+
+    if (Math.abs(drift) > this.syncDriftThreshold) {
+      this.lastSyncSentAt = now;
+      this.electron.syncPlaybackTime(actualTime);
     }
   }
 

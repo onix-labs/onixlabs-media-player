@@ -567,17 +567,22 @@ export class Root implements OnDestroy {
   // ============================================================================
 
   /**
-   * Shows miniplayer controls when mouse enters the miniplayer container.
-   * Uses the same temporary show logic as fullscreen mode.
+   * Shows overlay controls when the mouse enters the player container in
+   * miniplayer or fullscreen mode. Uses the same temporary show logic as
+   * mouse movement. No-op in desktop mode (the container persists across
+   * modes, so the handler fires in every mode).
    */
   public onMiniplayerMouseEnter(): void {
+    if (!this.isMiniplayer() && !this.isFullscreen()) return;
     this.showControlsTemporarily();
   }
 
   /**
-   * Hides miniplayer controls immediately when mouse leaves the container.
+   * Hides overlay controls immediately when the mouse leaves the player
+   * container in miniplayer or fullscreen mode. No-op in desktop mode.
    */
   public onMiniplayerMouseLeave(): void {
+    if (!this.isMiniplayer() && !this.isFullscreen()) return;
     if (this.mouseTimeout) {
       clearTimeout(this.mouseTimeout);
       this.mouseTimeout = null;

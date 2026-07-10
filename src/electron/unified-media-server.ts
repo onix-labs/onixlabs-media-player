@@ -197,6 +197,12 @@ export class UnifiedMediaServer {
   /** Time position when playback was paused (for resume) */
   private pausedTime: number = 0;
 
+  /** Timestamp when the current track started playing from a fresh position */
+  private lastTrackStartAt: number = 0;
+
+  /** Window (ms) after a track start during which clock syncs are ignored */
+  private readonly TRACK_START_SYNC_GUARD_MS: number = 1500;
+
   /** Callback for playlist mode changes (shuffle/repeat) */
   private onModeChangeCallback: ((shuffle: boolean, repeat: boolean) => void) | null = null;
 
@@ -584,6 +590,8 @@ export class UnifiedMediaServer {
         this.handlePlaybackStarted(res);
       } else if (pathname === '/player/seek' && method === 'POST') {
         await this.handleSeek(req, res);
+      } else if (pathname === '/player/sync' && method === 'POST') {
+        await this.handleTimeSync(req, res);
       } else if (pathname === '/player/volume' && method === 'POST') {
         await this.handleVolume(req, res);
       } else if (pathname === '/player/state' && method === 'GET') {
@@ -2247,7 +2255,14 @@ export class UnifiedMediaServer {
       const mediaInfo: MediaInfo = await this.probeMedia(currentItem.filePath);
       this.playback.currentMedia = mediaInfo;
       this.playback.duration = mediaInfo.duration;
-      this.playback.currentTime = 0;
+
+      // Resume from a position seeked while stopped/idle (the user dragged
+      // the seek bar before pressing play). Consumed here so later plays
+      // start from the beginning again.
+      const resumeTime: number = Math.max(0, Math.min(this.pausedTime, mediaInfo.duration));
+      this.pausedTime = 0;
+      this.playback.currentTime = resumeTime;
+      this.lastTrackStartAt = Date.now();
 
       // Pre-render MIDI files before transitioning to 'playing' to avoid
       // race condition where UI shows playing but audio hasn't loaded yet
@@ -2268,7 +2283,7 @@ export class UnifiedMediaServer {
       // For video files, transition to 'playing' immediately since video outlet handles timing.
       if (mediaInfo.type === 'video') {
         this.playback.state = 'playing';
-        this.startTime = Date.now();
+        this.startTime = Date.now() - (resumeTime * 1000);
         this.startTimeTracking();
       }
       // Audio files stay in 'loading' - /player/started will transition to 'playing'
@@ -2326,18 +2341,22 @@ export class UnifiedMediaServer {
     playbackLogger.info('Stopped');
     this.playback.state = 'stopped';
     this.playback.currentTime = 0;
+    this.pausedTime = 0;
     this.stopTimeTracking();
 
     // Nuke MIDI cache on stop to ensure fresh renders next time
     this.nukeMidiCache();
 
-    // Select first item if playlist has items
+    this.broadcastState();
+    this.broadcastTime();
+
+    // Select the first item AFTER broadcasting the stopped state. The
+    // selection broadcast makes clients (re)load the newly selected item,
+    // and if it arrived first they would still see the stale 'playing'
+    // state and briefly auto-play it.
     if (this.playlist.getState().items.length > 0) {
       this.playlist.selectIndex(0);
     }
-
-    this.broadcastState();
-    this.broadcastTime();
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true }));
@@ -2368,10 +2387,12 @@ export class UnifiedMediaServer {
       this.broadcastState();
     }
 
-    // Only start time tracking if not already running
+    // Only start time tracking if not already running. Anchor the clock to
+    // the current position (non-zero when resuming from a seek made while
+    // stopped) rather than restarting it from zero.
     if (!this.timeUpdateInterval) {
-      playbackLogger.info('Beginning time tracking');
-      this.startTime = Date.now();
+      playbackLogger.info(`Beginning time tracking at ${this.playback.currentTime.toFixed(1)}s`);
+      this.startTime = Date.now() - (this.playback.currentTime * 1000);
       this.startTimeTracking();
     }
 
@@ -2410,6 +2431,49 @@ export class UnifiedMediaServer {
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, time: clampedTime }));
+  }
+
+  /**
+   * Handles playback clock sync requests from the renderer.
+   *
+   * The server tracks playback time with a wall-clock interval, but the media
+   * element is the true source of playback position — buffering stalls and
+   * FFmpeg startup delays (especially for remote/streamed media) make the
+   * wall clock drift ahead of the actual content. The active outlet reports
+   * the element's real position periodically and the server re-anchors its
+   * clock to it, keeping the seek bar and subtitles in sync.
+   *
+   * Unlike a seek, a sync never changes what is playing — it only corrects
+   * the clock, so it is ignored unless playback is active.
+   *
+   * @param req - Incoming HTTP request with { time: number } body
+   * @param res - HTTP response to write to
+   */
+  private async handleTimeSync(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
+    const body: string = await this.readBody(req);
+    const { time }: { time: unknown } = JSON.parse(body);
+
+    if (typeof time !== 'number' || !isFinite(time)) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Invalid time' }));
+      return;
+    }
+
+    // Only meaningful while the clock is running. Also ignore syncs that
+    // race a track start: an outlet may still report the PREVIOUS track's
+    // position for a moment after a switch (its state signals lag the
+    // server), and anchoring the fresh track's clock to that stale position
+    // would make the new track appear to start mid-way through.
+    const sinceTrackStart: number = Date.now() - this.lastTrackStartAt;
+    if (this.playback.state === 'playing' && sinceTrackStart > this.TRACK_START_SYNC_GUARD_MS) {
+      const clampedTime: number = Math.max(0, Math.min(time, this.playback.duration));
+      this.playback.currentTime = clampedTime;
+      this.startTime = Date.now() - (clampedTime * 1000);
+      this.broadcastTime();
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, time: this.playback.currentTime }));
   }
 
   /**
@@ -2613,6 +2677,8 @@ export class UnifiedMediaServer {
             this.playback.currentMedia = mediaInfo;
             this.playback.duration = mediaInfo.duration;
             this.playback.currentTime = 0;
+            this.pausedTime = 0;
+            this.lastTrackStartAt = Date.now();
             this.playback.state = 'playing';
             this.startTime = Date.now();
 
@@ -2655,6 +2721,7 @@ export class UnifiedMediaServer {
     this.playback.state = 'idle';
     this.playback.currentMedia = null;
     this.playback.currentTime = 0;
+    this.pausedTime = 0;
     this.playback.duration = 0;
     this.stopTimeTracking();
     this.broadcastState();
@@ -2693,6 +2760,8 @@ export class UnifiedMediaServer {
       this.playback.currentMedia = mediaInfo;
       this.playback.duration = mediaInfo.duration;
       this.playback.currentTime = 0;
+      this.pausedTime = 0;
+      this.lastTrackStartAt = Date.now();
       this.playback.state = 'playing';
       this.startTime = Date.now();
 
@@ -2727,6 +2796,8 @@ export class UnifiedMediaServer {
       // End of playlist reached
       this.playback.state = 'idle';
       this.playback.currentTime = 0;
+      this.pausedTime = 0;
+      this.lastTrackStartAt = Date.now();
       this.stopTimeTracking();
       this.broadcastState();
       this.sse.broadcast('playback:ended', {});
@@ -2745,6 +2816,8 @@ export class UnifiedMediaServer {
       this.playback.currentMedia = mediaInfo;
       this.playback.duration = mediaInfo.duration;
       this.playback.currentTime = 0;
+      this.pausedTime = 0;
+      this.lastTrackStartAt = Date.now();
       this.playback.state = 'playing';
       this.startTime = Date.now();
 
@@ -2789,6 +2862,8 @@ export class UnifiedMediaServer {
       this.playback.currentMedia = mediaInfo;
       this.playback.duration = mediaInfo.duration;
       this.playback.currentTime = 0;
+      this.pausedTime = 0;
+      this.lastTrackStartAt = Date.now();
       this.playback.state = 'playing';
       this.startTime = Date.now();
 
@@ -3500,6 +3575,9 @@ export class UnifiedMediaServer {
 
       if (this.playback.currentTime >= this.playback.duration) {
         this.playback.currentTime = this.playback.duration;
+        // Broadcast the final position so the seek bar visually reaches the
+        // end of its track before the ended transition resets it.
+        this.broadcastTime();
         void this.onMediaEnded();
         return;
       }
@@ -3534,13 +3612,19 @@ export class UnifiedMediaServer {
     if (!nextItem) {
       this.playback.state = 'stopped';
       this.playback.currentTime = 0;
+      this.pausedTime = 0;
+      this.lastTrackStartAt = Date.now();
 
-      // Select first item if playlist has items
+      this.broadcastState();
+      this.broadcastTime();
+
+      // Select the first item AFTER broadcasting the stopped state, so
+      // clients process the selection change with the correct state and
+      // don't briefly auto-play the newly selected item (see handleStop).
       if (this.playlist.getState().items.length > 0) {
         this.playlist.selectIndex(0);
       }
 
-      this.broadcastState();
       this.sse.broadcast('playback:ended', {});
       return;
     }
@@ -3554,6 +3638,8 @@ export class UnifiedMediaServer {
       this.playback.currentMedia = mediaInfo;
       this.playback.duration = mediaInfo.duration;
       this.playback.currentTime = 0;
+      this.pausedTime = 0;
+      this.lastTrackStartAt = Date.now();
       this.playback.state = 'playing';
       this.startTime = Date.now();
 

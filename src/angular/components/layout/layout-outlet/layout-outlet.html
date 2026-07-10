@@ -50,6 +50,11 @@
             </optgroup>
           }
         </select>
+        <select class="media-bar-select" (change)="onEqualizerPresetChange($event)" title="Audio preset">
+          @for (preset of equalizerPresets; track preset.value) {
+            <option [value]="preset.value" [selected]="preset.value === currentEqualizerPreset()">{{ preset.label }}</option>
+          }
+        </select>
       } @else if (isVideo()) {
         <select class="media-bar-select" (change)="onAspectModeChange($event)" title="Aspect ratio">
           @for (option of aspectOptions; track option.value) {
@@ -71,6 +76,11 @@
         <select class="media-bar-select" (change)="onFlipModeChange($event)" title="Flip video">
           @for (option of flipOptions; track option.value) {
             <option [value]="option.value" [selected]="option.value === videoFlipMode()">{{ option.label }}</option>
+          }
+        </select>
+        <select class="media-bar-select" (change)="onVideoPresetChange($event)" title="Video preset">
+          @for (preset of videoPresets; track preset.value) {
+            <option [value]="preset.value" [selected]="preset.value === currentVideoPreset()">{{ preset.label }}</option>
           }
         </select>
         @if (getAudioTracks().length > 1) {

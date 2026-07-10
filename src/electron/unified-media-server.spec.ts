@@ -348,6 +348,34 @@ describe('UnifiedMediaServer', () => {
   });
 
   // ==========================================================================
+  // POST /player/sync
+  // ==========================================================================
+
+  describe('POST /player/sync', () => {
+    it('accepts a sync while not playing without changing the clock', async () => {
+      const { status, body } = await request('POST', '/player/sync', { time: 5 });
+      expect(status).toBe(200);
+      expect(body.success).toBe(true);
+
+      // Not playing, so the reported position is unchanged
+      const state = await request('GET', '/player/state');
+      expect(state.body.currentTime).toBe(0);
+    });
+
+    it('rejects non-number time', async () => {
+      const { status, body } = await request('POST', '/player/sync', { time: 'abc' });
+      expect(status).toBe(400);
+      expect(body.error).toBe('Invalid time');
+    });
+
+    it('rejects non-finite time', async () => {
+      const { status, body } = await request('POST', '/player/sync', { time: null });
+      expect(status).toBe(400);
+      expect(body.error).toBe('Invalid time');
+    });
+  });
+
+  // ==========================================================================
   // GET /playlist
   // ==========================================================================
 

@@ -27,6 +27,8 @@ import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import {DependencyService} from '../../../services/dependency.service';
 import {SettingsService, VIDEO_ASPECT_OPTIONS, type VideoAspectMode} from '../../../services/settings.service';
+import {EQ_PRESETS} from '../../../services/equalizer';
+import {VIDEO_ADJUSTMENT_PRESETS} from '../../../services/video-adjustments';
 import type {DependencyStatus} from '../../../services/dependency.service';
 import type {PlaylistItem, SubtitleTrack, AudioTrack} from '../../../types/electron';
 
@@ -104,6 +106,22 @@ export class LayoutOutlet {
 
   /** Video flip options for the select dropdown */
   public readonly flipOptions: typeof VIDEO_FLIP_OPTIONS = VIDEO_FLIP_OPTIONS;
+
+  /** Equalizer (audio) presets for the select dropdown */
+  public readonly equalizerPresets: typeof EQ_PRESETS = EQ_PRESETS;
+
+  /** Video adjustment presets for the select dropdown */
+  public readonly videoPresets: typeof VIDEO_ADJUSTMENT_PRESETS = VIDEO_ADJUSTMENT_PRESETS;
+
+  /** Currently selected equalizer preset identifier */
+  public readonly currentEqualizerPreset: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settings.equalizerPreset()
+  );
+
+  /** Currently selected video adjustment preset identifier */
+  public readonly currentVideoPreset: ReturnType<typeof computed<string>> = computed(
+    (): string => this.settings.videoAdjustmentsPreset()
+  );
 
   /**
    * Current aspect mode value for the select dropdown.
@@ -241,6 +259,40 @@ export class LayoutOutlet {
     const target: EventTarget | null = event.target;
     if (target instanceof HTMLSelectElement) {
       this.videoOutlet?.setFlipMode(target.value as VideoFlipMode);
+    }
+  }
+
+  /**
+   * Handles equalizer preset change from the media bar select element.
+   * Selecting a preset also enables the equalizer if it was disabled, so
+   * the choice is immediately audible.
+   *
+   * @param event - The change event from the select
+   */
+  public onEqualizerPresetChange(event: Event): void {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLSelectElement) {
+      if (!this.settings.equalizerEnabled()) {
+        void this.settings.setEqualizerEnabled(true);
+      }
+      void this.settings.setEqualizerPreset(target.value);
+    }
+  }
+
+  /**
+   * Handles video adjustment preset change from the media bar select element.
+   * Selecting a preset also enables video adjustments if they were disabled,
+   * so the choice is immediately visible.
+   *
+   * @param event - The change event from the select
+   */
+  public onVideoPresetChange(event: Event): void {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLSelectElement) {
+      if (!this.settings.videoAdjustmentsEnabled()) {
+        void this.settings.setVideoAdjustmentsEnabled(true);
+      }
+      void this.settings.setVideoAdjustmentPreset(target.value);
     }
   }
 
