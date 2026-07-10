@@ -402,6 +402,7 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: []},
   {id: 'pulsar', name: 'Pulsar', category: 'Waves', applicableSettings: []},
   {id: 'blackhole', name: 'Black Hole', category: 'Waves', applicableSettings: []},
+  {id: 'particles', name: 'Particles', category: 'Waves', applicableSettings: []},
   // Signature category
   {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},

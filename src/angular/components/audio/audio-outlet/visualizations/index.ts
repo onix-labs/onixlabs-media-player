@@ -36,6 +36,7 @@ export {SpotlightVisualization} from './spotlight-visualization';
 export {BlackHoleVisualization} from './black-hole-visualization';
 export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
+export {ParticlesVisualization} from './particles-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
@@ -51,6 +52,7 @@ import {SpotlightVisualization} from './spotlight-visualization';
 import {BlackHoleVisualization} from './black-hole-visualization';
 import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
+import {ParticlesVisualization} from './particles-visualization';
 
 /**
  * Map of visualization types to their constructor classes.
@@ -68,6 +70,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   modern: ModernVisualization,
   spotlight: SpotlightVisualization,
   blackhole: BlackHoleVisualization,
+  particles: ParticlesVisualization,
   blank: BlankVisualization,
   logo: LogoVisualization,
 };
@@ -88,6 +91,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   modern: {name: 'Modern', category: 'Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
   blackhole: {name: 'Black Hole', category: 'Waves'},
+  particles: {name: 'Particles', category: 'Waves'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
@@ -133,7 +137,7 @@ export const VISUALIZATION_TYPES: string[] = [
   // Bars
   'bars',
   // Waves
-  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'pulsar', 'blackhole',
+  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'particles', 'pulsar', 'blackhole',
   // Signature
   'spotlight', 'water',
   // Simple

@@ -764,6 +764,7 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'modern',
   'spotlight',
   'blackhole',
+  'particles',
   'blank',
   'logo',
 ];
