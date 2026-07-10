@@ -79,6 +79,41 @@
   }
 }
 
+// Frozen last frame shown while a seek reloads the stream. The frame is
+// drawn at the video's exact on-screen geometry (including aspect mode and
+// flip), dulled slightly so the reload reads as "busy" rather than frozen.
+.seek-loading-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  pointer-events: none;
+  // filter (video adjustments + dulling) is bound inline by the component
+  z-index: 5;
+
+  &.active {
+    display: block;
+  }
+}
+
+// Spinner centered over the frozen frame while the stream reloads
+.seek-loading-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 6;
+
+  i {
+    font-size: 3rem;
+    color: rgba(255, 255, 255, 0.9);
+    filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.8));
+  }
+}
+
 // Custom subtitle overlay (bypasses browser's TextTrack API for reliable sync)
 .subtitle-overlay {
   position: absolute;

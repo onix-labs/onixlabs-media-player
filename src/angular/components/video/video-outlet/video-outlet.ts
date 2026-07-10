@@ -147,6 +147,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Reference to the video element */
   @ViewChild('videoElement', {static: true}) public videoRef!: ElementRef<HTMLVideoElement>;
 
+  /** Canvas that freezes the last frame while a seek reloads the stream */
+  @ViewChild('freezeFrame', {static: true}) public freezeFrameRef!: ElementRef<HTMLCanvasElement>;
+
   // ============================================================================
   // Services
   // ============================================================================
@@ -250,6 +253,22 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Currently selected audio track index (0-based) */
   public readonly selectedAudioTrack: ReturnType<typeof signal<number>> = signal<number>(0);
 
+  /**
+   * Whether a seek is reloading the stream. While true, the last frame is
+   * shown frozen and dulled with a spinner instead of a black video element.
+   */
+  public readonly isSeekLoading: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+
+  /**
+   * CSS filter for the frozen seek-loading frame: the user's video
+   * adjustments (the captured frame is raw, without CSS filters) plus a
+   * dulling brightness drop.
+   */
+  public readonly freezeFrameFilter: ReturnType<typeof computed<string>> = computed((): string => {
+    const base: string = this.videoFilter();
+    return base === 'none' ? 'brightness(0.6)' : `${base} brightness(0.6)`;
+  });
+
   // ============================================================================
   // Internal State
   // ============================================================================
@@ -314,6 +333,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /** Max difference (s) for a seek alignment to match this outlet's pending seek */
   private readonly seekAlignMatchEpsilon: number = 0.01;
+
+  /** Safety timeout (ms) after which a stuck seek-loading overlay is hidden */
+  private readonly seekLoadingTimeoutMs: number = 15000;
+
+  /** Timeout handle for the seek-loading overlay safety hide */
+  private seekLoadingTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   /** Video 'waiting' handler (stored for cleanup) */
   private videoWaitingHandler: (() => void) | null = null;
@@ -487,6 +512,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
           this.lastSeekTime = now;
           const seekFilePath: string = this.currentFilePath;
           console.log(`Seeking transcoded video to ${time}s (diff: ${timeDiff}s)`);
+          // Freeze the current frame with a spinner while the stream reloads
+          this.showSeekLoadingOverlay();
           void this.loadVideo(seekFilePath, time);
           // Note: seekPending is cleared when video fires 'canplay' in setupVideoEvents
         }
@@ -717,6 +744,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
       this.fadeInterval = null;
     }
 
+    // Clear any pending seek-loading overlay timeout
+    if (this.seekLoadingTimeoutId !== null) {
+      clearTimeout(this.seekLoadingTimeoutId);
+      this.seekLoadingTimeoutId = null;
+    }
+
     const video: HTMLVideoElement = this.videoRef.nativeElement;
     video.pause();
     video.src = '';
@@ -866,6 +899,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     const video: HTMLVideoElement = this.videoRef.nativeElement;
     const audioTrack: number = this.selectedAudioTrack();
+
+    // Freeze the current frame with a spinner while the stream reloads
+    this.showSeekLoadingOverlay();
 
     // Build stream URL with audio track parameter
     // Note: canRemux is now determined server-side based on the selected track's codec
@@ -1162,6 +1198,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     if (!serverUrl) return;
 
+    // A frozen seek-loading frame belongs to the current file — drop it when
+    // a different track loads (its frame would be stale)
+    if (this.currentFilePath !== null && this.currentFilePath !== filePath) {
+      this.hideSeekLoadingOverlay();
+    }
+
     this.currentFilePath = filePath;
     this.mediaLoadedAt = Date.now();
 
@@ -1273,6 +1315,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     this.videoErrorHandler = (): void => {
       const error: MediaError | null = video.error;
       console.error('Video error:', error?.code, error?.message);
+      this.hideSeekLoadingOverlay();
     };
     video.addEventListener('error', this.videoErrorHandler);
 
@@ -1281,6 +1324,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
       // Clear seekPending now that the video has loaded and is ready to play
       // This allows the seek effect to trigger new seeks if needed
       this.seekPending = false;
+
+      // The reloaded stream has a displayable frame — drop the frozen frame
+      this.hideSeekLoadingOverlay();
 
       // For transcoded/streamed videos, the content starts at the requested
       // seek offset — but the server's wall clock kept running while FFmpeg
@@ -1333,6 +1379,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     this.videoPlayingHandler = (): void => {
       this.stopStallClockHold();
+      // Backup for the canplay hide — playback has definitely resumed
+      this.hideSeekLoadingOverlay();
     };
     video.addEventListener('playing', this.videoPlayingHandler);
   }
@@ -1372,6 +1420,97 @@ export class VideoOutlet implements OnInit, OnDestroy {
       clearInterval(this.stallSyncInterval);
       this.stallSyncInterval = null;
     }
+  }
+
+  /**
+   * Shows the seek-loading overlay: captures the video's current frame onto
+   * the freeze canvas (at its exact on-screen geometry, honouring the aspect
+   * mode and flip), which is then displayed dulled with a spinner while the
+   * stream reloads. Without this, swapping the source blacks the element out
+   * for the duration of the pipeline restart.
+   *
+   * If no frame is decodable (e.g. a second seek while one is already
+   * loading), the previously captured frame is kept.
+   */
+  private showSeekLoadingOverlay(): void {
+    const video: HTMLVideoElement = this.videoRef.nativeElement;
+    const canvas: HTMLCanvasElement | undefined = this.freezeFrameRef?.nativeElement;
+    const container: HTMLElement | null = canvas?.parentElement ?? null;
+
+    if (canvas && container) {
+      const hasFrame: boolean = video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0;
+      const alreadyShowing: boolean = untracked((): boolean => this.isSeekLoading());
+
+      if (hasFrame) {
+        const ctx: CanvasRenderingContext2D | null = canvas.getContext('2d');
+        if (ctx) {
+          const dpr: number = window.devicePixelRatio || 1;
+          const containerRect: DOMRect = container.getBoundingClientRect();
+          const videoRect: DOMRect = video.getBoundingClientRect();
+          canvas.width = Math.round(containerRect.width * dpr);
+          canvas.height = Math.round(containerRect.height * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.clearRect(0, 0, containerRect.width, containerRect.height);
+
+          // Element rect relative to the container
+          const dx: number = videoRect.left - containerRect.left;
+          const dy: number = videoRect.top - containerRect.top;
+          let cw: number = videoRect.width;
+          let ch: number = videoRect.height;
+          let cx: number = dx;
+          let cy: number = dy;
+
+          // In the default aspect mode the element uses object-fit: contain,
+          // so the visible content is letterboxed inside the element rect;
+          // all other modes fill the element rect (object-fit: fill)
+          if (untracked((): VideoAspectMode => this.aspectMode()) === 'default') {
+            const scale: number = Math.min(videoRect.width / video.videoWidth, videoRect.height / video.videoHeight);
+            cw = video.videoWidth * scale;
+            ch = video.videoHeight * scale;
+            cx = dx + (videoRect.width - cw) / 2;
+            cy = dy + (videoRect.height - ch) / 2;
+          }
+
+          // Reproduce the CSS flip (applied to the video element only) by
+          // mirroring the draw around the content rect's centre
+          const flip: VideoFlipMode = untracked((): VideoFlipMode => this.flipMode());
+          const flipX: number = flip === 'horizontal' || flip === 'both' ? -1 : 1;
+          const flipY: number = flip === 'vertical' || flip === 'both' ? -1 : 1;
+          ctx.save();
+          ctx.translate(cx + cw / 2, cy + ch / 2);
+          ctx.scale(flipX, flipY);
+          ctx.drawImage(video, -cw / 2, -ch / 2, cw, ch);
+          ctx.restore();
+        }
+      } else if (!alreadyShowing) {
+        // No frame available and nothing previously captured — clear so the
+        // spinner shows over the plain black container
+        const ctx: CanvasRenderingContext2D | null = canvas.getContext('2d');
+        ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    this.isSeekLoading.set(true);
+
+    // Safety net: never leave a stale overlay if the stream fails silently
+    if (this.seekLoadingTimeoutId !== null) {
+      clearTimeout(this.seekLoadingTimeoutId);
+    }
+    this.seekLoadingTimeoutId = setTimeout((): void => {
+      this.hideSeekLoadingOverlay();
+    }, this.seekLoadingTimeoutMs);
+  }
+
+  /**
+   * Hides the seek-loading overlay once the reloaded stream can play (or on
+   * error/track change/timeout).
+   */
+  private hideSeekLoadingOverlay(): void {
+    if (this.seekLoadingTimeoutId !== null) {
+      clearTimeout(this.seekLoadingTimeoutId);
+      this.seekLoadingTimeoutId = null;
+    }
+    this.isSeekLoading.set(false);
   }
 
   /**
