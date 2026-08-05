@@ -689,6 +689,18 @@ export interface MediaPlayerAPI {
    */
   minimizeWindow: () => Promise<void>;
 
+  /**
+   * Closes the main window.
+   * @returns Promise that resolves when the close has been requested
+   */
+  closeWindow: () => Promise<void>;
+
+  /**
+   * Clears the recent files and recent playlists lists.
+   * @returns Promise that resolves when the recent items are cleared
+   */
+  clearRecentItems: () => Promise<void>;
+
   // ========================================================================
   // Setup Wizard API
   // ========================================================================

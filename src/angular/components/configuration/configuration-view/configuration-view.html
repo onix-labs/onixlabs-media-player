@@ -414,6 +414,26 @@
                     <span>Server Port setting requires an application restart to take effect.</span>
                   </div>
                 }
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="miniplayer-on-focus-loss">Mini-Player on Focus Loss</label>
+                    <p class="setting-description">
+                      Show the mini-player when the main window is hidden behind another window.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <label class="toggle">
+                      <input
+                        type="checkbox"
+                        id="miniplayer-on-focus-loss"
+                        [checked]="currentMiniplayerOnFocusLoss()"
+                        (change)="onMiniplayerOnFocusLossToggle($event)"
+                      />
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
               </div>
 
               <!-- File Associations Section -->
@@ -507,6 +527,25 @@
                       (input)="onSkipDurationChange($event)"
                     />
                     <span class="slider-value">{{ formatSkipDuration() }}</span>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="seek-mode">Seek Bar Behavior</label>
+                    <p class="setting-description">
+                      Seek on drop only seeks when the seek bar handle is released. Seek on drag and drop also seeks while dragging.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="seek-mode"
+                      (change)="onSeekModeChange($event)"
+                    >
+                      @for (option of seekModeOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentSeekMode()">{{ option.label }}</option>
+                      }
+                    </select>
                   </div>
                 </div>
               </div>

@@ -1256,6 +1256,22 @@ export class ElectronService implements OnDestroy {
     await this.api.minimizeWindow();
   }
 
+  /**
+   * Closes the main window.
+   */
+  public async closeWindow(): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.closeWindow();
+  }
+
+  /**
+   * Clears the recent files and recent playlists lists.
+   */
+  public async clearRecentItems(): Promise<void> {
+    if (!this.isElectron || !this.api) return;
+    await this.api.clearRecentItems();
+  }
+
   // ============================================================================
   // HTTP API Methods - Playback Control
   // ============================================================================

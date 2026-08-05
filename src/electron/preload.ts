@@ -357,6 +357,20 @@ export interface MediaPlayerAPI {
    */
   readonly minimizeWindow: () => Promise<void>;
 
+  /**
+   * Closes the main window.
+   *
+   * @returns Promise that resolves when the close has been requested
+   */
+  readonly closeWindow: () => Promise<void>;
+
+  /**
+   * Clears the recent files and recent playlists lists.
+   *
+   * @returns Promise that resolves when the recent items are cleared
+   */
+  readonly clearRecentItems: () => Promise<void>;
+
   // ========================================================================
   // Setup Wizard API
   // ========================================================================
@@ -510,6 +524,8 @@ const api: MediaPlayerAPI = {
     return (): void => { ipcRenderer.removeListener('os:openPlaylist', listener); };
   },
   minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
+  closeWindow: (): Promise<void> => ipcRenderer.invoke('window:close'),
+  clearRecentItems: (): Promise<void> => ipcRenderer.invoke('app:clearRecentItems'),
 
   // Setup Wizard API
   setupGetPort: (): Promise<number> => ipcRenderer.invoke('setup:getPort'),

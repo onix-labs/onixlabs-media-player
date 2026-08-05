@@ -406,9 +406,10 @@ export class Root implements OnDestroy {
    * - In desktop mode (not fullscreen/miniplayer): toggles playlist visibility
    *
    * Ctrl/Cmd + D (Discreet mode):
-   * - Stops current media playback
+   * - Immediately stops current media playback
    * - Clears the playlist
-   * - Minimizes the window
+   * - Clears the recent files and playlists
+   * - Closes the window
    */
   @HostListener('document:keydown', ['$event'])
   public onKeyDown(event: KeyboardEvent): void {
@@ -431,16 +432,19 @@ export class Root implements OnDestroy {
   }
 
   /**
-   * Activates discreet mode: stops playback, clears playlist, and minimizes window.
-   * This provides a quick way to hide media content.
+   * Activates discreet mode: stops playback, clears the playlist and recent
+   * items, and closes the window. This provides a quick way to hide media
+   * content without leaving a trace.
    */
   private async activateDiscreetMode(): Promise<void> {
-    // Stop playback
+    // Unload whatever is playing
     await this.electron.stop();
     // Clear the playlist
     await this.electron.clearPlaylist();
-    // Minimize the window
-    await this.electron.minimizeWindow();
+    // Clear recent files and playlists
+    await this.electron.clearRecentItems();
+    // Close the window
+    await this.electron.closeWindow();
   }
 
   /**

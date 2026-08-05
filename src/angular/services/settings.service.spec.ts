@@ -50,6 +50,7 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     application: {
       serverPort: 0,
       controlsAutoHideDelay: 5,
+      miniplayerOnFocusLoss: false,
     },
     playback: {
       defaultVolume: 0.5,
@@ -59,6 +60,7 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       videoAspectMode: 'default',
       preferredAudioLanguage: 'eng',
       preferredSubtitleLanguage: 'off',
+      seekMode: 'drop',
     },
     transcoding: {
       videoQuality: 'medium',
@@ -190,7 +192,7 @@ describe('SettingsService', (): void => {
 
     it('serverPort reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        application: {serverPort: 8080, controlsAutoHideDelay: 5},
+        application: {serverPort: 8080, controlsAutoHideDelay: 5, miniplayerOnFocusLoss: false},
       });
       service.updateFromSSE(testSettings);
 
@@ -200,7 +202,7 @@ describe('SettingsService', (): void => {
 
     it('controlsAutoHideDelay reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        application: {serverPort: 0, controlsAutoHideDelay: 10},
+        application: {serverPort: 0, controlsAutoHideDelay: 10, miniplayerOnFocusLoss: false},
       });
       service.updateFromSSE(testSettings);
 
@@ -210,7 +212,7 @@ describe('SettingsService', (): void => {
 
     it('defaultVolume reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        playback: {defaultVolume: 0.8, crossfadeDuration: 100, previousTrackThreshold: 3, skipDuration: 10, videoAspectMode: 'default', preferredAudioLanguage: 'eng', preferredSubtitleLanguage: 'off'},
+        playback: {defaultVolume: 0.8, crossfadeDuration: 100, previousTrackThreshold: 3, skipDuration: 10, videoAspectMode: 'default', preferredAudioLanguage: 'eng', preferredSubtitleLanguage: 'off', seekMode: 'drop'},
       });
       service.updateFromSSE(testSettings);
 
@@ -220,7 +222,7 @@ describe('SettingsService', (): void => {
 
     it('crossfadeDuration reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        playback: {defaultVolume: 0.5, crossfadeDuration: 250, previousTrackThreshold: 3, skipDuration: 10, videoAspectMode: 'default', preferredAudioLanguage: 'eng', preferredSubtitleLanguage: 'off'},
+        playback: {defaultVolume: 0.5, crossfadeDuration: 250, previousTrackThreshold: 3, skipDuration: 10, videoAspectMode: 'default', preferredAudioLanguage: 'eng', preferredSubtitleLanguage: 'off', seekMode: 'drop'},
       });
       service.updateFromSSE(testSettings);
 
@@ -230,7 +232,7 @@ describe('SettingsService', (): void => {
 
     it('videoAspectMode reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        playback: {defaultVolume: 0.5, crossfadeDuration: 100, previousTrackThreshold: 3, skipDuration: 10, videoAspectMode: '16:9', preferredAudioLanguage: 'eng', preferredSubtitleLanguage: 'off'},
+        playback: {defaultVolume: 0.5, crossfadeDuration: 100, previousTrackThreshold: 3, skipDuration: 10, videoAspectMode: '16:9', preferredAudioLanguage: 'eng', preferredSubtitleLanguage: 'off', seekMode: 'drop'},
       });
       service.updateFromSSE(testSettings);
 

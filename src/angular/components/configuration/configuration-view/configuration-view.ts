@@ -15,7 +15,7 @@
 import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
 import type {InputSignal, EffectRef} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, RenderResolution, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
+import {SettingsService, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, SEEK_MODE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, RenderResolution, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, SeekMode, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import {EQ_FREQUENCIES, EQ_PRESETS, EQ_GAIN_MIN, EQ_GAIN_MAX, type EqualizerPreset} from '../../../services/equalizer';
@@ -395,6 +395,19 @@ export class ConfigurationView {
   /** Current skip duration in seconds */
   public readonly currentSkipDuration: ReturnType<typeof computed<number>> = computed(
     (): number => this.settingsService.skipDuration()
+  );
+
+  /** Available seek bar behaviour options for the dropdown */
+  public readonly seekModeOptions: typeof SEEK_MODE_OPTIONS = SEEK_MODE_OPTIONS;
+
+  /** Current seek bar behaviour setting */
+  public readonly currentSeekMode: ReturnType<typeof computed<SeekMode>> = computed(
+    (): SeekMode => this.settingsService.seekMode()
+  );
+
+  /** Whether the mini-player is shown when the main window loses focus */
+  public readonly currentMiniplayerOnFocusLoss: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.settingsService.miniplayerOnFocusLoss()
   );
 
   // ============================================================================
@@ -1690,5 +1703,27 @@ export class ConfigurationView {
    */
   public formatSkipDuration(): string {
     return `${this.currentSkipDuration()}s`;
+  }
+
+  /**
+   * Handles seek bar behaviour selection change.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onSeekModeChange(event: Event): Promise<void> {
+    const mode: string = getSelectValue(event);
+    await this.settingsService.setSeekMode(mode as SeekMode);
+  }
+
+  /**
+   * Handles the mini-player on focus loss toggle.
+   *
+   * @param event - The change event from the checkbox
+   */
+  public async onMiniplayerOnFocusLossToggle(event: Event): Promise<void> {
+    const target: EventTarget | null = event.target;
+    if (target instanceof HTMLInputElement) {
+      await this.settingsService.setMiniplayerOnFocusLoss(target.checked);
+    }
   }
 }

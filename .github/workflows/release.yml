@@ -6,8 +6,30 @@ on:
       - '*.*.*'
 
 jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Create the release up front so the parallel build jobs only ever
+      # upload assets to it. Creating it per-platform races: whichever job
+      # POSTs first wins and the others fail with 422 "already_exists".
+      - name: Ensure release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 \
+            || gh release create "${GITHUB_REF_NAME}" \
+                 --title "Release ${GITHUB_REF_NAME}" \
+                 --generate-notes
+
   release:
     name: Build & Release (${{ matrix.os }})
+    needs: create-release
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:

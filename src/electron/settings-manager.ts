@@ -128,6 +128,13 @@ export type HardwareAcceleration = 'auto' | 'disabled' | 'h264_videotoolbox' | '
 export type VideoAspectMode = 'default' | '4:3' | '16:9' | 'fit';
 
 /**
+ * Seek bar behaviour options.
+ * - drop: Seek once when the drag is released
+ * - drag: Seek continuously while dragging, and on release
+ */
+export type SeekMode = 'drop' | 'drag';
+
+/**
  * Subtitle font family options.
  */
 export type SubtitleFontFamily = 'sans-serif' | 'serif' | 'monospace' | 'Arial';
@@ -265,6 +272,8 @@ export interface ApplicationSettings {
   readonly setupCompletedVersion: string;
   /** Active SoundFont file name (null = auto-select first available) */
   readonly activeSoundFontFileName: string | null;
+  /** Whether to switch to the mini-player when the main window loses focus (default false) */
+  readonly miniplayerOnFocusLoss: boolean;
 }
 
 /**
@@ -285,6 +294,8 @@ export interface PlaybackSettings {
   readonly preferredAudioLanguage: PreferredAudioLanguage;
   /** Preferred subtitle language (ISO 639-2/B code, 'default' for file default, or 'off' to disable) */
   readonly preferredSubtitleLanguage: PreferredSubtitleLanguage;
+  /** Seek bar behaviour: seek on release only, or continuously while dragging (default 'drop') */
+  readonly seekMode: SeekMode;
 }
 
 /**
@@ -483,6 +494,7 @@ export interface ApplicationSettingsUpdate {
   readonly setupCompleted?: boolean;
   readonly setupCompletedVersion?: string;
   readonly activeSoundFontFileName?: string | null;
+  readonly miniplayerOnFocusLoss?: boolean;
 }
 
 /**
@@ -496,6 +508,7 @@ export interface PlaybackSettingsUpdate {
   readonly videoAspectMode?: VideoAspectMode;
   readonly preferredAudioLanguage?: PreferredAudioLanguage;
   readonly preferredSubtitleLanguage?: PreferredSubtitleLanguage;
+  readonly seekMode?: SeekMode;
 }
 
 /**
@@ -628,6 +641,9 @@ const VALID_HARDWARE_ACCELERATION: readonly HardwareAcceleration[] = [
 /** Valid video aspect mode values */
 const VALID_VIDEO_ASPECT_MODES: readonly VideoAspectMode[] = ['default', '4:3', '16:9', 'fit'];
 
+/** Valid seek mode values */
+const VALID_SEEK_MODES: readonly SeekMode[] = ['drop', 'drag'];
+
 /** Valid macOS visual effect state values */
 const VALID_MACOS_VISUAL_EFFECT_STATE: readonly MacOSVisualEffectState[] = ['followWindow', 'active', 'inactive'];
 
@@ -659,6 +675,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     setupCompleted: false,  // false = show setup wizard on first run
     setupCompletedVersion: '',  // '' = wizard never completed for any version
     activeSoundFontFileName: null,  // null = auto-select first available
+    miniplayerOnFocusLoss: false,  // stay in desktop mode on focus loss by default
   },
   playback: {
     defaultVolume: 0.5,  // 50% default volume
@@ -668,6 +685,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     videoAspectMode: 'default',  // use video's native aspect ratio
     preferredAudioLanguage: 'eng',  // prefer English audio if available
     preferredSubtitleLanguage: 'off',  // subtitles off by default
+    seekMode: 'drop',  // seek only when the drag is released
   },
   transcoding: {
     videoQuality: 'medium',  // medium = CRF 23
@@ -932,6 +950,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate miniplayerOnFocusLoss if provided
+    if (update.miniplayerOnFocusLoss !== undefined) {
+      if (typeof update.miniplayerOnFocusLoss !== 'boolean') {
+        console.warn(`[SettingsManager] Invalid miniplayerOnFocusLoss: ${update.miniplayerOnFocusLoss}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update (use hasOwnProperty to distinguish undefined from explicit null)
     this.settings = {
       ...this.settings,
@@ -941,6 +967,7 @@ export class SettingsManager {
         controlsAutoHideDelay: update.controlsAutoHideDelay ?? this.settings.application.controlsAutoHideDelay,
         setupCompleted: update.setupCompleted ?? this.settings.application.setupCompleted,
         setupCompletedVersion: update.setupCompletedVersion ?? this.settings.application.setupCompletedVersion,
+        miniplayerOnFocusLoss: update.miniplayerOnFocusLoss ?? this.settings.application.miniplayerOnFocusLoss,
         activeSoundFontFileName: Object.prototype.hasOwnProperty.call(update, 'activeSoundFontFileName')
           ? update.activeSoundFontFileName ?? null
           : this.settings.application.activeSoundFontFileName,
@@ -1082,6 +1109,14 @@ export class SettingsManager {
       }
     }
 
+    // Validate seekMode if provided
+    if (update.seekMode !== undefined) {
+      if (!this.isValidSeekMode(update.seekMode)) {
+        console.warn(`[SettingsManager] Invalid seek mode: ${update.seekMode}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -1094,6 +1129,7 @@ export class SettingsManager {
         videoAspectMode: update.videoAspectMode ?? this.settings.playback.videoAspectMode,
         preferredAudioLanguage: update.preferredAudioLanguage ?? this.settings.playback.preferredAudioLanguage,
         preferredSubtitleLanguage: update.preferredSubtitleLanguage ?? this.settings.playback.preferredSubtitleLanguage,
+        seekMode: update.seekMode ?? this.settings.playback.seekMode,
       },
     };
 
@@ -1982,6 +2018,7 @@ export class SettingsManager {
     const setupCompleted: unknown = appObj['setupCompleted'];
     const setupCompletedVersion: unknown = appObj['setupCompletedVersion'];
     const activeSoundFontFileName: unknown = appObj['activeSoundFontFileName'];
+    const miniplayerOnFocusLoss: unknown = appObj['miniplayerOnFocusLoss'];
 
     return {
       serverPort: this.isValidPort(serverPort)
@@ -1999,6 +2036,9 @@ export class SettingsManager {
       activeSoundFontFileName: activeSoundFontFileName === null || typeof activeSoundFontFileName === 'string'
         ? activeSoundFontFileName
         : DEFAULT_SETTINGS.application.activeSoundFontFileName,
+      miniplayerOnFocusLoss: typeof miniplayerOnFocusLoss === 'boolean'
+        ? miniplayerOnFocusLoss
+        : DEFAULT_SETTINGS.application.miniplayerOnFocusLoss,
     };
   }
 
@@ -2021,6 +2061,7 @@ export class SettingsManager {
     const videoAspectMode: unknown = playbackObj['videoAspectMode'];
     const preferredAudioLanguage: unknown = playbackObj['preferredAudioLanguage'];
     const preferredSubtitleLanguage: unknown = playbackObj['preferredSubtitleLanguage'];
+    const seekMode: unknown = playbackObj['seekMode'];
 
     return {
       defaultVolume: this.isValidVolume(defaultVolume)
@@ -2044,6 +2085,9 @@ export class SettingsManager {
       preferredSubtitleLanguage: this.isValidPreferredSubtitleLanguage(preferredSubtitleLanguage)
         ? preferredSubtitleLanguage
         : DEFAULT_SETTINGS.playback.preferredSubtitleLanguage,
+      seekMode: this.isValidSeekMode(seekMode)
+        ? seekMode
+        : DEFAULT_SETTINGS.playback.seekMode,
     };
   }
 
@@ -2651,6 +2695,18 @@ export class SettingsManager {
    */
   private isValidPreferredSubtitleLanguage(value: unknown): value is PreferredSubtitleLanguage {
     return typeof value === 'string' && VALID_PREFERRED_SUBTITLE_LANGUAGES.includes(value as PreferredSubtitleLanguage);
+  }
+
+  /**
+   * Type guard to check if a value is a valid seek mode.
+   *
+   * Valid values are 'drop' (seek on release) and 'drag' (seek while dragging).
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid seek mode
+   */
+  private isValidSeekMode(value: unknown): value is SeekMode {
+    return typeof value === 'string' && VALID_SEEK_MODES.includes(value as SeekMode);
   }
 
   /**

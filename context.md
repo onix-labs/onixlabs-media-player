@@ -204,9 +204,9 @@ Based on independent review with all 31 action items resolved:
   - Uses `FileDropService.hasValidFiles()` to validate during dragover (before drop)
 - Tab key toggles playlist panel in desktop mode (disabled in fullscreen and miniplayer modes)
 - Default Tab navigation is disabled to prevent accidental UI traversal
-- **Discreet mode** (Ctrl/Cmd+D): Instantly stops playback, clears playlist, and minimizes window
+- **Discreet mode** (Ctrl/Cmd+D): Instantly stops playback, clears playlist and recent items, and closes the window
   - Works from any window mode (desktop, fullscreen, miniplayer)
-  - Provides quick way to hide media content
+  - Provides quick way to hide media content without leaving a trace
 
 ### Fullscreen Mode
 

@@ -162,7 +162,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
   /** Average bass magnitude (0-1) at/above which the trigger fires. */
   private static readonly BASS_THRESHOLD: number = 0.5;
 
-  /** Minimum time between bass triggers (milliseconds). */
+  /** Minimum time between bass triggers (milliseconds); also the start grace period. */
   private static readonly BASS_COOLDOWN_MS: number = 10000;
 
   /** Hue jump applied on each bass trigger (degrees; golden angle for variety). */
@@ -704,6 +704,12 @@ export class ReactorVisualization extends Canvas2DVisualization {
    * visibly flips the spiral and recolours the scene.
    */
   private updateBassTrigger(): void {
+    // Seed the cooldown on the first frame so the initial trigger is held off for a
+    // full cooldown rather than firing almost immediately when play starts.
+    if (this.lastBassTriggerTime === Number.NEGATIVE_INFINITY) {
+      this.lastBassTriggerTime = performance.now();
+    }
+
     this.analyser.getByteFrequencyData(this.freqArray);
 
     const binCount: number = this.freqArray.length;

@@ -24,6 +24,7 @@
 
 import {Component, inject, computed, signal, ChangeDetectionStrategy, OnDestroy} from '@angular/core';
 import {DependencyService} from '../../../services/dependency.service';
+import {SettingsService} from '../../../services/settings.service';
 import {TransportControlsBase} from '../../shared/transport-controls-base';
 
 /**
@@ -59,6 +60,9 @@ import {TransportControlsBase} from '../../shared/transport-controls-base';
 export class LayoutControls extends TransportControlsBase implements OnDestroy {
   /** Dependency service for checking installed dependencies */
   private readonly deps: DependencyService = inject(DependencyService);
+
+  /** Settings service for seek bar behaviour */
+  private readonly settings: SettingsService = inject(SettingsService);
 
   // ============================================================================
   // Reactive State Signals
@@ -281,11 +285,16 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
 
   /**
    * Seek bar position (0-100) while dragging, or null when not dragging.
-   * The actual seek is only sent to the server on release — seeking on every
-   * mousemove would restart transcode/stream pipelines repeatedly and, when
-   * the drag crosses the end of the track, trigger a media-ended stop.
+   * In 'drop' mode (default) the actual seek is only sent to the server on
+   * release — seeking on every mousemove would restart transcode/stream
+   * pipelines repeatedly and, when the drag crosses the end of the track,
+   * trigger a media-ended stop. In 'drag' mode live seeks are sent while
+   * dragging, gated to one in-flight request at a time.
    */
   private readonly seekDragPercent: ReturnType<typeof signal<number | null>> = signal<number | null>(null);
+
+  /** Whether a live seek issued during a 'drag' mode drag is still in flight */
+  private liveSeekInFlight: boolean = false;
 
   /** Bound handler for mousemove during drag (stored for cleanup) */
   private readonly boundOnSeekMouseMove: (e: MouseEvent) => void = this.onSeekMouseMove.bind(this);
@@ -324,13 +333,24 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
 
   /**
    * Handles mousemove during seek bar drag.
-   * Updates the previewed seek position as the user drags.
+   * Updates the previewed seek position as the user drags. When the seek
+   * mode setting is 'drag', playback also follows the pointer with live
+   * seeks — limited to one in-flight request at a time so rapid mousemove
+   * events don't stack up server round-trips.
    *
    * @param event - Mouse move event
    */
   private onSeekMouseMove(event: MouseEvent): void {
     if (!this.isDraggingSeek || !this.seekBarElement) return;
-    this.seekDragPercent.set(this.percentFromPosition(event.clientX));
+    const percent: number = this.percentFromPosition(event.clientX);
+    this.seekDragPercent.set(percent);
+
+    if (this.settings.seekMode() === 'drag' && !this.liveSeekInFlight) {
+      this.liveSeekInFlight = true;
+      void this.mediaPlayer.seekToProgress(percent).finally((): void => {
+        this.liveSeekInFlight = false;
+      });
+    }
   }
 
   /**

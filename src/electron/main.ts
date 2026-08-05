@@ -152,6 +152,12 @@ class Program {
   /** Whether the window is currently in mini-player mode */
   private isInMiniPlayerMode: boolean = false;
 
+  /** Whether media is currently playing (mirrors server playback state) */
+  private isMediaPlaying: boolean = false;
+
+  /** Delay in milliseconds before checking focus after a window blur event */
+  private readonly BLUR_FOCUS_SETTLE_DELAY: number = 150;
+
   /** Snap threshold in pixels for magnetic edge snapping */
   private readonly SNAP_THRESHOLD: number = 40;
 
@@ -293,6 +299,7 @@ class Program {
     // Register callback to update menu when playback state changes (Play/Pause label)
     this.mediaServer.onPlaybackStateChange((isPlaying: boolean): void => {
       mainLogger.debug(`Playback state changed: ${isPlaying ? 'playing' : 'paused'}`);
+      this.isMediaPlaying = isPlaying;
       updateMenuState({isPlaying});
     });
 
@@ -1189,108 +1196,7 @@ class Program {
 
     // Miniplayer control
     ipcMain.handle("window:enterMiniplayer", async (): Promise<void> => {
-      // Miniplayer is unavailable while the settings window is open
-      if (this.isConfigWindowOpen()) {
-        windowLogger.info('enterMiniplayer ignored - settings window is open');
-        return;
-      }
-      windowLogger.info('Entering miniplayer mode');
-      if (!this.window) {
-        windowLogger.warn('enterMiniplayer - no window available');
-        return;
-      }
-
-      // If in fullscreen, exit first and wait for transition to complete
-      const isFullscreen: boolean = process.platform === 'win32'
-        ? this.window.isSimpleFullScreen()
-        : this.window.isFullScreen();
-
-      if (isFullscreen) {
-        windowLogger.debug('Exiting fullscreen before entering miniplayer');
-        if (process.platform === 'win32') {
-          // Windows: simpleFullScreen is synchronous
-          this.window.setSimpleFullScreen(false);
-        } else {
-          // macOS/Linux: wait for async transition
-          await new Promise<void>((resolve: () => void): void => {
-            this.window?.once('leave-full-screen', resolve);
-            this.window?.setFullScreen(false);
-          });
-        }
-      }
-
-      // Store current bounds for restoration (after exiting fullscreen)
-      this.desktopBounds = this.window.getBounds();
-      windowLogger.debug(`Stored desktop bounds: ${JSON.stringify(this.desktopBounds)}`);
-
-      // Set mini-player constraints
-      this.window.setMinimumSize(320, 200);
-      this.window.setMaximumSize(640, 400);
-      this.window.setAlwaysOnTop(true, 'floating');
-
-      // Try to restore saved mini-player bounds, otherwise use default position
-      const savedBounds: WindowBounds | null = this.mediaServer?.getSettingsManager().getMiniplayerBounds() ?? null;
-      if (savedBounds) {
-        // Restore saved position and size (clamped to min/max constraints)
-        const width: number = Math.min(Math.max(savedBounds.width, 320), 640);
-        const height: number = Math.min(Math.max(savedBounds.height, 200), 400);
-        this.window.setSize(width, height);
-
-        // Check if saved position is on-screen, snap to edges if not
-        const display: Electron.Display = screen.getDisplayNearestPoint({x: savedBounds.x, y: savedBounds.y});
-        const workArea: Electron.Rectangle = display.workArea;
-
-        let x: number = savedBounds.x;
-        let y: number = savedBounds.y;
-        let positionCorrected: boolean = false;
-
-        // Clamp to keep window on-screen with gap
-        // Left edge: ensure window left edge is at least SNAP_GAP from work area left
-        if (x < workArea.x + this.SNAP_GAP) {
-          x = workArea.x + this.SNAP_GAP;
-          positionCorrected = true;
-        }
-        // Right edge: ensure window right edge is at least SNAP_GAP from work area right
-        if (x + width > workArea.x + workArea.width - this.SNAP_GAP) {
-          x = workArea.x + workArea.width - width - this.SNAP_GAP;
-          positionCorrected = true;
-        }
-        // Top edge: ensure window top edge is at least SNAP_GAP from work area top
-        if (y < workArea.y + this.SNAP_GAP) {
-          y = workArea.y + this.SNAP_GAP;
-          positionCorrected = true;
-        }
-        // Bottom edge: ensure window bottom edge is at least SNAP_GAP from work area bottom
-        if (y + height > workArea.y + workArea.height - this.SNAP_GAP) {
-          y = workArea.y + workArea.height - height - this.SNAP_GAP;
-          positionCorrected = true;
-        }
-
-        this.window.setPosition(x, y);
-
-        // If position was corrected, save the new bounds
-        if (positionCorrected) {
-          this.mediaServer?.getSettingsManager().setMiniplayerBounds({x, y, width, height});
-          windowLogger.debug(`Corrected miniplayer position to stay on-screen: ${width}x${height} at (${x}, ${y})`);
-        } else {
-          windowLogger.debug(`Restored miniplayer bounds: ${width}x${height} at (${savedBounds.x}, ${savedBounds.y})`);
-        }
-      } else {
-        // Default: position in bottom-right corner of primary display
-        this.window.setSize(320, 200);
-        const display: Electron.Display = screen.getPrimaryDisplay();
-        const workArea: Electron.Rectangle = display.workArea;
-        this.window.setPosition(
-          workArea.x + workArea.width - 320 - this.SNAP_GAP,
-          workArea.y + workArea.height - 200 - this.SNAP_GAP
-        );
-        windowLogger.debug('Using default miniplayer position (bottom-right corner)');
-      }
-
-      this.isInMiniPlayerMode = true;
-      this.window.webContents.send('window:viewModeChanged', 'miniplayer');
-      this.syncWindowModeMenuState();
-      windowLogger.info('Miniplayer mode active');
+      await this.enterMiniplayerMode();
     });
 
     ipcMain.handle("window:exitMiniplayer", (): void => {
@@ -1422,6 +1328,18 @@ class Program {
       this.window?.minimize();
     });
 
+    // Close window (used by discreet mode)
+    ipcMain.handle("window:close", (): void => {
+      windowLogger.debug('Closing window');
+      this.window?.close();
+    });
+
+    // Clear recent files and playlists (used by discreet mode)
+    ipcMain.handle("app:clearRecentItems", (): void => {
+      windowLogger.debug('Clearing recent items');
+      this.clearRecentItems();
+    });
+
   }
 
   /**
@@ -1541,6 +1459,134 @@ class Program {
   }
 
   /**
+   * Clears the recent files and playlists lists and refreshes the
+   * Recent Items menu. Shared by the "Clear Recent" menu item and the
+   * "app:clearRecentItems" IPC handler (discreet mode).
+   */
+  private clearRecentItems(): void {
+    const settingsManager: SettingsManager | undefined = this.mediaServer?.getSettingsManager();
+    if (!settingsManager) return;
+    settingsManager.clearRecentItems();
+    const recentItems: RecentItemsSettings = settingsManager.getRecentItems();
+    updateMenuState({
+      recentFiles: recentItems.recentFiles,
+      recentPlaylists: recentItems.recentPlaylists,
+    });
+  }
+
+  /**
+   * Enters mini-player mode: shrinks the window to a compact, always-on-top
+   * player, restoring saved mini-player bounds when available.
+   *
+   * Shared by the "window:enterMiniplayer" IPC handler and the automatic
+   * focus-loss switch. Ignored while the settings window is open.
+   */
+  private async enterMiniplayerMode(): Promise<void> {
+    // Miniplayer is unavailable while the settings window is open
+    if (this.isConfigWindowOpen()) {
+      windowLogger.info('enterMiniplayer ignored - settings window is open');
+      return;
+    }
+    windowLogger.info('Entering miniplayer mode');
+    if (!this.window) {
+      windowLogger.warn('enterMiniplayer - no window available');
+      return;
+    }
+
+    // If in fullscreen, exit first and wait for transition to complete
+    const isFullscreen: boolean = process.platform === 'win32'
+      ? this.window.isSimpleFullScreen()
+      : this.window.isFullScreen();
+
+    if (isFullscreen) {
+      windowLogger.debug('Exiting fullscreen before entering miniplayer');
+      if (process.platform === 'win32') {
+        // Windows: simpleFullScreen is synchronous
+        this.window.setSimpleFullScreen(false);
+      } else {
+        // macOS/Linux: wait for async transition
+        await new Promise<void>((resolve: () => void): void => {
+          this.window?.once('leave-full-screen', resolve);
+          this.window?.setFullScreen(false);
+        });
+      }
+    }
+
+    // Store current bounds for restoration (after exiting fullscreen)
+    this.desktopBounds = this.window.getBounds();
+    windowLogger.debug(`Stored desktop bounds: ${JSON.stringify(this.desktopBounds)}`);
+
+    // Set mini-player constraints
+    this.window.setMinimumSize(320, 200);
+    this.window.setMaximumSize(640, 400);
+    this.window.setAlwaysOnTop(true, 'floating');
+
+    // Try to restore saved mini-player bounds, otherwise use default position
+    const savedBounds: WindowBounds | null = this.mediaServer?.getSettingsManager().getMiniplayerBounds() ?? null;
+    if (savedBounds) {
+      // Restore saved position and size (clamped to min/max constraints)
+      const width: number = Math.min(Math.max(savedBounds.width, 320), 640);
+      const height: number = Math.min(Math.max(savedBounds.height, 200), 400);
+      this.window.setSize(width, height);
+
+      // Check if saved position is on-screen, snap to edges if not
+      const display: Electron.Display = screen.getDisplayNearestPoint({x: savedBounds.x, y: savedBounds.y});
+      const workArea: Electron.Rectangle = display.workArea;
+
+      let x: number = savedBounds.x;
+      let y: number = savedBounds.y;
+      let positionCorrected: boolean = false;
+
+      // Clamp to keep window on-screen with gap
+      // Left edge: ensure window left edge is at least SNAP_GAP from work area left
+      if (x < workArea.x + this.SNAP_GAP) {
+        x = workArea.x + this.SNAP_GAP;
+        positionCorrected = true;
+      }
+      // Right edge: ensure window right edge is at least SNAP_GAP from work area right
+      if (x + width > workArea.x + workArea.width - this.SNAP_GAP) {
+        x = workArea.x + workArea.width - width - this.SNAP_GAP;
+        positionCorrected = true;
+      }
+      // Top edge: ensure window top edge is at least SNAP_GAP from work area top
+      if (y < workArea.y + this.SNAP_GAP) {
+        y = workArea.y + this.SNAP_GAP;
+        positionCorrected = true;
+      }
+      // Bottom edge: ensure window bottom edge is at least SNAP_GAP from work area bottom
+      if (y + height > workArea.y + workArea.height - this.SNAP_GAP) {
+        y = workArea.y + workArea.height - height - this.SNAP_GAP;
+        positionCorrected = true;
+      }
+
+      this.window.setPosition(x, y);
+
+      // If position was corrected, save the new bounds
+      if (positionCorrected) {
+        this.mediaServer?.getSettingsManager().setMiniplayerBounds({x, y, width, height});
+        windowLogger.debug(`Corrected miniplayer position to stay on-screen: ${width}x${height} at (${x}, ${y})`);
+      } else {
+        windowLogger.debug(`Restored miniplayer bounds: ${width}x${height} at (${savedBounds.x}, ${savedBounds.y})`);
+      }
+    } else {
+      // Default: position in bottom-right corner of primary display
+      this.window.setSize(320, 200);
+      const display: Electron.Display = screen.getPrimaryDisplay();
+      const workArea: Electron.Rectangle = display.workArea;
+      this.window.setPosition(
+        workArea.x + workArea.width - 320 - this.SNAP_GAP,
+        workArea.y + workArea.height - 200 - this.SNAP_GAP
+      );
+      windowLogger.debug('Using default miniplayer position (bottom-right corner)');
+    }
+
+    this.isInMiniPlayerMode = true;
+    this.window.webContents.send('window:viewModeChanged', 'miniplayer');
+    this.syncWindowModeMenuState();
+    windowLogger.info('Miniplayer mode active');
+  }
+
+  /**
    * Sets up window event listeners for fullscreen state changes.
    *
    * Notifies the renderer when fullscreen state changes, including
@@ -1597,6 +1643,26 @@ class Program {
         this.mediaServer?.nukeMidiCache();
         this.window?.destroy();
       });
+    });
+
+    // Switch to the mini-player when the main window loses focus (opt-in setting).
+    // The check is deferred briefly so focus has settled: when focus merely moved
+    // to another of the app's own windows (settings, about, Open URL), the switch
+    // is skipped.
+    this.window.on('blur', (): void => {
+      if (this.isClosing || this.isInMiniPlayerMode) return;
+      if (!this.isMediaPlaying) return;
+      if (this.window?.isFullScreen() || (process.platform === 'win32' && this.window?.isSimpleFullScreen())) return;
+
+      const settingsManager: SettingsManager | undefined = this.mediaServer?.getSettingsManager();
+      if (!settingsManager?.getSettings().application.miniplayerOnFocusLoss) return;
+
+      setTimeout((): void => {
+        if (this.isClosing || this.isInMiniPlayerMode) return;
+        if (BrowserWindow.getFocusedWindow() !== null) return;
+        windowLogger.info('Main window lost focus - switching to miniplayer');
+        void this.enterMiniplayerMode();
+      }, this.BLUR_FOCUS_SETTLE_DELAY);
     });
 
     // Notify renderer when fullscreen state changes (including via green button on macOS)
@@ -1671,15 +1737,7 @@ class Program {
         this.window?.webContents.send('menu:openRecentPlaylist', playlistPath);
       },
       onClearRecent: (): void => {
-        const settingsManager: SettingsManager | undefined = this.mediaServer?.getSettingsManager();
-        if (settingsManager) {
-          settingsManager.clearRecentItems();
-          const recentItems: RecentItemsSettings = settingsManager.getRecentItems();
-          updateMenuState({
-            recentFiles: recentItems.recentFiles,
-            recentPlaylists: recentItems.recentPlaylists,
-          });
-        }
+        this.clearRecentItems();
       },
       onSavePlaylist: (): void => {
         this.window?.webContents.send('menu:savePlaylist');

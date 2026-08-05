@@ -142,6 +142,13 @@ export type HardwareAcceleration = 'auto' | 'disabled' | 'h264_videotoolbox' | '
 export type VideoAspectMode = 'default' | '4:3' | '16:9' | 'fit';
 
 /**
+ * Seek bar behaviour options.
+ * - drop: Seek once when the drag is released
+ * - drag: Seek continuously while dragging, and on release
+ */
+export type SeekMode = 'drop' | 'drag';
+
+/**
  * Preferred audio language codes (ISO 639-2/B).
  *
  * Used by the video-outlet to auto-select an audio track when loading
@@ -234,6 +241,8 @@ export interface ApplicationSettings {
   readonly serverPort: number;
   /** Controls auto-hide delay in seconds (0 = disabled, 1-30 seconds, default 5) */
   readonly controlsAutoHideDelay: number;
+  /** Whether to switch to the mini-player when the main window loses focus (default false) */
+  readonly miniplayerOnFocusLoss: boolean;
 }
 
 /**
@@ -254,6 +263,8 @@ export interface PlaybackSettings {
   readonly preferredAudioLanguage: PreferredAudioLanguage;
   /** Preferred subtitle language (ISO 639-2/B code, 'default' for file default, or 'off' to disable) */
   readonly preferredSubtitleLanguage: PreferredSubtitleLanguage;
+  /** Seek bar behaviour: seek on release only, or continuously while dragging (default 'drop') */
+  readonly seekMode: SeekMode;
 }
 
 /**
@@ -428,6 +439,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   application: {
     serverPort: 0,
     controlsAutoHideDelay: 5,
+    miniplayerOnFocusLoss: false,
   },
   playback: {
     defaultVolume: 0.5,
@@ -437,6 +449,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     videoAspectMode: 'default',
     preferredAudioLanguage: 'eng',
     preferredSubtitleLanguage: 'off',
+    seekMode: 'drop',
   },
   transcoding: {
     videoQuality: 'medium',
@@ -520,6 +533,24 @@ export const VIDEO_ASPECT_OPTIONS: readonly VideoAspectOption[] = [
   {value: '4:3', label: 'Forced (4:3)'},
   {value: '16:9', label: 'Forced (16:9)'},
   {value: 'fit', label: 'Fit to Screen'},
+];
+
+/**
+ * Display information for a seek mode option.
+ */
+export interface SeekModeOption {
+  /** The seek mode value */
+  readonly value: SeekMode;
+  /** Human-readable display label */
+  readonly label: string;
+}
+
+/**
+ * Available seek mode options for the settings UI.
+ */
+export const SEEK_MODE_OPTIONS: readonly SeekModeOption[] = [
+  {value: 'drop', label: 'Seek on drop'},
+  {value: 'drag', label: 'Seek on drag and drop'},
 ];
 
 /**
@@ -730,6 +761,11 @@ export class SettingsService implements OnDestroy {
     (): number => this.settings().application?.controlsAutoHideDelay ?? 5
   );
 
+  /** Whether to switch to the mini-player when the main window loses focus */
+  public readonly miniplayerOnFocusLoss: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.settings().application?.miniplayerOnFocusLoss ?? false
+  );
+
   /** Previous track threshold in seconds */
   public readonly previousTrackThreshold: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().playback?.previousTrackThreshold ?? 3
@@ -768,6 +804,11 @@ export class SettingsService implements OnDestroy {
   /** Video aspect mode for video playback */
   public readonly videoAspectMode: ReturnType<typeof computed<VideoAspectMode>> = computed(
     (): VideoAspectMode => this.settings().playback?.videoAspectMode ?? 'default'
+  );
+
+  /** Seek bar behaviour: seek on release only, or continuously while dragging */
+  public readonly seekMode: ReturnType<typeof computed<SeekMode>> = computed(
+    (): SeekMode => this.settings().playback?.seekMode ?? 'drop'
   );
 
   /**
@@ -1207,6 +1248,29 @@ export class SettingsService implements OnDestroy {
    */
   public async setControlsAutoHideDelay(delay: number): Promise<void> {
     await this.updateSetting('application', 'controlsAutoHideDelay', this.clamp(Math.round(delay), 0, 30));
+  }
+
+  /**
+   * Sets whether to switch to the mini-player when the main window loses focus.
+   *
+   * @param enabled - True to enter the mini-player on focus loss
+   */
+  public async setMiniplayerOnFocusLoss(enabled: boolean): Promise<void> {
+    await this.updateSetting('application', 'miniplayerOnFocusLoss', enabled);
+  }
+
+  /**
+   * Sets the seek bar behaviour.
+   *
+   * @param mode - 'drop' to seek on release only, 'drag' to seek while dragging
+   */
+  public async setSeekMode(mode: SeekMode): Promise<void> {
+    const validModes: readonly SeekMode[] = ['drop', 'drag'];
+    if (!validModes.includes(mode)) {
+      console.error(`[SettingsService] Invalid seek mode: ${mode}`);
+      return;
+    }
+    await this.updateSetting('playback', 'seekMode', mode);
   }
 
   /**

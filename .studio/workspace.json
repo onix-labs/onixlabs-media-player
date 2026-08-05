@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "runConfigurations": [
+    {
+      "id": "d17ea51b-bcef-44cb-8529-86ed590d8158",
+      "name": "Run Application",
+      "providerKind": "node",
+      "program": "npm",
+      "args": [
+        "run",
+        "dev"
+      ],
+      "mode": "run",
+      "default": true
+    }
+  ]
+}
