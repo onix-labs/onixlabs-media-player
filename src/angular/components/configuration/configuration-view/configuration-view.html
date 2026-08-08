@@ -132,6 +132,36 @@
                   </div>
                 }
 
+                <!-- openmpt123 -->
+                @if (openmpt123Status(); as openmpt) {
+                  <div class="dependency-row">
+                    <div class="dependency-indicator" [class.installed]="openmpt.installed" [class.missing]="!openmpt.installed">
+                      <i [class]="openmpt.installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
+                    </div>
+                    <div class="dependency-info">
+                      <span class="dependency-name">{{ openmpt.name }}</span>
+                      <span class="dependency-description">{{ openmpt.description }}</span>
+                      @if (openmpt.installed && openmpt.path) {
+                        <span class="dependency-path">{{ openmpt.path }}</span>
+                      }
+                    </div>
+                    <div class="dependency-actions">
+                      @if (openmpt.installed) {
+                        <button class="dependency-button uninstall" [disabled]="isDepOperationInProgress()" (click)="onUninstallDependency('openmpt123')" (mouseup)="$any($event.currentTarget).blur()">
+                          Uninstall
+                        </button>
+                      } @else {
+                        <button class="dependency-button install" [disabled]="isDepOperationInProgress()" (click)="onInstallDependency('openmpt123')" (mouseup)="$any($event.currentTarget).blur()">
+                          Install
+                        </button>
+                      }
+                      <button class="dependency-link" (click)="onOpenManualDownload(openmpt.manualInstallUrl)" (mouseup)="$any($event.currentTarget).blur()" title="Manual download">
+                        <i class="fa-solid fa-external-link-alt"></i>
+                      </button>
+                    </div>
+                  </div>
+                }
+
                 @if (ytdlpStatus(); as ytdlp) {
                   <div class="dependency-row">
                     <div class="dependency-indicator" [class.installed]="ytdlp.installed" [class.missing]="!ytdlp.installed">

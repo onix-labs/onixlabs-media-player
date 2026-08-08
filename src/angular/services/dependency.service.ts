@@ -13,7 +13,7 @@
 
 import {Injectable, signal, computed, inject, effect, OnDestroy, EffectRef} from '@angular/core';
 import {ElectronService} from './electron.service';
-import {MEDIA_EXTENSIONS, FFMPEG_EXTENSIONS, MIDI_EXTENSIONS} from '../constants/media.constants';
+import {FFMPEG_EXTENSIONS, MIDI_EXTENSIONS, TRACKER_EXTENSIONS} from '../constants/media.constants';
 
 // ============================================================================
 // Types
@@ -22,7 +22,7 @@ import {MEDIA_EXTENSIONS, FFMPEG_EXTENSIONS, MIDI_EXTENSIONS} from '../constants
 /**
  * Identifier for a managed dependency.
  */
-export type DependencyId = 'ffmpeg' | 'fluidsynth' | 'yt-dlp';
+export type DependencyId = 'ffmpeg' | 'fluidsynth' | 'openmpt123' | 'yt-dlp';
 
 /**
  * Status of a single dependency.
@@ -42,6 +42,7 @@ export interface DependencyStatus {
 export interface DependencyState {
   readonly ffmpeg: DependencyStatus;
   readonly fluidsynth: DependencyStatus;
+  readonly openmpt123: DependencyStatus;
   readonly ytdlp: DependencyStatus;
   readonly soundfonts: SoundFontInfo[];
   readonly activeSoundFont: string | null;
@@ -132,6 +133,11 @@ export class DependencyService implements OnDestroy {
     (): boolean => this.dependencyState()?.fluidsynth.installed ?? false
   );
 
+  /** Whether openmpt123 is installed (required for tracker module playback) */
+  public readonly openmpt123Installed: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.dependencyState()?.openmpt123.installed ?? false
+  );
+
   /** Whether yt-dlp is installed (required for internet URL playback) */
   public readonly ytdlpInstalled: ReturnType<typeof computed<boolean>> = computed(
     (): boolean => this.dependencyState()?.ytdlp.installed ?? false
@@ -139,7 +145,7 @@ export class DependencyService implements OnDestroy {
 
   /** Whether all dependencies are installed */
   public readonly allDependenciesInstalled: ReturnType<typeof computed<boolean>> = computed(
-    (): boolean => this.ffmpegInstalled() && this.fluidsynthInstalled()
+    (): boolean => this.ffmpegInstalled() && this.fluidsynthInstalled() && this.openmpt123Installed()
   );
 
   /** Whether any dependencies are missing */
@@ -155,6 +161,7 @@ export class DependencyService implements OnDestroy {
       const missing: DependencyStatus[] = [];
       if (!state.ffmpeg.installed) missing.push(state.ffmpeg);
       if (!state.fluidsynth.installed) missing.push(state.fluidsynth);
+      if (!state.openmpt123.installed) missing.push(state.openmpt123);
       return missing;
     }
   );
@@ -176,7 +183,7 @@ export class DependencyService implements OnDestroy {
 
   /** Whether at least one dependency is installed */
   public readonly anyDependencyInstalled: ReturnType<typeof computed<boolean>> = computed(
-    (): boolean => this.ffmpegInstalled() || this.fluidsynthInstalled()
+    (): boolean => this.ffmpegInstalled() || this.fluidsynthInstalled() || this.openmpt123Installed()
   );
 
   /** Whether zero dependencies are installed (only true after state is loaded) */
@@ -187,12 +194,11 @@ export class DependencyService implements OnDestroy {
   /** Dynamic set of allowed file extensions based on installed dependencies */
   public readonly allowedExtensions: ReturnType<typeof computed<ReadonlySet<string>>> = computed(
     (): ReadonlySet<string> => {
-      const ffmpeg: boolean = this.ffmpegInstalled();
-      const fluidsynth: boolean = this.fluidsynthInstalled();
-      if (ffmpeg && fluidsynth) return MEDIA_EXTENSIONS;
-      if (ffmpeg) return FFMPEG_EXTENSIONS;
-      if (fluidsynth) return MIDI_EXTENSIONS;
-      return new Set();
+      const allowed: Set<string> = new Set<string>();
+      if (this.ffmpegInstalled()) FFMPEG_EXTENSIONS.forEach((ext: string): Set<string> => allowed.add(ext));
+      if (this.fluidsynthInstalled()) MIDI_EXTENSIONS.forEach((ext: string): Set<string> => allowed.add(ext));
+      if (this.openmpt123Installed()) TRACKER_EXTENSIONS.forEach((ext: string): Set<string> => allowed.add(ext));
+      return allowed;
     }
   );
 

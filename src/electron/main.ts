@@ -278,6 +278,7 @@ class Program {
 
     // Nuke any stale MIDI cache from previous sessions
     this.mediaServer.nukeMidiCache();
+    this.mediaServer.nukeTrackerCache();
 
     // Register callback to update menu when shuffle/repeat mode changes
     this.mediaServer.onModeChange((shuffle: boolean, repeat: boolean): void => {
@@ -310,9 +311,9 @@ class Program {
     });
 
     // Register callback to update menu when dependency state changes (enables/disables Open)
-    this.mediaServer.onDependencyStateChange((ffmpeg: boolean, fluidsynth: boolean): void => {
-      mainLogger.debug(`Dependency state changed: ffmpeg=${ffmpeg}, fluidsynth=${fluidsynth}`);
-      updateMenuState({openEnabled: ffmpeg || fluidsynth});
+    this.mediaServer.onDependencyStateChange((ffmpeg: boolean, fluidsynth: boolean, openmpt123: boolean): void => {
+      mainLogger.debug(`Dependency state changed: ffmpeg=${ffmpeg}, fluidsynth=${fluidsynth}, openmpt123=${openmpt123}`);
+      updateMenuState({openEnabled: ffmpeg || fluidsynth || openmpt123});
     });
 
     // Register callback to update menu when recent items change
@@ -323,7 +324,7 @@ class Program {
 
     // Set initial openEnabled state based on current dependency detection
     const depState: DependencyState = this.mediaServer.getDependencyManager().getState();
-    updateMenuState({openEnabled: depState.ffmpeg.installed || depState.fluidsynth.installed});
+    updateMenuState({openEnabled: depState.ffmpeg.installed || depState.fluidsynth.installed || depState.openmpt123.installed});
 
     // Setup core IPC handlers needed by any window (including setup wizard)
     this.setupCoreIpcHandlers();

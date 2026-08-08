@@ -64,6 +64,11 @@ const DEPENDENCIES: readonly Dependency[] = [
     name: 'FluidSynth',
     description: 'MIDI synthesis and playback',
     url: 'https://www.fluidsynth.org'
+  },
+  {
+    name: 'libopenmpt',
+    description: 'Tracker module decoding (MOD, XM, IT, Oktalyzer, etc.)',
+    url: 'https://lib.openmpt.org'
   }
 ];
 

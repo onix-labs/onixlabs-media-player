@@ -31,6 +31,7 @@ import { DependencyManager } from './dependency-manager.js';
 import type { DependencyId, DependencyState, InstallProgress, SoundFontInfo, HardwareEncoderInfo } from './dependency-manager.js';
 import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate, SubtitleSettingsUpdate, EqualizerSettingsUpdate, VideoAdjustmentsSettingsUpdate, RecentItemsSettings, HardwareAcceleration } from './settings-manager.js';
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
+import { TRACKER_FORMATS } from './tracker-parser.js';
 import { SSEManager } from './sse-manager.js';
 import { PlaylistManager } from './playlist-manager.js';
 import { MediaDownloadManager } from './media-download-manager.js';
@@ -219,7 +220,7 @@ export class UnifiedMediaServer {
   private onPlaybackStateChangeCallback: ((isPlaying: boolean) => void) | null = null;
 
   /** Callback for dependency state changes (for menu open enabled state) */
-  private onDependencyStateChangeCallback: ((ffmpegInstalled: boolean, fluidsynthInstalled: boolean) => void) | null = null;
+  private onDependencyStateChangeCallback: ((ffmpegInstalled: boolean, fluidsynthInstalled: boolean, openmpt123Installed: boolean) => void) | null = null;
 
   /** Callback for media type changes (for menu aspect ratio enabled state) */
   private onMediaTypeChangeCallback: ((isVideo: boolean) => void) | null = null;
@@ -235,6 +236,15 @@ export class UnifiedMediaServer {
 
   /** In-progress MIDI renders for deduplication (original path → completion promise) */
   private readonly midiRenderInProgress: Map<string, Promise<string>> = new Map<string, Promise<string>>();
+
+  /** Maximum number of entries in the tracker render cache (FIFO eviction when exceeded) */
+  private static readonly MAX_TRACKER_CACHE_SIZE: number = 50;
+
+  /** Cache of pre-rendered tracker modules (original path → temp MP3 path + accurate duration) */
+  private readonly trackerRenderCache: Map<string, {readonly tempFile: string; readonly duration: number}> = new Map();
+
+  /** In-progress tracker renders for deduplication (original path → completion promise) */
+  private readonly trackerRenderInProgress: Map<string, Promise<string>> = new Map<string, Promise<string>>();
 
   /** Cache of MediaInfo by file path for stream handler codec lookup */
   private readonly mediaInfoCache: Map<string, MediaInfo> = new Map();
@@ -397,7 +407,7 @@ export class UnifiedMediaServer {
    *
    * @param callback - Function called when dependency install state changes
    */
-  public onDependencyStateChange(callback: (ffmpegInstalled: boolean, fluidsynthInstalled: boolean) => void): void {
+  public onDependencyStateChange(callback: (ffmpegInstalled: boolean, fluidsynthInstalled: boolean, openmpt123Installed: boolean) => void): void {
     this.onDependencyStateChangeCallback = callback;
   }
 
@@ -426,7 +436,7 @@ export class UnifiedMediaServer {
     const preferredSoundFont: string | null = this.settings.getActiveSoundFontFileName();
     const state: DependencyState = this.deps.getState(preferredSoundFont);
     this.sse.broadcast('dependencies:state', state);
-    this.onDependencyStateChangeCallback?.(state.ffmpeg.installed, state.fluidsynth.installed);
+    this.onDependencyStateChangeCallback?.(state.ffmpeg.installed, state.fluidsynth.installed, state.openmpt123.installed);
   }
 
   /**
@@ -860,9 +870,15 @@ export class UnifiedMediaServer {
     const isNativeVideo: boolean = NATIVE_VIDEO_FORMATS.has(ext);
     const isNativeAudio: boolean = NATIVE_AUDIO_FORMATS.has(ext);
     const isMidi: boolean = MIDI_FORMATS.has(ext);
+    const isTracker: boolean = TRACKER_FORMATS.has(ext);
 
     if (isMidi) {
       this.serveMidiFile(req, res, filePath);
+      return;
+    }
+
+    if (isTracker) {
+      this.serveTrackerFile(req, res, filePath);
       return;
     }
 
@@ -1791,6 +1807,278 @@ export class UnifiedMediaServer {
   }
 
   // ============================================================================
+  // Tracker Modules (openmpt123)
+  // ============================================================================
+
+  /**
+   * Computes a content-hash filename for a tracker module file.
+   *
+   * @param filePath - Absolute path to the tracker module
+   * @returns 16-character hex hash string
+   */
+  private hashTrackerFile(filePath: string): string {
+    const content: Buffer = readFileSync(filePath);
+    // The version tag ('v2') is part of the cache key so that changes to the
+    // render pipeline invalidate stale on-disk renders (e.g. the empty files
+    // produced before the openmpt123 --batch fix) without manual cleanup.
+    return createHash('sha256').update('tracker-v2').update(content).digest('hex').slice(0, 16);
+  }
+
+  /**
+   * Adds an entry to the tracker render cache, evicting the oldest entry
+   * (FIFO) if the cache exceeds the maximum size.
+   */
+  private setTrackerRenderCache(filePath: string, entry: {readonly tempFile: string; readonly duration: number}): void {
+    if (this.trackerRenderCache.size >= UnifiedMediaServer.MAX_TRACKER_CACHE_SIZE) {
+      const oldest: string = this.trackerRenderCache.keys().next().value!;
+      this.trackerRenderCache.delete(oldest);
+      midiLogger.info(`Tracker cache evicted oldest entry: ${path.basename(oldest)}`);
+    }
+    this.trackerRenderCache.set(filePath, entry);
+  }
+
+  /**
+   * Pre-renders a tracker module to a temporary MP3 file for seekable playback.
+   *
+   * Tracker modules (Oktalyzer, MOD, XM, IT, ...) are decoded to PCM by
+   * openmpt123 (libopenmpt) and encoded to MP3 by FFmpeg. Pre-rendering to a
+   * temp file lets the audio element seek natively via HTTP range requests,
+   * exactly like the MIDI pipeline.
+   *
+   * Results are cached (in-memory + content-hashed on disk) and concurrent
+   * renders of the same file are deduplicated.
+   *
+   * Pipeline: module → openmpt123 (raw PCM via stdout) → FFmpeg (MP3) → temp file
+   *
+   * @param filePath - Absolute path to the tracker module
+   * @returns Promise resolving to the temp MP3 file path
+   */
+  private renderTrackerToFile(filePath: string): Promise<string> {
+    // 1. In-memory cache hit
+    const cached: {readonly tempFile: string; readonly duration: number} | undefined = this.trackerRenderCache.get(filePath);
+    if (cached && existsSync(cached.tempFile)) {
+      midiLogger.info(`Using cached tracker render: ${path.basename(cached.tempFile)}`);
+      return Promise.resolve(cached.tempFile);
+    }
+
+    // 2. Deduplicate concurrent renders of the same file
+    const inProgress: Promise<string> | undefined = this.trackerRenderInProgress.get(filePath);
+    if (inProgress) {
+      midiLogger.info('Waiting for in-progress tracker render...');
+      return inProgress;
+    }
+
+    // 3. Compute content-hash filename (deterministic across restarts)
+    const hash: string = this.hashTrackerFile(filePath);
+    const tempDir: string = path.join(app.getPath('temp'), 'onixplayer-tracker');
+    mkdirSync(tempDir, {recursive: true});
+    const tempFile: string = path.join(tempDir, `tracker-${hash}.mp3`);
+
+    // 4. Disk cache hit — probe for duration, populate in-memory cache.
+    //    If the file is corrupt (probe fails or size is 0), delete and re-render.
+    if (existsSync(tempFile)) {
+      const fileSize: number = statSync(tempFile).size;
+      if (fileSize === 0) {
+        midiLogger.info(`Tracker disk cache corrupt (empty file), deleting: ${path.basename(tempFile)}`);
+        try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
+      } else {
+        midiLogger.info(`Tracker disk cache hit: ${path.basename(tempFile)} (${fileSize} bytes)`);
+        const diskPromise: Promise<string> = this.probeMedia(tempFile).then((info: MediaInfo): string | Promise<string> => {
+          // A 0-length duration means an earlier render produced an empty file
+          // (e.g. a failed decode encoded to a tiny MP3). Treat it as corrupt,
+          // delete it, and render again so a fixed pipeline self-heals the cache.
+          if (info.duration <= 0) {
+            midiLogger.warn(`Tracker disk cache corrupt (0-length render), deleting: ${path.basename(tempFile)}`);
+            try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
+            this.trackerRenderInProgress.delete(filePath);
+            return this.renderTrackerToFile(filePath);
+          }
+          this.setTrackerRenderCache(filePath, {tempFile, duration: info.duration});
+          this.playlist.updateItemDurations(filePath, info.duration);
+          this.trackerRenderInProgress.delete(filePath);
+          return tempFile;
+        }).catch((): Promise<string> => {
+          midiLogger.warn(`Tracker disk cache corrupt (probe failed), deleting: ${path.basename(tempFile)}`);
+          try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
+          this.trackerRenderInProgress.delete(filePath);
+          return this.renderTrackerToFile(filePath);
+        });
+        this.trackerRenderInProgress.set(filePath, diskPromise);
+        return diskPromise;
+      }
+    }
+
+    // 5. Full render: openmpt123 (raw PCM via stdout) → FFmpeg (MP3) → tempFile
+    const promise: Promise<string> = new Promise<string>((resolve: (value: string) => void, reject: (reason: Error) => void): void => {
+      const openmptBin: string | null = this.deps.getOpenmpt123Path();
+      const ffmpegBin: string | null = this.deps.getFfmpegPath();
+
+      if (!openmptBin || !ffmpegBin) {
+        reject(new Error('Missing dependencies for tracker rendering'));
+        return;
+      }
+
+      const audioBitrate: number = this.settings.getSettings().transcoding.audioBitrate;
+
+      midiLogger.info(`Pre-rendering tracker: ${path.basename(filePath)} → ${path.basename(tempFile)}`);
+
+      // openmpt123: module → raw PCM on stdout, piped to FFmpeg (same shape as
+      // the FluidSynth MIDI pipeline). Notes on the flags:
+      // - --batch is required: the default mode is the interactive --ui, which
+      //   needs a terminal and exits non-zero when stdout is a pipe. --batch
+      //   decodes non-interactively.
+      // - --stdout streams raw PCM to stdout (openmpt123's -o/--output and
+      //   --output-type only apply to --ui/--batch-to-file and --render).
+      // - --no-float forces 16-bit signed PCM (openmpt123 defaults to 32-bit float).
+      // - '--' terminates option parsing so paths starting with '-' are safe.
+      const openmptArgs: string[] = [
+        '--batch',
+        '--stdout',
+        '--quiet',
+        '--no-float',
+        '--samplerate', '44100',
+        '--channels', '2',
+        '--',
+        filePath,
+      ];
+      midiLogger.info(`openmpt123 command: ${openmptBin} ${openmptArgs.join(' ')}`);
+      logProcessSpawn(midiLogger, 'openmpt123 (pre-render)', openmptArgs);
+      const openmpt: ChildProcess = spawn(openmptBin, openmptArgs);
+
+      // FFmpeg: raw PCM (s16le, 44.1kHz, stereo) → MP3 file.
+      const ffmpegArgs: string[] = [
+        '-hide_banner',
+        '-loglevel', 'warning',
+        '-f', 's16le',
+        '-ar', '44100',
+        '-ac', '2',
+        '-i', 'pipe:0',
+        '-c:a', 'libmp3lame',
+        '-b:a', `${audioBitrate}k`,
+        '-f', 'mp3',
+        tempFile,
+      ];
+      logProcessSpawn(ffmpegLogger, 'ffmpeg (tracker pre-render)', ffmpegArgs);
+      const ffmpeg: ChildProcess = spawn(ffmpegBin, ffmpegArgs);
+
+      // Connect pipeline: openmpt123 stdout → FFmpeg stdin
+      openmpt.stdout?.pipe(ffmpeg.stdin!);
+
+      // openmpt123's exit code is the source of truth: FFmpeg will happily
+      // encode a truncated/empty PCM stream and exit 0, so we must not treat
+      // that as success.
+      let openmptExitCode: number | null = null;
+
+      openmpt.stderr?.on('data', (data: Readonly<Buffer>): void => {
+        const msg: string = data.toString().trim();
+        if (msg) {
+          logProcessOutput(midiLogger, 'stderr', msg);
+        }
+      });
+
+      ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
+        logProcessOutput(ffmpegLogger, 'stderr', data.toString());
+      });
+
+      // Close FFmpeg stdin when openmpt123 finishes producing PCM.
+      openmpt.on('close', (code: number | null): void => {
+        openmptExitCode = code;
+        logProcessExit(midiLogger, 'openmpt123 (pre-render)', code, null);
+        ffmpeg.stdin?.end();
+      });
+
+      // Resolve when FFmpeg finishes writing the MP3, probing for duration.
+      // Require BOTH processes to have succeeded and a non-empty output file.
+      ffmpeg.on('close', (code: number | null): void => {
+        logProcessExit(ffmpegLogger, 'ffmpeg (tracker pre-render)', code, null);
+        this.trackerRenderInProgress.delete(filePath);
+
+        const outputValid: boolean = existsSync(tempFile) && statSync(tempFile).size > 0;
+
+        if (openmptExitCode === 0 && code === 0 && outputValid) {
+          this.probeMedia(tempFile).then((info: MediaInfo): void => {
+            this.setTrackerRenderCache(filePath, {tempFile, duration: info.duration});
+            this.playlist.updateItemDurations(filePath, info.duration);
+            midiLogger.info(`Tracker pre-render complete: ${path.basename(tempFile)} (${info.duration.toFixed(1)}s)`);
+            resolve(tempFile);
+          }).catch((): void => {
+            this.setTrackerRenderCache(filePath, {tempFile, duration: 0});
+            midiLogger.info(`Tracker pre-render complete: ${path.basename(tempFile)} (duration unknown)`);
+            resolve(tempFile);
+          });
+        } else {
+          if (existsSync(tempFile)) {
+            try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
+          }
+          reject(new Error(`Tracker pre-render failed (openmpt123 exit ${openmptExitCode}, ffmpeg exit ${code})`));
+        }
+      });
+
+      openmpt.on('error', (err: Readonly<Error>): void => {
+        midiLogger.error(`openmpt123 pre-render error: ${err.message}`);
+        this.trackerRenderInProgress.delete(filePath);
+        ffmpeg.kill();
+        if (existsSync(tempFile)) {
+          try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
+        }
+        reject(err);
+      });
+
+      ffmpeg.on('error', (err: Readonly<Error>): void => {
+        ffmpegLogger.error(`FFmpeg tracker pre-render error: ${err.message}`);
+        this.trackerRenderInProgress.delete(filePath);
+        if (existsSync(tempFile)) {
+          try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
+        }
+        reject(err);
+      });
+    });
+
+    this.trackerRenderInProgress.set(filePath, promise);
+    return promise;
+  }
+
+  /**
+   * Serves a tracker module, using the pre-rendered cache when available.
+   *
+   * If the module has been pre-rendered to a temp MP3 file, serves it with
+   * HTTP range request support for native seeking. Otherwise renders on demand
+   * and holds the response open until the render completes.
+   *
+   * @param req - Incoming HTTP request
+   * @param res - HTTP response to write to
+   * @param filePath - Absolute path to the tracker module
+   */
+  private serveTrackerFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string): void {
+    const cached: {readonly tempFile: string; readonly duration: number} | undefined = this.trackerRenderCache.get(filePath);
+    if (cached && existsSync(cached.tempFile)) {
+      if (cached.duration > 0 && Math.abs(cached.duration - this.playback.duration) > 1) {
+        this.playback.duration = cached.duration;
+        this.broadcastTime();
+      }
+      midiLogger.info(`Serving pre-rendered tracker: ${path.basename(cached.tempFile)}`);
+      this.serveDirectFile(req, res, cached.tempFile, '.mp3', {noCache: true});
+      return;
+    }
+
+    midiLogger.info(`Rendering tracker on demand: ${path.basename(filePath)}`);
+    this.renderTrackerToFile(filePath).then((tempFile: string): void => {
+      const entry: {readonly tempFile: string; readonly duration: number} | undefined = this.trackerRenderCache.get(filePath);
+      if (entry && entry.duration > 0 && Math.abs(entry.duration - this.playback.duration) > 1) {
+        this.playback.duration = entry.duration;
+        this.broadcastTime();
+      }
+      this.serveDirectFile(req, res, tempFile, '.mp3', {noCache: true});
+    }).catch((err: Error): void => {
+      midiLogger.error(`Tracker render failed: ${err.message}`);
+      if (!res.headersSent) {
+        (res as ServerResponse).writeHead(500);
+      }
+      (res as ServerResponse).end(JSON.stringify({error: `Tracker render failed: ${err.message}`}));
+    });
+  }
+
+  // ============================================================================
   // Media Info (ffprobe)
   // ============================================================================
 
@@ -2214,6 +2502,33 @@ export class UnifiedMediaServer {
       });
     }
 
+    // Tracker modules cannot be probed by ffprobe either — their accurate
+    // duration comes from the rendered output. Use the cached render duration
+    // if available, otherwise start a background render and report 0 until it
+    // completes (the render updates the playlist duration when finished).
+    if (TRACKER_FORMATS.has(ext)) {
+      const cached: {readonly tempFile: string; readonly duration: number} | undefined =
+        this.trackerRenderCache.get(filePath);
+      if (cached) {
+        return Promise.resolve({
+          duration: cached.duration,
+          type: 'audio' as const,
+          title: path.basename(filePath, ext),
+          filePath,
+        });
+      }
+
+      this.renderTrackerToFile(filePath).catch((err: Error): void => {
+        midiLogger.error(`Background tracker render failed for ${path.basename(filePath)}: ${err.message}`);
+      });
+      return Promise.resolve({
+        duration: 0,
+        type: 'audio' as const,
+        title: path.basename(filePath, ext),
+        filePath,
+      });
+    }
+
     return new Promise((resolve: (value: Readonly<MediaInfo>) => void, reject: (reason: Readonly<Error>) => void): void => {
       const ffprobeBin: string | null = this.deps.getFfprobePath();
       if (!ffprobeBin) {
@@ -2394,7 +2709,7 @@ export class UnifiedMediaServer {
       this.playback.state = 'loading';
       this.broadcastState();
 
-      const mediaInfo: MediaInfo = await this.probeMedia(currentItem.filePath);
+      let mediaInfo: MediaInfo = await this.probeMedia(currentItem.filePath);
       this.playback.currentMedia = mediaInfo;
       this.playback.duration = mediaInfo.duration;
 
@@ -2417,6 +2732,21 @@ export class UnifiedMediaServer {
           this.midiRenderCache.get(currentItem.filePath);
         if (cacheEntry && cacheEntry.duration > 0) {
           this.playback.duration = cacheEntry.duration;
+        }
+      } else if (TRACKER_FORMATS.has(ext)) {
+        playbackLogger.info('Pre-rendering tracker module before playback...');
+        await this.renderTrackerToFile(currentItem.filePath);
+        // Trackers have no probe duration (probeMedia returned 0 above), so the
+        // real duration is only known after rendering. Feed it back into
+        // mediaInfo/currentMedia so the 'playback:loaded' broadcast carries a
+        // valid length — a zero-length loaded track makes the player stop
+        // instead of playing (MIDI avoids this via parseMidiDuration).
+        const cacheEntry: {readonly tempFile: string; readonly duration: number} | undefined =
+          this.trackerRenderCache.get(currentItem.filePath);
+        if (cacheEntry && cacheEntry.duration > 0) {
+          this.playback.duration = cacheEntry.duration;
+          mediaInfo = {...mediaInfo, duration: cacheEntry.duration};
+          this.playback.currentMedia = mediaInfo;
         }
       }
 
@@ -2533,7 +2863,7 @@ export class UnifiedMediaServer {
     // the current position (non-zero when resuming from a seek made while
     // stopped) rather than restarting it from zero.
     if (!this.timeUpdateInterval) {
-      playbackLogger.info(`Beginning time tracking at ${this.playback.currentTime.toFixed(1)}s`);
+      playbackLogger.info(`Beginning time tracking at ${this.playback.currentTime.toFixed(1)}s (duration ${this.playback.duration.toFixed(1)}s)`);
       this.startTime = Date.now() - (this.playback.currentTime * 1000);
       this.startTimeTracking();
     }
@@ -3435,7 +3765,7 @@ export class UnifiedMediaServer {
     const body: string = await this.readBody(req);
     const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
 
-    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'yt-dlp') {
+    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'openmpt123' && id !== 'yt-dlp') {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Invalid dependency id' }));
       return;
@@ -3459,7 +3789,7 @@ export class UnifiedMediaServer {
     const body: string = await this.readBody(req);
     const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
 
-    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'yt-dlp') {
+    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'openmpt123' && id !== 'yt-dlp') {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Invalid dependency id' }));
       return;
@@ -3483,7 +3813,7 @@ export class UnifiedMediaServer {
     const body: string = await this.readBody(req);
     const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
 
-    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'yt-dlp') {
+    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'openmpt123' && id !== 'yt-dlp') {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Invalid dependency id' }));
       return;
@@ -3647,6 +3977,45 @@ export class UnifiedMediaServer {
   }
 
   /**
+   * Completely nukes all tracker render caches (in-memory and disk).
+   * Deletes the entire tracker temp directory and clears all in-memory state.
+   * Called on app startup so tracker renders never persist across sessions.
+   */
+  public nukeTrackerCache(): void {
+    // Clear in-memory caches
+    const cacheSize: number = this.trackerRenderCache.size;
+    const inProgressSize: number = this.trackerRenderInProgress.size;
+    this.trackerRenderCache.clear();
+    this.trackerRenderInProgress.clear();
+
+    // Delete the entire disk cache directory
+    const tempDir: string = path.join(app.getPath('temp'), 'onixplayer-tracker');
+    let filesDeleted: number = 0;
+    try {
+      if (existsSync(tempDir)) {
+        const files: string[] = readdirSync(tempDir);
+        for (const file of files) {
+          try {
+            unlinkSync(path.join(tempDir, file));
+            filesDeleted++;
+          } catch {
+            // Ignore individual file deletion errors (may be in use)
+          }
+        }
+        try {
+          rmdirSync(tempDir);
+        } catch {
+          // Directory may not be empty if some files couldn't be deleted
+        }
+      }
+    } catch (err) {
+      midiLogger.warn(`Failed to clean tracker cache directory: ${err}`);
+    }
+
+    midiLogger.info(`Nuked tracker cache: ${cacheSize} in-memory, ${inProgressSize} in-progress, ${filesDeleted} disk files`);
+  }
+
+  /**
    * Re-detects all binaries and broadcasts the updated state.
    */
   private handleDependenciesRefresh(res: Readonly<ServerResponse>): void {
@@ -3715,7 +4084,11 @@ export class UnifiedMediaServer {
 
       this.playback.currentTime = (Date.now() - this.startTime) / 1000;
 
-      if (this.playback.currentTime >= this.playback.duration) {
+      // Never auto-end a track whose duration isn't known yet (0). For formats
+      // rendered on demand (trackers/MIDI), playback can start in the brief
+      // window before the rendered duration is known; ending here would treat
+      // currentTime >= 0 as "finished" and immediately stop the track.
+      if (this.playback.duration > 0 && this.playback.currentTime >= this.playback.duration) {
         this.playback.currentTime = this.playback.duration;
         // Broadcast the final position so the seek bar visually reaches the
         // end of its track before the ended transition resets it.

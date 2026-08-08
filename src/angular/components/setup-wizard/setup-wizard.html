@@ -28,6 +28,7 @@
               @case ('port') { Port }
               @case ('ffmpeg') { FFmpeg }
               @case ('fluidsynth') { FluidSynth }
+              @case ('openmpt') { openmpt123 }
               @case ('ytdlp') { yt-dlp }
               @case ('complete') { Complete }
             }
@@ -316,6 +317,88 @@
       }
 
       <!-- yt-dlp Step -->
+      @case ('openmpt') {
+        <div class="step-content dependencies-step">
+          <h2>openmpt123</h2>
+          <p class="step-description">
+            openmpt123 (from libopenmpt) is optional. It lets ONIXPlayer play
+            tracker modules such as Amiga Oktalyzer, ProTracker MOD, FastTracker
+            XM, and Impulse Tracker IT files.
+          </p>
+
+          <div class="dependency-list">
+            <!-- openmpt123 -->
+            <div class="dependency-card" [class.installed]="openmpt123Status().installed">
+              <div class="dependency-header">
+                <div class="dependency-indicator" [class.installed]="openmpt123Status().installed" [class.missing]="!openmpt123Status().installed">
+                  <i [class]="openmpt123Status().installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
+                </div>
+                <div class="dependency-info">
+                  <span class="dependency-name">openmpt123</span>
+                  <span class="dependency-status-text">
+                    @if (openmpt123Status().installed) {
+                      Installed
+                    } @else {
+                      Not installed (optional)
+                    }
+                  </span>
+                  @if (openmpt123Status().installed && openmpt123Status().path) {
+                    <span class="dependency-path">{{ openmpt123Status().path }}</span>
+                  }
+                </div>
+                <div class="dependency-actions">
+                  @if (!openmpt123Status().installed) {
+                    <button class="dep-button install" [disabled]="isOperationInProgress()" (click)="installDependency('openmpt123')">
+                      Install
+                    </button>
+                  }
+                  <button class="dep-button link" (click)="openExternalUrl('https://lib.openmpt.org/libopenmpt/')" title="libopenmpt website">
+                    <i class="fa-solid fa-external-link-alt"></i>
+                  </button>
+                </div>
+              </div>
+              <p class="dependency-description">
+                Optional. Enables playback of tracker module formats (MOD, XM, S3M, IT, Oktalyzer, and many more).
+              </p>
+              @if (!openmpt123Status().installed) {
+                <div class="manual-install">
+                  <span class="manual-label">Manual install:</span>
+                  <code>{{ getManualInstallCommand('openmpt123') }}</code>
+                </div>
+              }
+            </div>
+
+            <!-- Install Progress -->
+            @if (installProgress(); as progress) {
+              @if (progress.dependencyId === 'openmpt123' && progress.status === 'installing') {
+                <div class="install-progress">
+                  <div class="install-progress-header">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>{{ progress.message }}</span>
+                  </div>
+                  @if (progress.output) {
+                    <pre class="install-output">{{ progress.output }}</pre>
+                  }
+                </div>
+              } @else if (progress.dependencyId === 'openmpt123' && progress.status === 'error') {
+                <div class="install-progress error">
+                  <i class="fa-solid fa-circle-xmark"></i>
+                  <span>{{ progress.message }}</span>
+                  @if (progress.output) {
+                    <pre class="install-output">{{ progress.output }}</pre>
+                  }
+                </div>
+              }
+            }
+          </div>
+
+          <div class="info-notice">
+            <i class="fa-solid fa-info-circle"></i>
+            <span>You can manage dependencies later from the Configuration panel.</span>
+          </div>
+        </div>
+      }
+
       @case ('ytdlp') {
         <div class="step-content dependencies-step">
           <h2>yt-dlp</h2>
@@ -434,6 +517,16 @@
               <span class="summary-label">FluidSynth:</span>
               <span class="summary-value" [class.installed]="deps.fluidsynthInstalled()" [class.missing]="!deps.fluidsynthInstalled()">
                 @if (deps.fluidsynthInstalled()) {
+                  Installed
+                } @else {
+                  Not installed
+                }
+              </span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">openmpt123:</span>
+              <span class="summary-value" [class.installed]="deps.openmpt123Installed()" [class.missing]="!deps.openmpt123Installed()">
+                @if (deps.openmpt123Installed()) {
                   Installed
                 } @else {
                   Not installed

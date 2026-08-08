@@ -822,6 +822,11 @@ export class ConfigurationView {
     (): DependencyStatus | null => this.depState()?.fluidsynth ?? null
   );
 
+  /** openmpt123 dependency status (required for tracker module playback) */
+  public readonly openmpt123Status: ReturnType<typeof computed<DependencyStatus | null>> = computed(
+    (): DependencyStatus | null => this.depState()?.openmpt123 ?? null
+  );
+
   /** yt-dlp dependency status (required for internet URL playback) */
   public readonly ytdlpStatus: ReturnType<typeof computed<DependencyStatus | null>> = computed(
     (): DependencyStatus | null => this.depState()?.ytdlp ?? null

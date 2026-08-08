@@ -23,7 +23,7 @@ import {createScopedLogger, logProcessSpawn, logProcessOutput, logProcessExit} f
 /**
  * Identifier for a managed dependency.
  */
-export type DependencyId = 'ffmpeg' | 'fluidsynth' | 'yt-dlp';
+export type DependencyId = 'ffmpeg' | 'fluidsynth' | 'openmpt123' | 'yt-dlp';
 
 /**
  * Status of a single dependency.
@@ -51,6 +51,8 @@ export interface DependencyState {
   readonly ffmpeg: DependencyStatus;
   /** FluidSynth status (required for MIDI playback) */
   readonly fluidsynth: DependencyStatus;
+  /** openmpt123 status (required for tracker module playback) */
+  readonly openmpt123: DependencyStatus;
   /** yt-dlp status (required for playing media from internet URLs) */
   readonly ytdlp: DependencyStatus;
   /** Installed SoundFont files in the app data directory */
@@ -108,6 +110,7 @@ const depsLogger: ReturnType<typeof createScopedLogger> = createScopedLogger('De
 const DEPENDENCY_DESCRIPTIONS: Readonly<Record<DependencyId, string>> = {
   ffmpeg: 'Required for audio and video playback',
   fluidsynth: 'Required for MIDI playback',
+  openmpt123: 'Required for tracker module playback (MOD, XM, IT, Oktalyzer, etc.)',
   'yt-dlp': 'Required for playing video and audio from internet URLs',
 };
 
@@ -115,6 +118,7 @@ const DEPENDENCY_DESCRIPTIONS: Readonly<Record<DependencyId, string>> = {
 const MANUAL_INSTALL_URLS: Readonly<Record<DependencyId, string>> = {
   ffmpeg: 'https://ffmpeg.org/download.html',
   fluidsynth: 'https://www.fluidsynth.org/download/',
+  openmpt123: 'https://lib.openmpt.org/libopenmpt/',
   'yt-dlp': 'https://github.com/yt-dlp/yt-dlp#installation',
 };
 
@@ -122,6 +126,7 @@ const MANUAL_INSTALL_URLS: Readonly<Record<DependencyId, string>> = {
 const DEPENDENCY_NAMES: Readonly<Record<DependencyId, string>> = {
   ffmpeg: 'FFmpeg',
   fluidsynth: 'FluidSynth',
+  openmpt123: 'openmpt123',
   'yt-dlp': 'yt-dlp',
 };
 
@@ -171,6 +176,9 @@ export class DependencyManager {
   /** Resolved path to fluidsynth binary (mutable, refreshed after install) */
   private fluidsynthPath: string | null = null;
 
+  /** Resolved path to openmpt123 binary (mutable, refreshed after install) */
+  private openmpt123Path: string | null = null;
+
   /** Resolved path to yt-dlp binary (mutable, refreshed after install) */
   private ytdlpPath: string | null = null;
 
@@ -209,11 +217,13 @@ export class DependencyManager {
     this.ffmpegPath = this.findBinary('ffmpeg');
     this.ffprobePath = this.findBinary('ffprobe');
     this.fluidsynthPath = this.findBinary('fluidsynth');
+    this.openmpt123Path = this.findBinary('openmpt123');
     this.ytdlpPath = this.findBinary('yt-dlp');
 
     depsLogger.info(`FFmpeg: ${this.ffmpegPath ?? 'not found'}`);
     depsLogger.info(`FFprobe: ${this.ffprobePath ?? 'not found'}`);
     depsLogger.info(`FluidSynth: ${this.fluidsynthPath ?? 'not found'}`);
+    depsLogger.info(`openmpt123: ${this.openmpt123Path ?? 'not found'}`);
     depsLogger.info(`yt-dlp: ${this.ytdlpPath ?? 'not found'}`);
 
     // Re-detect hardware encoders when binaries are re-scanned
@@ -296,6 +306,14 @@ export class DependencyManager {
   }
 
   /**
+   * Gets the resolved path to the openmpt123 binary.
+   * @returns Absolute path or null if not found
+   */
+  public getOpenmpt123Path(): string | null {
+    return this.openmpt123Path;
+  }
+
+  /**
    * Gets the resolved path to the yt-dlp binary.
    * @returns Absolute path or null if not found
    */
@@ -312,6 +330,7 @@ export class DependencyManager {
     return {
       ffmpeg: this.getDependencyStatus('ffmpeg'),
       fluidsynth: this.getDependencyStatus('fluidsynth'),
+      openmpt123: this.getDependencyStatus('openmpt123'),
       ytdlp: this.getDependencyStatus('yt-dlp'),
       soundfonts: this.getSoundFonts(),
       activeSoundFont: this.findSoundFont(preferredSoundFont) ?? null,
@@ -658,6 +677,8 @@ export class DependencyManager {
       binaryPath = this.ffmpegPath;
     } else if (id === 'fluidsynth') {
       binaryPath = this.fluidsynthPath;
+    } else if (id === 'openmpt123') {
+      binaryPath = this.openmpt123Path;
     } else if (id === 'yt-dlp') {
       binaryPath = this.ytdlpPath;
     }
@@ -769,7 +790,7 @@ export class DependencyManager {
         return {command: 'brew', args: ['install', packageName]};
 
       case 'linux':
-        return this.getLinuxInstallCommand(packageName);
+        return this.getLinuxInstallCommand(id);
 
       case 'win32':
         return this.getWindowsInstallCommand(id);
@@ -792,7 +813,7 @@ export class DependencyManager {
         return {command: 'brew', args: ['uninstall', packageName]};
 
       case 'linux':
-        return this.getLinuxUninstallCommand(packageName);
+        return this.getLinuxUninstallCommand(id);
 
       case 'win32':
         return this.getWindowsUninstallCommand(id);
@@ -819,10 +840,11 @@ export class DependencyManager {
 
       case 'linux':
         // Re-running the install command upgrades to the latest available version.
-        return this.getLinuxInstallCommand(packageName);
+        return this.getLinuxInstallCommand(id);
 
       case 'win32':
-        if (!this.isWingetAvailable()) {
+        // openmpt123 is not on winget — no automated update path on Windows.
+        if (id === 'openmpt123' || !this.isWingetAvailable()) {
           return null;
         }
         return {
@@ -842,17 +864,35 @@ export class DependencyManager {
     switch (id) {
       case 'ffmpeg': return 'ffmpeg';
       case 'fluidsynth': return this.platform === 'darwin' ? 'fluid-synth' : 'fluidsynth';
+      // Homebrew ships openmpt123 in the 'libopenmpt' formula; most Linux
+      // distros package the CLI as 'openmpt123' (pacman uses 'libopenmpt',
+      // handled in getLinuxPackageName).
+      case 'openmpt123': return this.platform === 'darwin' ? 'libopenmpt' : 'openmpt123';
       case 'yt-dlp': return 'yt-dlp';
     }
   }
 
   /**
+   * Resolves the Linux package name for a dependency, accounting for
+   * distro-specific naming differences.
+   */
+  private getLinuxPackageName(id: DependencyId, pkgMgr: 'apt' | 'dnf' | 'pacman'): string {
+    // Arch packages the openmpt123 CLI inside 'libopenmpt'.
+    if (id === 'openmpt123' && pkgMgr === 'pacman') {
+      return 'libopenmpt';
+    }
+    return this.getPackageName(id);
+  }
+
+  /**
    * Gets the winget package ID for Windows installation.
+   * openmpt123 is not distributed via winget (install is manual on Windows).
    */
   private getWingetId(id: DependencyId): string {
     switch (id) {
       case 'ffmpeg': return 'Gyan.FFmpeg';
       case 'fluidsynth': return 'FluidSynth.FluidSynth';
+      case 'openmpt123': return '';
       case 'yt-dlp': return 'yt-dlp.yt-dlp';
     }
   }
@@ -862,6 +902,10 @@ export class DependencyManager {
    * FFmpeg uses winget, FluidSynth uses Chocolatey (not available on winget).
    */
   private getWindowsInstallCommand(id: DependencyId): {command: string; args: string[]} | null {
+    if (id === 'openmpt123') {
+      // openmpt123 is not available via winget or Chocolatey — manual install only.
+      return null;
+    }
     if (id === 'fluidsynth') {
       // FluidSynth is not available on winget, use Chocolatey
       if (!this.isChocoAvailable()) {
@@ -937,6 +981,10 @@ export class DependencyManager {
    * FFmpeg uses winget, FluidSynth uses Chocolatey.
    */
   private getWindowsUninstallCommand(id: DependencyId): {command: string; args: string[]} | null {
+    if (id === 'openmpt123') {
+      // openmpt123 is installed manually on Windows — nothing to uninstall via a package manager.
+      return null;
+    }
     if (id === 'fluidsynth') {
       // FluidSynth installed via Chocolatey
       if (!this.isChocoAvailable()) {
@@ -958,12 +1006,14 @@ export class DependencyManager {
    * Gets the Linux install command using the detected package manager.
    * Uses pkexec for graphical privilege elevation (shows native password dialog).
    */
-  private getLinuxInstallCommand(packageName: string): {command: string; args: string[]} | null {
+  private getLinuxInstallCommand(id: DependencyId): {command: string; args: string[]} | null {
     const pkgMgr: 'apt' | 'dnf' | 'pacman' | null = this.detectLinuxPackageManager();
     if (!pkgMgr) return null;
 
     // Require pkexec for GUI privilege elevation
     if (!this.isPkexecAvailable()) return null;
+
+    const packageName: string = this.getLinuxPackageName(id, pkgMgr);
 
     switch (pkgMgr) {
       case 'apt':
@@ -981,12 +1031,14 @@ export class DependencyManager {
    * Gets the Linux uninstall command using the detected package manager.
    * Uses pkexec for graphical privilege elevation (shows native password dialog).
    */
-  private getLinuxUninstallCommand(packageName: string): {command: string; args: string[]} | null {
+  private getLinuxUninstallCommand(id: DependencyId): {command: string; args: string[]} | null {
     const pkgMgr: 'apt' | 'dnf' | 'pacman' | null = this.detectLinuxPackageManager();
     if (!pkgMgr) return null;
 
     // Require pkexec for GUI privilege elevation
     if (!this.isPkexecAvailable()) return null;
+
+    const packageName: string = this.getLinuxPackageName(id, pkgMgr);
 
     switch (pkgMgr) {
       case 'apt':

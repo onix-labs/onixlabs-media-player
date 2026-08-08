@@ -20,7 +20,7 @@ import {DependencyService, DependencyId} from '../../services/dependency.service
 import type {MediaPlayerAPI} from '../../types/electron';
 
 /** Wizard step identifiers */
-type WizardStep = 'welcome' | 'port' | 'ffmpeg' | 'fluidsynth' | 'ytdlp' | 'complete';
+type WizardStep = 'welcome' | 'port' | 'ffmpeg' | 'fluidsynth' | 'openmpt' | 'ytdlp' | 'complete';
 
 /**
  * Setup wizard component for first-run configuration.
@@ -54,7 +54,7 @@ export class SetupWizard {
   public readonly currentStep: WritableSignal<WizardStep> = signal<WizardStep>('welcome');
 
   /** All wizard steps in order */
-  public readonly steps: readonly WizardStep[] = ['welcome', 'port', 'ffmpeg', 'fluidsynth', 'ytdlp', 'complete'];
+  public readonly steps: readonly WizardStep[] = ['welcome', 'port', 'ffmpeg', 'fluidsynth', 'openmpt', 'ytdlp', 'complete'];
 
   /** Server port value */
   public readonly serverPort: WritableSignal<number> = signal<number>(0);
@@ -102,6 +102,12 @@ export class SetupWizard {
   public readonly fluidsynthStatus: Signal<{installed: boolean; path: string | null}> = computed((): {installed: boolean; path: string | null} => {
     const state: ReturnType<typeof this.deps.dependencyState> = this.deps.dependencyState();
     return state ? {installed: state.fluidsynth.installed, path: state.fluidsynth.path} : {installed: false, path: null};
+  });
+
+  /** openmpt123 status from dependency service */
+  public readonly openmpt123Status: Signal<{installed: boolean; path: string | null}> = computed((): {installed: boolean; path: string | null} => {
+    const state: ReturnType<typeof this.deps.dependencyState> = this.deps.dependencyState();
+    return state ? {installed: state.openmpt123.installed, path: state.openmpt123.path} : {installed: false, path: null};
   });
 
   /** yt-dlp status from dependency service */
@@ -344,6 +350,12 @@ export class SetupWizard {
         case 'darwin': return 'brew install yt-dlp';
         case 'win32': return 'winget install yt-dlp.yt-dlp';
         default: return 'sudo apt install yt-dlp';
+      }
+    } else if (id === 'openmpt123') {
+      switch (platform) {
+        case 'darwin': return 'brew install libopenmpt';
+        case 'win32': return 'Download from lib.openmpt.org';
+        default: return 'sudo apt install openmpt123';
       }
     } else {
       switch (platform) {
