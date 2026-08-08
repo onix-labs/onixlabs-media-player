@@ -69,6 +69,32 @@ export const RENDER_RESOLUTIONS: readonly RenderResolution[] = [
 ];
 
 /**
+ * Duration in milliseconds of the crossfade played when switching between
+ * visualizations. The outgoing visualization fades out while the incoming
+ * one fades in over this period.
+ */
+export type CrossfadeDuration = 500 | 750 | 1000 | 1500 | 2000;
+
+/** All valid crossfade duration values, in display order. */
+export const CROSSFADE_DURATIONS: readonly CrossfadeDuration[] = [500, 750, 1000, 1500, 2000];
+
+/**
+ * Visual style of the transition played when switching between visualizations.
+ * - fade: Classic crossfade (opacity blend)
+ * - zoom: Outgoing expands outwards and fades out while the incoming fades in behind it
+ * - shrink: Incoming starts oversized and transparent, shrinking into view while the outgoing fades out
+ * - blur: Outgoing blurs and fades out while the incoming sharpens and fades in
+ * - random: A randomly chosen style is used for each switch
+ */
+export type CrossfadeStyle =
+  | 'fade' | 'zoom' | 'shrink' | 'blur' | 'random';
+
+/** All valid crossfade style values, in display order. */
+export const CROSSFADE_STYLES: readonly CrossfadeStyle[] = [
+  'fade', 'zoom', 'shrink', 'blur', 'random',
+];
+
+/**
  * Bar density levels for bar-based visualizations.
  */
 export type BarDensity = 'low' | 'medium' | 'high';
@@ -229,6 +255,10 @@ export interface VisualizationSettings {
   readonly fftSize: FftSize;
   /** Effective fullscreen rendering resolution ('native' or a fixed WxH, default 'native') */
   readonly renderResolution: RenderResolution;
+  /** Crossfade duration in ms when switching visualizations (default 1000) */
+  readonly crossfadeDuration: CrossfadeDuration;
+  /** Visual style of the visualization switch transition (default 'fade') */
+  readonly crossfadeStyle: CrossfadeStyle;
   /** Per-visualization local settings (sensitivity, barDensity, trailIntensity, etc.) */
   readonly perVisualizationSettings: PerVisualizationSettings;
 }
@@ -434,6 +464,8 @@ const DEFAULT_SETTINGS: AppSettings = {
     maxFrameRate: 0,
     fftSize: 2048,
     renderResolution: 'native',
+    crossfadeDuration: 1000,
+    crossfadeStyle: 'fade',
     perVisualizationSettings: {},
   },
   application: {
@@ -744,6 +776,16 @@ export class SettingsService implements OnDestroy {
   /** Effective fullscreen rendering resolution ('native' or a fixed WxH) */
   public readonly renderResolution: ReturnType<typeof computed<RenderResolution>> = computed(
     (): RenderResolution => this.settings().visualization?.renderResolution ?? 'native'
+  );
+
+  /** Crossfade duration in ms when switching visualizations */
+  public readonly visualizationCrossfadeDuration: ReturnType<typeof computed<CrossfadeDuration>> = computed(
+    (): CrossfadeDuration => this.settings().visualization?.crossfadeDuration ?? 1000
+  );
+
+  /** Visual style of the visualization switch transition */
+  public readonly visualizationCrossfadeStyle: ReturnType<typeof computed<CrossfadeStyle>> = computed(
+    (): CrossfadeStyle => this.settings().visualization?.crossfadeStyle ?? 'fade'
   );
 
   /** Per-visualization settings map */
@@ -1077,6 +1119,32 @@ export class SettingsService implements OnDestroy {
       return;
     }
     await this.updateSetting('visualization', 'renderResolution', value);
+  }
+
+  /**
+   * Sets the crossfade duration used when switching visualizations.
+   *
+   * @param value - Duration in milliseconds (500, 750, 1000, 1500, or 2000)
+   */
+  public async setVisualizationCrossfadeDuration(value: CrossfadeDuration): Promise<void> {
+    if (!CROSSFADE_DURATIONS.includes(value)) {
+      console.error(`[SettingsService] Invalid crossfade duration: ${value}`);
+      return;
+    }
+    await this.updateSetting('visualization', 'crossfadeDuration', value);
+  }
+
+  /**
+   * Sets the visual style used when switching visualizations.
+   *
+   * @param value - The crossfade style (fade, slide, push, wipe, radial, zoom, bars, random)
+   */
+  public async setVisualizationCrossfadeStyle(value: CrossfadeStyle): Promise<void> {
+    if (!CROSSFADE_STYLES.includes(value)) {
+      console.error(`[SettingsService] Invalid crossfade style: ${value}`);
+      return;
+    }
+    await this.updateSetting('visualization', 'crossfadeStyle', value);
   }
 
   // ============================================================================

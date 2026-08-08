@@ -86,6 +86,18 @@ export type RenderResolution =
   | '1280x720' | '1280x800' | '1280x1024';
 
 /**
+ * Duration in milliseconds of the crossfade played when switching between
+ * visualizations.
+ */
+export type CrossfadeDuration = 500 | 750 | 1000 | 1500 | 2000;
+
+/**
+ * Visual style of the transition played when switching between visualizations.
+ */
+export type CrossfadeStyle =
+  | 'fade' | 'zoom' | 'shrink' | 'blur' | 'random';
+
+/**
  * Bar density levels for bar-based visualizations.
  * - low: Fewer bars, better performance
  * - medium: Default balance
@@ -253,6 +265,10 @@ export interface VisualizationSettings {
   readonly fftSize: FftSize;
   /** Effective fullscreen rendering resolution ('native' or a fixed WxH, default 'native') */
   readonly renderResolution: RenderResolution;
+  /** Crossfade duration in ms when switching visualizations (default 1000) */
+  readonly crossfadeDuration: CrossfadeDuration;
+  /** Visual style of the visualization switch transition (default 'fade') */
+  readonly crossfadeStyle: CrossfadeStyle;
   /** Per-visualization local settings (sensitivity, barDensity, trailIntensity, etc.) */
   readonly perVisualizationSettings: PerVisualizationSettings;
 }
@@ -482,6 +498,8 @@ export interface VisualizationSettingsUpdate {
   readonly maxFrameRate?: number;
   readonly fftSize?: FftSize;
   readonly renderResolution?: RenderResolution;
+  readonly crossfadeDuration?: CrossfadeDuration;
+  readonly crossfadeStyle?: CrossfadeStyle;
   readonly perVisualizationSettings?: PerVisualizationSettings;
 }
 
@@ -624,6 +642,14 @@ const VALID_RENDER_RESOLUTIONS: readonly RenderResolution[] = [
   '1280x720', '1280x800', '1280x1024',
 ];
 
+/** Valid crossfade duration values (ms), in display order */
+const VALID_CROSSFADE_DURATIONS: readonly CrossfadeDuration[] = [500, 750, 1000, 1500, 2000];
+
+/** Valid crossfade style values, in display order */
+const VALID_CROSSFADE_STYLES: readonly CrossfadeStyle[] = [
+  'fade', 'zoom', 'shrink', 'blur', 'random',
+];
+
 /** Valid bar density values */
 const VALID_BAR_DENSITIES: readonly BarDensity[] = ['low', 'medium', 'high'];
 
@@ -667,6 +693,8 @@ const DEFAULT_SETTINGS: AppSettings = {
     maxFrameRate: 0,  // 0 = uncapped
     fftSize: 2048,  // 2048 = balanced resolution/performance
     renderResolution: 'native',  // 'native' = render at display pixel size
+    crossfadeDuration: 1000,  // 1000 = 1s crossfade between visualizations
+    crossfadeStyle: 'fade',  // 'fade' = classic opacity crossfade
     perVisualizationSettings: {},  // Empty = use VISUALIZATION_LOCAL_DEFAULTS
   },
   application: {
@@ -879,6 +907,22 @@ export class SettingsManager {
       }
     }
 
+    // Validate crossfadeDuration if provided
+    if (update.crossfadeDuration !== undefined) {
+      if (!this.isValidVisualizationCrossfadeDuration(update.crossfadeDuration)) {
+        console.warn(`[SettingsManager] Invalid crossfade duration: ${update.crossfadeDuration}, ignoring`);
+        return this.settings;
+      }
+    }
+
+    // Validate crossfadeStyle if provided
+    if (update.crossfadeStyle !== undefined) {
+      if (!this.isValidCrossfadeStyle(update.crossfadeStyle)) {
+        console.warn(`[SettingsManager] Invalid crossfade style: ${update.crossfadeStyle}, ignoring`);
+        return this.settings;
+      }
+    }
+
     // Validate and merge per-visualization settings if provided
     let mergedPerVizSettings: PerVisualizationSettings = this.settings.visualization.perVisualizationSettings;
     if (update.perVisualizationSettings !== undefined) {
@@ -900,6 +944,8 @@ export class SettingsManager {
         maxFrameRate: update.maxFrameRate ?? this.settings.visualization.maxFrameRate,
         fftSize: update.fftSize ?? this.settings.visualization.fftSize,
         renderResolution: update.renderResolution ?? this.settings.visualization.renderResolution,
+        crossfadeDuration: update.crossfadeDuration ?? this.settings.visualization.crossfadeDuration,
+        crossfadeStyle: update.crossfadeStyle ?? this.settings.visualization.crossfadeStyle,
         perVisualizationSettings: mergedPerVizSettings,
       },
     };
@@ -1868,6 +1914,8 @@ export class SettingsManager {
     const maxFrameRate: unknown = vizObj['maxFrameRate'];
     const fftSize: unknown = vizObj['fftSize'];
     const renderResolution: unknown = vizObj['renderResolution'];
+    const crossfadeDuration: unknown = vizObj['crossfadeDuration'];
+    const crossfadeStyle: unknown = vizObj['crossfadeStyle'];
 
     // Handle migration from v1 to v2
     let perVisualizationSettings: PerVisualizationSettings = {};
@@ -1908,6 +1956,12 @@ export class SettingsManager {
       renderResolution: this.isValidRenderResolution(renderResolution)
         ? renderResolution
         : DEFAULT_SETTINGS.visualization.renderResolution,
+      crossfadeDuration: this.isValidVisualizationCrossfadeDuration(crossfadeDuration)
+        ? crossfadeDuration
+        : DEFAULT_SETTINGS.visualization.crossfadeDuration,
+      crossfadeStyle: this.isValidCrossfadeStyle(crossfadeStyle)
+        ? crossfadeStyle
+        : DEFAULT_SETTINGS.visualization.crossfadeStyle,
       perVisualizationSettings,
     };
   }
@@ -2527,6 +2581,28 @@ export class SettingsManager {
    */
   private isValidRenderResolution(value: unknown): value is RenderResolution {
     return typeof value === 'string' && VALID_RENDER_RESOLUTIONS.includes(value as RenderResolution);
+  }
+
+  /**
+   * Type guard to check if a value is a valid crossfade duration.
+   *
+   * Valid values are 500, 750, 1000, 1500, or 2000 (milliseconds).
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid crossfade duration
+   */
+  private isValidVisualizationCrossfadeDuration(value: unknown): value is CrossfadeDuration {
+    return typeof value === 'number' && VALID_CROSSFADE_DURATIONS.includes(value as CrossfadeDuration);
+  }
+
+  /**
+   * Type guard to check if a value is a valid crossfade style.
+   *
+   * @param value - The value to check
+   * @returns True if the value is a valid crossfade style
+   */
+  private isValidCrossfadeStyle(value: unknown): value is CrossfadeStyle {
+    return typeof value === 'string' && VALID_CROSSFADE_STYLES.includes(value as CrossfadeStyle);
   }
 
   /**

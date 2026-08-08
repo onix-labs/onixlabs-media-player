@@ -29,7 +29,7 @@
 import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, untracked, HostBinding, ChangeDetectionStrategy, Output, EventEmitter} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
-import {SettingsService, PerVisualizationSettings, RenderResolution} from '../../../services/settings.service';
+import {SettingsService, PerVisualizationSettings, RenderResolution, CrossfadeStyle, CROSSFADE_STYLES} from '../../../services/settings.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import type {PlaylistItem} from '../../../types/electron';
 import {Visualization, createVisualization, VISUALIZATION_TYPES, VISUALIZATION_METADATA} from './visualizations';
@@ -168,6 +168,43 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
   /** Current visualization instance */
   private visualization: Visualization | null = null;
+
+  /** Offscreen buffer the active visualization renders into (composited to the visible canvas) */
+  private vizCanvas: HTMLCanvasElement | null = null;
+
+  /** 2D context of the visible canvas, used to composite visualization buffers */
+  private compositeCtx: CanvasRenderingContext2D | null = null;
+
+  /** Outgoing visualization kept alive during a crossfade (null when not crossfading) */
+  private outgoingVisualization: Visualization | null = null;
+
+  /** Offscreen buffer the outgoing visualization renders into during a crossfade */
+  private outgoingVizCanvas: HTMLCanvasElement | null = null;
+
+  /** Whether a visualization crossfade is currently in progress */
+  private isCrossfading: boolean = false;
+
+  /** Wall-clock timestamp (performance.now) at which the current crossfade began */
+  private crossfadeStartTime: number = 0;
+
+  /** Duration (ms) of the in-progress crossfade, captured from settings when it begins */
+  private crossfadeDurationMs: number = 1000;
+
+  /**
+   * Concrete style of the in-progress crossfade, captured when it begins.
+   * A configured style of 'random' is resolved to a concrete style here so it
+   * stays fixed for the duration of the transition.
+   */
+  private activeCrossfadeStyle: CrossfadeStyle = 'fade';
+
+  /** Scale the outgoing visualization expands to during a 'zoom' transition. */
+  private readonly ZOOM_EXPAND_SCALE: number = 3;
+
+  /** Scale the incoming visualization starts at during a 'shrink' transition. */
+  private readonly SHRINK_START_SCALE: number = 3;
+
+  /** Maximum blur radius (px) applied at the peak of a 'blur' transition. */
+  private readonly BLUR_MAX_PX: number = 24;
 
   /** Signal for the current visualization type */
   private readonly visualizationType: ReturnType<typeof signal<string>> = signal<string>('bars');
@@ -617,6 +654,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     if (this.animationId) {
       cancelAnimationFrame(this.animationId);
     }
+    this.outgoingVisualization?.destroy();
     this.visualization?.destroy();
     if (this.audioContext) {
       this.audioContext.close();
@@ -894,10 +932,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
     this.isInitialized = true;
 
-    // Initialize visualization now that analyser is available
-    if (this.visualization) {
-      this.visualization.destroy();
-    }
+    // Initialize visualization now that analyser is available.
+    // initVisualization() tears down any existing visualization and crossfade.
     this.initVisualization();
   }
 
@@ -1036,20 +1072,70 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualizationCategorySignal.set(metadata.category);
     this.visualizationChange.emit(type);
 
-    if (this.visualization) {
-      this.visualization.destroy();
+    // Without an analyser there is nothing rendering yet; the visualization
+    // will be built by initVisualization() once the analyser is available.
+    if (!this.analyser) {
+      return;
     }
 
-    if (this.analyser) {
-      this.visualization = createVisualization(type, {
-        canvas: this.canvasRef.nativeElement,
-        analyser: this.analyser
-      });
-      this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
-      this.visualization.setFftSize(this.settings.fftSize());
-      this.applyVisualizationSettings(type);
-      this.applyRenderSize();
+    // Capture the currently-rendering visualization so it can fade out while
+    // the new one fades in. Each visualization owns its own offscreen buffer,
+    // which the animation loop composites onto the visible canvas.
+    const outgoing: Visualization | null = this.visualization;
+    const outgoingCanvas: HTMLCanvasElement | null = this.vizCanvas;
+
+    const canvas: HTMLCanvasElement = this.createVizCanvas();
+    this.visualization = createVisualization(type, {canvas, analyser: this.analyser});
+    this.vizCanvas = canvas;
+    this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
+    this.visualization.setFftSize(this.settings.fftSize());
+    this.applyVisualizationSettings(type);
+    this.applyRenderSize();
+
+    if (outgoing && outgoingCanvas) {
+      // A switch mid-crossfade: drop the older outgoing visualization and
+      // crossfade from the one that was most recently on screen.
+      this.outgoingVisualization?.destroy();
+      this.outgoingVisualization = outgoing;
+      this.outgoingVizCanvas = outgoingCanvas;
+      this.isCrossfading = true;
+      this.crossfadeStartTime = performance.now();
+      this.crossfadeDurationMs = this.settings.visualizationCrossfadeDuration();
+      this.activeCrossfadeStyle = this.resolveCrossfadeStyle(this.settings.visualizationCrossfadeStyle());
+    } else {
+      // Nothing was on screen (e.g. first activation): show the new one instantly.
+      outgoing?.destroy();
     }
+  }
+
+  /**
+   * Creates an offscreen canvas for a visualization to render into.
+   *
+   * Each visualization renders to its own buffer so that two visualizations
+   * can be composited together during a crossfade. The buffer is sized to the
+   * current visible-canvas backing store; the animation loop keeps it in sync.
+   *
+   * @returns A fresh offscreen canvas element
+   */
+  private createVizCanvas(): HTMLCanvasElement {
+    const canvas: HTMLCanvasElement = document.createElement('canvas');
+    const visible: HTMLCanvasElement = this.canvasRef.nativeElement;
+    canvas.width = Math.max(1, visible.width);
+    canvas.height = Math.max(1, visible.height);
+    return canvas;
+  }
+
+  /**
+   * Cancels any in-progress crossfade, destroying the outgoing visualization.
+   *
+   * Called before an instant (non-crossfaded) visualization swap so a stale
+   * outgoing visualization is not left rendering.
+   */
+  private cancelCrossfade(): void {
+    this.outgoingVisualization?.destroy();
+    this.outgoingVisualization = null;
+    this.outgoingVizCanvas = null;
+    this.isCrossfading = false;
   }
 
   /**
@@ -1061,11 +1147,15 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private initVisualization(): void {
     if (!this.analyser) return;
 
+    // Instant (non-crossfaded) activation: tear down any active crossfade and
+    // the previous visualization, then build the new one on a fresh buffer.
+    this.cancelCrossfade();
+    this.visualization?.destroy();
+
     const vizType: string = this.visualizationType();
-    this.visualization = createVisualization(vizType, {
-      canvas: this.canvasRef.nativeElement,
-      analyser: this.analyser
-    });
+    const canvas: HTMLCanvasElement = this.createVizCanvas();
+    this.visualization = createVisualization(vizType, {canvas, analyser: this.analyser});
+    this.vizCanvas = canvas;
     this.visualizationNameSignal.set(this.visualization.name);
     this.visualizationCategorySignal.set(this.visualization.category);
     this.visualizationChange.emit(`${this.visualization.category} : ${this.visualization.name}`);
@@ -1122,6 +1212,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
    */
   private startAnimationLoop(): void {
     const canvas: HTMLCanvasElement = this.canvasRef.nativeElement;
+    this.compositeCtx = canvas.getContext('2d');
 
     const draw: (timestamp: number) => void = (timestamp: number): void => {
       this.animationId = requestAnimationFrame(draw);
@@ -1146,14 +1237,169 @@ export class AudioOutlet implements OnInit, OnDestroy {
       // render resolution (stretched to fill via CSS with nearest-neighbour).
       const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize(canvas);
 
+      // Keep the visible (compositor) canvas sized to the render target.
       if (canvas.width !== size.width || canvas.height !== size.height) {
+        canvas.width = size.width;
+        canvas.height = size.height;
         canvas.style.imageRendering = size.pixelated ? 'pixelated' : 'auto';
+      }
+
+      // Keep the active visualization's offscreen buffer in sync with the size.
+      if (this.vizCanvas && (this.vizCanvas.width !== size.width || this.vizCanvas.height !== size.height)) {
         this.visualization?.resize(size.width, size.height);
       }
 
+      // Render the active visualization into its own offscreen buffer.
       this.visualization?.draw();
+
+      // Composite the offscreen buffer(s) onto the visible canvas, blending the
+      // outgoing and incoming visualizations together during a crossfade.
+      this.renderComposite(size.width, size.height);
     };
 
     requestAnimationFrame(draw);
+  }
+
+  /**
+   * Composites the active visualization's buffer onto the visible canvas.
+   *
+   * During a crossfade the outgoing visualization keeps animating in its own
+   * buffer and the two are combined using the configured transition style.
+   * Progress is measured against the wall clock so dropped or rate-limited
+   * frames do not distort the transition. Buffers are drawn scaled to fill so a
+   * size mismatch (e.g. a native-resolution visualization transitioning with a
+   * pixelated one) is handled gracefully.
+   *
+   * @param width - Visible canvas backing-store width
+   * @param height - Visible canvas backing-store height
+   */
+  private renderComposite(width: number, height: number): void {
+    const ctx: CanvasRenderingContext2D | null = this.compositeCtx;
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, width, height);
+
+    if (this.isCrossfading && this.outgoingVizCanvas && this.vizCanvas) {
+      const elapsed: number = performance.now() - this.crossfadeStartTime;
+      const t: number = Math.min(1, elapsed / this.crossfadeDurationMs);
+      const eased: number = t * t * (3 - 2 * t);
+
+      // Keep the outgoing visualization live as it transitions out.
+      this.outgoingVisualization?.draw();
+
+      this.drawTransitionFrame(ctx, this.outgoingVizCanvas, this.vizCanvas, width, height, eased);
+
+      if (t >= 1) {
+        this.outgoingVisualization?.destroy();
+        this.outgoingVisualization = null;
+        this.outgoingVizCanvas = null;
+        this.isCrossfading = false;
+      }
+    } else if (this.vizCanvas) {
+      ctx.drawImage(this.vizCanvas, 0, 0, width, height);
+    }
+  }
+
+  /**
+   * Draws a single frame of the active transition, combining the outgoing and
+   * incoming visualization buffers according to the resolved crossfade style.
+   *
+   * @param ctx - The visible canvas 2D context to draw onto
+   * @param prev - The outgoing visualization's buffer
+   * @param cur - The incoming visualization's buffer
+   * @param width - Target width
+   * @param height - Target height
+   * @param progress - Eased transition progress (0 = outgoing, 1 = incoming)
+   */
+  private drawTransitionFrame(
+    ctx: CanvasRenderingContext2D,
+    prev: HTMLCanvasElement,
+    cur: HTMLCanvasElement,
+    width: number,
+    height: number,
+    progress: number
+  ): void {
+    switch (this.activeCrossfadeStyle) {
+      case 'zoom': {
+        // Incoming fades in at full size behind; outgoing expands outwards
+        // (scaling about the centre) and fades out on top.
+        ctx.save();
+        ctx.globalAlpha = progress;
+        ctx.drawImage(cur, 0, 0, width, height);
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = 1 - progress;
+        const zoomScale: number = 1 + progress * (this.ZOOM_EXPAND_SCALE - 1);
+        ctx.translate(width / 2, height / 2);
+        ctx.scale(zoomScale, zoomScale);
+        ctx.translate(-width / 2, -height / 2);
+        ctx.drawImage(prev, 0, 0, width, height);
+        ctx.restore();
+        break;
+      }
+      case 'shrink': {
+        // Outgoing fades out at full size behind; incoming starts oversized and
+        // transparent, shrinking into view (scaling about the centre) while
+        // becoming opaque on top.
+        ctx.save();
+        ctx.globalAlpha = 1 - progress;
+        ctx.drawImage(prev, 0, 0, width, height);
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = progress;
+        const shrinkScale: number = this.SHRINK_START_SCALE - progress * (this.SHRINK_START_SCALE - 1);
+        ctx.translate(width / 2, height / 2);
+        ctx.scale(shrinkScale, shrinkScale);
+        ctx.translate(-width / 2, -height / 2);
+        ctx.drawImage(cur, 0, 0, width, height);
+        ctx.restore();
+        break;
+      }
+      case 'blur': {
+        // Outgoing progressively blurs and fades out; incoming starts blurred
+        // and transparent, sharpening and fading in.
+        ctx.save();
+        ctx.globalAlpha = 1 - progress;
+        ctx.filter = `blur(${(progress * this.BLUR_MAX_PX).toFixed(2)}px)`;
+        ctx.drawImage(prev, 0, 0, width, height);
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = progress;
+        ctx.filter = `blur(${((1 - progress) * this.BLUR_MAX_PX).toFixed(2)}px)`;
+        ctx.drawImage(cur, 0, 0, width, height);
+        ctx.restore();
+        break;
+      }
+      case 'fade':
+      default: {
+        // Classic opacity crossfade: outgoing fades out, incoming fades in.
+        ctx.globalAlpha = 1 - progress;
+        ctx.drawImage(prev, 0, 0, width, height);
+        ctx.globalAlpha = progress;
+        ctx.drawImage(cur, 0, 0, width, height);
+        ctx.globalAlpha = 1;
+        break;
+      }
+    }
+  }
+
+  /**
+   * Resolves a configured crossfade style to a concrete one, picking a random
+   * concrete style when 'random' is configured.
+   *
+   * @param style - The configured crossfade style
+   * @returns A concrete (non-'random') crossfade style
+   */
+  private resolveCrossfadeStyle(style: CrossfadeStyle): CrossfadeStyle {
+    if (style !== 'random') {
+      return style;
+    }
+    const concrete: CrossfadeStyle[] = CROSSFADE_STYLES.filter(
+      (s: CrossfadeStyle): boolean => s !== 'random'
+    );
+    return concrete[Math.floor(Math.random() * concrete.length)];
   }
 }

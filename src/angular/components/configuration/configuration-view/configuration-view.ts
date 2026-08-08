@@ -15,7 +15,7 @@
 import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
 import type {InputSignal, EffectRef} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, SEEK_MODE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, RenderResolution, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, SeekMode, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
+import {SettingsService, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, SEEK_MODE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, RenderResolution, CrossfadeDuration, CrossfadeStyle, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, SeekMode, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import {EQ_FREQUENCIES, EQ_PRESETS, EQ_GAIN_MIN, EQ_GAIN_MAX, type EqualizerPreset} from '../../../services/equalizer';
@@ -296,6 +296,16 @@ export class ConfigurationView {
     (): RenderResolution => this.settingsService.renderResolution()
   );
 
+  /** Current crossfade duration (ms) when switching visualizations */
+  public readonly currentVisualizationCrossfadeDuration: ReturnType<typeof computed<CrossfadeDuration>> = computed(
+    (): CrossfadeDuration => this.settingsService.visualizationCrossfadeDuration()
+  );
+
+  /** Current crossfade style when switching visualizations */
+  public readonly currentVisualizationCrossfadeStyle: ReturnType<typeof computed<CrossfadeStyle>> = computed(
+    (): CrossfadeStyle => this.settingsService.visualizationCrossfadeStyle()
+  );
+
   /** Visualization metadata for accordion items */
   /** Visualizations that still expose per-viz controls (those with none are hidden). */
   public readonly visualizationMetadata: readonly VisualizationMetadata[] =
@@ -448,6 +458,24 @@ export class ConfigurationView {
     {value: '1280x720', label: '1280 × 720'},
     {value: '1280x800', label: '1280 × 800'},
     {value: '1280x1024', label: '1280 × 1024'},
+  ];
+
+  /** Available visualization crossfade duration options for the dropdown */
+  public readonly visualizationCrossfadeDurationOptions: readonly {value: CrossfadeDuration; label: string}[] = [
+    {value: 500, label: '500ms (Very Fast)'},
+    {value: 750, label: '750ms (Fast)'},
+    {value: 1000, label: '1s (Default)'},
+    {value: 1500, label: '1.5s (Slow)'},
+    {value: 2000, label: '2s (Very Slow)'},
+  ];
+
+  /** Available visualization crossfade style options for the dropdown */
+  public readonly visualizationCrossfadeStyleOptions: readonly {value: CrossfadeStyle; label: string}[] = [
+    {value: 'fade', label: 'Fade (Default)'},
+    {value: 'zoom', label: 'Zoom'},
+    {value: 'shrink', label: 'Shrink'},
+    {value: 'blur', label: 'Blur'},
+    {value: 'random', label: 'Random'},
   ];
 
   /** Available bar density options for the dropdown */
@@ -888,6 +916,25 @@ export class ConfigurationView {
    */
   public async onRenderResolutionChange(event: Event): Promise<void> {
     await this.settingsService.setRenderResolution(getSelectValue(event) as RenderResolution);
+  }
+
+  /**
+   * Handles crossfade duration selection change.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onVisualizationCrossfadeDurationChange(event: Event): Promise<void> {
+    const duration: number = parseInt(getSelectValue(event), 10);
+    if (!isNaN(duration)) await this.settingsService.setVisualizationCrossfadeDuration(duration as CrossfadeDuration);
+  }
+
+  /**
+   * Handles crossfade style selection change.
+   *
+   * @param event - The change event from the select element
+   */
+  public async onVisualizationCrossfadeStyleChange(event: Event): Promise<void> {
+    await this.settingsService.setVisualizationCrossfadeStyle(getSelectValue(event) as CrossfadeStyle);
   }
 
   /**

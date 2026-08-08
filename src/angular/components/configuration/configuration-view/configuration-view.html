@@ -370,6 +370,44 @@
                     </div>
                   </div>
 
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label for="crossfade-duration">Crossfade Duration</label>
+                      <p class="setting-description">
+                        How long visualizations take to crossfade when switching between them.
+                      </p>
+                    </div>
+                    <div class="setting-control">
+                      <select
+                        id="crossfade-duration"
+                        (change)="onVisualizationCrossfadeDurationChange($event)"
+                      >
+                        @for (option of visualizationCrossfadeDurationOptions; track option.value) {
+                          <option [value]="option.value" [selected]="option.value === currentVisualizationCrossfadeDuration()">{{ option.label }}</option>
+                        }
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="setting-row">
+                    <div class="setting-label">
+                      <label for="crossfade-style">Crossfade Style</label>
+                      <p class="setting-description">
+                        The transition effect used when switching between visualizations.
+                      </p>
+                    </div>
+                    <div class="setting-control">
+                      <select
+                        id="crossfade-style"
+                        (change)="onVisualizationCrossfadeStyleChange($event)"
+                      >
+                        @for (option of visualizationCrossfadeStyleOptions; track option.value) {
+                          <option [value]="option.value" [selected]="option.value === currentVisualizationCrossfadeStyle()">{{ option.label }}</option>
+                        }
+                      </select>
+                    </div>
+                  </div>
+
                   <div class="info-notice">
                     <i class="fa-solid fa-info-circle"></i>
                     <span>Expand "Visualisations" in the sidebar to configure individual visualization settings.</span>
