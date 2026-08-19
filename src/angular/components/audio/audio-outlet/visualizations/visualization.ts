@@ -695,6 +695,14 @@ export abstract class Canvas2DVisualization extends Visualization {
   protected readonly ALPHA_THRESHOLD: number = 30;
 
   /**
+   * Canvas area, in pixels, that a caller's low-alpha clear interval is tuned for.
+   *
+   * 1920x1080. At or below this size the caller's interval is used as written;
+   * above it the interval stretches proportionally. See getLowAlphaClearInterval.
+   */
+  private static readonly LOW_ALPHA_CLEAR_PIXEL_BUDGET: number = 2_073_600;
+
+  /**
    * When true, resize() preserves main canvas content (for LCD ghosting/persistence
    * visualizations that draw directly to the main canvas with a fade effect).
    * Set this in the constructor of subclasses that use this behavior.
@@ -850,13 +858,40 @@ export abstract class Canvas2DVisualization extends Visualization {
    * ghost pixels accumulate. Calling this each frame removes them on a cadence
    * without paying the getImageData cost every frame.
    *
-   * @param interval - Number of frames between clears.
+   * On canvases larger than the pixel budget the cadence is stretched further
+   * still; see getLowAlphaClearInterval.
+   *
+   * @param interval - Frames between clears at or below the pixel budget.
    */
   protected periodicClearLowAlpha(interval: number): void {
-    if (++this.persistenceFrameCount >= interval) {
+    if (++this.persistenceFrameCount >= this.getLowAlphaClearInterval(interval)) {
       this.persistenceFrameCount = 0;
       this.clearLowAlphaPixels();
     }
+  }
+
+  /**
+   * Scales the ghost-clearing cadence to the canvas size.
+   *
+   * clearLowAlphaPixels is by far the most expensive operation in the render
+   * loop: it stalls the GPU pipeline for a full-canvas readback, allocates an
+   * ImageData the size of the canvas, and scans it in JS. At the caller's
+   * fixed cadence that cost is tolerable at 720p and severe at 4K, where the
+   * buffer is ~33 MB and the clear runs several times a second.
+   *
+   * The interval therefore stretches in proportion to the pixel count, keeping
+   * the per-second cost roughly constant regardless of display size. Small
+   * canvases are unaffected.
+   *
+   * @param baseInterval - Frames between clears at or below the pixel budget
+   * @returns The interval to actually apply
+   */
+  private getLowAlphaClearInterval(baseInterval: number): number {
+    const pixels: number = this.width * this.height;
+    if (pixels <= 0) return baseInterval;
+
+    const scale: number = Math.ceil(pixels / Canvas2DVisualization.LOW_ALPHA_CLEAR_PIXEL_BUDGET);
+    return baseInterval * Math.max(1, scale);
   }
 
   /**
