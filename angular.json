@@ -93,10 +93,10 @@
             "coverage": {
               "coverage": true,
               "coverageThresholds": {
-                "statements": 28,
-                "branches": 33,
-                "functions": 31,
-                "lines": 27
+                "statements": 31,
+                "branches": 37,
+                "functions": 34,
+                "lines": 30
               }
             }
           }

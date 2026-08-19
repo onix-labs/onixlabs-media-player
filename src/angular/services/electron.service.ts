@@ -16,9 +16,11 @@
  * @module app/services/electron.service
  */
 
-import {Injectable, NgZone, OnDestroy, signal} from '@angular/core';
+import {Injectable, NgZone, OnDestroy, inject, signal} from '@angular/core';
 import type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack, AudioTrack, UrlMediaInfo, UrlMediaFormat, DownloadJob} from '../types/electron';
 import type {AppSettings} from './settings.service';
+import {TrackSelectionCache} from './track-selection-cache.service';
+import {SseClient} from './sse-client.service';
 import {buildFileDialogFilters} from '../constants/media.constants';
 
 /**
@@ -62,13 +64,10 @@ export class ElectronService implements OnDestroy {
   private serverPort: number = 0;
 
   /** Active SSE connection for receiving state updates */
-  private eventSource: EventSource | null = null;
 
   /** Counter for exponential backoff on SSE reconnection */
-  private reconnectAttempts: number = 0;
 
   /** Maximum delay between reconnection attempts (30 seconds) */
-  private readonly MAX_RECONNECT_DELAY: number = 30000;
 
   // ============================================================================
   // Public Signals - Reactive State (updated via SSE)
@@ -202,8 +201,18 @@ export class ElectronService implements OnDestroy {
   /** Previous view mode for restoring after fullscreen (miniplayer or desktop) */
   private previousViewMode: 'desktop' | 'miniplayer' = 'desktop';
 
+  /**
+   * Per-file subtitle/audio track selections.
+   *
+   * Kept behind this service's existing accessors so the many components that
+   * read them are unaffected by where the state actually lives.
+   */
+  private readonly trackSelections: TrackSelectionCache = inject(TrackSelectionCache);
+
+  /** The SSE transport; this service supplies the meaning of each event. */
+  private readonly sse: SseClient = inject(SseClient);
+
   /** Timeout ID for SSE reconnection (for cleanup) */
-  private reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   /** Timeout ID for mediaEnded signal reset (for cleanup) */
   private mediaEndedTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -850,68 +859,52 @@ export class ElectronService implements OnDestroy {
     if (!this.serverUrl()) return;
 
     // EventSource cannot send headers, so the token rides in the query string.
-    this.eventSource = new EventSource(this.appendAuth(`${this.serverUrl()}/events`));
-
-    this.eventSource.onopen = (): void => {
-      console.log('SSE connection established');
-      this.reconnectAttempts = 0;
-    };
-
-    this.eventSource.onerror = (): void => {
-      console.error('SSE connection error');
-      this.eventSource?.close();
-
-      // Exponential backoff reconnection
-      const delay: number = Math.min(1000 * Math.pow(2, this.reconnectAttempts), this.MAX_RECONNECT_DELAY);
-      this.reconnectAttempts++;
-      this.reconnectTimeoutId = setTimeout((): void => { this.connectSSE(); }, delay);
-    };
-
+    this.sse.connect(this.appendAuth(`${this.serverUrl()}/events`), {
     // Playback state events
-    this.eventSource.addEventListener('playback:state', (e: MessageEvent): void => {
+    'playback:state': (payload: string): void => {
       this.ngZone.run((): void => {
-        const data: { state: string; errorMessage?: string } = this.safeParseJSON<{ state: string; errorMessage?: string }>(e.data, { state: 'idle' });
+        const data: { state: string; errorMessage?: string } = this.safeParseJSON<{ state: string; errorMessage?: string }>(payload, { state: 'idle' });
         this.playbackState.set(data.state);
         this.errorMessage.set(data.errorMessage || null);
       });
-    });
+    },
 
-    this.eventSource.addEventListener('playback:time', (e: MessageEvent): void => {
+    'playback:time': (payload: string): void => {
       this.ngZone.run((): void => {
-        const data: { currentTime: number; duration: number } = this.safeParseJSON<{ currentTime: number; duration: number }>(e.data, { currentTime: 0, duration: 0 });
+        const data: { currentTime: number; duration: number } = this.safeParseJSON<{ currentTime: number; duration: number }>(payload, { currentTime: 0, duration: 0 });
         this.currentTime.set(data.currentTime);
         this.duration.set(data.duration);
       });
-    });
+    },
 
-    this.eventSource.addEventListener('playback:loaded', (e: MessageEvent): void => {
+    'playback:loaded': (payload: string): void => {
       this.ngZone.run((): void => {
-        const data: MediaInfo | null = this.safeParseJSON<MediaInfo | null>(e.data, null);
+        const data: MediaInfo | null = this.safeParseJSON<MediaInfo | null>(payload, null);
         if (data) {
           this.currentMedia.set(data);
           this.duration.set(data.duration);
         }
       });
-    });
+    },
 
-    this.eventSource.addEventListener('playback:volume', (e: MessageEvent): void => {
+    'playback:volume': (payload: string): void => {
       this.ngZone.run((): void => {
-        const data: { volume: number; muted: boolean } = this.safeParseJSON<{ volume: number; muted: boolean }>(e.data, { volume: 1, muted: false });
+        const data: { volume: number; muted: boolean } = this.safeParseJSON<{ volume: number; muted: boolean }>(payload, { volume: 1, muted: false });
         this.volume.set(data.volume);
         this.muted.set(data.muted);
       });
-    });
+    },
 
-    this.eventSource.addEventListener('playback:seek:aligned', (e: MessageEvent): void => {
+    'playback:seek:aligned': (payload: string): void => {
       this.ngZone.run((): void => {
-        const data: {requested: number; actual: number} | null = this.safeParseJSON<{requested: number; actual: number} | null>(e.data, null);
+        const data: {requested: number; actual: number} | null = this.safeParseJSON<{requested: number; actual: number} | null>(payload, null);
         if (data && typeof data.requested === 'number' && typeof data.actual === 'number') {
           this.seekAlignment.set(data);
         }
       });
-    });
+    },
 
-    this.eventSource.addEventListener('playback:ended', (): void => {
+    'playback:ended': (): void => {
       this.ngZone.run((): void => {
         // Trigger media ended signal briefly
         this.mediaEnded.set(true);
@@ -920,43 +913,43 @@ export class ElectronService implements OnDestroy {
         }
         this.mediaEndedTimeoutId = setTimeout((): void => { this.mediaEnded.set(false); }, 100);
       });
-    });
+    },
 
     // Playlist events
-    this.eventSource.addEventListener('playlist:updated', (e: MessageEvent): void => {
+    'playlist:updated': (payload: string): void => {
       this.ngZone.run((): void => {
         const defaultPlaylist: PlaylistState = { items: [], currentIndex: -1, shuffleEnabled: false, repeatEnabled: false };
-        const data: PlaylistState = this.safeParseJSON<PlaylistState>(e.data, defaultPlaylist);
+        const data: PlaylistState = this.safeParseJSON<PlaylistState>(payload, defaultPlaylist);
         this.playlist.set(data);
       });
-    });
+    },
 
-    this.eventSource.addEventListener('playlist:selection', (e: MessageEvent): void => {
+    'playlist:selection': (payload: string): void => {
       this.ngZone.run((): void => {
-        const data: { currentIndex: number; currentItem?: PlaylistItem } = this.safeParseJSON<{ currentIndex: number; currentItem?: PlaylistItem }>(e.data, { currentIndex: -1 });
+        const data: { currentIndex: number; currentItem?: PlaylistItem } = this.safeParseJSON<{ currentIndex: number; currentItem?: PlaylistItem }>(payload, { currentIndex: -1 });
         this.playlist.update((p: PlaylistState): PlaylistState => ({...p, currentIndex: data.currentIndex}));
         if (data.currentItem) {
           this.currentMedia.set(data.currentItem);
         }
       });
-    });
+    },
 
-    this.eventSource.addEventListener('playlist:mode', (e: MessageEvent): void => {
+    'playlist:mode': (payload: string): void => {
       this.ngZone.run((): void => {
-        const data: { shuffleEnabled: boolean; repeatEnabled: boolean } = this.safeParseJSON<{ shuffleEnabled: boolean; repeatEnabled: boolean }>(e.data, { shuffleEnabled: false, repeatEnabled: false });
+        const data: { shuffleEnabled: boolean; repeatEnabled: boolean } = this.safeParseJSON<{ shuffleEnabled: boolean; repeatEnabled: boolean }>(payload, { shuffleEnabled: false, repeatEnabled: false });
         this.playlist.update((p: PlaylistState): PlaylistState => ({
           ...p,
           shuffleEnabled: data.shuffleEnabled,
           repeatEnabled: data.repeatEnabled,
         }));
       });
-    });
+    },
 
     // Delta playlist events (more efficient than full playlist updates)
-    this.eventSource.addEventListener('playlist:items:added', (e: MessageEvent): void => {
+    'playlist:items:added': (payload: string): void => {
       this.ngZone.run((): void => {
         const data: { items: PlaylistItem[]; startIndex: number; currentIndex: number } = this.safeParseJSON<{ items: PlaylistItem[]; startIndex: number; currentIndex: number }>(
-          e.data,
+          payload,
           { items: [], startIndex: 0, currentIndex: -1 }
         );
         this.playlist.update((p: PlaylistState): PlaylistState => ({
@@ -965,12 +958,12 @@ export class ElectronService implements OnDestroy {
           currentIndex: data.currentIndex,
         }));
       });
-    });
+    },
 
-    this.eventSource.addEventListener('playlist:items:removed', (e: MessageEvent): void => {
+    'playlist:items:removed': (payload: string): void => {
       this.ngZone.run((): void => {
         const data: { id: string; removedIndex: number; currentIndex: number } = this.safeParseJSON<{ id: string; removedIndex: number; currentIndex: number }>(
-          e.data,
+          payload,
           { id: '', removedIndex: -1, currentIndex: -1 }
         );
         this.playlist.update((p: PlaylistState): PlaylistState => ({
@@ -979,12 +972,12 @@ export class ElectronService implements OnDestroy {
           currentIndex: data.currentIndex,
         }));
       });
-    });
+    },
 
-    this.eventSource.addEventListener('playlist:items:duration', (e: MessageEvent): void => {
+    'playlist:items:duration': (payload: string): void => {
       this.ngZone.run((): void => {
         const data: {filePath: string; duration: number} = this.safeParseJSON<{filePath: string; duration: number}>(
-          e.data, {filePath: '', duration: 0}
+          payload, {filePath: '', duration: 0}
         );
         if (!data.filePath) return;
         this.playlist.update((p: PlaylistState): PlaylistState => ({
@@ -994,9 +987,9 @@ export class ElectronService implements OnDestroy {
           ),
         }));
       });
-    });
+    },
 
-    this.eventSource.addEventListener('playlist:cleared', (): void => {
+    'playlist:cleared': (): void => {
       this.ngZone.run((): void => {
         this.playlist.update((p: PlaylistState): PlaylistState => ({
           ...p,
@@ -1004,53 +997,53 @@ export class ElectronService implements OnDestroy {
           currentIndex: -1,
         }));
       });
-    });
+    },
 
     // Settings events
-    this.eventSource.addEventListener('settings:updated', (e: MessageEvent): void => {
+    'settings:updated': (payload: string): void => {
       this.ngZone.run((): void => {
-        const data: AppSettings | null = this.safeParseJSON<AppSettings | null>(e.data, null);
+        const data: AppSettings | null = this.safeParseJSON<AppSettings | null>(payload, null);
         if (data) {
           this.notifySubscribers(this.settingsUpdateCallbacks, data);
         }
       });
-    });
+    },
 
     // Dependency events
-    this.eventSource.addEventListener('dependencies:state', (e: MessageEvent): void => {
+    'dependencies:state': (payload: string): void => {
       this.ngZone.run((): void => {
-        const data: unknown = this.safeParseJSON<unknown>(e.data, null);
+        const data: unknown = this.safeParseJSON<unknown>(payload, null);
         if (data) {
           this.notifySubscribers(this.dependencyStateCallbacks, data);
         }
       });
-    });
+    },
 
-    this.eventSource.addEventListener('dependencies:progress', (e: MessageEvent): void => {
+    'dependencies:progress': (payload: string): void => {
       this.ngZone.run((): void => {
-        const data: unknown = this.safeParseJSON<unknown>(e.data, null);
+        const data: unknown = this.safeParseJSON<unknown>(payload, null);
         if (data) {
           this.notifySubscribers(this.dependencyProgressCallbacks, data);
         }
       });
-    });
+    },
 
     // URL download progress
-    this.eventSource.addEventListener('download:progress', (e: MessageEvent): void => {
+    'download:progress': (payload: string): void => {
       this.ngZone.run((): void => {
-        const job: DownloadJob | null = this.safeParseJSON<DownloadJob | null>(e.data, null);
+        const job: DownloadJob | null = this.safeParseJSON<DownloadJob | null>(payload, null);
         if (job) {
           this.downloadJob.set(job);
         }
       });
-    });
+    },
 
     // URL download complete — add the finished file to the playlist and play it.
     // Only the main window performs the add: SSE is broadcast to every window
     // (e.g. the Open URL window), so guarding here avoids a double-add.
-    this.eventSource.addEventListener('download:complete', (e: MessageEvent): void => {
+    'download:complete': (payload: string): void => {
       this.ngZone.run((): void => {
-        const job: DownloadJob | null = this.safeParseJSON<DownloadJob | null>(e.data, null);
+        const job: DownloadJob | null = this.safeParseJSON<DownloadJob | null>(payload, null);
         if (job) {
           this.downloadJob.set(job);
           if (job.filePath && this.isMainWindow) {
@@ -1058,22 +1051,22 @@ export class ElectronService implements OnDestroy {
           }
         }
       });
-    });
+    },
 
     // URL download error
-    this.eventSource.addEventListener('download:error', (e: MessageEvent): void => {
+    'download:error': (payload: string): void => {
       this.ngZone.run((): void => {
-        const job: DownloadJob | null = this.safeParseJSON<DownloadJob | null>(e.data, null);
+        const job: DownloadJob | null = this.safeParseJSON<DownloadJob | null>(payload, null);
         if (job) {
           this.downloadJob.set(job);
         }
       });
-    });
+    },
 
     // Soundfont changed event - invalidate cache and optionally restart MIDI playback
-    this.eventSource.addEventListener('soundfont:changed', (e: MessageEvent): void => {
+    'soundfont:changed': (payload: string): void => {
       this.ngZone.run((): void => {
-        const data: { restart: boolean; filePath?: string } = this.safeParseJSON<{ restart: boolean; filePath?: string }>(e.data, { restart: false });
+        const data: { restart: boolean; filePath?: string } = this.safeParseJSON<{ restart: boolean; filePath?: string }>(payload, { restart: false });
         // Always increment force reload counter to invalidate browser cache for MIDI
         this.forceReloadCounter.update((n: number): number => n + 1);
         if (data.restart) {
@@ -1084,6 +1077,7 @@ export class ElectronService implements OnDestroy {
           void this.play();
         }
       });
+    },
     });
   }
 
@@ -1789,7 +1783,7 @@ export class ElectronService implements OnDestroy {
   }
 
   // ============================================================================
-  // Subtitle Selection Cache (persists across view mode changes)
+  // Track Selection Cache (delegated)
   // ============================================================================
 
   /**
@@ -1799,7 +1793,7 @@ export class ElectronService implements OnDestroy {
    * @returns The selected track index, or undefined if no cached selection
    */
   public getSubtitleSelection(filePath: string): number | undefined {
-    return this.subtitleSelections.get(filePath);
+    return this.trackSelections.getSubtitleSelection(filePath);
   }
 
   /**
@@ -1809,7 +1803,7 @@ export class ElectronService implements OnDestroy {
    * @param trackIndex - The selected track index (-1 for off, -2 for external)
    */
   public setSubtitleSelection(filePath: string, trackIndex: number): void {
-    this.subtitleSelections.set(filePath, trackIndex);
+    this.trackSelections.setSubtitleSelection(filePath, trackIndex);
   }
 
   /**
@@ -1818,12 +1812,8 @@ export class ElectronService implements OnDestroy {
    * @param filePath - The media file path
    */
   public clearSubtitleSelection(filePath: string): void {
-    this.subtitleSelections.delete(filePath);
+    this.trackSelections.clearSubtitleSelection(filePath);
   }
-
-  // ============================================================================
-  // Audio Selection Cache (persists across view mode changes)
-  // ============================================================================
 
   /**
    * Gets the cached audio track selection for a file path.
@@ -1832,7 +1822,7 @@ export class ElectronService implements OnDestroy {
    * @returns The selected track index, or undefined if no cached selection
    */
   public getAudioSelection(filePath: string): number | undefined {
-    return this.audioSelections.get(filePath);
+    return this.trackSelections.getAudioSelection(filePath);
   }
 
   /**
@@ -1842,7 +1832,7 @@ export class ElectronService implements OnDestroy {
    * @param trackIndex - The selected track index (0-based)
    */
   public setAudioSelection(filePath: string, trackIndex: number): void {
-    this.audioSelections.set(filePath, trackIndex);
+    this.trackSelections.setAudioSelection(filePath, trackIndex);
   }
 
   /**
@@ -1851,7 +1841,7 @@ export class ElectronService implements OnDestroy {
    * @param filePath - The media file path
    */
   public clearAudioSelection(filePath: string): void {
-    this.audioSelections.delete(filePath);
+    this.trackSelections.clearAudioSelection(filePath);
   }
 
   // ============================================================================
@@ -1924,7 +1914,7 @@ export class ElectronService implements OnDestroy {
    * to prevent memory leaks.
    */
   public ngOnDestroy(): void {
-    this.eventSource?.close();
+    this.sse.disconnect();
     this.fullscreenCleanup?.();
     this.fullscreenTransitionStartCleanup?.();
     this.fullscreenTransitionEndCleanup?.();
@@ -1935,9 +1925,6 @@ export class ElectronService implements OnDestroy {
     this.osOpenFileCleanup?.();
     this.osOpenPlaylistCleanup?.();
     this.menuCleanupFunctions.forEach((cleanup: () => void): void => cleanup());
-    if (this.reconnectTimeoutId) {
-      clearTimeout(this.reconnectTimeoutId);
-    }
     if (this.mediaEndedTimeoutId) {
       clearTimeout(this.mediaEndedTimeoutId);
     }
