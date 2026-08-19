@@ -215,13 +215,13 @@ export class ElectronService implements OnDestroy {
   private readonly menuCleanupFunctions: Array<() => void> = [];
 
   /** Callback for settings updates (registered by SettingsService) */
-  private settingsUpdateCallback: ((settings: AppSettings) => void) | null = null;
+  private readonly settingsUpdateCallbacks: Array<(settings: AppSettings) => void> = [];
 
   /** Callback for dependency state updates (registered by DependencyService) */
-  private dependencyStateCallback: ((state: unknown) => void) | null = null;
+  private readonly dependencyStateCallbacks: Array<(state: unknown) => void> = [];
 
   /** Callback for dependency install progress updates (registered by DependencyService) */
-  private dependencyProgressCallback: ((progress: unknown) => void) | null = null;
+  private readonly dependencyProgressCallbacks: Array<(progress: unknown) => void> = [];
 
   /** Cleanup function for prepare-for-close listener */
   private prepareForCloseCleanup: (() => void) | null = null;
@@ -289,26 +289,71 @@ export class ElectronService implements OnDestroy {
    * Registers a callback to receive settings updates from SSE.
    * Called by SettingsService to avoid circular dependency.
    *
+   * Subscribers accumulate rather than replacing one another: assignment
+   * meant a second subscriber silently unhooked the first, which is a
+   * failure mode that only shows up once someone adds one.
+   *
    * @param callback - Function to call when settings are updated
+   * @returns A function that removes this subscription
    */
-  public onSettingsUpdate(callback: (settings: AppSettings) => void): void {
-    this.settingsUpdateCallback = callback;
+  public onSettingsUpdate(callback: (settings: AppSettings) => void): () => void {
+    return this.addSubscriber(this.settingsUpdateCallbacks, callback);
   }
 
   /**
    * Registers a callback to receive dependency state updates from SSE.
    * Called by DependencyService to avoid circular dependency.
+   *
+   * @param callback - Function to call when the dependency state changes
+   * @returns A function that removes this subscription
    */
-  public onDependencyStateUpdate(callback: (state: unknown) => void): void {
-    this.dependencyStateCallback = callback;
+  public onDependencyStateUpdate(callback: (state: unknown) => void): () => void {
+    return this.addSubscriber(this.dependencyStateCallbacks, callback);
   }
 
   /**
    * Registers a callback to receive dependency install progress from SSE.
    * Called by DependencyService to avoid circular dependency.
+   *
+   * @param callback - Function to call when install progress arrives
+   * @returns A function that removes this subscription
    */
-  public onDependencyProgressUpdate(callback: (progress: unknown) => void): void {
-    this.dependencyProgressCallback = callback;
+  public onDependencyProgressUpdate(callback: (progress: unknown) => void): () => void {
+    return this.addSubscriber(this.dependencyProgressCallbacks, callback);
+  }
+
+  /**
+   * Adds a subscriber to a list and returns its unsubscribe function.
+   *
+   * @param subscribers - The list to add to
+   * @param callback - The subscriber
+   * @returns A function that removes the subscriber
+   */
+  private addSubscriber<T>(subscribers: Array<(value: T) => void>, callback: (value: T) => void): () => void {
+    subscribers.push(callback);
+    return (): void => {
+      const index: number = subscribers.indexOf(callback);
+      if (index !== -1) subscribers.splice(index, 1);
+    };
+  }
+
+  /**
+   * Delivers a value to every subscriber, isolating their failures.
+   *
+   * One subscriber throwing must not stop the others from being told, nor
+   * kill the SSE handler that is dispatching.
+   *
+   * @param subscribers - The list to notify
+   * @param value - The value to deliver
+   */
+  private notifySubscribers<T>(subscribers: ReadonlyArray<(value: T) => void>, value: T): void {
+    for (const subscriber of [...subscribers]) {
+      try {
+        subscriber(value);
+      } catch (error: unknown) {
+        console.error('[ElectronService] SSE subscriber failed:', error);
+      }
+    }
   }
 
   /**
@@ -966,7 +1011,7 @@ export class ElectronService implements OnDestroy {
       this.ngZone.run((): void => {
         const data: AppSettings | null = this.safeParseJSON<AppSettings | null>(e.data, null);
         if (data) {
-          this.settingsUpdateCallback?.(data);
+          this.notifySubscribers(this.settingsUpdateCallbacks, data);
         }
       });
     });
@@ -976,7 +1021,7 @@ export class ElectronService implements OnDestroy {
       this.ngZone.run((): void => {
         const data: unknown = this.safeParseJSON<unknown>(e.data, null);
         if (data) {
-          this.dependencyStateCallback?.(data);
+          this.notifySubscribers(this.dependencyStateCallbacks, data);
         }
       });
     });
@@ -985,7 +1030,7 @@ export class ElectronService implements OnDestroy {
       this.ngZone.run((): void => {
         const data: unknown = this.safeParseJSON<unknown>(e.data, null);
         if (data) {
-          this.dependencyProgressCallback?.(data);
+          this.notifySubscribers(this.dependencyProgressCallbacks, data);
         }
       });
     });
@@ -1032,10 +1077,11 @@ export class ElectronService implements OnDestroy {
         // Always increment force reload counter to invalidate browser cache for MIDI
         this.forceReloadCounter.update((n: number): number => n + 1);
         if (data.restart) {
-          // Small delay to ensure cache is fully cleared, then restart playback
-          setTimeout((): void => {
-            void this.play();
-          }, 100);
+          // The server sets the render cache aside before emitting this, so
+          // the event itself is the completion signal — there is nothing left
+          // to wait for. This used to be a 100ms guess that guaranteed
+          // nothing: a recursive delete can outlast it.
+          void this.play();
         }
       });
     });

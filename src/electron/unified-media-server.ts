@@ -21,7 +21,7 @@
 
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
-import { createReadStream, statSync, existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, Stats } from 'fs';
+import { createReadStream, statSync, existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, renameSync, Stats } from 'fs';
 import { rm } from 'fs/promises';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
@@ -4320,7 +4320,24 @@ export class UnifiedMediaServer {
    */
   private removeCacheDirectory(directoryName: string): void {
     const tempDir: string = path.join(app.getPath('temp'), directoryName);
-    void rm(tempDir, { recursive: true, force: true }).catch((err: Error): void => {
+    if (!existsSync(tempDir)) return;
+
+    // Move the directory aside before deleting it. A recursive delete takes
+    // long enough that a render starting straight afterwards could write into
+    // a directory that is halfway through being removed; renaming is a single
+    // metadata operation, so once it returns the old cache is unreachable and
+    // a fresh one can be created immediately. The slow part still happens in
+    // the background.
+    const discarded: string = `${tempDir}-discarded-${randomBytes(6).toString('hex')}`;
+    try {
+      renameSync(tempDir, discarded);
+    } catch (err: unknown) {
+      // Losing the race to another remover is fine — it is going away either way.
+      midiLogger.warn(`Could not set aside cache directory ${directoryName}: ${(err as Error).message}`);
+      return;
+    }
+
+    void rm(discarded, { recursive: true, force: true }).catch((err: Error): void => {
       midiLogger.warn(`Failed to clean cache directory ${directoryName}: ${err.message}`);
     });
   }

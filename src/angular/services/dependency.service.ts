@@ -127,6 +127,12 @@ export class DependencyService implements OnDestroy {
   /** Effect reference for cleanup */
   private readonly serverUrlEffect: EffectRef;
 
+  /** Removes the SSE dependency-state subscription on teardown. */
+  private readonly unsubscribeState: () => void;
+
+  /** Removes the SSE install-progress subscription on teardown. */
+  private readonly unsubscribeProgress: () => void;
+
   // ============================================================================
   // Computed Signals
   // ============================================================================
@@ -224,12 +230,12 @@ export class DependencyService implements OnDestroy {
 
   public constructor() {
     // Register SSE callbacks with ElectronService
-    this.electron.onDependencyStateUpdate((state: unknown): void => {
+    this.unsubscribeState = this.electron.onDependencyStateUpdate((state: unknown): void => {
       this.dependencyState.set(state as DependencyState);
       this.isLoaded.set(true);
     });
 
-    this.electron.onDependencyProgressUpdate((progress: unknown): void => {
+    this.unsubscribeProgress = this.electron.onDependencyProgressUpdate((progress: unknown): void => {
       this.installProgress.set(progress as InstallProgress);
     });
 
@@ -244,6 +250,8 @@ export class DependencyService implements OnDestroy {
 
   public ngOnDestroy(): void {
     this.serverUrlEffect.destroy();
+    this.unsubscribeState();
+    this.unsubscribeProgress();
   }
 
   // ============================================================================

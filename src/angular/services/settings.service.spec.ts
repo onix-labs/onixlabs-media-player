@@ -31,9 +31,9 @@ function createMockElectronService(): {
     serverUrl: signal('http://127.0.0.1:12345'),
     // Delegates to the stubbed global fetch so tests keep asserting on it.
     authFetch: (url: string, init?: RequestInit): Promise<Response> => fetch(url, init),
-    onSettingsUpdate: vi.fn(),
-    onDependencyStateUpdate: vi.fn(),
-    onDependencyProgressUpdate: vi.fn(),
+    onSettingsUpdate: vi.fn().mockReturnValue((): void => {}),
+    onDependencyStateUpdate: vi.fn().mockReturnValue((): void => {}),
+    onDependencyProgressUpdate: vi.fn().mockReturnValue((): void => {}),
   };
 }
 

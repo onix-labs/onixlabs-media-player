@@ -783,6 +783,9 @@ export class SettingsService implements OnDestroy {
   /** Flushes pending writes when the window goes away, so a drag-then-quit persists. */
   private readonly onPageHide: () => void;
 
+  /** Removes the SSE settings subscription on teardown. */
+  private readonly unsubscribeSettings: () => void;
+
   // ============================================================================
   // Constructor
   // ============================================================================
@@ -792,7 +795,7 @@ export class SettingsService implements OnDestroy {
    */
   public constructor() {
     // Register callback to receive settings updates from SSE
-    this.electron.onSettingsUpdate((settings: AppSettings): void => {
+    this.unsubscribeSettings = this.electron.onSettingsUpdate((settings: AppSettings): void => {
       this.updateFromSSE(settings);
     });
 
@@ -819,6 +822,7 @@ export class SettingsService implements OnDestroy {
    */
   public ngOnDestroy(): void {
     this.serverUrlEffect.destroy();
+    this.unsubscribeSettings();
     window.removeEventListener('pagehide', this.onPageHide);
     this.flushPendingUpdates();
   }

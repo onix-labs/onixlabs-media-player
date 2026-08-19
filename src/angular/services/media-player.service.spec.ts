@@ -56,9 +56,9 @@ function createMockElectronService(): Record<string, WritableSignal<unknown> | R
     openFileDialog: vi.fn().mockResolvedValue([]),
     addToPlaylist: vi.fn().mockResolvedValue({added: []}),
     getPathForFile: vi.fn().mockReturnValue('/path/to/file'),
-    onSettingsUpdate: vi.fn(),
-    onDependencyStateUpdate: vi.fn(),
-    onDependencyProgressUpdate: vi.fn(),
+    onSettingsUpdate: vi.fn().mockReturnValue((): void => {}),
+    onDependencyStateUpdate: vi.fn().mockReturnValue((): void => {}),
+    onDependencyProgressUpdate: vi.fn().mockReturnValue((): void => {}),
   };
 }
 

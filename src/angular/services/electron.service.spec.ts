@@ -360,14 +360,32 @@ describe('ElectronService', (): void => {
         expect(callback).not.toHaveBeenCalled();
       });
 
-      it('should allow overwriting a previously registered settings callback', (): void => {
+      it('should keep both subscribers rather than replacing the first', (): void => {
+        // Registration used to be assignment, so a second subscriber silently
+        // unhooked the first. Each registration now returns its own remover.
         const callback1: (settings: AppSettings) => void = vi.fn();
         const callback2: (settings: AppSettings) => void = vi.fn();
-        service.onSettingsUpdate(callback1);
-        service.onSettingsUpdate(callback2);
-        // No error; second callback replaces first
-        expect(callback1).not.toHaveBeenCalled();
-        expect(callback2).not.toHaveBeenCalled();
+
+        const unsubscribe1: () => void = service.onSettingsUpdate(callback1);
+        const unsubscribe2: () => void = service.onSettingsUpdate(callback2);
+
+        expect(typeof unsubscribe1).toBe('function');
+        expect(typeof unsubscribe2).toBe('function');
+        expect(unsubscribe1).not.toBe(unsubscribe2);
+      });
+
+      it('should return an unsubscribe function from every registration', (): void => {
+        expect(typeof service.onSettingsUpdate(vi.fn())).toBe('function');
+        expect(typeof service.onDependencyStateUpdate(vi.fn())).toBe('function');
+        expect(typeof service.onDependencyProgressUpdate(vi.fn())).toBe('function');
+      });
+
+      it('should tolerate unsubscribing twice', (): void => {
+        const unsubscribe: () => void = service.onSettingsUpdate(vi.fn());
+
+        unsubscribe();
+
+        expect((): void => unsubscribe()).not.toThrow();
       });
     });
 

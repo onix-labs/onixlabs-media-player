@@ -85,7 +85,7 @@ function createMockElectronService(): Record<string, unknown> {
     // SettingsService is constructed transitively by this component and
     // registers itself for SSE settings pushes in its constructor.
     serverUrl: signal(''),
-    onSettingsUpdate: vi.fn(),
+    onSettingsUpdate: vi.fn().mockReturnValue((): void => {}),
     authFetch: vi.fn().mockResolvedValue({ok: true, json: vi.fn().mockResolvedValue({})}),
   };
 }
