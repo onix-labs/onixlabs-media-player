@@ -680,6 +680,35 @@ export const SUBTITLE_LANGUAGE_OPTIONS: readonly SubtitleLanguageOption[] = [
 // ============================================================================
 
 /**
+ * A promise plus the handles to settle it, used to hand every caller queued
+ * into one debounced write a promise that resolves when that write completes.
+ */
+interface Deferred {
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+  readonly reject: (reason?: unknown) => void;
+}
+
+/**
+ * Creates a {@link Deferred}.
+ *
+ * @returns A pending promise and its resolve/reject handles
+ */
+function createDeferred(): Deferred {
+  let resolve!: () => void;
+  let reject!: (reason?: unknown) => void;
+
+  const promise: Promise<void> = new Promise<void>(
+    (res: () => void, rej: (reason?: unknown) => void): void => {
+      resolve = res;
+      reject = rej;
+    }
+  );
+
+  return {promise, resolve, reject};
+}
+
+/**
  * Service for managing persistent application settings.
  *
  * This service provides:
@@ -725,6 +754,35 @@ export class SettingsService implements OnDestroy {
   /** Effect reference for cleanup */
   private readonly serverUrlEffect: EffectRef;
 
+  /**
+   * Field updates awaiting their debounced PUT, keyed by settings category.
+   *
+   * Merged field-wise, so a burst touching different fields of one category
+   * still persists all of them and the last write to any given field wins.
+   */
+  private readonly pendingUpdates: Map<string, Record<string, unknown>> = new Map();
+
+  /** Trailing-edge debounce timers, keyed by settings category. */
+  private readonly updateTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+
+  /**
+   * Promises handed to callers awaiting a category's queued write, so that
+   * awaiting a setter still means "sent" rather than "queued".
+   */
+  private readonly pendingDeferrals: Map<string, Deferred> = new Map();
+
+  /**
+   * Debounce delay (ms) before a category's pending changes are sent.
+   *
+   * Long enough to collapse a slider drag into a couple of writes, short
+   * enough that a change feels immediately persisted. Comparable to the
+   * volume persist debounce in MediaPlayerService.
+   */
+  private readonly persistDebounceMs: number = 200;
+
+  /** Flushes pending writes when the window goes away, so a drag-then-quit persists. */
+  private readonly onPageHide: () => void;
+
   // ============================================================================
   // Constructor
   // ============================================================================
@@ -745,6 +803,9 @@ export class SettingsService implements OnDestroy {
         void this.fetchSettings();
       }
     });
+
+    this.onPageHide = (): void => this.flushPendingUpdates();
+    window.addEventListener('pagehide', this.onPageHide);
   }
 
   /**
@@ -752,6 +813,8 @@ export class SettingsService implements OnDestroy {
    */
   public ngOnDestroy(): void {
     this.serverUrlEffect.destroy();
+    window.removeEventListener('pagehide', this.onPageHide);
+    this.flushPendingUpdates();
   }
 
   // ============================================================================
@@ -1031,13 +1094,122 @@ export class SettingsService implements OnDestroy {
   }
 
   /**
-   * Generic helper for updating several fields of a settings category in one
-   * HTTP PUT (e.g. an equalizer preset and its band gains together).
+   * Queues an update to several fields of a settings category (e.g. an
+   * equalizer preset and its band gains together), coalescing rapid changes.
+   *
+   * Every write ends in a synchronous writeFileSync + renameSync on the main
+   * process and a broadcast of the whole settings object back over SSE. The
+   * main process also runs the media server, so a slider bound to (input) —
+   * which fires continuously through a drag — could stutter playback by
+   * driving dozens of those per second. Changes to a category are therefore
+   * merged and sent once the user pauses.
+   *
+   * The local signal is updated immediately so the debounce is invisible: the
+   * equalizer chain, the video filter and the controls' own displayed values
+   * all read from it, and waiting for the server to echo the change back
+   * would make every slider lag behind the drag by the debounce interval.
+   * The eventual SSE event confirms the same value, or corrects it if the
+   * server normalised it.
+   *
+   * The returned promise still resolves only once the write has been sent, so
+   * awaiting a setter means what it always did. Every caller queued into the
+   * same burst settles together on that one write.
    *
    * @param category - Settings category
    * @param update - Partial object of fields to update
+   * @returns A promise that resolves once the coalesced write completes
    */
-  private async updateSettingGroup(category: string, update: Record<string, unknown>): Promise<void> {
+  private updateSettingGroup(category: string, update: Record<string, unknown>): Promise<void> {
+    this.applyLocalUpdate(category, update);
+
+    const pending: Record<string, unknown> = this.pendingUpdates.get(category) ?? {};
+    this.pendingUpdates.set(category, Object.assign(pending, update));
+
+    const timer: ReturnType<typeof setTimeout> | undefined = this.updateTimers.get(category);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+
+    let deferred: Deferred | undefined = this.pendingDeferrals.get(category);
+    if (!deferred) {
+      deferred = createDeferred();
+      this.pendingDeferrals.set(category, deferred);
+    }
+
+    this.updateTimers.set(
+      category,
+      setTimeout((): void => this.flushCategory(category), this.persistDebounceMs)
+    );
+
+    return deferred.promise;
+  }
+
+  /**
+   * Sends one category's queued fields now, cancelling any pending timer and
+   * settling everyone awaiting the write.
+   *
+   * @param category - Settings category to flush
+   */
+  private flushCategory(category: string): void {
+    const timer: ReturnType<typeof setTimeout> | undefined = this.updateTimers.get(category);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.updateTimers.delete(category);
+    }
+
+    const deferred: Deferred | undefined = this.pendingDeferrals.get(category);
+    this.pendingDeferrals.delete(category);
+
+    void this.sendSettingGroup(category).then(
+      (): void => deferred?.resolve(),
+      (error: unknown): void => deferred?.reject(error)
+    );
+  }
+
+  /**
+   * Merges an update into the settings signal without waiting for the server.
+   *
+   * Keeps the debounced write invisible to everything that reads settings,
+   * and keeps read-modify-write setters correct: setEqualizerBand rebuilds
+   * the whole band array from the signal, so a stale signal would silently
+   * drop the previous band's change.
+   *
+   * @param category - Settings category
+   * @param update - Partial object of fields to merge into it
+   */
+  private applyLocalUpdate(category: string, update: Record<string, unknown>): void {
+    this.settings.update((current: AppSettings): AppSettings => this.mergeCategory(current, category, update));
+  }
+
+  /**
+   * Returns a copy of `settings` with `update` merged into one category.
+   *
+   * @param settings - The settings to merge into
+   * @param category - Settings category
+   * @param update - Partial object of fields to merge
+   * @returns The merged settings, or the original if the category is absent
+   */
+  private mergeCategory(settings: AppSettings, category: string, update: Record<string, unknown>): AppSettings {
+    const record: Record<string, unknown> = settings as unknown as Record<string, unknown>;
+    const group: unknown = record[category];
+    if (typeof group !== 'object' || group === null) return settings;
+
+    return {
+      ...record,
+      [category]: {...(group as Record<string, unknown>), ...update},
+    } as unknown as AppSettings;
+  }
+
+  /**
+   * Sends a category's queued fields to the server.
+   *
+   * @param category - Settings category to send
+   */
+  private async sendSettingGroup(category: string): Promise<void> {
+    const update: Record<string, unknown> | undefined = this.pendingUpdates.get(category);
+    if (!update) return;
+    this.pendingUpdates.delete(category);
+
     const serverUrl: string = this.electron.serverUrl();
     if (!serverUrl) return;
 
@@ -1049,6 +1221,18 @@ export class SettingsService implements OnDestroy {
 
     if (!response.ok) {
       console.error(`[SettingsService] Failed to save ${category}: ${response.status}`);
+    }
+  }
+
+  /**
+   * Sends every queued category immediately.
+   *
+   * Used on teardown so a change made moments before the window closes is not
+   * lost along with its pending timer.
+   */
+  private flushPendingUpdates(): void {
+    for (const category of [...this.pendingUpdates.keys()]) {
+      this.flushCategory(category);
     }
   }
 
@@ -1068,10 +1252,20 @@ export class SettingsService implements OnDestroy {
    *
    * Called by ElectronService when a settings:updated event is received.
    *
+   * The server broadcasts the whole settings object on every write, including
+   * writes from other categories. Any change still waiting on its debounce is
+   * re-applied on top, so an unrelated broadcast mid-drag cannot momentarily
+   * snap a slider back to the last value the server happens to know about.
+   *
    * @param newSettings - The updated settings from the server
    */
   public updateFromSSE(newSettings: AppSettings): void {
-    this.settings.set(newSettings);
+    let merged: AppSettings = newSettings;
+    for (const [category, update] of this.pendingUpdates) {
+      merged = this.mergeCategory(merged, category, update);
+    }
+
+    this.settings.set(merged);
     this.isLoaded.set(true);
   }
 
