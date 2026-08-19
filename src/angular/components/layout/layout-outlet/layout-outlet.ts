@@ -24,7 +24,7 @@ import {VideoOutlet, VIDEO_FLIP_OPTIONS, type VideoFlipMode} from '../../video/v
 import {Playlist} from '../../playlist/playlist';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
-import {FileDropService} from '../../../services/file-drop.service';
+import {FileDropTarget} from '../../../directives/file-drop-target';
 import {DependencyService} from '../../../services/dependency.service';
 import {SettingsService, VIDEO_ASPECT_OPTIONS, type VideoAspectMode} from '../../../services/settings.service';
 import {EQ_PRESETS} from '../../../services/equalizer';
@@ -56,7 +56,7 @@ const SUBTITLE_LOAD_EXTERNAL_VALUE: number = -3;
 @Component({
   selector: 'app-layout-outlet',
   standalone: true,
-  imports: [AudioOutlet, VideoOutlet, Playlist],
+  imports: [AudioOutlet, VideoOutlet, Playlist, FileDropTarget],
   templateUrl: './layout-outlet.html',
   styleUrl: './layout-outlet.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -88,9 +88,6 @@ export class LayoutOutlet {
 
   /** Electron service for file operations and fullscreen state */
   private readonly electron: ElectronService = inject(ElectronService);
-
-  /** File drop service for drag-and-drop handling */
-  private readonly fileDrop: FileDropService = inject(FileDropService);
 
   /** Dependency service for external binary status */
   private readonly deps: DependencyService = inject(DependencyService);
@@ -184,12 +181,6 @@ export class LayoutOutlet {
 
   /** Whether the application is in miniplayer mode */
   public readonly isMiniplayer: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.viewMode() === 'miniplayer');
-
-  /** Whether files are being dragged over this component (valid files) */
-  public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-
-  /** Whether invalid files are being dragged over this component */
-  public readonly isDragInvalid: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** Whether any required dependencies are missing */
   public readonly hasMissingDependencies: ReturnType<typeof computed<boolean>> = computed((): boolean => this.deps.hasMissingDependencies());
@@ -391,57 +382,4 @@ export class LayoutOutlet {
   // ============================================================================
   // Drag and Drop Handlers
   // ============================================================================
-
-  /**
-   * Handles dragover event to enable drop with visual validation feedback.
-   * Sets isDragOver for valid files, isDragInvalid for invalid files.
-   *
-   * @param event - The drag event
-   */
-  public onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const hasValid: boolean = this.fileDrop.hasValidFiles(event);
-    this.isDragOver.set(hasValid);
-    this.isDragInvalid.set(!hasValid);
-
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = hasValid ? 'copy' : 'none';
-    }
-  }
-
-  /**
-   * Handles dragleave event to reset visual feedback.
-   *
-   * @param event - The drag event
-   */
-  public onDragLeave(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-    this.isDragInvalid.set(false);
-  }
-
-  /**
-   * Handles file drop event with smart auto-play.
-   *
-   * Uses unified auto-play behavior:
-   * - Single file: plays immediately
-   * - Multiple files + empty playlist: plays from beginning
-   * - Multiple files + existing playlist: appends without interrupting
-   *
-   * @param event - The drop event containing transferred files
-   */
-  public async onDrop(event: DragEvent): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-    this.isDragInvalid.set(false);
-
-    const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
-    if (filePaths.length === 0) return;
-
-    await this.electron.addFilesWithAutoPlay(filePaths);
-  }
 }

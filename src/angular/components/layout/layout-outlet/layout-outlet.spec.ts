@@ -41,18 +41,6 @@ function createPlaylistItem(overrides: Partial<PlaylistItem> = {}): PlaylistItem
   };
 }
 
-/**
- * Creates a mock DragEvent with configurable preventDefault and stopPropagation.
- *
- * @returns A DragEvent-shaped object for testing
- */
-function createDragEvent(): DragEvent {
-  return {
-    preventDefault: vi.fn(),
-    stopPropagation: vi.fn(),
-    dataTransfer: {files: {length: 0} as FileList},
-  } as unknown as DragEvent;
-}
 
 // ============================================================================
 // Mock Factories
@@ -337,10 +325,6 @@ describe('LayoutOutlet', (): void => {
   // ==========================================================================
 
   describe('writable signals', (): void => {
-    it('isDragOver defaults to false', (): void => {
-      const result: boolean = component.isDragOver();
-      expect(result).toBe(false);
-    });
 
     it('currentVisualizationType defaults to bars', (): void => {
       expect(component.currentVisualizationType()).toBe('bars');
@@ -394,59 +378,6 @@ describe('LayoutOutlet', (): void => {
     it('returns an empty string when no track', (): void => {
       (mockMediaPlayer['currentTrack'] as WritableSignal<PlaylistItem | null>).set(null);
       expect(component.trackTitle()).toBe('');
-    });
-  });
-
-  // ==========================================================================
-  // Drag and Drop
-  // ==========================================================================
-
-  describe('drag and drop', (): void => {
-    it('onDragOver sets isDragOver to true', (): void => {
-      const event: DragEvent = createDragEvent();
-
-      component.onDragOver(event);
-
-      expect(component.isDragOver()).toBe(true);
-      expect(event.preventDefault).toHaveBeenCalledOnce();
-      expect(event.stopPropagation).toHaveBeenCalledOnce();
-    });
-
-    it('onDragLeave sets isDragOver to false', (): void => {
-      component.isDragOver.set(true);
-      const event: DragEvent = createDragEvent();
-
-      component.onDragLeave(event);
-
-      expect(component.isDragOver()).toBe(false);
-      expect(event.preventDefault).toHaveBeenCalledOnce();
-      expect(event.stopPropagation).toHaveBeenCalledOnce();
-    });
-
-    it('onDrop resets isDragOver and calls addFilesWithAutoPlay', async (): Promise<void> => {
-      component.isDragOver.set(true);
-      const event: DragEvent = createDragEvent();
-      const filePaths: string[] = ['/music/song.mp3', '/music/video.mp4'];
-      (mockFileDrop['extractMediaFilePaths'] as ReturnType<typeof vi.fn>).mockReturnValue(filePaths);
-
-      await component.onDrop(event);
-
-      expect(component.isDragOver()).toBe(false);
-      expect(mockFileDrop['extractMediaFilePaths']).toHaveBeenCalledWith(event);
-      expect(mockElectron['addFilesWithAutoPlay']).toHaveBeenCalledWith(filePaths);
-      expect(event.preventDefault).toHaveBeenCalledOnce();
-      expect(event.stopPropagation).toHaveBeenCalledOnce();
-    });
-
-    it('onDrop does nothing for empty file paths', async (): Promise<void> => {
-      component.isDragOver.set(true);
-      const event: DragEvent = createDragEvent();
-      (mockFileDrop['extractMediaFilePaths'] as ReturnType<typeof vi.fn>).mockReturnValue([]);
-
-      await component.onDrop(event);
-
-      expect(component.isDragOver()).toBe(false);
-      expect(mockElectron['addFilesWithAutoPlay']).not.toHaveBeenCalled();
     });
   });
 });

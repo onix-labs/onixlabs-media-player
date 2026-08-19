@@ -21,6 +21,7 @@ import {DependencyService} from '../../../services/dependency.service';
 import {EQ_FREQUENCIES, EQ_PRESETS, EQ_GAIN_MIN, EQ_GAIN_MAX, type EqualizerPreset} from '../../../services/equalizer';
 import {VIDEO_ADJUSTMENT_PRESETS, VIDEO_ADJUSTMENT_CONTROLS, type VideoAdjustmentPreset, type VideoAdjustmentControl, type VideoAdjustmentValues} from '../../../services/video-adjustments';
 import type {DependencyId, DependencyState, DependencyStatus, SoundFontInfo, InstallProgress, HardwareEncoderInfo} from '../../../services/dependency.service';
+import {hexToRgba, buildTextShadow} from '../../../utils/subtitle-style';
 
 /**
  * macOS visual effect state options for the settings UI.
@@ -773,34 +774,18 @@ export class ConfigurationView {
 
   /** Preview color for subtitle background with opacity */
   public readonly subtitleBackgroundPreviewColor: ReturnType<typeof computed<string>> = computed(
-    (): string => {
-      const hex: string = this.currentSubtitleBackgroundColor();
-      const opacity: number = this.currentSubtitleBackgroundOpacity();
-      const r: number = parseInt(hex.slice(1, 3), 16);
-      const g: number = parseInt(hex.slice(3, 5), 16);
-      const b: number = parseInt(hex.slice(5, 7), 16);
-      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-    }
+    (): string => hexToRgba(this.currentSubtitleBackgroundColor(), this.currentSubtitleBackgroundOpacity())
   );
 
   /** Preview style for subtitle shadow (returns CSS value for text-shadow) */
   public readonly subtitleShadowPreviewStyle: ReturnType<typeof computed<string>> = computed(
-    (): string => {
-      if (!this.currentSubtitleTextShadow()) return 'none';
-      const s: number = this.currentSubtitleShadowSpread();
-      const b: number = this.currentSubtitleShadowBlur();
-      const c: string = this.currentSubtitleShadowColor();
-      return [
-        `0 -${s}px ${b}px ${c}`,
-        `${s}px -${s}px ${b}px ${c}`,
-        `${s}px 0 ${b}px ${c}`,
-        `${s}px ${s}px ${b}px ${c}`,
-        `0 ${s}px ${b}px ${c}`,
-        `-${s}px ${s}px ${b}px ${c}`,
-        `-${s}px 0 ${b}px ${c}`,
-        `-${s}px -${s}px ${b}px ${c}`
-      ].join(', ');
-    }
+    (): string => this.currentSubtitleTextShadow()
+      ? buildTextShadow(
+          this.currentSubtitleShadowSpread(),
+          this.currentSubtitleShadowBlur(),
+          this.currentSubtitleShadowColor()
+        )
+      : 'none'
   );
 
   // ============================================================================

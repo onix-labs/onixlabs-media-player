@@ -30,7 +30,7 @@ import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, s
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {SettingsService, PerVisualizationSettings, RenderResolution, CrossfadeStyle, CROSSFADE_STYLES} from '../../../services/settings.service';
-import {FileDropService} from '../../../services/file-drop.service';
+import {FileDropTarget} from '../../../directives/file-drop-target';
 import type {PlaylistItem} from '../../../types/electron';
 import {Visualization, createVisualization, VISUALIZATION_TYPES, VISUALIZATION_METADATA} from './visualizations';
 import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equalizer';
@@ -58,7 +58,7 @@ import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equ
 @Component({
   selector: 'app-audio-outlet',
   standalone: true,
-  imports: [],
+  imports: [FileDropTarget],
   templateUrl: './audio-outlet.html',
   styleUrl: './audio-outlet.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -94,21 +94,12 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Settings service for user preferences */
   private readonly settings: SettingsService = inject(SettingsService);
 
-  /** File drop service for drag-and-drop handling */
-  private readonly fileDrop: FileDropService = inject(FileDropService);
-
   // ============================================================================
   // Reactive State
   // ============================================================================
 
   /** Whether the application is in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isFullscreen());
-
-  /** Whether files are being dragged over this component */
-  public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-
-  /** Whether dragged files are invalid (no valid media extensions) */
-  public readonly isDragInvalid: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** Currently playing track (for display purposes) */
   public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
@@ -768,53 +759,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
    */
   public onDoubleClick(): void {
     void this.electron.toggleFullscreen();
-  }
-
-  /**
-   * Handles dragover to enable drop target.
-   * Validates dragged files and shows appropriate visual feedback.
-   */
-  public onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const hasValid: boolean = this.fileDrop.hasValidFiles(event);
-    this.isDragOver.set(hasValid);
-    this.isDragInvalid.set(!hasValid);
-
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = hasValid ? 'copy' : 'none';
-    }
-  }
-
-  /**
-   * Handles dragleave to reset visual feedback.
-   */
-  public onDragLeave(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-    this.isDragInvalid.set(false);
-  }
-
-  /**
-   * Handles file drop to add media to playlist with smart auto-play.
-   *
-   * Uses unified auto-play behavior:
-   * - Single file: plays immediately
-   * - Multiple files + empty playlist: plays from beginning
-   * - Multiple files + existing playlist: appends without interrupting
-   */
-  public async onDrop(event: DragEvent): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-    this.isDragInvalid.set(false);
-
-    const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
-    if (filePaths.length === 0) return;
-
-    await this.electron.addFilesWithAutoPlay(filePaths);
   }
 
   // ============================================================================

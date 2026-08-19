@@ -19,6 +19,7 @@
 import {Injectable, NgZone, OnDestroy, signal} from '@angular/core';
 import type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack, AudioTrack, UrlMediaInfo, UrlMediaFormat, DownloadJob} from '../types/electron';
 import type {AppSettings} from './settings.service';
+import {buildFileDialogFilters} from '../constants/media.constants';
 
 /**
  * Re-export types for consumers that import from this service.
@@ -1048,9 +1049,15 @@ export class ElectronService implements OnDestroy {
    * Opens the native file picker dialog for selecting media files.
    *
    * Uses IPC because native dialogs must be shown from the main process.
-   * Includes filters for common audio and video formats including MIDI.
+   *
+   * Callers that know which dependencies are installed should pass filters
+   * built by buildFileDialogFilters, as both in-app open paths do. The
+   * fallback comes from the same builder rather than a hand-written list:
+   * the list that used to live here had drifted, silently omitting every
+   * tracker-module extension.
    *
    * @param multiSelect - Whether to allow selecting multiple files (default: true)
+   * @param filters - Dialog filters; defaults to every supported format
    * @returns Promise resolving to array of selected file paths, empty if cancelled
    *
    * @example
@@ -1062,14 +1069,8 @@ export class ElectronService implements OnDestroy {
   public async openFileDialog(multiSelect: boolean = true, filters?: readonly {name: string; extensions: string[]}[]): Promise<string[]> {
     if (!this.isElectron || !this.api) return [];
 
-    const defaultFilters: {name: string; extensions: string[]}[] = [
-      {name: 'Media Files', extensions: ['mp3', 'mp4', 'm4v', 'flac', 'mkv', 'avi', 'wav', 'ogg', 'webm', 'm4a', 'aac', 'wma', 'mov', 'mid', 'midi']},
-      {name: 'Audio', extensions: ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'wma', 'mid', 'midi']},
-      {name: 'Video', extensions: ['mp4', 'm4v', 'mkv', 'avi', 'webm', 'mov']},
-    ];
-
     return this.api.openFileDialog({
-      filters: (filters ?? defaultFilters) as {name: string; extensions: string[]}[],
+      filters: (filters ?? buildFileDialogFilters(true, true, true)) as {name: string; extensions: string[]}[],
       multiSelections: multiSelect
     });
   }

@@ -7,11 +7,7 @@
         <app-video-outlet #videoOutlet (aspectModeChange)="aspectModeDisplayName.set($event)" (flipChange)="videoFlipMode.set($event)"/>
       } @else {
         <div class="idle-state"
-             [class.drag-over]="isDragOver()"
-             [class.drag-invalid]="isDragInvalid()"
-             (dragover)="onDragOver($event)"
-             (dragleave)="onDragLeave($event)"
-             (drop)="onDrop($event)">
+             appFileDropTarget>
           @if (hasMissingDependencies()) {
             <div class="dependency-warnings">
               @for (dep of missingDependencies(); track dep.id) {
