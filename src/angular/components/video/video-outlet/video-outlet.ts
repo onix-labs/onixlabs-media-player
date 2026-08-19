@@ -24,6 +24,7 @@ import {DOCUMENT} from '@angular/common';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropTarget} from '../../../directives/file-drop-target';
+import {MediaClockSync} from '../../../utils/media-clock-sync';
 import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS, SubtitleFontFamily, PreferredAudioLanguage, PreferredSubtitleLanguage} from '../../../services/settings.service';
 import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equalizer';
 import {buildVideoFilter} from '../../../services/video-adjustments';
@@ -280,21 +281,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Timestamp when the current video source was loaded */
   private mediaLoadedAt: number = 0;
 
-  /** Timestamp of the last clock sync sent to the server (for throttling) */
-  private lastSyncSentAt: number = 0;
-
-  /** Minimum drift (seconds) between element and server clock before syncing */
-  private readonly syncDriftThreshold: number = 0.75;
-
-  /** Minimum interval (ms) between clock syncs */
-  private readonly syncThrottleMs: number = 1000;
-
-  /** Settle time (ms) after a load or seek before clock syncs resume */
-  private readonly syncSettleMs: number = 2000;
-
-  /** Grace period (ms) after a user seek during which stall holds are skipped */
-  private readonly stallSeekGraceMs: number = 500;
-
   /**
    * Window (ms) after a source (re)load during which server-time corrections
    * are ignored — the time signal may still hold the previous track's
@@ -302,8 +288,16 @@ export class VideoOutlet implements OnInit, OnDestroy {
    */
   private readonly postLoadGuardMs: number = 500;
 
-  /** Interval holding the server clock at the element position while stalled */
-  private stallSyncInterval: ReturnType<typeof setInterval> | null = null;
+  /** Keeps the server clock anchored to the video element (shared with AudioOutlet). */
+  private readonly clock: MediaClockSync = new MediaClockSync(this.mediaPlayer, this.electron, {
+    element: (): HTMLMediaElement => this.videoRef.nativeElement,
+    mediaLoadedAt: (): number => this.mediaLoadedAt,
+    lastLocalSeekAt: (): number => this.lastSeekTime,
+    seekPending: (): boolean => this.seekPending,
+    // A transcode is served from the seek point, so the element counts from
+    // zero into a window that starts at transcodeSeekOffset.
+    offset: (): number => (this.isTranscoded ? this.transcodeSeekOffset : 0),
+  });
 
   /** Max difference (s) for a seek alignment to match this outlet's pending seek */
   private readonly seekAlignMatchEpsilon: number = 0.01;
@@ -783,7 +777,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
       video.removeEventListener('playing', this.videoPlayingHandler);
     }
     this.clearPendingSeek(video);
-    this.stopStallClockHold();
+    this.clock.stopStallHold();
 
     // Remove subtitle style element
     if (this.subtitleStyleElement) {
@@ -1256,7 +1250,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     // Also keeps the server clock anchored to the element's real position.
     this.videoTimeUpdateHandler = (): void => {
       this.updateSubtitleDisplay(video.currentTime);
-      this.maybeSyncServerClock(video);
+      this.clock.maybeSync();
     };
     video.addEventListener('timeupdate', this.videoTimeUpdateHandler);
 
@@ -1265,54 +1259,19 @@ export class VideoOutlet implements OnInit, OnDestroy {
     // at the element's position until playback resumes, so the recovery
     // never looks like a seek and the seek bar never runs ahead of content.
     this.videoWaitingHandler = (): void => {
-      this.startStallClockHold();
+      this.clock.startStallHold();
     };
     video.addEventListener('waiting', this.videoWaitingHandler);
 
     this.videoPlayingHandler = (): void => {
-      this.stopStallClockHold();
+      this.clock.stopStallHold();
       // Backup for the canplay hide — playback has definitely resumed
       this.hideSeekLoadingOverlay();
     };
     video.addEventListener('playing', this.videoPlayingHandler);
   }
 
-  /**
-   * Starts periodically anchoring the server clock to the element's current
-   * position while the element is stalled (buffering / pipeline startup).
-   *
-   * Skips ticks in a short grace window after a user seek so a stale element
-   * position can never cancel the seek target.
-   */
-  private startStallClockHold(): void {
-    if (this.stallSyncInterval !== null) return;
 
-    const video: HTMLVideoElement = this.videoRef.nativeElement;
-    const holdClock: () => void = (): void => {
-      if (!this.mediaPlayer.isPlaying()) return;
-      if (Date.now() - this.electron.lastSeekAt < this.stallSeekGraceMs) return;
-      // Never report a freshly (re)loaded element — its position may not
-      // reflect the new track yet (the server ignores such syncs too)
-      if (Date.now() - this.mediaLoadedAt < this.syncSettleMs) return;
-      const actualTime: number = this.isTranscoded
-        ? this.transcodeSeekOffset + video.currentTime
-        : video.currentTime;
-      this.electron.syncPlaybackTime(actualTime);
-    };
-
-    holdClock();
-    this.stallSyncInterval = setInterval(holdClock, this.syncThrottleMs);
-  }
-
-  /**
-   * Stops the stall clock hold once the element is playing again.
-   */
-  private stopStallClockHold(): void {
-    if (this.stallSyncInterval !== null) {
-      clearInterval(this.stallSyncInterval);
-      this.stallSyncInterval = null;
-    }
-  }
 
   /**
    * Shows the seek-loading overlay: captures the video's current frame onto
@@ -1415,42 +1374,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
     this.electron.setStreamingBusy(false);
   }
 
-  /**
-   * Reports the video element's actual playback position to the server when
-   * it has drifted from the server's wall-clock time.
-   *
-   * Drift happens when the element stalls to buffer (network hiccups, NAS
-   * latency, remote streams) while the server clock keeps running. Left
-   * uncorrected, the seek bar runs ahead of the content and the seek effect
-   * eventually "corrects" the element by skipping it forward — the classic
-   * streaming desync. Anchoring the clock to the element fixes both.
-   *
-   * Syncs are suppressed while the element is settling after a load or a
-   * seek, so a stale element position never cancels a user's seek.
-   *
-   * @param video - The video element to read the position from
-   */
-  private maybeSyncServerClock(video: Readonly<HTMLVideoElement>): void {
-    if (!this.mediaPlayer.isPlaying()) return;
-    if (video.paused || video.seeking || this.seekPending) return;
-    if (video.readyState < 3) return;
-
-    const now: number = Date.now();
-    if (now - this.lastSyncSentAt < this.syncThrottleMs) return;
-    if (now - this.mediaLoadedAt < this.syncSettleMs) return;
-    if (now - this.lastSeekTime < this.syncSettleMs) return;
-    if (now - this.electron.lastSeekAt < this.syncSettleMs) return;
-
-    const actualTime: number = this.isTranscoded
-      ? this.transcodeSeekOffset + video.currentTime
-      : video.currentTime;
-    const drift: number = actualTime - this.mediaPlayer.currentTime();
-
-    if (Math.abs(drift) > this.syncDriftThreshold) {
-      this.lastSyncSentAt = now;
-      this.electron.syncPlaybackTime(actualTime);
-    }
-  }
 
   /**
    * Loads subtitle tracks by fetching and parsing WebVTT content.

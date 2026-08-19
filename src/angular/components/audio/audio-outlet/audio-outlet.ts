@@ -31,6 +31,7 @@ import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {SettingsService, PerVisualizationSettings, RenderResolution, CrossfadeStyle, CROSSFADE_STYLES} from '../../../services/settings.service';
 import {FileDropTarget} from '../../../directives/file-drop-target';
+import {MediaClockSync} from '../../../utils/media-clock-sync';
 import type {PlaylistItem} from '../../../types/electron';
 import {Visualization, createVisualization, VISUALIZATION_TYPES, VISUALIZATION_METADATA} from './visualizations';
 import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equalizer';
@@ -244,21 +245,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Timestamp when the current audio source was loaded */
   private mediaLoadedAt: number = 0;
 
-  /** Timestamp of the last clock sync sent to the server (for throttling) */
-  private lastSyncSentAt: number = 0;
-
-  /** Minimum drift (seconds) between element and server clock before syncing */
-  private readonly syncDriftThreshold: number = 0.75;
-
-  /** Minimum interval (ms) between clock syncs */
-  private readonly syncThrottleMs: number = 1000;
-
-  /** Settle time (ms) after a load or seek before clock syncs resume */
-  private readonly syncSettleMs: number = 2000;
-
-  /** Grace period (ms) after a user seek during which stall holds are skipped */
-  private readonly stallSeekGraceMs: number = 500;
-
   /**
    * Window (ms) after a source (re)load during which server-time corrections
    * are ignored — the time signal may still hold the previous track's
@@ -266,8 +252,16 @@ export class AudioOutlet implements OnInit, OnDestroy {
    */
   private readonly postLoadGuardMs: number = 500;
 
-  /** Interval holding the server clock at the element position while stalled */
-  private stallSyncInterval: ReturnType<typeof setInterval> | null = null;
+  /** Keeps the server clock anchored to the audio element (shared with VideoOutlet). */
+  private readonly clock: MediaClockSync = new MediaClockSync(this.mediaPlayer, this.electron, {
+    element: (): HTMLMediaElement => this.audioRef.nativeElement,
+    mediaLoadedAt: (): number => this.mediaLoadedAt,
+    lastLocalSeekAt: (): number => this.lastStreamSeekAt,
+    seekPending: (): boolean => this.streamSeekPending,
+    // Remote streams are non-seekable, so the resume position is baked into
+    // the request and the element counts from zero.
+    offset: (): number => (this.isRemoteStream ? this.streamSeekOffset : 0),
+  });
 
   /** Whether the default visualization from settings has been applied */
   private defaultVisualizationApplied: boolean = false;
@@ -577,7 +571,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
     if (audio) {
       this.onAudioPlaying = (): void => {
-        this.stopStallClockHold();
+        this.clock.stopStallHold();
         // Playback has (re)started — drop the waiting cursor
         this.electron.setStreamingBusy(false);
         // Remote stream seek completed — anchor the server clock to the
@@ -593,14 +587,14 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
       // Keep the server clock anchored to the element's real position
       this.onAudioTimeUpdate = (): void => {
-        this.maybeSyncServerClock(audio);
+        this.clock.maybeSync();
       };
       audio.addEventListener('timeupdate', this.onAudioTimeUpdate);
 
       // While the element stalls to buffer (mainly remote streams), hold the
       // server clock at the element's position until playback resumes
       this.onAudioWaiting = (): void => {
-        this.startStallClockHold();
+        this.clock.startStallHold();
       };
       audio.addEventListener('waiting', this.onAudioWaiting);
     }
@@ -656,39 +650,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.pendingSeekHandler = null;
   }
 
-  /**
-   * Starts periodically anchoring the server clock to the element's current
-   * position while the element is stalled buffering. Skips ticks in a short
-   * grace window after a user seek so a stale element position can never
-   * cancel the seek target.
-   */
-  private startStallClockHold(): void {
-    if (this.stallSyncInterval !== null) return;
 
-    const audio: HTMLAudioElement = this.audioRef.nativeElement;
-    const holdClock: () => void = (): void => {
-      if (!this.mediaPlayer.isPlaying()) return;
-      if (Date.now() - this.electron.lastSeekAt < this.stallSeekGraceMs) return;
-      // Never report a freshly (re)loaded element — its position may not
-      // reflect the new track yet (the server ignores such syncs too)
-      if (Date.now() - this.mediaLoadedAt < this.syncSettleMs) return;
-      const actualTime: number = (this.isRemoteStream ? this.streamSeekOffset : 0) + audio.currentTime;
-      this.electron.syncPlaybackTime(actualTime);
-    };
-
-    holdClock();
-    this.stallSyncInterval = setInterval(holdClock, this.syncThrottleMs);
-  }
-
-  /**
-   * Stops the stall clock hold once the element is playing again.
-   */
-  private stopStallClockHold(): void {
-    if (this.stallSyncInterval !== null) {
-      clearInterval(this.stallSyncInterval);
-      this.stallSyncInterval = null;
-    }
-  }
 
   /**
    * Cleanup when component is destroyed.
@@ -746,7 +708,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       audio?.removeEventListener('waiting', this.onAudioWaiting);
       this.onAudioWaiting = null;
     }
-    this.stopStallClockHold();
+    this.clock.stopStallHold();
     this.electron.setStreamingBusy(false);
   }
 
@@ -871,38 +833,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
     }
   }
 
-  /**
-   * Reports the audio element's actual playback position to the server when
-   * it has drifted from the server's wall-clock time.
-   *
-   * Drift happens when the element stalls to buffer (mainly remote streams)
-   * while the server clock keeps running, pushing the seek bar ahead of the
-   * audible content. Anchoring the clock to the element keeps them in sync.
-   *
-   * Syncs are suppressed while the element is settling after a load or a
-   * seek, so a stale element position never cancels a user's seek.
-   *
-   * @param audio - The audio element to read the position from
-   */
-  private maybeSyncServerClock(audio: Readonly<HTMLAudioElement>): void {
-    if (!this.mediaPlayer.isPlaying()) return;
-    if (audio.paused || audio.seeking || this.streamSeekPending) return;
-    if (audio.readyState < 3) return;
-
-    const now: number = Date.now();
-    if (now - this.lastSyncSentAt < this.syncThrottleMs) return;
-    if (now - this.mediaLoadedAt < this.syncSettleMs) return;
-    if (now - this.lastStreamSeekAt < this.syncSettleMs) return;
-    if (now - this.electron.lastSeekAt < this.syncSettleMs) return;
-
-    const actualTime: number = (this.isRemoteStream ? this.streamSeekOffset : 0) + audio.currentTime;
-    const drift: number = actualTime - this.mediaPlayer.currentTime();
-
-    if (Math.abs(drift) > this.syncDriftThreshold) {
-      this.lastSyncSentAt = now;
-      this.electron.syncPlaybackTime(actualTime);
-    }
-  }
 
   // ============================================================================
   // Web Audio API Initialization
