@@ -75,6 +75,9 @@ import { UnifiedMediaServer } from './unified-media-server.js';
 
 let baseUrl: string = '';
 
+/** Session token minted by the server under test; required on every API request. */
+let authToken: string = '';
+
 /** Returns a platform-appropriate non-existent absolute path for testing. */
 function nonExistentPath(filename: string): string {
   // On Windows, Unix paths like /nonexistent/file.mp3 get normalized to \nonexistent\file.mp3
@@ -93,7 +96,10 @@ async function request(
   const url: string = `${baseUrl}${urlPath}`;
   const options: RequestInit = {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: {
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      'X-Onix-Token': authToken,
+    },
     body: body ? JSON.stringify(body) : undefined,
   };
   const res: Response = await fetch(url, options);
@@ -117,7 +123,7 @@ function collectSSEEvents(
     const events: Array<{ event: string; data: string }> = [];
     const url: string = `${baseUrl}${urlPath}`;
 
-    const req: ReturnType<typeof http.get> = http.get(url, (res: IncomingMessage) => {
+    const req: ReturnType<typeof http.get> = http.get(url, { headers: { 'X-Onix-Token': authToken } }, (res: IncomingMessage) => {
       let buffer: string = '';
 
       res.on('data', (chunk: Buffer) => {
@@ -182,6 +188,7 @@ describe('UnifiedMediaServer', () => {
     server = new UnifiedMediaServer();
     const port: number = await server.start();
     baseUrl = `http://127.0.0.1:${port}`;
+    authToken = server.getAuthToken();
   });
 
   afterAll(() => {
@@ -216,13 +223,140 @@ describe('UnifiedMediaServer', () => {
     it('responds to OPTIONS preflight with 204', async () => {
       const res: Response = await fetch(`${baseUrl}/player/state`, { method: 'OPTIONS' });
       expect(res.status).toBe(204);
-      expect(res.headers.get('access-control-allow-origin')).toBe('*');
-      expect(res.headers.get('access-control-allow-methods')).toContain('GET');
     });
 
-    it('includes CORS headers on regular responses', async () => {
+    it('does not advertise a wildcard origin', async () => {
+      // Production is same-origin; a wildcard would let any page the user is
+      // browsing read responses from this server.
+      const res: Response = await fetch(`${baseUrl}/player/state`, {
+        headers: { 'X-Onix-Token': authToken },
+      });
+      expect(res.headers.get('access-control-allow-origin')).not.toBe('*');
+    });
+  });
+
+  // ==========================================================================
+  // Authentication
+  // ==========================================================================
+
+  describe('authentication', () => {
+    it('rejects an API request with no token', async () => {
       const res: Response = await fetch(`${baseUrl}/player/state`);
-      expect(res.headers.get('access-control-allow-origin')).toBe('*');
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects an API request with a wrong token', async () => {
+      const res: Response = await fetch(`${baseUrl}/player/state`, {
+        headers: { 'X-Onix-Token': 'not-the-token' },
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects a token of the correct length but wrong value', async () => {
+      const res: Response = await fetch(`${baseUrl}/player/state`, {
+        headers: { 'X-Onix-Token': 'f'.repeat(authToken.length) },
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it('accepts the token via the X-Onix-Token header', async () => {
+      const res: Response = await fetch(`${baseUrl}/player/state`, {
+        headers: { 'X-Onix-Token': authToken },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('accepts the token via a query parameter', async () => {
+      // Media elements and EventSource cannot send headers, so the query form
+      // must keep working.
+      const res: Response = await fetch(`${baseUrl}/player/state?token=${encodeURIComponent(authToken)}`);
+      expect(res.status).toBe(200);
+    });
+
+    it('rejects unauthenticated mutations', async () => {
+      const res: Response = await fetch(`${baseUrl}/player/pause`, { method: 'POST' });
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects an unauthenticated arbitrary file read', async () => {
+      const target: string = process.platform === 'win32' ? 'C:\\Windows\\win.ini' : '/etc/passwd';
+      const res: Response = await fetch(`${baseUrl}/media/stream?path=${encodeURIComponent(target)}`);
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects an unauthenticated playlist save', async () => {
+      const res: Response = await fetch(`${baseUrl}/playlist/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath: nonExistentPath('evil.opp') }),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects a request with a foreign Host header (DNS rebinding)', async () => {
+      // Raw http.request, because fetch does not reliably let callers override Host.
+      const status: number = await new Promise<number>((resolve, reject) => {
+        const req = http.request(
+          `${baseUrl}/player/state`,
+          { headers: { 'X-Onix-Token': authToken, Host: 'evil.example.com' } },
+          (res: IncomingMessage) => {
+            res.resume();
+            resolve(res.statusCode ?? 0);
+          },
+        );
+        req.on('error', reject);
+        req.end();
+      });
+      expect(status).toBe(403);
+    });
+
+    it('mints a distinct token per server instance', async () => {
+      const other: UnifiedMediaServer = new UnifiedMediaServer();
+      expect(other.getAuthToken()).not.toBe(server.getAuthToken());
+      expect(other.getAuthToken().length).toBeGreaterThanOrEqual(32);
+    });
+  });
+
+  // ==========================================================================
+  // Playlist save path validation
+  // ==========================================================================
+
+  describe('POST /playlist/save path validation', () => {
+    // Each case asserts the specific rejection reason: the playlist is empty in
+    // this suite, which also yields a 400, so a bare status check would pass
+    // even with validation removed.
+    it('rejects a path with traversal segments', async () => {
+      const traversal: string = process.platform === 'win32'
+        ? 'C:\\Users\\..\\evil.opp'
+        : '/tmp/../evil.opp';
+      const { status, body } = await request('POST', '/playlist/save', { filePath: traversal });
+      expect(status).toBe(400);
+      expect(String(body['error'])).toContain('traversal');
+    });
+
+    it('rejects a relative path', async () => {
+      const { status, body } = await request('POST', '/playlist/save', { filePath: 'evil.opp' });
+      expect(status).toBe(400);
+      expect(String(body['error'])).toContain('absolute');
+    });
+
+    it('rejects a non-.opp extension', async () => {
+      const { status, body } = await request('POST', '/playlist/save', {
+        filePath: nonExistentPath('evil.sh'),
+      });
+      expect(status).toBe(400);
+      expect(String(body['error'])).toContain('.opp');
+    });
+
+    it('accepts an extension-less path by normalizing it to .opp', async () => {
+      // Passes validation, so it fails later on the empty playlist instead —
+      // proving the path itself was not rejected (GTK save dialogs omit the
+      // extension).
+      const { status, body } = await request('POST', '/playlist/save', {
+        filePath: nonExistentPath('myplaylist'),
+      });
+      expect(status).toBe(400);
+      expect(String(body['error'])).toContain('empty');
     });
   });
 
@@ -818,7 +952,7 @@ describe('UnifiedMediaServer', () => {
       try {
         const res: Response = await fetch(`${baseUrl}/player/volume`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Onix-Token': authToken },
           body: largeBody,
         });
         // If we get a response, it should be 413
@@ -979,8 +1113,10 @@ describe('UnifiedMediaServer', () => {
       expect(port2).toBeGreaterThan(0);
       expect(port2).not.toBe(server.getPort());
 
-      // Verify it responds
-      const res: Response = await fetch(`http://127.0.0.1:${port2}/player/state`);
+      // Verify it responds (with its own independently-minted token)
+      const res: Response = await fetch(`http://127.0.0.1:${port2}/player/state`, {
+        headers: { 'X-Onix-Token': server2.getAuthToken() },
+      });
       expect(res.status).toBe(200);
 
       server2.stop();

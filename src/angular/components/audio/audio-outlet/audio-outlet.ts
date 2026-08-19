@@ -795,7 +795,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     }
 
     // Set the source and load
-    audio.src = url;
+    audio.src = this.electron.appendAuth(url);
     audio.load();
 
     // For local formats, position the element once it can play (HTTP range
@@ -846,7 +846,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.mediaLoadedAt = Date.now();
     // Waiting cursor while the stream pipeline restarts for the seek
     this.electron.setStreamingBusy(true);
-    audio.src = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}&r=${cacheBuster}&t=${seekTime}`;
+    audio.src = this.electron.appendAuth(`${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}&r=${cacheBuster}&t=${seekTime}`);
     audio.load();
 
     console.log(`Seeking remote audio stream to ${seekTime}s`);

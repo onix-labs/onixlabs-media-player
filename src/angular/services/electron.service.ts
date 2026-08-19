@@ -76,6 +76,15 @@ export class ElectronService implements OnDestroy {
   /** Base URL of the media server (e.g., "http://127.0.0.1:54545") */
   public readonly serverUrl: ReturnType<typeof signal<string>> = signal<string>('');
 
+  /**
+   * Session token the media server requires on every API request, obtained
+   * over IPC at startup.
+   *
+   * Always populated before {@link serverUrl}, so anything reacting to the
+   * server URL becoming available already has a usable token.
+   */
+  private readonly serverToken: ReturnType<typeof signal<string>> = signal<string>('');
+
   /** Current playback state: idle, loading, playing, paused, stopped, or error */
   public readonly playbackState: ReturnType<typeof signal<string>> = signal<string>('idle');
 
@@ -349,9 +358,16 @@ export class ElectronService implements OnDestroy {
   private async initialize(): Promise<void> {
     if (!this.isElectron || !this.api) return;
 
-    // Get server port via IPC
-    this.serverPort = await this.api.getServerPort();
-    this.serverUrl.set(`http://127.0.0.1:${this.serverPort}`);
+    // Get server port and session token via IPC. The token is published first
+    // so that consumers reacting to serverUrl can immediately build authorized
+    // URLs.
+    const [port, token]: [number, string] = await Promise.all([
+      this.api.getServerPort(),
+      this.api.getServerToken(),
+    ]);
+    this.serverToken.set(token);
+    this.serverPort = port;
+    this.serverUrl.set(`http://127.0.0.1:${port}`);
     console.log(`Connected to media server at ${this.serverUrl()}`);
 
     // Get platform info via IPC
@@ -770,7 +786,8 @@ export class ElectronService implements OnDestroy {
   private connectSSE(): void {
     if (!this.serverUrl()) return;
 
-    this.eventSource = new EventSource(`${this.serverUrl()}/events`);
+    // EventSource cannot send headers, so the token rides in the query string.
+    this.eventSource = new EventSource(this.appendAuth(`${this.serverUrl()}/events`));
 
     this.eventSource.onopen = (): void => {
       console.log('SSE connection established');
@@ -1501,7 +1518,7 @@ export class ElectronService implements OnDestroy {
    * generic {@link post} helper, this preserves the human-readable reason.
    */
   private async postExpectingMessage<T>(endpoint: string, body: unknown): Promise<T> {
-    const response: Response = await fetch(`${this.serverUrl()}${endpoint}`, {
+    const response: Response = await this.authFetch(`${this.serverUrl()}${endpoint}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body),
@@ -1666,7 +1683,45 @@ export class ElectronService implements OnDestroy {
     if (seekTime !== undefined && seekTime > 0) {
       url += `&t=${seekTime}`;
     }
-    return url;
+    return this.appendAuth(url);
+  }
+
+  /**
+   * Appends the session token to a media server URL as a query parameter.
+   *
+   * Use this for URLs consumed by things that cannot send headers — media
+   * element `src` attributes and `EventSource`. Prefer {@link authFetch} for
+   * anything issued via `fetch`.
+   *
+   * @param url - A fully-qualified media server URL
+   * @returns The URL carrying the session token
+   */
+  public appendAuth(url: string): string {
+    const token: string = this.serverToken();
+    if (!token) return url;
+
+    const separator: string = url.includes('?') ? '&' : '?';
+    return `${url}${separator}token=${encodeURIComponent(token)}`;
+  }
+
+  /**
+   * Issues a fetch against the media server with the session token attached.
+   *
+   * A drop-in replacement for `fetch` at any call site targeting the local
+   * server; the token travels in a header rather than the URL.
+   *
+   * @param url - A fully-qualified media server URL
+   * @param init - Standard fetch options
+   * @returns The fetch response
+   */
+  public authFetch(url: string, init?: Readonly<RequestInit>): Promise<Response> {
+    return fetch(url, {
+      ...init,
+      headers: {
+        ...(init?.headers as Record<string, string> | undefined),
+        'X-Onix-Token': this.serverToken(),
+      },
+    });
   }
 
   // ============================================================================
@@ -1748,7 +1803,7 @@ export class ElectronService implements OnDestroy {
    * @throws Error if the request fails
    */
   private async get<T>(endpoint: string): Promise<T> {
-    const response: Response = await fetch(`${this.serverUrl()}${endpoint}`);
+    const response: Response = await this.authFetch(`${this.serverUrl()}${endpoint}`);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
@@ -1765,7 +1820,7 @@ export class ElectronService implements OnDestroy {
    * @throws Error if the request fails
    */
   private async post<T>(endpoint: string, body?: unknown): Promise<T> {
-    const response: Response = await fetch(`${this.serverUrl()}${endpoint}`, {
+    const response: Response = await this.authFetch(`${this.serverUrl()}${endpoint}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: body ? JSON.stringify(body) : undefined,
@@ -1785,7 +1840,7 @@ export class ElectronService implements OnDestroy {
    * @throws Error if the request fails
    */
   private async delete<T>(endpoint: string): Promise<T> {
-    const response: Response = await fetch(`${this.serverUrl()}${endpoint}`, {
+    const response: Response = await this.authFetch(`${this.serverUrl()}${endpoint}`, {
       method: 'DELETE',
     });
     if (!response.ok) {

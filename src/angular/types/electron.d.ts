@@ -466,6 +466,13 @@ export interface MediaPlayerAPI {
   getServerPort: () => Promise<number>;
 
   /**
+   * Gets the session token required on every media server API request.
+   * Called once at startup to authorize HTTP/SSE traffic.
+   * @returns Promise resolving to the session token
+   */
+  getServerToken: () => Promise<string>;
+
+  /**
    * Gets platform information including glass effect support.
    * Used by the settings UI to show/hide platform-specific options.
    * @returns Promise resolving to platform info object

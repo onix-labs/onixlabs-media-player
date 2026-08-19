@@ -20,7 +20,7 @@
  */
 
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
-import { createHash } from 'crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { createReadStream, statSync, existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, rmdirSync, Stats } from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
@@ -149,6 +149,35 @@ export class UnifiedMediaServer {
 
   /** The port the server is listening on */
   private port: number = 0;
+
+  /**
+   * Per-session bearer token minted at construction. Every request to an API
+   * route must present it, via the `X-Onix-Token` header or a `token` query
+   * parameter. The query form exists because media elements (`<video src>`,
+   * `<audio src>`) and `EventSource` cannot send custom headers.
+   *
+   * The renderer receives this over IPC; nothing else on the machine can read
+   * it, which is what stops other local processes and web pages the user
+   * happens to be visiting from driving the server.
+   */
+  private readonly authToken: string = randomBytes(32).toString('hex');
+
+  /**
+   * Path prefixes that identify API routes. GET requests outside these
+   * prefixes fall through to static asset serving and are left unauthenticated
+   * (the Angular bundle is not sensitive); everything else requires the token.
+   *
+   * IMPORTANT: adding a new API route under a new prefix requires adding the
+   * prefix here, otherwise it will be served without authentication.
+   */
+  private static readonly API_ROUTE_PREFIXES: readonly string[] = [
+    '/events',
+    '/media',
+    '/player',
+    '/playlist',
+    '/settings',
+    '/dependencies',
+  ];
 
   /** SSE manager for real-time client updates */
   private readonly sse: SSEManager = new SSEManager();
@@ -492,6 +521,88 @@ export class UnifiedMediaServer {
   }
 
   /**
+   * Gets the per-session token that API requests must present.
+   *
+   * Handed to the renderer over IPC at startup; never logged.
+   *
+   * @returns The session bearer token
+   */
+  public getAuthToken(): string {
+    return this.authToken;
+  }
+
+  /**
+   * Determines whether a request must present the session token.
+   *
+   * Fail-closed: anything that is not a plain GET is protected, so no mutation
+   * is ever reachable anonymously. GETs are protected when they target an API
+   * prefix; the remainder are static-asset reads for the Angular bundle.
+   */
+  private isProtectedRequest(method: string, pathname: string): boolean {
+    if (method !== 'GET') {
+      return true;
+    }
+
+    // In development the Angular app is served by the dev server, so there are
+    // no static assets here and every route is an API route.
+    if (!this.staticPath) {
+      return true;
+    }
+
+    return UnifiedMediaServer.API_ROUTE_PREFIXES.some(
+      (prefix: string): boolean => pathname === prefix || pathname.startsWith(`${prefix}/`)
+    );
+  }
+
+  /**
+   * Checks the session token supplied by a request, in constant time.
+   */
+  private isAuthorized(req: Readonly<IncomingMessage>, url: Readonly<URL>): boolean {
+    const header: string | string[] | undefined = req.headers['x-onix-token'];
+    const headerToken: string | undefined = Array.isArray(header) ? header[0] : header;
+    const provided: string = headerToken ?? url.searchParams.get('token') ?? '';
+
+    const providedBuffer: Buffer = Buffer.from(provided, 'utf-8');
+    const expectedBuffer: Buffer = Buffer.from(this.authToken, 'utf-8');
+
+    if (providedBuffer.length !== expectedBuffer.length) {
+      return false;
+    }
+
+    return timingSafeEqual(providedBuffer, expectedBuffer);
+  }
+
+  /**
+   * Validates the Host header against the address we actually listen on.
+   *
+   * Without this a DNS-rebinding attack can point an attacker-controlled
+   * hostname at 127.0.0.1 and reach the server from a remote page.
+   */
+  private isValidHost(req: Readonly<IncomingMessage>): boolean {
+    const host: string | undefined = req.headers.host;
+    if (!host) {
+      return false;
+    }
+
+    return (
+      host === `127.0.0.1:${this.port}` ||
+      host === `localhost:${this.port}` ||
+      host === `[::1]:${this.port}`
+    );
+  }
+
+  /**
+   * Returns the origin permitted to make cross-origin requests, or null when
+   * none is (the production renderer is same-origin and needs no CORS).
+   *
+   * In development the Angular dev server is a genuinely different origin, so
+   * it is echoed back explicitly rather than using a wildcard.
+   */
+  private getAllowedOrigin(): string | null {
+    return process.env['DEV_SERVER_URL'] ?? null;
+  }
+
+  /**
    * Gets the port the server is listening on.
    *
    * @returns The port number, or 0 if not started
@@ -553,12 +664,18 @@ export class UnifiedMediaServer {
     const method: string = req.method || 'GET';
     const pathname: string = url.pathname;
 
-    // Set CORS headers for browser access
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    // Only the development origin is granted CORS; production is same-origin
+    // and gets no Access-Control headers at all.
+    const allowedOrigin: string | null = this.getAllowedOrigin();
+    if (allowedOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Onix-Token');
+      res.setHeader('Vary', 'Origin');
+    }
 
-    // Handle CORS preflight
+    // Handle CORS preflight (browsers never attach credentials to a preflight,
+    // so this is answered before the auth gate).
     if (method === 'OPTIONS') {
       res.writeHead(204);
       res.end();
@@ -573,6 +690,24 @@ export class UnifiedMediaServer {
         logHttpRequest(method, pathname, res.statusCode ?? 200, duration);
       }
     });
+
+    // Authentication gate. Rejecting here keeps every handler below reachable
+    // only by the renderer that was handed the session token over IPC.
+    if (this.isProtectedRequest(method, pathname)) {
+      if (!this.isValidHost(req)) {
+        serverLogger.warn(`[Security] Rejected request with invalid Host header: ${req.headers.host}`);
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Forbidden' }));
+        return;
+      }
+
+      if (!this.isAuthorized(req, url)) {
+        serverLogger.warn(`[Security] Rejected unauthenticated request: ${method} ${pathname}`);
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+    }
 
     try {
       // Route matching
@@ -709,9 +844,7 @@ export class UnifiedMediaServer {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-    });
+      'Connection': 'keep-alive',    });
 
     this.sse.addClient(res);
 
@@ -765,6 +898,47 @@ export class UnifiedMediaServer {
    */
   private static isRemoteUrl(source: string): boolean {
     return /^https?:\/\//i.test(source);
+  }
+
+  /**
+   * Validates a destination path for playlist writes.
+   *
+   * Playlists are the only user-named files this server creates, so the path
+   * is restricted to an absolute, traversal-free `.opp` location. This bounds
+   * the damage of a forged save request to a file the app would legitimately
+   * have written anyway.
+   *
+   * An extension-less path is normalized to `.opp` rather than rejected: the
+   * GTK save dialog does not always append the filter's extension, so a user
+   * typing a bare filename on Linux must still be able to save.
+   *
+   * @param filePath - Proposed destination path
+   * @returns Validation result carrying the path to actually write to
+   */
+  private static validatePlaylistSavePath(filePath: string): { valid: boolean; error?: string; normalizedPath?: string } {
+    if (filePath.includes('..')) {
+      return { valid: false, error: 'Invalid path: traversal not allowed' };
+    }
+
+    if (!path.isAbsolute(filePath)) {
+      return { valid: false, error: 'Invalid path: must be absolute' };
+    }
+
+    if (path.normalize(filePath) !== filePath) {
+      return { valid: false, error: 'Invalid path: suspicious path detected' };
+    }
+
+    const extension: string = path.extname(filePath).toLowerCase();
+
+    if (extension === '') {
+      return { valid: true, normalizedPath: `${filePath}.opp` };
+    }
+
+    if (extension !== '.opp') {
+      return { valid: false, error: 'Invalid path: playlists must be saved as .opp' };
+    }
+
+    return { valid: true, normalizedPath: filePath };
   }
 
   private validateFilePath(filePath: string): { valid: boolean; error?: string } {
@@ -941,9 +1115,7 @@ export class UnifiedMediaServer {
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
           'Accept-Ranges': 'bytes',
           'Content-Length': chunkSize,
-          'Content-Type': mimeType,
-          'Access-Control-Allow-Origin': '*',
-          ...(options?.noCache && {'Cache-Control': 'no-store, no-cache, must-revalidate'}),
+          'Content-Type': mimeType,          ...(options?.noCache && {'Cache-Control': 'no-store, no-cache, must-revalidate'}),
         });
 
         createReadStream(filePath, { start, end, highWaterMark: 2 * 1024 * 1024 }).pipe(res); // 2MB buffer for NAS/network latency
@@ -952,9 +1124,7 @@ export class UnifiedMediaServer {
         res.writeHead(200, {
           'Content-Length': fileSize,
           'Content-Type': mimeType,
-          'Accept-Ranges': 'bytes',
-          'Access-Control-Allow-Origin': '*',
-          ...(options?.noCache && {'Cache-Control': 'no-store, no-cache, must-revalidate'}),
+          'Accept-Ranges': 'bytes',          ...(options?.noCache && {'Cache-Control': 'no-store, no-cache, must-revalidate'}),
         });
 
         createReadStream(filePath, { highWaterMark: 2 * 1024 * 1024 }).pipe(res); // 2MB buffer for NAS/network latency
@@ -980,8 +1150,11 @@ export class UnifiedMediaServer {
     let filePath: string = pathname === '/' ? '/index.html' : pathname;
     filePath = path.join(this.staticPath, filePath);
 
-    // Security: ensure path is within static directory
-    if (!filePath.startsWith(this.staticPath)) {
+    // Security: ensure path is within the static directory. The separator
+    // matters — a bare prefix check also accepts sibling directories whose
+    // name merely starts with the static path.
+    const staticRoot: string = this.staticPath.endsWith(path.sep) ? this.staticPath : `${this.staticPath}${path.sep}`;
+    if (filePath !== this.staticPath && !filePath.startsWith(staticRoot)) {
       res.writeHead(403);
       res.end(JSON.stringify({ error: 'Forbidden' }));
       return;
@@ -1115,9 +1288,7 @@ export class UnifiedMediaServer {
       ];
       res.writeHead(200, {
         'Content-Type': 'audio/aac',
-        'Transfer-Encoding': 'chunked',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-cache',
+        'Transfer-Encoding': 'chunked',        'Cache-Control': 'no-cache',
       });
     } else if (canRemux) {
       // Remux mode: stream copy (no re-encoding) for compatible codecs
@@ -1141,9 +1312,7 @@ export class UnifiedMediaServer {
       ];
       res.writeHead(200, {
         'Content-Type': 'video/mp4',
-        'Transfer-Encoding': 'chunked',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-cache',
+        'Transfer-Encoding': 'chunked',        'Cache-Control': 'no-cache',
       });
     } else if (needsHybridTranscode) {
       // Hybrid mode: copy video, transcode audio only
@@ -1174,9 +1343,7 @@ export class UnifiedMediaServer {
       ];
       res.writeHead(200, {
         'Content-Type': 'video/mp4',
-        'Transfer-Encoding': 'chunked',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-cache',
+        'Transfer-Encoding': 'chunked',        'Cache-Control': 'no-cache',
       });
     } else {
       // Full transcode mode: re-encode video and audio for incompatible codecs
@@ -1231,9 +1398,7 @@ export class UnifiedMediaServer {
       ];
       res.writeHead(200, {
         'Content-Type': 'video/mp4',
-        'Transfer-Encoding': 'chunked',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-cache',
+        'Transfer-Encoding': 'chunked',        'Cache-Control': 'no-cache',
       });
     }
 
@@ -1498,9 +1663,7 @@ export class UnifiedMediaServer {
 
     res.writeHead(200, {
       'Content-Type': contentType,
-      'Transfer-Encoding': 'chunked',
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'no-cache',
+      'Transfer-Encoding': 'chunked',      'Cache-Control': 'no-cache',
     });
 
     logProcessSpawn(ffmpegLogger, 'ffmpeg', ffmpegArgs);
@@ -3404,6 +3567,19 @@ export class UnifiedMediaServer {
       return;
     }
 
+    // The target is attacker-controlled input as far as this handler knows, so
+    // constrain it to an absolute, traversal-free .opp path. Without this the
+    // endpoint is an arbitrary-file-overwrite primitive.
+    const validation: { valid: boolean; error?: string; normalizedPath?: string } =
+      UnifiedMediaServer.validatePlaylistSavePath(filePath);
+    if (!validation.valid || !validation.normalizedPath) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: validation.error }));
+      return;
+    }
+
+    const targetPath: string = validation.normalizedPath;
+
     const state: PlaylistState = this.playlist.getState();
 
     if (state.items.length === 0) {
@@ -3429,11 +3605,11 @@ export class UnifiedMediaServer {
     };
 
     try {
-      writeFileSync(filePath, JSON.stringify(oppData, null, 2), 'utf-8');
-      this.playlist.setSourceFilePath(filePath);
-      playlistLogger.info(`Playlist saved to: ${filePath}`);
+      writeFileSync(targetPath, JSON.stringify(oppData, null, 2), 'utf-8');
+      this.playlist.setSourceFilePath(targetPath);
+      playlistLogger.info(`Playlist saved to: ${targetPath}`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, filePath }));
+      res.end(JSON.stringify({ success: true, filePath: targetPath }));
     } catch (err) {
       playlistLogger.error(`Failed to save playlist: ${(err as Error).message}`);
       res.writeHead(500);

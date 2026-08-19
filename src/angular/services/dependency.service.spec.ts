@@ -26,6 +26,7 @@ import {MEDIA_EXTENSIONS, FFMPEG_EXTENSIONS, MIDI_EXTENSIONS} from '../constants
  */
 function createMockElectronService(): {
   serverUrl: ReturnType<typeof signal<string>>;
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
   onSettingsUpdate: ReturnType<typeof vi.fn>;
   onDependencyStateUpdate: ReturnType<typeof vi.fn>;
   onDependencyProgressUpdate: ReturnType<typeof vi.fn>;
@@ -33,6 +34,8 @@ function createMockElectronService(): {
 } {
   return {
     serverUrl: signal('http://127.0.0.1:12345'),
+    // Delegates to the stubbed global fetch so tests keep asserting on it.
+    authFetch: (url: string, init?: RequestInit): Promise<Response> => fetch(url, init),
     onSettingsUpdate: vi.fn(),
     onDependencyStateUpdate: vi.fn(),
     onDependencyProgressUpdate: vi.fn(),

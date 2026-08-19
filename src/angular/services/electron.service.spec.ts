@@ -81,6 +81,7 @@ globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
  */
 const mockApi: {
   getServerPort: ReturnType<typeof vi.fn>;
+  getServerToken: ReturnType<typeof vi.fn>;
   getPlatformInfo: ReturnType<typeof vi.fn>;
   openFileDialog: ReturnType<typeof vi.fn>;
   openSoundFontDialog: ReturnType<typeof vi.fn>;
@@ -126,6 +127,7 @@ const mockApi: {
   setupInstallBundledSoundFont: ReturnType<typeof vi.fn>;
 } = {
   getServerPort: vi.fn().mockResolvedValue(12345),
+  getServerToken: vi.fn().mockResolvedValue('test-session-token'),
   getPlatformInfo: vi.fn().mockResolvedValue({platform: 'darwin', supportsGlass: true, systemTheme: 'dark'}),
   openFileDialog: vi.fn().mockResolvedValue([]),
   openSoundFontDialog: vi.fn().mockResolvedValue([]),

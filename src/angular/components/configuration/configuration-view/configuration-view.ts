@@ -1519,7 +1519,9 @@ export class ConfigurationView {
    * Opens the manual download URL in the default browser.
    */
   public onOpenManualDownload(url: string): void {
-    window.open(url, '_blank');
+    // Routed through the preload bridge, which allowlists http(s), rather than
+    // window.open — the latter opens remote pages in an app window.
+    void window.mediaPlayer?.openExternal(url);
   }
 
   /**

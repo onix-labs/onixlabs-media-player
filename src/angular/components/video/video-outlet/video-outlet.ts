@@ -914,9 +914,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     // Build stream URL with audio track parameter
     // Note: canRemux is now determined server-side based on the selected track's codec
-    const streamUrl: string = this.isTranscoded
-      ? `${this.electron.serverUrl()}/media/stream?path=${encodeURIComponent(this.currentFilePath)}&t=${seekTime}&audioTrack=${audioTrack}`
-      : `${this.electron.serverUrl()}/media/stream?path=${encodeURIComponent(this.currentFilePath)}&audioTrack=${audioTrack}`;
+    const streamUrl: string = this.electron.appendAuth(
+      this.isTranscoded
+        ? `${this.electron.serverUrl()}/media/stream?path=${encodeURIComponent(this.currentFilePath)}&t=${seekTime}&audioTrack=${audioTrack}`
+        : `${this.electron.serverUrl()}/media/stream?path=${encodeURIComponent(this.currentFilePath)}&audioTrack=${audioTrack}`
+    );
 
     // Update transcodeSeekOffset for the new stream position
     if (this.isTranscoded) {
@@ -1299,7 +1301,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
       // For native formats, audio track is not used (browser plays all tracks)
     }
 
-    video.src = url;
+    video.src = this.electron.appendAuth(url);
     video.load();
 
     // For native formats, position the element once it can play (HTTP range
@@ -1596,7 +1598,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     for (const track of tracks) {
       try {
         const url: string = `${serverUrl}/media/subtitles?path=${encodeURIComponent(filePath)}&track=${track.index}`;
-        const response: Response = await fetch(url);
+        const response: Response = await this.electron.authFetch(url);
 
         if (!response.ok) {
           console.error(`Failed to load subtitle track ${track.index}: ${response.status}`);
@@ -1673,7 +1675,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     try {
       const url: string = `${serverUrl}/media/subtitles/external?path=${encodeURIComponent(subtitlePath)}`;
-      const response: Response = await fetch(url);
+      const response: Response = await this.electron.authFetch(url);
 
       if (!response.ok) {
         console.error(`Failed to load external subtitle: ${response.status}`);

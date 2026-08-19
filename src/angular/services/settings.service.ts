@@ -1041,7 +1041,7 @@ export class SettingsService implements OnDestroy {
     const serverUrl: string = this.electron.serverUrl();
     if (!serverUrl) return;
 
-    const response: Response = await fetch(`${serverUrl}/settings/${category}`, {
+    const response: Response = await this.electron.authFetch(`${serverUrl}/settings/${category}`, {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(update),
@@ -1263,7 +1263,7 @@ export class SettingsService implements OnDestroy {
     const serverUrl: string = this.electron.serverUrl();
     if (!serverUrl) return;
 
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+    const response: Response = await this.electron.authFetch(`${serverUrl}/settings/visualization`, {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({perVisualizationSettings: current}),
@@ -1286,7 +1286,7 @@ export class SettingsService implements OnDestroy {
     const serverUrl: string = this.electron.serverUrl();
     if (!serverUrl) return;
 
-    const response: Response = await fetch(`${serverUrl}/settings/visualization`, {
+    const response: Response = await this.electron.authFetch(`${serverUrl}/settings/visualization`, {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({perVisualizationSettings: current}),
@@ -1792,6 +1792,13 @@ export class SettingsService implements OnDestroy {
    * @param color - Hex color string (e.g., '#000000')
    */
   public async setSubtitleShadowColor(color: string): Promise<void> {
+    // Validated like the other subtitle colors: this value is interpolated
+    // into an injected <style> element, so an unvalidated string is a CSS
+    // injection vector.
+    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+      console.error(`[SettingsService] Invalid hex color: ${color}`);
+      return;
+    }
     await this.updateSetting('subtitles', 'shadowColor', color);
   }
 
@@ -1807,7 +1814,7 @@ export class SettingsService implements OnDestroy {
     const serverUrl: string = this.electron.serverUrl();
     if (!serverUrl) return DEFAULT_SETTINGS;
 
-    const response: Response = await fetch(`${serverUrl}/settings`);
+    const response: Response = await this.electron.authFetch(`${serverUrl}/settings`);
     if (!response.ok) {
       throw new Error(`Failed to fetch settings: ${response.statusText}`);
     }

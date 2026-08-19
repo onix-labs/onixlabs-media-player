@@ -253,7 +253,7 @@ export class DependencyService implements OnDestroy {
     // Clear any previous progress
     this.installProgress.set(null);
 
-    await fetch(`${serverUrl}/dependencies/install`, {
+    await this.electron.authFetch(`${serverUrl}/dependencies/install`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({id}),
@@ -271,7 +271,7 @@ export class DependencyService implements OnDestroy {
     // Clear any previous progress
     this.installProgress.set(null);
 
-    await fetch(`${serverUrl}/dependencies/uninstall`, {
+    await this.electron.authFetch(`${serverUrl}/dependencies/uninstall`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({id}),
@@ -289,7 +289,7 @@ export class DependencyService implements OnDestroy {
     // Clear any previous progress
     this.installProgress.set(null);
 
-    await fetch(`${serverUrl}/dependencies/update`, {
+    await this.electron.authFetch(`${serverUrl}/dependencies/update`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({id}),
@@ -306,7 +306,7 @@ export class DependencyService implements OnDestroy {
     const serverUrl: string = this.electron.serverUrl();
     if (!serverUrl) return;
 
-    await fetch(`${serverUrl}/dependencies/soundfont/install`, {
+    await this.electron.authFetch(`${serverUrl}/dependencies/soundfont/install`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({sourcePath: filePaths[0]}),
@@ -320,7 +320,7 @@ export class DependencyService implements OnDestroy {
     const serverUrl: string = this.electron.serverUrl();
     if (!serverUrl) return;
 
-    await fetch(`${serverUrl}/dependencies/soundfont/remove`, {
+    await this.electron.authFetch(`${serverUrl}/dependencies/soundfont/remove`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({fileName}),
@@ -335,7 +335,7 @@ export class DependencyService implements OnDestroy {
     const serverUrl: string = this.electron.serverUrl();
     if (!serverUrl) return;
 
-    await fetch(`${serverUrl}/dependencies/soundfont/select`, {
+    await this.electron.authFetch(`${serverUrl}/dependencies/soundfont/select`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({fileName}),
@@ -349,7 +349,7 @@ export class DependencyService implements OnDestroy {
     const serverUrl: string = this.electron.serverUrl();
     if (!serverUrl) return;
 
-    await fetch(`${serverUrl}/dependencies/refresh`, {
+    await this.electron.authFetch(`${serverUrl}/dependencies/refresh`, {
       method: 'POST',
     });
   }
@@ -366,7 +366,7 @@ export class DependencyService implements OnDestroy {
     if (!serverUrl) return;
 
     try {
-      const response: Response = await fetch(`${serverUrl}/dependencies`);
+      const response: Response = await this.electron.authFetch(`${serverUrl}/dependencies`);
       if (response.ok) {
         const state: DependencyState = await response.json() as DependencyState;
         this.dependencyState.set(state);
