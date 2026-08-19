@@ -720,7 +720,10 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.outgoingVisualization?.destroy();
     this.visualization?.destroy();
     if (this.audioContext) {
-      this.audioContext.close();
+      // Rejects if the context is already closed, which teardown ordering can
+      // easily produce; nothing here can act on it, so it is swallowed rather
+      // than left to surface as an unhandled rejection. Matches VideoOutlet.
+      void this.audioContext.close().catch((): void => {});
     }
     if (this.gestureHandler) {
       document.removeEventListener('click', this.gestureHandler);

@@ -800,7 +800,13 @@ export class SettingsService implements OnDestroy {
     this.serverUrlEffect = effect((): void => {
       const serverUrl: string = this.electron.serverUrl();
       if (serverUrl && !this.isLoaded()) {
-        void this.fetchSettings();
+        // fetchSettings throws on a non-2xx or a network failure, and this is
+        // a startup race against the server coming up — an unhandled rejection
+        // here is routine rather than exceptional. SSE delivers the settings
+        // anyway once the connection is live, so log and move on.
+        void this.fetchSettings().catch((error: unknown): void => {
+          console.error('[SettingsService] Initial settings fetch failed:', error);
+        });
       }
     });
 

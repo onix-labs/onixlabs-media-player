@@ -207,6 +207,9 @@ export class ElectronService implements OnDestroy {
   /** Timeout ID for mediaEnded signal reset (for cleanup) */
   private mediaEndedTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
+  /** Timeout ID for the post-fade close notification (for cleanup) */
+  private fadeOutCompleteTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
   /** Cleanup functions for menu event listeners */
   private readonly menuCleanupFunctions: Array<() => void> = [];
 
@@ -409,11 +412,14 @@ export class ElectronService implements OnDestroy {
   private setupFullscreenListener(): void {
     if (!this.isElectron || !this.api) return;
 
-    // Get initial fullscreen state
+    // Get initial fullscreen state. The listener below keeps it current, so a
+    // failed initial read costs a stale value until the first change event.
     this.api.isFullscreen().then((isFullscreen: boolean): void => {
       this.ngZone.run((): void => {
         this.isFullscreen.set(isFullscreen);
       });
+    }).catch((error: unknown): void => {
+      console.error('[ElectronService] Failed to read initial fullscreen state:', error);
     });
 
     // Listen for fullscreen changes
@@ -446,7 +452,8 @@ export class ElectronService implements OnDestroy {
   private setupViewModeListener(): void {
     if (!this.isElectron || !this.api) return;
 
-    // Get initial view mode
+    // Get initial view mode. As above, the change listener corrects a failed
+    // initial read on the next transition.
     this.api.getViewMode().then((mode: 'desktop' | 'miniplayer' | 'fullscreen'): void => {
       this.ngZone.run((): void => {
         this.viewMode.set(mode);
@@ -454,6 +461,8 @@ export class ElectronService implements OnDestroy {
           this.previousViewMode = mode;
         }
       });
+    }).catch((error: unknown): void => {
+      console.error('[ElectronService] Failed to read initial view mode:', error);
     });
 
     // Listen for view mode changes
@@ -584,7 +593,11 @@ export class ElectronService implements OnDestroy {
     this.menuCleanupFunctions.push(
       this.api.onMenuEvent('closeAll', (): void => {
         this.ngZone.run((): void => {
-          void this.stop().then((): Promise<void> => this.clearPlaylist());
+          void this.stop()
+            .then((): Promise<void> => this.clearPlaylist())
+            .catch((error: unknown): void => {
+              console.error('[ElectronService] Close all failed:', error);
+            });
         });
       })
     );
@@ -684,7 +697,11 @@ export class ElectronService implements OnDestroy {
         this.fadeOutRequested.set(fadeDuration);
 
         // After fade duration, notify main process that fade is complete
-        setTimeout((): void => {
+        if (this.fadeOutCompleteTimeoutId !== null) {
+          clearTimeout(this.fadeOutCompleteTimeoutId);
+        }
+        this.fadeOutCompleteTimeoutId = setTimeout((): void => {
+          this.fadeOutCompleteTimeoutId = null;
           this.api?.notifyFadeOutComplete();
         }, fadeDuration);
       });
@@ -1879,6 +1896,9 @@ export class ElectronService implements OnDestroy {
     }
     if (this.streamingBusyTimeoutId) {
       clearTimeout(this.streamingBusyTimeoutId);
+    }
+    if (this.fadeOutCompleteTimeoutId) {
+      clearTimeout(this.fadeOutCompleteTimeoutId);
     }
   }
 }

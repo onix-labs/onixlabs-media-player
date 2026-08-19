@@ -852,6 +852,11 @@ export class ConfigurationView {
     (): InstallProgress | null => this.dependencyService.installProgress()
   );
 
+  /** Why the last SoundFont operation failed, or null if it succeeded */
+  public readonly soundFontError: ReturnType<typeof computed<string | null>> = computed(
+    (): string | null => this.dependencyService.soundFontError()
+  );
+
   /** Whether an install/uninstall operation is in progress */
   public readonly isDepOperationInProgress: ReturnType<typeof computed<boolean>> = computed(
     (): boolean => this.dependencyService.isOperationInProgress()
