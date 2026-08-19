@@ -9,7 +9,6 @@
  * @module app/directives/file-drop-target.spec
  */
 
-import {describe, it, expect, beforeEach, vi} from 'vitest';
 import {TestBed} from '@angular/core/testing';
 import {FileDropTarget} from './file-drop-target';
 import {FileDropService} from '../services/file-drop.service';

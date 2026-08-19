@@ -4,7 +4,6 @@
  * @module app/utils/webvtt.spec
  */
 
-import {describe, it, expect} from 'vitest';
 import {parseTimingLine, parseWebVTT, cueTextAt, sanitizeSubtitleHtml, type ParsedSubtitleCue} from './webvtt';
 
 describe('parseTimingLine', (): void => {
@@ -95,6 +94,60 @@ describe('parseWebVTT', (): void => {
 
   it('returns an empty array when there are no cues', (): void => {
     expect(parseWebVTT('WEBVTT\n\n')).toEqual([]);
+  });
+
+  it('handles CRLF line endings', (): void => {
+    const content: string = 'WEBVTT\r\n\r\n00:00.000 --> 00:02.000\r\nHello\r\n\r\n';
+
+    const cues: ParsedSubtitleCue[] = parseWebVTT(content);
+
+    expect(cues).toEqual([{startTime: 0, endTime: 2, text: 'Hello'}]);
+  });
+
+  it('handles a byte order mark before the header', (): void => {
+    const content: string = '﻿WEBVTT\n\n00:00.000 --> 00:02.000\nHello\n';
+
+    const cues: ParsedSubtitleCue[] = parseWebVTT(content);
+
+    expect(cues).toEqual([{startTime: 0, endTime: 2, text: 'Hello'}]);
+  });
+
+  it('ignores cue settings after the timing', (): void => {
+    const content: string = 'WEBVTT\n\n00:00.000 --> 00:02.000 align:start position:50%\nHello\n';
+
+    const cues: ParsedSubtitleCue[] = parseWebVTT(content);
+
+    expect(cues).toEqual([{startTime: 0, endTime: 2, text: 'Hello'}]);
+  });
+
+  it('ignores cue identifier lines', (): void => {
+    const content: string = [
+      'WEBVTT',
+      '',
+      '1',
+      '00:00.000 --> 00:02.000',
+      'First',
+      '',
+      'cue-two',
+      '00:03.000 --> 00:04.000',
+      'Second',
+      '',
+    ].join('\n');
+
+    const cues: ParsedSubtitleCue[] = parseWebVTT(content);
+
+    expect(cues).toEqual([
+      {startTime: 0, endTime: 2, text: 'First'},
+      {startTime: 3, endTime: 4, text: 'Second'},
+    ]);
+  });
+
+  it('parses a final cue with no trailing blank line', (): void => {
+    const content: string = 'WEBVTT\n\n00:00.000 --> 00:02.000\nLast';
+
+    const cues: ParsedSubtitleCue[] = parseWebVTT(content);
+
+    expect(cues).toEqual([{startTime: 0, endTime: 2, text: 'Last'}]);
   });
 });
 
