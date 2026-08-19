@@ -161,31 +161,63 @@ describe('MediaDownloadManager', (): void => {
   // ==========================================================================
 
   describe('URL validation', (): void => {
-    it('rejects a file:// URL', async (): Promise<void> => {
-      await expect(manager.getInfo('file:///etc/passwd')).rejects.toThrow('Unsupported URL');
+    it('rejects a file:// URL without spawning yt-dlp', async (): Promise<void> => {
+      await expect(manager.getInfo('file:///etc/passwd')).rejects.toThrow(/only http and https/i);
+      expect(execFile).not.toHaveBeenCalled();
     });
 
-    it('rejects a malformed URL', async (): Promise<void> => {
-      await expect(manager.getInfo('not a url')).rejects.toThrow('Invalid URL');
+    it('rejects a malformed URL without spawning yt-dlp', async (): Promise<void> => {
+      await expect(manager.getInfo('not a url')).rejects.toThrow(/invalid url/i);
+      expect(execFile).not.toHaveBeenCalled();
     });
 
-    it('rejects a non-http scheme on resolveStreamSources', async (): Promise<void> => {
-      await expect(manager.resolveStreamSources('ftp://host/f', 'video', null)).rejects.toThrow('Unsupported URL');
+    it('rejects a non-http scheme on resolveStreamSources without spawning', async (): Promise<void> => {
+      await expect(manager.resolveStreamSources('ftp://host/f', 'video', null)).rejects.toThrow(/only http and https/i);
+      expect(execFile).not.toHaveBeenCalled();
     });
 
     it('fails a download job for a file:// URL rather than spawning', (): void => {
-      const onUpdate = vi.fn();
-
-      const id: string = manager.startDownload('file:///etc/passwd', 'video', null, 'x', onUpdate);
+      const id: string = manager.startDownload('file:///etc/passwd', 'video', null, 'x', vi.fn());
 
       expect(spawn).not.toHaveBeenCalled();
-      expect(manager.getJob(id)?.status).toBe('error');
+      expect(manager.getJob(id)?.errorMessage).toMatch(/only http and https/i);
     });
 
     it('accepts https', async (): Promise<void> => {
       stubExecFile(null, JSON.stringify({title: 'T', formats: []}), '');
 
       await expect(manager.getInfo('https://example.com/v')).resolves.toBeDefined();
+    });
+
+    it('treats a leading-dash URL as positional on getInfo, not a flag', async (): Promise<void> => {
+      // Without the `--` terminator yt-dlp would parse this path as an option.
+      const hostile: string = 'https://example.com/-nasty';
+      stubExecFile(null, JSON.stringify({formats: []}), '');
+
+      await manager.getInfo(hostile);
+
+      const args: string[] = lastExecFileArgs();
+      expect(args[args.indexOf(hostile) - 1]).toBe('--');
+    });
+
+    it('treats a leading-dash URL as positional on resolveStreamSources', async (): Promise<void> => {
+      const hostile: string = 'https://example.com/-nasty';
+      stubExecFile(null, 'https://cdn/v\n');
+
+      await manager.resolveStreamSources(hostile, 'video', 720);
+
+      const args: string[] = lastExecFileArgs();
+      expect(args[args.indexOf(hostile) - 1]).toBe('--');
+    });
+
+    it('treats a leading-dash URL as positional on startDownload', (): void => {
+      const hostile: string = 'https://example.com/-nasty';
+      vi.mocked(spawn).mockReturnValue(createFakeChild());
+
+      manager.startDownload(hostile, 'video', null, 'T', vi.fn());
+
+      const args: string[] = lastSpawnArgs();
+      expect(args[args.indexOf(hostile) - 1]).toBe('--');
     });
   });
 
