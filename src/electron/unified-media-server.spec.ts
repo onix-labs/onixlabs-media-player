@@ -1225,4 +1225,172 @@ describe('UnifiedMediaServer', () => {
       expect(body.error).toContain('absolute');
     });
   });
+  // ==========================================================================
+  // Playlist file I/O (.opp)
+  // ==========================================================================
+
+  describe('playlist file I/O', () => {
+    /** Writes a .opp file into the test userData dir and returns its path. */
+    function writeOpp(name: string, content: string): string {
+      const filePath: string = path.join(mockUserDataPath, name);
+      fs.writeFileSync(filePath, content, 'utf-8');
+      return filePath;
+    }
+
+    it('rejects a load with no filePath', async () => {
+      const { status, body } = await request('POST', '/playlist/load', {});
+      expect(status).toBe(400);
+      expect(body.error).toBe('Missing filePath');
+    });
+
+    it('returns 404 when the playlist file does not exist', async () => {
+      const { status, body } = await request('POST', '/playlist/load', {
+        filePath: nonExistentPath('missing.opp'),
+      });
+      expect(status).toBe(404);
+      expect(body.error).toBe('File not found');
+    });
+
+    it('reports malformed JSON rather than crashing', async () => {
+      const filePath: string = writeOpp('malformed.opp', '{ this is not json');
+
+      const { status } = await request('POST', '/playlist/load', { filePath });
+
+      expect(status).toBe(500);
+    });
+
+    it('rejects a file with the wrong format marker', async () => {
+      const filePath: string = writeOpp('wrong-format.opp', JSON.stringify({
+        format: 'some-other-player',
+        items: [],
+      }));
+
+      const { status, body } = await request('POST', '/playlist/load', { filePath });
+
+      expect(status).toBe(400);
+      expect(body.error).toBe('Invalid playlist file format');
+    });
+
+    it('rejects a file with no items array', async () => {
+      const filePath: string = writeOpp('no-items.opp', JSON.stringify({
+        format: 'onixplayer-playlist',
+      }));
+
+      const { status, body } = await request('POST', '/playlist/load', { filePath });
+
+      expect(status).toBe(400);
+      expect(body.error).toBe('Invalid playlist file format');
+    });
+
+    it('rejects a file whose items are not an array', async () => {
+      const filePath: string = writeOpp('items-object.opp', JSON.stringify({
+        format: 'onixplayer-playlist',
+        items: { nope: true },
+      }));
+
+      const { status, body } = await request('POST', '/playlist/load', { filePath });
+
+      expect(status).toBe(400);
+      expect(body.error).toBe('Invalid playlist file format');
+    });
+
+    it('rejects a JSON file that is not an object', async () => {
+      const filePath: string = writeOpp('array.opp', JSON.stringify([1, 2, 3]));
+
+      const { status, body } = await request('POST', '/playlist/load', { filePath });
+
+      expect(status).toBe(400);
+      expect(body.error).toBe('Invalid playlist file format');
+    });
+
+    it('loads a valid but empty playlist without starting playback', async () => {
+      const filePath: string = writeOpp('empty.opp', JSON.stringify({
+        format: 'onixplayer-playlist',
+        items: [],
+      }));
+
+      const { status, body } = await request('POST', '/playlist/load', { filePath });
+
+      expect(status).toBe(200);
+      expect(body.count).toBe(0);
+      expect(body.success).toBe(true);
+    });
+
+    it('records the source file of a loaded playlist', async () => {
+      const filePath: string = writeOpp('source.opp', JSON.stringify({
+        format: 'onixplayer-playlist',
+        items: [],
+      }));
+      await request('POST', '/playlist/load', { filePath });
+
+      const { status, body } = await request('GET', '/playlist/source');
+
+      expect(status).toBe(200);
+      expect(body.filePath).toBe(filePath);
+    });
+
+    it('adds the file entries without re-probing them', async () => {
+      // Loading trusts the stored metadata rather than probing each file, so a
+      // playlist referencing media that is not present still populates.
+      const filePath: string = writeOpp('two-items.opp', JSON.stringify({
+        format: 'onixplayer-playlist',
+        items: [
+          { filePath: nonExistentPath('one.mp3'), title: 'One', duration: 10, type: 'audio' },
+          { filePath: nonExistentPath('two.mp3'), title: 'Two', duration: 20, type: 'audio' },
+        ],
+      }));
+
+      await request('POST', '/playlist/load', { filePath });
+      const { body } = await request('GET', '/playlist');
+
+      const titles: string[] = (body.items as {title: string}[]).map((i: {title: string}): string => i.title);
+      expect(titles).toEqual(['One', 'Two']);
+    });
+
+    it('replaces the existing playlist rather than appending to it', async () => {
+      const populated: string = writeOpp('populated.opp', JSON.stringify({
+        format: 'onixplayer-playlist',
+        items: [{ filePath: nonExistentPath('one.mp3'), title: 'One', duration: 10, type: 'audio' }],
+      }));
+      await request('POST', '/playlist/load', { filePath: populated });
+
+      const empty: string = writeOpp('replace.opp', JSON.stringify({
+        format: 'onixplayer-playlist',
+        items: [],
+      }));
+      await request('POST', '/playlist/load', { filePath: empty });
+      const { body } = await request('GET', '/playlist');
+
+      expect((body.items as unknown[]).length).toBe(0);
+    });
+
+    it('clears the source file when the playlist is cleared', async () => {
+      const filePath: string = writeOpp('cleared.opp', JSON.stringify({
+        format: 'onixplayer-playlist',
+        items: [],
+      }));
+      await request('POST', '/playlist/load', { filePath });
+
+      await request('DELETE', '/playlist/clear');
+      const { body } = await request('GET', '/playlist/source');
+
+      expect(body.filePath).toBeNull();
+    });
+
+    it('requires a token to load a playlist', async () => {
+      const res: Response = await fetch(`${baseUrl}/playlist/load`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath: '/tmp/anything.opp' }),
+      });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('requires a token to read the playlist source', async () => {
+      const res: Response = await fetch(`${baseUrl}/playlist/source`, { method: 'GET' });
+
+      expect(res.status).toBe(401);
+    });
+  });
 });
