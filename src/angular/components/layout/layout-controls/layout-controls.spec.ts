@@ -82,6 +82,11 @@ function createMockElectronService(): Record<string, unknown> {
     toggleFullscreen: vi.fn().mockResolvedValue(undefined),
     enterMiniplayer: vi.fn().mockResolvedValue(undefined),
     showOpenUrlWindow: vi.fn().mockResolvedValue(undefined),
+    // SettingsService is constructed transitively by this component and
+    // registers itself for SSE settings pushes in its constructor.
+    serverUrl: signal(''),
+    onSettingsUpdate: vi.fn(),
+    authFetch: vi.fn().mockResolvedValue({ok: true, json: vi.fn().mockResolvedValue({})}),
   };
 }
 

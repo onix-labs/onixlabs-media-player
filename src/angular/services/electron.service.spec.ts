@@ -481,7 +481,7 @@ describe('ElectronService', (): void => {
           'http://127.0.0.1:12345/player/seek',
           expect.objectContaining({
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: expect.objectContaining({'Content-Type': 'application/json'}),
             body: JSON.stringify({time: 42.5}),
           }),
         );
@@ -635,7 +635,12 @@ describe('ElectronService', (): void => {
 
         const result: unknown = await service.getPlayerState();
 
-        expect(mockFetch).toHaveBeenCalledWith('http://127.0.0.1:12345/player/state');
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://127.0.0.1:12345/player/state',
+          expect.objectContaining({
+            headers: expect.objectContaining({'X-Onix-Token': expect.any(String)}),
+          }),
+        );
         expect(result).toEqual(mockState);
       });
 
@@ -655,7 +660,12 @@ describe('ElectronService', (): void => {
 
         const result: PlaylistState = await service.getPlaylist();
 
-        expect(mockFetch).toHaveBeenCalledWith('http://127.0.0.1:12345/playlist');
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://127.0.0.1:12345/playlist',
+          expect.objectContaining({
+            headers: expect.objectContaining({'X-Onix-Token': expect.any(String)}),
+          }),
+        );
         expect(result).toEqual(mockPlaylist);
       });
 
@@ -677,6 +687,9 @@ describe('ElectronService', (): void => {
 
         expect(mockFetch).toHaveBeenCalledWith(
           'http://127.0.0.1:12345/media/info?path=%2Ftest%2Ffile.mp3',
+          expect.objectContaining({
+            headers: expect.objectContaining({'X-Onix-Token': expect.any(String)}),
+          }),
         );
       });
 

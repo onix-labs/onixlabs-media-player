@@ -50,7 +50,12 @@ function createDependencyStatus(
   id: DependencyId,
   installed: boolean,
 ): DependencyStatus {
-  const names: Record<DependencyId, string> = {ffmpeg: 'FFmpeg', fluidsynth: 'FluidSynth', 'yt-dlp': 'yt-dlp'};
+  const names: Record<DependencyId, string> = {
+    ffmpeg: 'FFmpeg',
+    fluidsynth: 'FluidSynth',
+    openmpt123: 'openmpt123',
+    'yt-dlp': 'yt-dlp',
+  };
   return {
     id,
     name: names[id],
@@ -68,10 +73,12 @@ function createDependencyState(
   ffmpegInstalled: boolean,
   fluidsynthInstalled: boolean,
   ytdlpInstalled: boolean = false,
+  openmpt123Installed: boolean = false,
 ): DependencyState {
   return {
     ffmpeg: createDependencyStatus('ffmpeg', ffmpegInstalled),
     fluidsynth: createDependencyStatus('fluidsynth', fluidsynthInstalled),
+    openmpt123: createDependencyStatus('openmpt123', openmpt123Installed),
     ytdlp: createDependencyStatus('yt-dlp', ytdlpInstalled),
     soundfonts: [],
     activeSoundFont: null,
@@ -140,9 +147,11 @@ describe('DependencyService', (): void => {
   // Computed Signals — Both Installed
   // ==========================================================================
 
-  describe('computed signals with both installed', (): void => {
+  describe('computed signals with all installed', (): void => {
     beforeEach((): void => {
-      const state: DependencyState = createDependencyState(true, true);
+      // Named "both" when there were only two dependencies; yt-dlp and
+      // openmpt123 have since joined them.
+      const state: DependencyState = createDependencyState(true, true, true, true);
       service.dependencyState.set(state);
       service.isLoaded.set(true);
     });
@@ -174,7 +183,7 @@ describe('DependencyService', (): void => {
 
     it('allowedExtensions returns MEDIA_EXTENSIONS', (): void => {
       const result: ReadonlySet<string> = service.allowedExtensions();
-      expect(result).toBe(MEDIA_EXTENSIONS);
+      expect(result).toEqual(MEDIA_EXTENSIONS);
     });
   });
 
@@ -211,7 +220,7 @@ describe('DependencyService', (): void => {
 
     it('allowedExtensions returns FFMPEG_EXTENSIONS', (): void => {
       const result: ReadonlySet<string> = service.allowedExtensions();
-      expect(result).toBe(FFMPEG_EXTENSIONS);
+      expect(result).toEqual(FFMPEG_EXTENSIONS);
     });
   });
 
@@ -228,7 +237,7 @@ describe('DependencyService', (): void => {
 
     it('allowedExtensions returns MIDI_EXTENSIONS', (): void => {
       const result: ReadonlySet<string> = service.allowedExtensions();
-      expect(result).toBe(MIDI_EXTENSIONS);
+      expect(result).toEqual(MIDI_EXTENSIONS);
     });
   });
 

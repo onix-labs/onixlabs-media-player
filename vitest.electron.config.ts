@@ -11,12 +11,14 @@ export default defineConfig({
       include: ['src/electron/**/*.ts'],
       exclude: ['src/electron/**/*.spec.ts', 'src/electron/dist/**'],
       thresholds: {
-        // Global thresholds (conservative — main.ts, preload.ts, and
-        // unified-media-server.ts are hard to unit test without Electron runtime)
-        statements: 20,
-        branches: 35,
-        functions: 20,
-        lines: 20,
+        // Global thresholds, set just under the measured figures. They stay
+        // low in absolute terms because main.ts and preload.ts are 0% — both
+        // need the Electron runtime — and unified-media-server.ts is 4,000
+        // lines of mostly-streaming code. Raise these as those come down.
+        statements: 43,
+        branches: 47,
+        functions: 42,
+        lines: 43,
 
         // Per-file floors for the pure-logic modules. These are the strongest
         // guard available: a global percentage can stay flat while a
@@ -24,22 +26,22 @@ export default defineConfig({
         // files dominate the average. Each of these has a dedicated suite, so
         // a drop here means coverage was actually removed.
         'src/electron/playlist-manager.ts': {
-          statements: 85,
-          branches: 75,
-          functions: 85,
-          lines: 85,
+          statements: 94,
+          branches: 90,
+          functions: 96,
+          lines: 95,
         },
         'src/electron/sse-manager.ts': {
-          statements: 90,
-          branches: 80,
-          functions: 90,
-          lines: 90,
+          statements: 100,
+          branches: 100,
+          functions: 100,
+          lines: 100,
         },
         'src/electron/media-download-manager.ts': {
-          statements: 75,
-          branches: 60,
-          functions: 75,
-          lines: 75,
+          statements: 100,
+          branches: 95,
+          functions: 100,
+          lines: 100,
         },
       },
     },

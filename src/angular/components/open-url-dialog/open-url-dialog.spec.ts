@@ -12,7 +12,7 @@
  */
 
 import {TestBed} from '@angular/core/testing';
-import {signal, type WritableSignal} from '@angular/core';
+import {ElementRef, signal, type WritableSignal} from '@angular/core';
 import {OpenUrlDialog} from './open-url-dialog';
 import {ElectronService, type UrlMediaInfo, type DownloadJob} from '../../services/electron.service';
 import {DependencyService} from '../../services/dependency.service';
@@ -99,6 +99,12 @@ describe('OpenUrlDialog', (): void => {
         OpenUrlDialog,
         {provide: ElectronService, useValue: mockElectron},
         {provide: DependencyService, useValue: mockDeps},
+        // The dialog is exercised as a class rather than through a fixture:
+        // its ngAfterViewInit constructs a ResizeObserver, which the test DOM
+        // does not implement. ElementRef therefore has to be supplied here,
+        // and a bare stub suffices because nativeElement is only read from
+        // that hook.
+        {provide: ElementRef, useValue: new ElementRef<HTMLElement>({} as HTMLElement)},
       ],
     });
 
