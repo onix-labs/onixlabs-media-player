@@ -32,6 +32,7 @@ import {ElectronService} from '../../../services/electron.service';
 import {SettingsService, PerVisualizationSettings, RenderResolution, CrossfadeStyle, CROSSFADE_STYLES} from '../../../services/settings.service';
 import {FileDropTarget} from '../../../directives/file-drop-target';
 import {MediaClockSync} from '../../../utils/media-clock-sync';
+import {ResumePositionTracker} from '../../../utils/resume-position';
 import type {PlaylistItem} from '../../../types/electron';
 import {Visualization, createVisualization, VISUALIZATION_TYPES, VISUALIZATION_METADATA} from './visualizations';
 import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equalizer';
@@ -225,10 +226,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private currentFilePath: string | null = null;
 
   /** Path of the last successfully loaded audio (state reached 'playing') */
-  private lastSuccessfullyLoadedPath: string | null = null;
+  private readonly resume: ResumePositionTracker = new ResumePositionTracker();
 
   /** Playback state that preceded the current 'loading' transition */
-  private stateBeforeLoading: string = 'idle';
 
   /** Whether the current source is a remote URL streamed through FFmpeg */
   private isRemoteStream: boolean = false;
@@ -309,18 +309,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       const state: string = this.mediaPlayer.playbackState();
       const forceReload: number = this.electron.forceReloadCounter();
 
-      // Track when we successfully loaded this file (state reached 'playing')
-      // so re-loading the same file can resume at the server position
-      if (state === 'playing' && this.currentFilePath) {
-        this.lastSuccessfullyLoadedPath = this.currentFilePath;
-      }
-
-      // Remember the state that preceded a 'loading' transition. This
-      // distinguishes resuming after a stop (stopped → loading) from a
-      // restart or re-selection (playing → loading), which must start at 0.
-      if (state !== 'loading') {
-        this.stateBeforeLoading = state;
-      }
+      this.resume.observe(state, this.currentFilePath);
 
       // Clear cached path on loading or force reload (soundfont change)
       if (state === 'loading' || forceReload > 0) {
@@ -328,17 +317,13 @@ export class AudioOutlet implements OnInit, OnDestroy {
       }
 
       if (track?.type === 'audio' && track.filePath !== this.currentFilePath) {
-        // Resume after stop: replaying the same track when the state before
-        // 'loading' was 'stopped' resumes at the server position — the user
-        // may have dragged the seek bar while stopped before pressing play
-        // (the server keeps that position on play). All other loads start
-        // from 0 (the server resets its clock for those flows).
-        const isStopResume: boolean = state === 'loading'
-          && this.stateBeforeLoading === 'stopped'
-          && track.filePath === this.lastSuccessfullyLoadedPath;
-        const resumeTime: number = isStopResume
-          ? untracked((): number => this.mediaPlayer.currentTime())
-          : 0;
+        // Resume after stop picks up the server position; every other load
+        // starts from 0, because the server resets its clock for those flows.
+        const resumeTime: number = this.resume.startPosition(
+          state,
+          track.filePath,
+          (): number => untracked((): number => this.mediaPlayer.currentTime())
+        );
         void this.loadAudioSource(track.filePath, resumeTime);
       }
     });

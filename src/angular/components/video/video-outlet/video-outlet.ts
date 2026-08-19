@@ -25,6 +25,7 @@ import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropTarget} from '../../../directives/file-drop-target';
 import {MediaClockSync} from '../../../utils/media-clock-sync';
+import {ResumePositionTracker} from '../../../utils/resume-position';
 import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS, SubtitleFontFamily, PreferredAudioLanguage, PreferredSubtitleLanguage} from '../../../services/settings.service';
 import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equalizer';
 import {buildVideoFilter} from '../../../services/video-adjustments';
@@ -252,10 +253,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
   private currentFilePath: string | null = null;
 
   /** Path of the last successfully loaded video (state reached 'playing') */
-  private lastSuccessfullyLoadedPath: string | null = null;
+  private readonly resume: ResumePositionTracker = new ResumePositionTracker();
 
   /** Playback state that preceded the current 'loading' transition */
-  private stateBeforeLoading: string = 'idle';
 
   /**
    * Web Audio graph for routing video audio through the equalizer.
@@ -384,22 +384,13 @@ export class VideoOutlet implements OnInit, OnDestroy {
       const state: string = this.mediaPlayer.playbackState();
 
       // Track when we successfully loaded a video (state reached 'playing')
-      if (state === 'playing' && this.currentFilePath) {
-        this.lastSuccessfullyLoadedPath = this.currentFilePath;
-      }
-
-      // Remember the state that preceded a 'loading' transition. This
-      // distinguishes resuming after a stop (stopped → loading) from a
-      // restart or re-selection (playing → loading), which must start at 0.
-      if (state !== 'loading') {
-        this.stateBeforeLoading = state;
-      }
+      this.resume.observe(state, this.currentFilePath);
 
       // For re-selection: only clear currentFilePath if we're loading a track
       // that was already successfully played. This prevents double-loading when
       // selectTrack is called right after addToPlaylist (the track hasn't been
       // successfully loaded yet, so we shouldn't clear and reload).
-      if (state === 'loading' && track?.filePath === this.lastSuccessfullyLoadedPath) {
+      if (state === 'loading' && this.resume.hasPlayed(track?.filePath)) {
         this.currentFilePath = null;
       }
 
@@ -416,12 +407,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
         //   it must never be used as a start position here; if the server is
         //   genuinely mid-track, its broadcasts re-position the element via
         //   the seek effect.
-        const isStopResume: boolean = state === 'loading'
-          && this.stateBeforeLoading === 'stopped'
-          && track.filePath === this.lastSuccessfullyLoadedPath;
-        const startTime: number = isStopResume
-          ? untracked((): number => this.mediaPlayer.currentTime())
-          : 0;
+        const startTime: number = this.resume.startPosition(
+          state,
+          track.filePath,
+          (): number => untracked((): number => this.mediaPlayer.currentTime())
+        );
         // Reset flip on a genuine track switch, but preserve it across
         // view-mode changes (e.g. entering fullscreen) which reload the
         // same file.
@@ -743,7 +733,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     video.pause();
     video.src = '';
     this.currentFilePath = null;
-    this.lastSuccessfullyLoadedPath = null;
+    this.resume.reset();
 
     // Tear down the equalizer audio graph
     if (this.audioContext) {
