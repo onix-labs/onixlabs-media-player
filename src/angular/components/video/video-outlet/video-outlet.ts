@@ -359,6 +359,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
   private videoSeekedHandler: (() => void) | null = null;
   private videoLoadedMetadataHandler: (() => void) | null = null;
 
+  /**
+   * One-shot 'canplay' handler that positions a newly loaded source, tracked
+   * so a load can retire the previous source's pending seek. See armPendingSeek.
+   */
+  private pendingSeekHandler: (() => void) | null = null;
+
   /** Fade-out interval handle (stored for cleanup) */
   private fadeInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -367,6 +373,16 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /** Loaded subtitle tracks with parsed cues (for custom rendering) */
   private loadedSubtitleTracks: LoadedSubtitleTrack[] = [];
+
+  /**
+   * Bumped whenever loaded subtitle state is discarded. A load captures the
+   * value at entry and abandons itself once it no longer matches, so only the
+   * newest load can mutate shared subtitle state.
+   */
+  private subtitleLoadGeneration: number = 0;
+
+  /** Aborts the in-flight subtitle fetch when its load is superseded. */
+  private subtitleLoadAbort: AbortController | null = null;
 
   /** Video timeupdate handler (stored for cleanup) */
   private videoTimeUpdateHandler: (() => void) | null = null;
@@ -796,6 +812,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     if (this.videoPlayingHandler) {
       video.removeEventListener('playing', this.videoPlayingHandler);
     }
+    this.clearPendingSeek(video);
     this.stopStallClockHold();
 
     // Remove subtitle style element
@@ -896,6 +913,41 @@ export class VideoOutlet implements OnInit, OnDestroy {
   }
 
   /**
+   * Positions the element at `seekTime` as soon as the new source can play.
+   *
+   * Tracked in a field rather than left as an anonymous listener: a listener
+   * that only unregisters when it fires outlives a source that is replaced
+   * before it ever reaches 'canplay' — a rapid seek on a transcoded stream, an
+   * audio-track switch, a fast skip — and then applies the dead source's seek
+   * to whatever loads next. Callers must clearPendingSeek before every load,
+   * including loads that need no seek of their own.
+   *
+   * @param video - The video element being loaded
+   * @param seekTime - Absolute media time to position at
+   */
+  private armPendingSeek(video: HTMLVideoElement, seekTime: number): void {
+    this.clearPendingSeek(video);
+
+    this.pendingSeekHandler = (): void => {
+      this.pendingSeekHandler = null;
+      video.currentTime = seekTime;
+    };
+
+    video.addEventListener('canplay', this.pendingSeekHandler, {once: true});
+  }
+
+  /**
+   * Retires a seek still waiting on a previous source's 'canplay'.
+   *
+   * @param video - The video element to detach from
+   */
+  private clearPendingSeek(video: HTMLVideoElement): void {
+    if (!this.pendingSeekHandler) return;
+    video.removeEventListener('canplay', this.pendingSeekHandler);
+    this.pendingSeekHandler = null;
+  }
+
+  /**
    * Reloads the video with the selected audio track and seeks to the specified time.
    *
    * @param seekTime - Time to seek to after reload (absolute media time)
@@ -929,13 +981,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
     video.src = streamUrl;
     video.load();
 
-    // For native formats, seek after load; for transcoded, time is in URL
+    // For native formats, seek after load; for transcoded, time is in URL.
+    // Cleared unconditionally first so a seek armed for the source this one
+    // replaces cannot fire against it.
+    this.clearPendingSeek(video);
     if (!this.isTranscoded && seekTime > 0) {
-      const onCanPlay: () => void = (): void => {
-        video.currentTime = seekTime;
-        video.removeEventListener('canplay', onCanPlay);
-      };
-      video.addEventListener('canplay', onCanPlay);
+      this.armPendingSeek(video, seekTime);
     }
 
     if (autoPlay) {
@@ -1308,12 +1359,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
     // requests make this instant). Handles resuming at a position seeked
     // while stopped as well as view-mode remounts. Transcoded formats
     // already start at the right position via the 't' URL parameter.
+    // Cleared unconditionally first: a seek armed for the previous source must
+    // not survive into this one, even when this load needs no seek itself.
+    this.clearPendingSeek(video);
     if (!this.isTranscoded && seekTime > 0) {
-      const onCanPlay: () => void = (): void => {
-        video.currentTime = seekTime;
-        video.removeEventListener('canplay', onCanPlay);
-      };
-      video.addEventListener('canplay', onCanPlay);
+      this.armPendingSeek(video, seekTime);
     }
 
     console.log(`Loading video: ${filePath}, transcoded: ${this.isTranscoded}, seekTime: ${seekTime}, audioTrack: ${audioTrack}`);
@@ -1595,10 +1645,21 @@ export class VideoOutlet implements OnInit, OnDestroy {
     filePath: string
   ): Promise<void> {
     console.log(`[Subtitles] Loading ${tracks.length} tracks: ${tracks.map((t: SubtitleTrack): string => `${t.index}="${t.title}" (${t.codec})`).join(', ')}`);
+
+    // Claim this load. cleanupSubtitleTracks bumps the generation and aborts
+    // the controller, so a load for a video the user has already moved on from
+    // stops before it can touch loadedSubtitleTracks or the selection cache.
+    const generation: number = this.subtitleLoadGeneration;
+    const abort: AbortController = new AbortController();
+    this.subtitleLoadAbort = abort;
+
     for (const track of tracks) {
+      if (generation !== this.subtitleLoadGeneration) return;
+
       try {
         const url: string = `${serverUrl}/media/subtitles?path=${encodeURIComponent(filePath)}&track=${track.index}`;
-        const response: Response = await this.electron.authFetch(url);
+        const response: Response = await this.electron.authFetch(url, {signal: abort.signal});
+        if (generation !== this.subtitleLoadGeneration) return;
 
         if (!response.ok) {
           console.error(`Failed to load subtitle track ${track.index}: ${response.status}`);
@@ -1606,6 +1667,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
         }
 
         const webvttContent: string = await response.text();
+        if (generation !== this.subtitleLoadGeneration) return;
+
         const cues: ParsedSubtitleCue[] = this.parseWebVTT(webvttContent);
 
         this.loadedSubtitleTracks.push({
@@ -1615,9 +1678,14 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
         console.log(`Loaded subtitle track ${track.index} with ${cues.length} cues`);
       } catch (error: unknown) {
+        // A superseded load's fetch is aborted deliberately; that is not a failure.
+        if (generation !== this.subtitleLoadGeneration) return;
         console.error(`Error loading subtitle track ${track.index}:`, error);
       }
     }
+
+    if (generation !== this.subtitleLoadGeneration) return;
+    this.subtitleLoadAbort = null;
 
     // Check for a cached selection (persists across view mode changes - user's manual choice takes precedence)
     const cachedSelection: number | undefined = this.electron.getSubtitleSelection(filePath);
@@ -1833,8 +1901,18 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /**
    * Cleans up loaded subtitle tracks.
+   *
+   * Also retires any load still in flight. Loading is a sequence of awaited
+   * fetches that can take seconds across many tracks, and it resolves
+   * `loadedSubtitleTracks` at push time — so a load left running for a
+   * previous video would deposit that video's cues into this one's list and
+   * overwrite the selection cache under the old file path.
    */
   private cleanupSubtitleTracks(): void {
+    this.subtitleLoadGeneration++;
+    this.subtitleLoadAbort?.abort();
+    this.subtitleLoadAbort = null;
+
     this.loadedSubtitleTracks = [];
     this.subtitleText.set('');
   }

@@ -625,6 +625,47 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private onAudioWaiting: (() => void) | null = null;
 
   /**
+   * One-shot 'canplay' handler that positions a newly loaded track, tracked so
+   * a load can retire the previous track's pending resume. See armPendingSeek.
+   */
+  private pendingSeekHandler: (() => void) | null = null;
+
+  /**
+   * Positions the element at `seekTime` as soon as the new source can play.
+   *
+   * Tracked in a field rather than left as an anonymous listener: a listener
+   * that only unregisters when it fires outlives a track replaced before it
+   * ever reaches 'canplay' — skipping quickly through a playlist — and then
+   * applies the dead track's resume position to whatever loads next. Callers
+   * must clearPendingSeek before every load, including loads that need no
+   * seek of their own.
+   *
+   * @param audio - The audio element being loaded
+   * @param seekTime - Absolute media time to position at
+   */
+  private armPendingSeek(audio: HTMLAudioElement, seekTime: number): void {
+    this.clearPendingSeek(audio);
+
+    this.pendingSeekHandler = (): void => {
+      this.pendingSeekHandler = null;
+      audio.currentTime = seekTime;
+    };
+
+    audio.addEventListener('canplay', this.pendingSeekHandler, {once: true});
+  }
+
+  /**
+   * Retires a resume still waiting on a previous track's 'canplay'.
+   *
+   * @param audio - The audio element to detach from
+   */
+  private clearPendingSeek(audio: HTMLAudioElement): void {
+    if (!this.pendingSeekHandler) return;
+    audio.removeEventListener('canplay', this.pendingSeekHandler);
+    this.pendingSeekHandler = null;
+  }
+
+  /**
    * Starts periodically anchoring the server clock to the element's current
    * position while the element is stalled buffering. Skips ticks in a short
    * grace window after a user seek so a stale element position can never
@@ -686,6 +727,13 @@ export class AudioOutlet implements OnInit, OnDestroy {
       document.removeEventListener('keydown', this.gestureHandler);
       this.gestureHandler = null;
     }
+    // Clean up any resume still waiting on 'canplay'
+    if (this.pendingSeekHandler) {
+      const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
+      audio?.removeEventListener('canplay', this.pendingSeekHandler);
+      this.pendingSeekHandler = null;
+    }
+
     // Clean up audio playing event listener
     if (this.onAudioPlaying) {
       const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
@@ -821,13 +869,11 @@ export class AudioOutlet implements OnInit, OnDestroy {
     audio.load();
 
     // For local formats, position the element once it can play (HTTP range
-    // requests make this instant)
+    // requests make this instant). Cleared unconditionally first so a resume
+    // armed for the track this one replaces cannot fire against it.
+    this.clearPendingSeek(audio);
     if (!this.isRemoteStream && resumeTime > 0) {
-      const onCanPlay: () => void = (): void => {
-        audio.currentTime = resumeTime;
-        audio.removeEventListener('canplay', onCanPlay);
-      };
-      audio.addEventListener('canplay', onCanPlay);
+      this.armPendingSeek(audio, resumeTime);
     }
 
     console.log(`Audio source loaded: ${filePath}`);

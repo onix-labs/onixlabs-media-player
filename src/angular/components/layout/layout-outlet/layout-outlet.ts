@@ -16,8 +16,8 @@
  * @module app/components/layout/layout-outlet
  */
 
-import {Component, computed, inject, signal, output, ViewChild, HostBinding, ChangeDetectionStrategy} from '@angular/core';
-import type {OutputEmitterRef} from '@angular/core';
+import {Component, computed, inject, signal, output, viewChild, ViewChild, HostBinding, ChangeDetectionStrategy} from '@angular/core';
+import type {OutputEmitterRef, Signal} from '@angular/core';
 import {AudioOutlet} from '../../audio/audio-outlet/audio-outlet';
 import {VISUALIZATION_GROUPS} from '../../audio/audio-outlet/visualizations';
 import {VideoOutlet, VIDEO_FLIP_OPTIONS, type VideoFlipMode} from '../../video/video-outlet/video-outlet';
@@ -68,8 +68,20 @@ export class LayoutOutlet {
   /** Reference to the audio outlet for visualization control */
   @ViewChild('audioOutlet') public audioOutlet?: AudioOutlet;
 
-  /** Reference to the video outlet for aspect mode control */
-  @ViewChild('videoOutlet') public videoOutlet?: VideoOutlet;
+  /**
+   * Reference to the video outlet for aspect mode and track control.
+   *
+   * A signal query rather than a plain @ViewChild because the template reads
+   * the outlet's own signals *through* this reference (subtitle and audio
+   * track dropdowns). The app is zoneless, so a binding that evaluates while
+   * a non-signal ViewChild is still undefined would read no signals at all,
+   * record no dependencies, and never be re-evaluated — leaving the dropdowns
+   * permanently empty. Making the reference itself reactive guarantees every
+   * such binding has at least one dependency to wake it when the outlet
+   * mounts. Same failure this component already documents for
+   * currentAspectMode.
+   */
+  public readonly videoOutlet: Signal<VideoOutlet | undefined> = viewChild<VideoOutlet>('videoOutlet');
 
   /** Media player service for playback state */
   private readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
@@ -246,7 +258,7 @@ export class LayoutOutlet {
   public onAspectModeChange(event: Event): void {
     const target: EventTarget | null = event.target;
     if (target instanceof HTMLSelectElement) {
-      this.videoOutlet?.setAspectMode(target.value as VideoAspectMode);
+      this.videoOutlet()?.setAspectMode(target.value as VideoAspectMode);
     }
   }
 
@@ -258,7 +270,7 @@ export class LayoutOutlet {
   public onFlipModeChange(event: Event): void {
     const target: EventTarget | null = event.target;
     if (target instanceof HTMLSelectElement) {
-      this.videoOutlet?.setFlipMode(target.value as VideoFlipMode);
+      this.videoOutlet()?.setFlipMode(target.value as VideoFlipMode);
     }
   }
 
@@ -304,7 +316,7 @@ export class LayoutOutlet {
    * Gets the available subtitle tracks from the video outlet.
    */
   public getSubtitleTracks(): readonly SubtitleTrack[] {
-    return this.videoOutlet?.subtitleTracks() ?? [];
+    return this.videoOutlet()?.subtitleTracks() ?? [];
   }
 
   /**
@@ -312,14 +324,14 @@ export class LayoutOutlet {
    * Returns -1 if subtitles are off.
    */
   public getSelectedSubtitleTrack(): number {
-    return this.videoOutlet?.selectedSubtitleTrack() ?? -1;
+    return this.videoOutlet()?.selectedSubtitleTrack() ?? -1;
   }
 
   /**
    * Gets whether an external subtitle is loaded.
    */
   public hasExternalSubtitle(): boolean {
-    return this.videoOutlet?.hasExternalSubtitle() ?? false;
+    return this.videoOutlet()?.hasExternalSubtitle() ?? false;
   }
 
   /**
@@ -334,11 +346,11 @@ export class LayoutOutlet {
       const value: number = parseInt(target.value, 10);
       if (value === SUBTITLE_LOAD_EXTERNAL_VALUE) {
         // Load External option selected
-        this.videoOutlet?.loadExternalSubtitle();
+        this.videoOutlet()?.loadExternalSubtitle();
         // Reset select to current track since "Load External..." is an action, not a selection
         target.value = String(this.getSelectedSubtitleTrack());
       } else {
-        this.videoOutlet?.selectSubtitleTrack(value);
+        this.videoOutlet()?.selectSubtitleTrack(value);
       }
     }
   }
@@ -352,7 +364,7 @@ export class LayoutOutlet {
    * Returns empty array if no video outlet or no multiple audio tracks.
    */
   public getAudioTracks(): readonly AudioTrack[] {
-    return this.videoOutlet?.audioTracks() ?? [];
+    return this.videoOutlet()?.audioTracks() ?? [];
   }
 
   /**
@@ -360,7 +372,7 @@ export class LayoutOutlet {
    * Returns 0 if no video outlet.
    */
   public getSelectedAudioTrack(): number {
-    return this.videoOutlet?.selectedAudioTrack() ?? 0;
+    return this.videoOutlet()?.selectedAudioTrack() ?? 0;
   }
 
   /**
@@ -372,7 +384,7 @@ export class LayoutOutlet {
     const target: EventTarget | null = event.target;
     if (target instanceof HTMLSelectElement) {
       const value: number = parseInt(target.value, 10);
-      this.videoOutlet?.selectAudioTrack(value);
+      this.videoOutlet()?.selectAudioTrack(value);
     }
   }
 
