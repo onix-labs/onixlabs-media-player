@@ -537,7 +537,24 @@ export abstract class Visualization {
     if (playing) {
       // Reset fade when playback starts
       this.fadeAlpha = 0;
+      // Rebase the delta clock: the render loop skips draw() (and so updateFade)
+      // while idle, so lastFrameTime may be arbitrarily stale by now.
+      this.lastFrameTime = performance.now();
     }
+  }
+
+  /**
+   * Whether the visualization currently has nothing to render.
+   *
+   * True once playback has stopped and the fade-out has fully completed, at
+   * which point draw() would compose an entirely transparent frame. The render
+   * loop uses this to skip drawing altogether rather than burn CPU and GPU
+   * producing invisible frames for as long as the view stays open.
+   *
+   * @returns True when stopped and fully faded out.
+   */
+  public isIdle(): boolean {
+    return !this.isPlaying && this.fadeAlpha >= 1;
   }
 
   /**

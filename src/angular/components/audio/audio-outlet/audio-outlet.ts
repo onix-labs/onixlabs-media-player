@@ -153,6 +153,20 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Animation frame ID for the visualization loop */
   private animationId: number | null = null;
 
+  /** Observer that keeps the cached canvas display size current. */
+  private canvasResizeObserver: ResizeObserver | null = null;
+
+  /**
+   * Canvas display size in CSS pixels, refreshed by canvasResizeObserver.
+   *
+   * Cached so the draw loop never has to force a layout read; see observeCanvasSize.
+   */
+  private displayWidth: number = 0;
+  private displayHeight: number = 0;
+
+  /** Whether the loop has parked because the visualization has nothing to render. */
+  private renderIdle: boolean = false;
+
   /** Timestamp of last frame render (for frame rate limiting) */
   private lastFrameTime: number = 0;
 
@@ -561,6 +575,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
    */
   public ngOnInit(): void {
     this.setupUserGestureHandler();
+    // Must precede initVisualization: that sizes the visualization from the
+    // cached display size, so the cache has to be seeded first.
+    this.observeCanvasSize(this.canvasRef.nativeElement);
     this.initVisualization();
     this.startAnimationLoop();
 
@@ -651,8 +668,13 @@ export class AudioOutlet implements OnInit, OnDestroy {
       clearTimeout(this.fadeTimeoutId);
       this.fadeTimeoutId = null;
     }
-    if (this.animationId) {
+    if (this.animationId !== null) {
       cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+    if (this.canvasResizeObserver) {
+      this.canvasResizeObserver.disconnect();
+      this.canvasResizeObserver = null;
     }
     this.outgoingVisualization?.destroy();
     this.visualization?.destroy();
@@ -1169,14 +1191,14 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * Computes the visualization's target backing-store size for the current
    * render-resolution setting.
    *
-   * 'native' tracks the canvas's displayed pixel size. A fixed resolution returns
-   * that exact size, so the smaller backing store is stretched by CSS to fill the
-   * screen with nearest-neighbour scaling (pixelated, no blending).
+   * 'native' tracks the canvas's displayed pixel size, read from the cache that
+   * observeCanvasSize maintains. A fixed resolution returns that exact size, so
+   * the smaller backing store is stretched by CSS to fill the screen with
+   * nearest-neighbour scaling (pixelated, no blending).
    *
-   * @param canvas - The visualization canvas element
    * @returns The target width/height and whether pixelated scaling applies
    */
-  private getRenderSize(canvas: HTMLCanvasElement): {width: number; height: number; pixelated: boolean} {
+  private getRenderSize(): {width: number; height: number; pixelated: boolean} {
     const resolution: RenderResolution = this.settings.renderResolution();
     if (resolution !== 'native' && !this.visualization?.rendersAtNativeResolution) {
       const separator: number = resolution.indexOf('x');
@@ -1186,8 +1208,37 @@ export class AudioOutlet implements OnInit, OnDestroy {
         return {width, height, pixelated: true};
       }
     }
-    const rect: DOMRect = canvas.getBoundingClientRect();
-    return {width: Math.round(rect.width), height: Math.round(rect.height), pixelated: false};
+    return {width: this.displayWidth, height: this.displayHeight, pixelated: false};
+  }
+
+  /**
+   * Tracks the canvas's display size, caching it for the draw loop.
+   *
+   * The loop needs the canvas's laid-out size every frame to keep the
+   * backing store in sync, but reading it there means a synchronous layout
+   * measurement per frame — and a forced reflow whenever something else has
+   * dirtied layout, such as the controls fading in and out over the
+   * visualization. A ResizeObserver moves that read onto the rare occasions
+   * the size actually changes.
+   *
+   * The measurement is still getBoundingClientRect so the cached values match
+   * what the loop used to compute; the observer only controls when it runs.
+   *
+   * @param canvas - The visualization canvas to observe
+   */
+  private observeCanvasSize(canvas: HTMLCanvasElement): void {
+    const measure: () => void = (): void => {
+      const rect: DOMRect = canvas.getBoundingClientRect();
+      this.displayWidth = Math.round(rect.width);
+      this.displayHeight = Math.round(rect.height);
+    };
+
+    // Seed synchronously: the observer's first callback does not arrive until
+    // after this frame, and the loop may render before then.
+    measure();
+
+    this.canvasResizeObserver = new ResizeObserver(measure);
+    this.canvasResizeObserver.observe(canvas);
   }
 
   /**
@@ -1197,7 +1248,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private applyRenderSize(): void {
     if (!this.visualization) return;
     const canvas: HTMLCanvasElement = this.canvasRef.nativeElement;
-    const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize(canvas);
+    const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize();
     canvas.style.imageRendering = size.pixelated ? 'pixelated' : 'auto';
     this.visualization.resize(size.width, size.height);
   }
@@ -1235,7 +1286,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
       // Target backing-store size: the display size ('native') or the fixed
       // render resolution (stretched to fill via CSS with nearest-neighbour).
-      const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize(canvas);
+      const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize();
 
       // Keep the visible (compositor) canvas sized to the render target.
       if (canvas.width !== size.width || canvas.height !== size.height) {
@@ -1249,6 +1300,20 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.visualization?.resize(size.width, size.height);
       }
 
+      // Playback has stopped and the fade has run to completion, so draw() would
+      // spend a full frame's work compositing an entirely transparent result.
+      // Blank the visible canvas once, then keep ticking without rendering until
+      // playback resumes. A crossfade still needs both buffers drawn, so it is
+      // never treated as idle.
+      if (!this.isCrossfading && this.visualization?.isIdle()) {
+        if (!this.renderIdle) {
+          this.compositeCtx?.clearRect(0, 0, size.width, size.height);
+          this.renderIdle = true;
+        }
+        return;
+      }
+      this.renderIdle = false;
+
       // Render the active visualization into its own offscreen buffer.
       this.visualization?.draw();
 
@@ -1257,7 +1322,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.renderComposite(size.width, size.height);
     };
 
-    requestAnimationFrame(draw);
+    this.animationId = requestAnimationFrame(draw);
   }
 
   /**
