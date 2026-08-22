@@ -1,0 +1,23 @@
+name: Release Readiness
+
+# The full test cadence for a release candidate. Run this against the commit
+# you intend to tag; release.yml refuses to publish a tag whose commit has no
+# successful run of this workflow.
+#
+#   gh workflow run release-readiness.yml --ref main
+#
+# Tag creation itself cannot be gated on status checks — GitHub attaches checks
+# to commits, and a tag is only a ref pointing at one. The guard therefore lives
+# in release.yml, ahead of any job that creates a release or uploads an asset.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  dependencies:
+    name: Dependency Integration
+    uses: ./.github/workflows/dependency-integration.yml

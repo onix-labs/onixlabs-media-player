@@ -6,8 +6,42 @@ on:
       - '*.*.*'
 
 jobs:
+  # Nothing is created or published until the tagged commit is known-good.
+  # Branch protection cannot cover this: a tag push carries no checks of its
+  # own, so readiness is verified here against the commit the tag points at.
+  verify-readiness:
+    name: Verify Release Readiness
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require a successful Release Readiness run for this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/release-readiness.yml/runs?head_sha=${GITHUB_SHA}&status=success" \
+            --jq '.total_count')
+
+          if [ "${count}" -eq 0 ]; then
+            echo "::error::No successful Release Readiness run for ${GITHUB_SHA} (tag ${GITHUB_REF_NAME})."
+            echo "The full test cadence has not passed on this commit, so nothing will be published."
+            echo ""
+            echo "To fix: drop the tag, run the cadence on the branch holding this"
+            echo "commit, then re-tag once it is green. workflow_dispatch takes a"
+            echo "branch or tag name, not a SHA, so dispatch against main:"
+            echo "  git push --delete origin ${GITHUB_REF_NAME} && git tag -d ${GITHUB_REF_NAME}"
+            echo "  gh workflow run release-readiness.yml --ref main"
+            echo "  git tag ${GITHUB_REF_NAME} && git push origin ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+
+          echo "Found ${count} successful Release Readiness run(s) for ${GITHUB_SHA}."
+
   create-release:
     name: Create GitHub Release
+    needs: verify-readiness
     runs-on: ubuntu-latest
     permissions:
       contents: write
