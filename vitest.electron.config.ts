@@ -11,14 +11,20 @@ export default defineConfig({
       include: ['src/electron/**/*.ts'],
       exclude: ['src/electron/**/*.spec.ts', 'src/electron/dist/**'],
       thresholds: {
-        // Global thresholds, set just under the measured figures. They stay
-        // low in absolute terms because main.ts and preload.ts are 0% — both
-        // need the Electron runtime — and unified-media-server.ts is 4,000
-        // lines of mostly-streaming code. Raise these as those come down.
-        statements: 43,
+        // Global thresholds, set just under the figures MEASURED IN CI, which
+        // is the only place they are enforced. A local run on macOS reports
+        // roughly 0.6 points higher across the board, because the darwin
+        // branches in application-menu.ts and unified-media-server.ts execute
+        // there and never do on the Linux runner. Calibrating against a local
+        // run is what put statements and functions above what CI can reach.
+        //
+        // They stay low in absolute terms because main.ts and preload.ts are 0%
+        // — both need the Electron runtime — and unified-media-server.ts is
+        // 4,000 lines of mostly-streaming code. Raise these as those come down.
+        statements: 42,
         branches: 47,
-        functions: 42,
-        lines: 43,
+        functions: 41,
+        lines: 42,
 
         // Per-file floors for the pure-logic modules. These are the strongest
         // guard available: a global percentage can stay flat while a
