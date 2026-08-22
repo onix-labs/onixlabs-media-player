@@ -18,6 +18,10 @@ on:
       - 'src/electron/dependency-manager.ts'
       - '.github/workflows/dependency-integration.yml'
   workflow_dispatch:  # Manual trigger
+  # Called by Release Readiness. The path filters above do not apply to
+  # workflow_call, so a readiness run always exercises the package managers
+  # even when dependency-manager.ts is untouched.
+  workflow_call:
   schedule:
     - cron: '0 0 * * 0'  # Weekly on Sunday at midnight UTC
 
