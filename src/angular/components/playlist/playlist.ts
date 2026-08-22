@@ -16,7 +16,7 @@
 import {Component, inject, signal, computed, ChangeDetectionStrategy} from '@angular/core';
 import {MediaPlayerService} from '../../services/media-player.service';
 import {ElectronService, PlaylistItem} from '../../services/electron.service';
-import {FileDropService} from '../../services/file-drop.service';
+import {FileDropTarget} from '../../directives/file-drop-target';
 
 /**
  * Playlist panel component displaying the track list.
@@ -50,7 +50,7 @@ import {FileDropService} from '../../services/file-drop.service';
 @Component({
   selector: 'app-playlist',
   standalone: true,
-  imports: [],
+  imports: [FileDropTarget],
   templateUrl: './playlist.html',
   styleUrl: './playlist.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -66,21 +66,12 @@ export class Playlist {
   /** Electron service for file path resolution */
   private readonly electron: ElectronService = inject(ElectronService);
 
-  /** File drop service for drag-and-drop handling */
-  private readonly fileDrop: FileDropService = inject(FileDropService);
-
   // ============================================================================
   // Reactive State
   // ============================================================================
 
   /** Whether the playlist panel is visible */
   public readonly isVisible: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-
-  /** Whether files are being dragged over the playlist (valid files) */
-  public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-
-  /** Whether invalid files are being dragged over the playlist */
-  public readonly isDragInvalid: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** All items in the playlist */
   public readonly items: ReturnType<typeof computed<PlaylistItem[]>> = computed((): PlaylistItem[] => this.mediaPlayer.playlistItems());
@@ -184,66 +175,7 @@ export class Playlist {
     return this.currentTrack()?.id === item.id;
   }
 
-  /**
-   * Track-by function for ngFor optimization.
-   *
-   * Tells Angular to track items by their ID to minimize DOM updates.
-   *
-   * @param index - Item index (unused but required by signature)
-   * @param item - The playlist item
-   * @returns The unique item ID
-   */
-  public trackByFn(index: number, item: PlaylistItem): string {
-    return item.id;
-  }
-
   // ============================================================================
   // Drag and Drop
   // ============================================================================
-
-  /**
-   * Handles dragover to enable drop target with visual validation feedback.
-   */
-  public onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const hasValid: boolean = this.fileDrop.hasValidFiles(event);
-    this.isDragOver.set(hasValid);
-    this.isDragInvalid.set(!hasValid);
-
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = hasValid ? 'copy' : 'none';
-    }
-  }
-
-  /**
-   * Handles dragleave to reset visual feedback.
-   */
-  public onDragLeave(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-    this.isDragInvalid.set(false);
-  }
-
-  /**
-   * Handles file drop to add media to playlist with smart auto-play.
-   *
-   * Uses unified auto-play behavior:
-   * - Single file: plays immediately
-   * - Multiple files + empty playlist: plays from beginning
-   * - Multiple files + existing playlist: appends without interrupting
-   */
-  public async onDrop(event: DragEvent): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-    this.isDragInvalid.set(false);
-
-    const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
-    if (filePaths.length === 0) return;
-
-    await this.electron.addFilesWithAutoPlay(filePaths);
-  }
 }

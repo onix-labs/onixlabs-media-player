@@ -10,9 +10,22 @@
 /**
  * File extensions requiring FFmpeg (audio and video formats).
  */
+export const FFMPEG_AUDIO_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.wma',
+]);
+
+/**
+ * Video file extensions requiring FFmpeg.
+ */
+export const FFMPEG_VIDEO_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.mp4', '.m4v', '.mkv', '.avi', '.webm', '.mov',
+]);
+
+/**
+ * All file extensions requiring FFmpeg (audio + video).
+ */
 export const FFMPEG_EXTENSIONS: ReadonlySet<string> = new Set([
-  '.mp3', '.mp4', '.m4v', '.flac', '.mkv', '.avi', '.wav',
-  '.ogg', '.webm', '.m4a', '.aac', '.wma', '.mov',
+  ...FFMPEG_AUDIO_EXTENSIONS, ...FFMPEG_VIDEO_EXTENSIONS,
 ]);
 
 /**
@@ -66,9 +79,9 @@ function bareExtensions(set: ReadonlySet<string>): string[] {
  * @returns Array of file dialog filter groups
  */
 export function buildFileDialogFilters(ffmpeg: boolean, fluidsynth: boolean, openmpt: boolean): FileDialogFilter[] {
-  const ffmpegAudio: string[] = ['mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'wma'];
-  const video: string[] = ['mp4', 'm4v', 'mkv', 'avi', 'webm', 'mov'];
-  const midi: string[] = ['mid', 'midi'];
+  const ffmpegAudio: string[] = bareExtensions(FFMPEG_AUDIO_EXTENSIONS);
+  const video: string[] = bareExtensions(FFMPEG_VIDEO_EXTENSIONS);
+  const midi: string[] = bareExtensions(MIDI_EXTENSIONS);
   const tracker: string[] = bareExtensions(TRACKER_EXTENSIONS);
 
   // Audio-playable types across all installed dependencies.

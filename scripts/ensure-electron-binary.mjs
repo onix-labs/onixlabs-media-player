@@ -9,6 +9,11 @@
  * detects the missing binary and extracts the already-cached zip using the
  * platform's native unzip tooling.
  *
+ * As of Electron 42 the binary is no longer fetched during `postinstall` at
+ * all — it is downloaded on first run instead. This guard therefore usually
+ * finds nothing to repair and exits 0; it is retained because it still fixes
+ * a half-extracted cache, which is cheap to check and awkward to debug.
+ *
  * No-ops (exit 0) when the binary is already present, when Electron isn't
  * installed (e.g. production `--omit=dev`), or when binary download is skipped.
  */

@@ -182,8 +182,11 @@ export class DependencyManager {
   /** Resolved path to yt-dlp binary (mutable, refreshed after install) */
   private ytdlpPath: string | null = null;
 
-  /** Detected hardware video encoders (populated after detectBinaries) */
+  /** Detected hardware video encoders (populated asynchronously after detectBinaries) */
   private hardwareEncoders: HardwareEncoderInfo = {available: false, encoders: []};
+
+  /** How long to let the `ffmpeg -encoders` probe run before giving up on it. */
+  private static readonly HW_ENCODER_TIMEOUT_MS: number = 10000;
 
   /**
    * Creates a new DependencyManager instance.
@@ -201,8 +204,8 @@ export class DependencyManager {
       depsLogger.info(`Created soundfonts directory: ${this.soundFontDir}`);
     }
 
+    // detectBinaries ends in detectHardwareEncoders, so it is not called again here.
     this.detectBinaries();
-    this.detectHardwareEncoders();
   }
 
   // ============================================================================
@@ -233,6 +236,14 @@ export class DependencyManager {
   /**
    * Detects available hardware video encoders by querying FFmpeg.
    * Called after detectBinaries() to ensure ffmpegPath is set.
+   *
+   * Returns as soon as the probe is spawned rather than waiting for it. This
+   * runs during startup, ahead of the first window, and `ffmpeg -encoders`
+   * typically costs 100-500ms — considerably more on a cold disk or with AV
+   * scanning on Windows — so waiting for it delayed first paint by its full
+   * duration. Nothing needs the answer that early: it is read only when a
+   * transcode picks an encoder, and a transcode starting before detection
+   * lands just falls back to software encoding.
    */
   private detectHardwareEncoders(): void {
     if (!this.ffmpegPath) {
@@ -249,35 +260,58 @@ export class DependencyManager {
       'h264_vaapi',         // Linux VA-API
     ];
 
+    let output: string = '';
+    let settled: boolean = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const settle: (detected: string[] | null) => void = (detected: string[] | null): void => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+
+      if (!detected) {
+        this.hardwareEncoders = {available: false, encoders: []};
+        depsLogger.info('Hardware encoders: detection failed');
+        return;
+      }
+
+      this.hardwareEncoders = {available: detected.length > 0, encoders: detected};
+      depsLogger.info(
+        detected.length > 0 ? `Hardware encoders: ${detected.join(', ')}` : 'Hardware encoders: none detected'
+      );
+    };
+
     try {
-      // Run ffmpeg -encoders and parse output
-      const result: string = execSync(`"${this.ffmpegPath}" -encoders 2>/dev/null`, {
-        encoding: 'utf-8',
-        timeout: 10000,
+      const ffmpegPath: string = this.ffmpegPath;
+      const args: string[] = ['-encoders'];
+      logProcessSpawn(depsLogger, ffmpegPath, args);
+
+      // No shell: the binary path may contain spaces, and the old command
+      // suppressed the banner with a `2>/dev/null` redirect that means nothing
+      // to cmd.exe. Ignoring stderr outright does the same job everywhere.
+      const child: ChildProcess = spawn(ffmpegPath, args, {stdio: ['ignore', 'pipe', 'ignore']});
+
+      timer = setTimeout((): void => {
+        child.kill();
+        settle(null);
+      }, DependencyManager.HW_ENCODER_TIMEOUT_MS);
+
+      child.stdout?.on('data', (data: Buffer): void => {
+        output += data.toString();
       });
 
-      const detectedEncoders: string[] = [];
-      for (const encoder of knownHwEncoders) {
-        // Encoders are listed with format: " V..... h264_videotoolbox" (video encoders start with V)
-        if (result.includes(encoder)) {
-          detectedEncoders.push(encoder);
+      child.on('error', (): void => settle(null));
+
+      child.on('close', (code: number | null): void => {
+        if (code !== 0) {
+          settle(null);
+          return;
         }
-      }
-
-      this.hardwareEncoders = {
-        available: detectedEncoders.length > 0,
-        encoders: detectedEncoders,
-      };
-
-      if (detectedEncoders.length > 0) {
-        depsLogger.info(`Hardware encoders: ${detectedEncoders.join(', ')}`);
-      } else {
-        depsLogger.info('Hardware encoders: none detected');
-      }
+        // Encoders are listed with format: " V..... h264_videotoolbox" (video encoders start with V)
+        settle(knownHwEncoders.filter((encoder: string): boolean => output.includes(encoder)));
+      });
     } catch {
-      // FFmpeg command failed - no hardware encoders available
-      this.hardwareEncoders = {available: false, encoders: []};
-      depsLogger.info('Hardware encoders: detection failed');
+      settle(null);
     }
   }
 

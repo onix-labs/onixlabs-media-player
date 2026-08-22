@@ -254,21 +254,9 @@ export class MediaPlayerService implements OnDestroy {
     const files: string[] = await this.electron.openFileDialog(true, filters);
     if (files.length === 0) return;
 
-    // Check if playlist was empty before adding
-    const playlistWasEmpty: boolean = this.playlistItems().length === 0;
-
-    // Server will probe files and add to playlist
-    const result: {added: PlaylistItem[]} = await this.electron.addToPlaylist(files);
-
-    // Determine whether to auto-play:
-    // - Single file: always play it
-    // - Multiple files + empty playlist: play from beginning
-    // - Multiple files + existing playlist: don't interrupt current playback
-    const shouldAutoPlay: boolean = result.added.length === 1 || playlistWasEmpty;
-
-    if (shouldAutoPlay && result.added.length > 0) {
-      await this.electron.selectTrack(result.added[0].id);
-    }
+    // The auto-play rules live in addFilesWithAutoPlay, which the menu's
+    // open-files path already goes through; this used to restate them.
+    await this.electron.addFilesWithAutoPlay(files);
   }
 
   /**

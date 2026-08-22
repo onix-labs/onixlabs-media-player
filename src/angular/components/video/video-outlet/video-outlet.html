@@ -1,6 +1,4 @@
 <div class="video-container"
-     [class.drag-over]="isDragOver()"
-     [class.drag-invalid]="isDragInvalid()"
      [class.aspect-default]="aspectMode() === 'default'"
      [class.aspect-4-3]="aspectMode() === '4:3'"
      [class.aspect-16-9]="aspectMode() === '16:9'"
@@ -9,9 +7,7 @@
      [class.flip-vertical]="flipMode() === 'vertical'"
      [class.flip-both]="flipMode() === 'both'"
      (dblclick)="onDoubleClick()"
-     (dragover)="onDragOver($event)"
-     (dragleave)="onDragLeave($event)"
-     (drop)="onDrop($event)">
+     appFileDropTarget>
   <video #videoElement crossorigin="anonymous" [style.filter]="videoFilter()"></video>
   <!-- Frozen last frame shown while a seek reloads the stream (kept in the
        DOM so the frame can be captured before the source is swapped) -->

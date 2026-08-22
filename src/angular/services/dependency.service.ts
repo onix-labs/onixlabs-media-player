@@ -113,11 +113,25 @@ export class DependencyService implements OnDestroy {
   /** Install/uninstall progress (updated via SSE) */
   public readonly installProgress: ReturnType<typeof signal<InstallProgress | null>> = signal<InstallProgress | null>(null);
 
+  /**
+   * Why the last SoundFont operation failed, or null if the last one worked.
+   *
+   * SoundFont commands report success implicitly, by the file list changing.
+   * A failure changes nothing, so without this the operation is invisible.
+   */
+  public readonly soundFontError: ReturnType<typeof signal<string | null>> = signal<string | null>(null);
+
   /** Whether state has been loaded from the server */
   public readonly isLoaded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** Effect reference for cleanup */
   private readonly serverUrlEffect: EffectRef;
+
+  /** Removes the SSE dependency-state subscription on teardown. */
+  private readonly unsubscribeState: () => void;
+
+  /** Removes the SSE install-progress subscription on teardown. */
+  private readonly unsubscribeProgress: () => void;
 
   // ============================================================================
   // Computed Signals
@@ -216,12 +230,12 @@ export class DependencyService implements OnDestroy {
 
   public constructor() {
     // Register SSE callbacks with ElectronService
-    this.electron.onDependencyStateUpdate((state: unknown): void => {
+    this.unsubscribeState = this.electron.onDependencyStateUpdate((state: unknown): void => {
       this.dependencyState.set(state as DependencyState);
       this.isLoaded.set(true);
     });
 
-    this.electron.onDependencyProgressUpdate((progress: unknown): void => {
+    this.unsubscribeProgress = this.electron.onDependencyProgressUpdate((progress: unknown): void => {
       this.installProgress.set(progress as InstallProgress);
     });
 
@@ -236,6 +250,8 @@ export class DependencyService implements OnDestroy {
 
   public ngOnDestroy(): void {
     this.serverUrlEffect.destroy();
+    this.unsubscribeState();
+    this.unsubscribeProgress();
   }
 
   // ============================================================================
@@ -247,17 +263,7 @@ export class DependencyService implements OnDestroy {
    * Progress is streamed via SSE events.
    */
   public async installDependency(id: DependencyId): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Clear any previous progress
-    this.installProgress.set(null);
-
-    await fetch(`${serverUrl}/dependencies/install`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({id}),
-    });
+    await this.runDependencyCommand(id, 'install', 'install');
   }
 
   /**
@@ -265,17 +271,7 @@ export class DependencyService implements OnDestroy {
    * Progress is streamed via SSE events.
    */
   public async uninstallDependency(id: DependencyId): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Clear any previous progress
-    this.installProgress.set(null);
-
-    await fetch(`${serverUrl}/dependencies/uninstall`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({id}),
-    });
+    await this.runDependencyCommand(id, 'uninstall', 'uninstall');
   }
 
   /**
@@ -283,17 +279,7 @@ export class DependencyService implements OnDestroy {
    * Progress is streamed via SSE events. Primarily for yt-dlp.
    */
   public async updateDependency(id: DependencyId): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    // Clear any previous progress
-    this.installProgress.set(null);
-
-    await fetch(`${serverUrl}/dependencies/update`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({id}),
-    });
+    await this.runDependencyCommand(id, 'update', 'update');
   }
 
   /**
@@ -303,28 +289,14 @@ export class DependencyService implements OnDestroy {
     const filePaths: string[] = await this.electron.openSoundFontDialog();
     if (filePaths.length === 0) return;
 
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    await fetch(`${serverUrl}/dependencies/soundfont/install`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({sourcePath: filePaths[0]}),
-    });
+    await this.runSoundFontCommand('install', {sourcePath: filePaths[0]}, 'install the SoundFont');
   }
 
   /**
    * Removes a SoundFont file from the app data directory.
    */
   public async removeSoundFont(fileName: string): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    await fetch(`${serverUrl}/dependencies/soundfont/remove`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({fileName}),
-    });
+    await this.runSoundFontCommand('remove', {fileName}, `remove ${fileName}`);
   }
 
   /**
@@ -332,14 +304,7 @@ export class DependencyService implements OnDestroy {
    * Pass null to reset to auto-selection (first available).
    */
   public async setActiveSoundFont(fileName: string | null): Promise<void> {
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    await fetch(`${serverUrl}/dependencies/soundfont/select`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({fileName}),
-    });
+    await this.runSoundFontCommand('select', {fileName}, 'select the SoundFont');
   }
 
   /**
@@ -349,14 +314,110 @@ export class DependencyService implements OnDestroy {
     const serverUrl: string = this.electron.serverUrl();
     if (!serverUrl) return;
 
-    await fetch(`${serverUrl}/dependencies/refresh`, {
-      method: 'POST',
-    });
+    try {
+      const response: Response = await this.electron.authFetch(`${serverUrl}/dependencies/refresh`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        console.error(`[DependencyService] Dependency refresh failed: the server returned ${response.status}.`);
+      }
+    } catch (error: unknown) {
+      // Refresh is a background reconciliation with no control of its own to
+      // report against; the state simply stays as it was.
+      console.error('[DependencyService] Dependency refresh failed:', error);
+    }
   }
 
   // ============================================================================
   // Private
   // ============================================================================
+
+  /**
+   * Posts a dependency command and reports failures through installProgress.
+   *
+   * Progress for a command that actually starts arrives over SSE. A request
+   * that never gets that far — a non-2xx response, a dead server — produced
+   * nothing at all before: the spinner state was never entered and no error
+   * was shown, so the button simply appeared to do nothing. Failures now land
+   * in the same signal the progress panel already renders an error state for.
+   *
+   * @param id - The dependency the command targets
+   * @param endpoint - Command endpoint under /dependencies
+   * @param action - Verb used in the failure message
+   */
+  private async runDependencyCommand(id: DependencyId, endpoint: string, action: string): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    // Clear any previous progress
+    this.installProgress.set(null);
+
+    try {
+      const response: Response = await this.electron.authFetch(`${serverUrl}/dependencies/${endpoint}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id}),
+      });
+
+      if (!response.ok) {
+        this.reportDependencyFailure(id, `Could not ${action} ${id}: the server returned ${response.status}.`);
+      }
+    } catch (error: unknown) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      this.reportDependencyFailure(id, `Could not ${action} ${id}: ${reason}`);
+    }
+  }
+
+  /**
+   * Puts a dependency command failure in front of the user.
+   *
+   * @param id - The dependency the command targeted
+   * @param message - User-facing explanation
+   */
+  private reportDependencyFailure(id: DependencyId, message: string): void {
+    console.error(`[DependencyService] ${message}`);
+    this.installProgress.set({dependencyId: id, status: 'error', message});
+  }
+
+  /**
+   * Posts a SoundFont command, reporting failures through soundFontError.
+   *
+   * @param endpoint - Command endpoint under /dependencies/soundfont
+   * @param body - JSON body for the command
+   * @param action - Phrase describing the attempt, used in the failure message
+   */
+  private async runSoundFontCommand(endpoint: string, body: Record<string, unknown>, action: string): Promise<void> {
+    const serverUrl: string = this.electron.serverUrl();
+    if (!serverUrl) return;
+
+    this.soundFontError.set(null);
+
+    try {
+      const response: Response = await this.electron.authFetch(`${serverUrl}/dependencies/soundfont/${endpoint}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        this.reportSoundFontFailure(`Could not ${action}: the server returned ${response.status}.`);
+      }
+    } catch (error: unknown) {
+      const reason: string = error instanceof Error ? error.message : String(error);
+      this.reportSoundFontFailure(`Could not ${action}: ${reason}`);
+    }
+  }
+
+  /**
+   * Puts a SoundFont operation failure in front of the user.
+   *
+   * @param message - User-facing explanation
+   */
+  private reportSoundFontFailure(message: string): void {
+    console.error(`[DependencyService] ${message}`);
+    this.soundFontError.set(message);
+  }
 
   /**
    * Fetches the initial dependency state from the server.
@@ -366,7 +427,7 @@ export class DependencyService implements OnDestroy {
     if (!serverUrl) return;
 
     try {
-      const response: Response = await fetch(`${serverUrl}/dependencies`);
+      const response: Response = await this.electron.authFetch(`${serverUrl}/dependencies`);
       if (response.ok) {
         const state: DependencyState = await response.json() as DependencyState;
         this.dependencyState.set(state);

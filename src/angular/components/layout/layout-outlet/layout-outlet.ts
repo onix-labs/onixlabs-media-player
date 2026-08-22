@@ -16,15 +16,15 @@
  * @module app/components/layout/layout-outlet
  */
 
-import {Component, computed, inject, signal, output, ViewChild, HostBinding, ChangeDetectionStrategy} from '@angular/core';
-import type {OutputEmitterRef} from '@angular/core';
+import {Component, computed, inject, signal, output, viewChild, ViewChild, HostBinding, ChangeDetectionStrategy} from '@angular/core';
+import type {OutputEmitterRef, Signal} from '@angular/core';
 import {AudioOutlet} from '../../audio/audio-outlet/audio-outlet';
 import {VISUALIZATION_GROUPS} from '../../audio/audio-outlet/visualizations';
 import {VideoOutlet, VIDEO_FLIP_OPTIONS, type VideoFlipMode} from '../../video/video-outlet/video-outlet';
 import {Playlist} from '../../playlist/playlist';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
-import {FileDropService} from '../../../services/file-drop.service';
+import {FileDropTarget} from '../../../directives/file-drop-target';
 import {DependencyService} from '../../../services/dependency.service';
 import {SettingsService, VIDEO_ASPECT_OPTIONS, type VideoAspectMode} from '../../../services/settings.service';
 import {EQ_PRESETS} from '../../../services/equalizer';
@@ -56,7 +56,7 @@ const SUBTITLE_LOAD_EXTERNAL_VALUE: number = -3;
 @Component({
   selector: 'app-layout-outlet',
   standalone: true,
-  imports: [AudioOutlet, VideoOutlet, Playlist],
+  imports: [AudioOutlet, VideoOutlet, Playlist, FileDropTarget],
   templateUrl: './layout-outlet.html',
   styleUrl: './layout-outlet.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -68,17 +68,26 @@ export class LayoutOutlet {
   /** Reference to the audio outlet for visualization control */
   @ViewChild('audioOutlet') public audioOutlet?: AudioOutlet;
 
-  /** Reference to the video outlet for aspect mode control */
-  @ViewChild('videoOutlet') public videoOutlet?: VideoOutlet;
+  /**
+   * Reference to the video outlet for aspect mode and track control.
+   *
+   * A signal query rather than a plain @ViewChild because the template reads
+   * the outlet's own signals *through* this reference (subtitle and audio
+   * track dropdowns). The app is zoneless, so a binding that evaluates while
+   * a non-signal ViewChild is still undefined would read no signals at all,
+   * record no dependencies, and never be re-evaluated — leaving the dropdowns
+   * permanently empty. Making the reference itself reactive guarantees every
+   * such binding has at least one dependency to wake it when the outlet
+   * mounts. Same failure this component already documents for
+   * currentAspectMode.
+   */
+  public readonly videoOutlet: Signal<VideoOutlet | undefined> = viewChild<VideoOutlet>('videoOutlet');
 
   /** Media player service for playback state */
   private readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
 
   /** Electron service for file operations and fullscreen state */
   private readonly electron: ElectronService = inject(ElectronService);
-
-  /** File drop service for drag-and-drop handling */
-  private readonly fileDrop: FileDropService = inject(FileDropService);
 
   /** Dependency service for external binary status */
   private readonly deps: DependencyService = inject(DependencyService);
@@ -173,12 +182,6 @@ export class LayoutOutlet {
   /** Whether the application is in miniplayer mode */
   public readonly isMiniplayer: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.viewMode() === 'miniplayer');
 
-  /** Whether files are being dragged over this component (valid files) */
-  public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-
-  /** Whether invalid files are being dragged over this component */
-  public readonly isDragInvalid: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-
   /** Whether any required dependencies are missing */
   public readonly hasMissingDependencies: ReturnType<typeof computed<boolean>> = computed((): boolean => this.deps.hasMissingDependencies());
 
@@ -246,7 +249,7 @@ export class LayoutOutlet {
   public onAspectModeChange(event: Event): void {
     const target: EventTarget | null = event.target;
     if (target instanceof HTMLSelectElement) {
-      this.videoOutlet?.setAspectMode(target.value as VideoAspectMode);
+      this.videoOutlet()?.setAspectMode(target.value as VideoAspectMode);
     }
   }
 
@@ -258,7 +261,7 @@ export class LayoutOutlet {
   public onFlipModeChange(event: Event): void {
     const target: EventTarget | null = event.target;
     if (target instanceof HTMLSelectElement) {
-      this.videoOutlet?.setFlipMode(target.value as VideoFlipMode);
+      this.videoOutlet()?.setFlipMode(target.value as VideoFlipMode);
     }
   }
 
@@ -304,7 +307,7 @@ export class LayoutOutlet {
    * Gets the available subtitle tracks from the video outlet.
    */
   public getSubtitleTracks(): readonly SubtitleTrack[] {
-    return this.videoOutlet?.subtitleTracks() ?? [];
+    return this.videoOutlet()?.subtitleTracks() ?? [];
   }
 
   /**
@@ -312,14 +315,14 @@ export class LayoutOutlet {
    * Returns -1 if subtitles are off.
    */
   public getSelectedSubtitleTrack(): number {
-    return this.videoOutlet?.selectedSubtitleTrack() ?? -1;
+    return this.videoOutlet()?.selectedSubtitleTrack() ?? -1;
   }
 
   /**
    * Gets whether an external subtitle is loaded.
    */
   public hasExternalSubtitle(): boolean {
-    return this.videoOutlet?.hasExternalSubtitle() ?? false;
+    return this.videoOutlet()?.hasExternalSubtitle() ?? false;
   }
 
   /**
@@ -334,11 +337,11 @@ export class LayoutOutlet {
       const value: number = parseInt(target.value, 10);
       if (value === SUBTITLE_LOAD_EXTERNAL_VALUE) {
         // Load External option selected
-        this.videoOutlet?.loadExternalSubtitle();
+        this.videoOutlet()?.loadExternalSubtitle();
         // Reset select to current track since "Load External..." is an action, not a selection
         target.value = String(this.getSelectedSubtitleTrack());
       } else {
-        this.videoOutlet?.selectSubtitleTrack(value);
+        this.videoOutlet()?.selectSubtitleTrack(value);
       }
     }
   }
@@ -352,7 +355,7 @@ export class LayoutOutlet {
    * Returns empty array if no video outlet or no multiple audio tracks.
    */
   public getAudioTracks(): readonly AudioTrack[] {
-    return this.videoOutlet?.audioTracks() ?? [];
+    return this.videoOutlet()?.audioTracks() ?? [];
   }
 
   /**
@@ -360,7 +363,7 @@ export class LayoutOutlet {
    * Returns 0 if no video outlet.
    */
   public getSelectedAudioTrack(): number {
-    return this.videoOutlet?.selectedAudioTrack() ?? 0;
+    return this.videoOutlet()?.selectedAudioTrack() ?? 0;
   }
 
   /**
@@ -372,64 +375,11 @@ export class LayoutOutlet {
     const target: EventTarget | null = event.target;
     if (target instanceof HTMLSelectElement) {
       const value: number = parseInt(target.value, 10);
-      this.videoOutlet?.selectAudioTrack(value);
+      this.videoOutlet()?.selectAudioTrack(value);
     }
   }
 
   // ============================================================================
   // Drag and Drop Handlers
   // ============================================================================
-
-  /**
-   * Handles dragover event to enable drop with visual validation feedback.
-   * Sets isDragOver for valid files, isDragInvalid for invalid files.
-   *
-   * @param event - The drag event
-   */
-  public onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const hasValid: boolean = this.fileDrop.hasValidFiles(event);
-    this.isDragOver.set(hasValid);
-    this.isDragInvalid.set(!hasValid);
-
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = hasValid ? 'copy' : 'none';
-    }
-  }
-
-  /**
-   * Handles dragleave event to reset visual feedback.
-   *
-   * @param event - The drag event
-   */
-  public onDragLeave(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-    this.isDragInvalid.set(false);
-  }
-
-  /**
-   * Handles file drop event with smart auto-play.
-   *
-   * Uses unified auto-play behavior:
-   * - Single file: plays immediately
-   * - Multiple files + empty playlist: plays from beginning
-   * - Multiple files + existing playlist: appends without interrupting
-   *
-   * @param event - The drop event containing transferred files
-   */
-  public async onDrop(event: DragEvent): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-    this.isDragInvalid.set(false);
-
-    const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
-    if (filePaths.length === 0) return;
-
-    await this.electron.addFilesWithAutoPlay(filePaths);
-  }
 }

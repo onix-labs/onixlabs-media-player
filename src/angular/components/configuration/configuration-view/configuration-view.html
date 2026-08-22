@@ -224,6 +224,12 @@
                       <span class="soundfont-title">SoundFonts</span>
                       <span class="soundfont-subtitle">SoundFont files are required for MIDI playback synthesis. Select one to use for playback.</span>
                     </div>
+                    @if (soundFontError(); as error) {
+                      <div class="install-progress error">
+                        <i class="fa-solid fa-circle-xmark"></i>
+                        <span>{{ error }}</span>
+                      </div>
+                    }
                     @if (soundFonts().length > 0) {
                       <div class="soundfont-list">
                         @for (sf of soundFonts(); track sf.fileName) {

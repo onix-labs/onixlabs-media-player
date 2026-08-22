@@ -49,6 +49,15 @@ const commonRules = {
         match: false,
       },
     },
+    // Wire-protocol names — SSE event and IPC channel keys — are not ours to
+    // rename, and quoting them is the only way to express them. The individual
+    // selector outranks the `method` group above, so ordinary methods still
+    // have to be camelCase.
+    {
+      selector: 'objectLiteralMethod',
+      modifiers: ['requiresQuotes'],
+      format: null,
+    },
   ],
 
   // No magic numbers - numeric literals should be assigned to named constants
@@ -67,7 +76,7 @@ const commonRules = {
         111, 112, 115, 120, 123, 127, 128, 130, 144, 149, 150, 152, 155, 160, 161, 171, 173, 176, 179, 180, 184, 186,
         192, 200, 202, 204, 206, 208, 210, 224, 239, 240, 243, 247, 255, 256, 270, 300, 320, 360,
         // HTTP status codes, screen dimensions, time values
-        400, 403, 404, 413, 500, 512, 600, 640, 750, 800, 1000, 1024, 1500, 2000, 2048, 4096, 5000, 10000, 30000, 32768, 65535, 1000000,
+        400, 401, 403, 404, 413, 500, 512, 600, 640, 750, 800, 1000, 1024, 1500, 2000, 2048, 4096, 5000, 10000, 30000, 32768, 65535, 1000000,
       ],
       ignoreArrayIndexes: true,
       ignoreDefaultValues: true,

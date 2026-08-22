@@ -20,8 +20,9 @@
  */
 
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
-import { createHash } from 'crypto';
-import { createReadStream, statSync, existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, rmdirSync, Stats } from 'fs';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { createReadStream, statSync, existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, renameSync, Stats } from 'fs';
+import { rm } from 'fs/promises';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { SettingsManager } from './settings-manager.js';
@@ -150,6 +151,35 @@ export class UnifiedMediaServer {
   /** The port the server is listening on */
   private port: number = 0;
 
+  /**
+   * Per-session bearer token minted at construction. Every request to an API
+   * route must present it, via the `X-Onix-Token` header or a `token` query
+   * parameter. The query form exists because media elements (`<video src>`,
+   * `<audio src>`) and `EventSource` cannot send custom headers.
+   *
+   * The renderer receives this over IPC; nothing else on the machine can read
+   * it, which is what stops other local processes and web pages the user
+   * happens to be visiting from driving the server.
+   */
+  private readonly authToken: string = randomBytes(32).toString('hex');
+
+  /**
+   * Path prefixes that identify API routes. GET requests outside these
+   * prefixes fall through to static asset serving and are left unauthenticated
+   * (the Angular bundle is not sensitive); everything else requires the token.
+   *
+   * IMPORTANT: adding a new API route under a new prefix requires adding the
+   * prefix here, otherwise it will be served without authentication.
+   */
+  private static readonly API_ROUTE_PREFIXES: readonly string[] = [
+    '/events',
+    '/media',
+    '/player',
+    '/playlist',
+    '/settings',
+    '/dependencies',
+  ];
+
   /** SSE manager for real-time client updates */
   private readonly sse: SSEManager = new SSEManager();
 
@@ -174,6 +204,20 @@ export class UnifiedMediaServer {
 
   /** Maximum number of DASH audio pairs retained (FIFO eviction). */
   private static readonly MAX_DASH_PAIRS: number = 50;
+
+  /** Maximum ffprobe processes in flight while adding files to the playlist. */
+  private static readonly MAX_CONCURRENT_PROBES: number = 6;
+
+  /**
+   * Maximum MIDI/tracker renders in flight. Kept low deliberately: each render
+   * spawns two child processes and decodes a whole song, so these are far
+   * heavier than a probe and are only needed to refine a displayed duration.
+   */
+  private static readonly MAX_CONCURRENT_RENDERS: number = 2;
+
+  /** Files waiting for a background render, and the number currently running. */
+  private readonly pendingRenders: Array<() => Promise<void>> = [];
+  private activeRenders: number = 0;
 
   /** Current playback state */
   private readonly playback: PlaybackState = {
@@ -248,6 +292,13 @@ export class UnifiedMediaServer {
 
   /** Cache of MediaInfo by file path for stream handler codec lookup */
   private readonly mediaInfoCache: Map<string, MediaInfo> = new Map();
+
+  /**
+   * Modification time of each cached probe, used to decide whether a cached
+   * MediaInfo is still valid. Without it the cache could serve stale metadata
+   * for a file that has been replaced on disk.
+   */
+  private readonly mediaInfoMtimes: Map<string, number> = new Map();
 
   /** Audio codecs compatible with fragmented MP4 remuxing (can be stream-copied) */
   private static readonly REMUXABLE_AUDIO_CODECS: Set<string> = new Set(['aac', 'mp3', 'opus', 'flac']);
@@ -492,6 +543,166 @@ export class UnifiedMediaServer {
   }
 
   /**
+   * Queues a background render, running at most MAX_CONCURRENT_RENDERS at once.
+   *
+   * Renders are started while building the playlist so that MIDI and tracker
+   * durations settle to their true values. Firing them all at once turns a
+   * folder of modules into hundreds of concurrent decode pipelines, so they
+   * are drained a couple at a time instead.
+   *
+   * @param task - The render to run; its rejection is logged, never thrown
+   */
+  private enqueueRender(task: () => Promise<void>): void {
+    this.pendingRenders.push(task);
+    this.drainRenderQueue();
+  }
+
+  /** Starts queued renders until the concurrency limit is reached. */
+  private drainRenderQueue(): void {
+    while (this.activeRenders < UnifiedMediaServer.MAX_CONCURRENT_RENDERS && this.pendingRenders.length > 0) {
+      const task: (() => Promise<void>) | undefined = this.pendingRenders.shift();
+      if (!task) {
+        return;
+      }
+
+      this.activeRenders++;
+      void task()
+        .catch((err: Error): void => {
+          midiLogger.error(`Background render failed: ${err.message}`);
+        })
+        .finally((): void => {
+          this.activeRenders--;
+          this.drainRenderQueue();
+        });
+    }
+  }
+
+  /**
+   * Maps over items with a bounded number of operations in flight.
+   *
+   * Dropping a folder onto the player would otherwise start one child process
+   * per file simultaneously, which exhausts file descriptors and stalls the
+   * machine. Results keep the input order, and rejections are captured per
+   * item exactly as `Promise.allSettled` would report them.
+   *
+   * @param items - Items to process
+   * @param limit - Maximum operations in flight at once
+   * @param worker - Produces a promise for one item
+   * @returns Settled results in input order
+   */
+  private static async mapWithConcurrency<TItem, TResult>(
+    items: readonly TItem[],
+    limit: number,
+    worker: (item: TItem) => Promise<TResult>
+  ): Promise<PromiseSettledResult<TResult>[]> {
+    const results: PromiseSettledResult<TResult>[] = new Array<PromiseSettledResult<TResult>>(items.length);
+    let nextIndex: number = 0;
+
+    const runners: Promise<void>[] = Array.from(
+      { length: Math.min(limit, items.length) },
+      async (): Promise<void> => {
+        for (;;) {
+          const index: number = nextIndex++;
+          if (index >= items.length) {
+            return;
+          }
+
+          try {
+            results[index] = { status: 'fulfilled', value: await worker(items[index]) };
+          } catch (err) {
+            results[index] = { status: 'rejected', reason: err };
+          }
+        }
+      }
+    );
+
+    await Promise.all(runners);
+    return results;
+  }
+
+  /**
+   * Gets the per-session token that API requests must present.
+   *
+   * Handed to the renderer over IPC at startup; never logged.
+   *
+   * @returns The session bearer token
+   */
+  public getAuthToken(): string {
+    return this.authToken;
+  }
+
+  /**
+   * Determines whether a request must present the session token.
+   *
+   * Fail-closed: anything that is not a plain GET is protected, so no mutation
+   * is ever reachable anonymously. GETs are protected when they target an API
+   * prefix; the remainder are static-asset reads for the Angular bundle.
+   */
+  private isProtectedRequest(method: string, pathname: string): boolean {
+    if (method !== 'GET') {
+      return true;
+    }
+
+    // In development the Angular app is served by the dev server, so there are
+    // no static assets here and every route is an API route.
+    if (!this.staticPath) {
+      return true;
+    }
+
+    return UnifiedMediaServer.API_ROUTE_PREFIXES.some(
+      (prefix: string): boolean => pathname === prefix || pathname.startsWith(`${prefix}/`)
+    );
+  }
+
+  /**
+   * Checks the session token supplied by a request, in constant time.
+   */
+  private isAuthorized(req: Readonly<IncomingMessage>, url: Readonly<URL>): boolean {
+    const header: string | string[] | undefined = req.headers['x-onix-token'];
+    const headerToken: string | undefined = Array.isArray(header) ? header[0] : header;
+    const provided: string = headerToken ?? url.searchParams.get('token') ?? '';
+
+    const providedBuffer: Buffer = Buffer.from(provided, 'utf-8');
+    const expectedBuffer: Buffer = Buffer.from(this.authToken, 'utf-8');
+
+    if (providedBuffer.length !== expectedBuffer.length) {
+      return false;
+    }
+
+    return timingSafeEqual(providedBuffer, expectedBuffer);
+  }
+
+  /**
+   * Validates the Host header against the address we actually listen on.
+   *
+   * Without this a DNS-rebinding attack can point an attacker-controlled
+   * hostname at 127.0.0.1 and reach the server from a remote page.
+   */
+  private isValidHost(req: Readonly<IncomingMessage>): boolean {
+    const host: string | undefined = req.headers.host;
+    if (!host) {
+      return false;
+    }
+
+    return (
+      host === `127.0.0.1:${this.port}` ||
+      host === `localhost:${this.port}` ||
+      host === `[::1]:${this.port}`
+    );
+  }
+
+  /**
+   * Returns the origin permitted to make cross-origin requests, or null when
+   * none is (the production renderer is same-origin and needs no CORS).
+   *
+   * In development the Angular dev server is a genuinely different origin, so
+   * it is echoed back explicitly rather than using a wildcard.
+   */
+  private getAllowedOrigin(): string | null {
+    return process.env['DEV_SERVER_URL'] ?? null;
+  }
+
+  /**
    * Gets the port the server is listening on.
    *
    * @returns The port number, or 0 if not started
@@ -553,12 +764,18 @@ export class UnifiedMediaServer {
     const method: string = req.method || 'GET';
     const pathname: string = url.pathname;
 
-    // Set CORS headers for browser access
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    // Only the development origin is granted CORS; production is same-origin
+    // and gets no Access-Control headers at all.
+    const allowedOrigin: string | null = this.getAllowedOrigin();
+    if (allowedOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Onix-Token');
+      res.setHeader('Vary', 'Origin');
+    }
 
-    // Handle CORS preflight
+    // Handle CORS preflight (browsers never attach credentials to a preflight,
+    // so this is answered before the auth gate).
     if (method === 'OPTIONS') {
       res.writeHead(204);
       res.end();
@@ -573,6 +790,24 @@ export class UnifiedMediaServer {
         logHttpRequest(method, pathname, res.statusCode ?? 200, duration);
       }
     });
+
+    // Authentication gate. Rejecting here keeps every handler below reachable
+    // only by the renderer that was handed the session token over IPC.
+    if (this.isProtectedRequest(method, pathname)) {
+      if (!this.isValidHost(req)) {
+        serverLogger.warn(`[Security] Rejected request with invalid Host header: ${req.headers.host}`);
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Forbidden' }));
+        return;
+      }
+
+      if (!this.isAuthorized(req, url)) {
+        serverLogger.warn(`[Security] Rejected unauthenticated request: ${method} ${pathname}`);
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+    }
 
     try {
       // Route matching
@@ -709,9 +944,7 @@ export class UnifiedMediaServer {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-    });
+      'Connection': 'keep-alive',    });
 
     this.sse.addClient(res);
 
@@ -765,6 +998,47 @@ export class UnifiedMediaServer {
    */
   private static isRemoteUrl(source: string): boolean {
     return /^https?:\/\//i.test(source);
+  }
+
+  /**
+   * Validates a destination path for playlist writes.
+   *
+   * Playlists are the only user-named files this server creates, so the path
+   * is restricted to an absolute, traversal-free `.opp` location. This bounds
+   * the damage of a forged save request to a file the app would legitimately
+   * have written anyway.
+   *
+   * An extension-less path is normalized to `.opp` rather than rejected: the
+   * GTK save dialog does not always append the filter's extension, so a user
+   * typing a bare filename on Linux must still be able to save.
+   *
+   * @param filePath - Proposed destination path
+   * @returns Validation result carrying the path to actually write to
+   */
+  private static validatePlaylistSavePath(filePath: string): { valid: boolean; error?: string; normalizedPath?: string } {
+    if (filePath.includes('..')) {
+      return { valid: false, error: 'Invalid path: traversal not allowed' };
+    }
+
+    if (!path.isAbsolute(filePath)) {
+      return { valid: false, error: 'Invalid path: must be absolute' };
+    }
+
+    if (path.normalize(filePath) !== filePath) {
+      return { valid: false, error: 'Invalid path: suspicious path detected' };
+    }
+
+    const extension: string = path.extname(filePath).toLowerCase();
+
+    if (extension === '') {
+      return { valid: true, normalizedPath: `${filePath}.opp` };
+    }
+
+    if (extension !== '.opp') {
+      return { valid: false, error: 'Invalid path: playlists must be saved as .opp' };
+    }
+
+    return { valid: true, normalizedPath: filePath };
   }
 
   private validateFilePath(filePath: string): { valid: boolean; error?: string } {
@@ -941,9 +1215,7 @@ export class UnifiedMediaServer {
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
           'Accept-Ranges': 'bytes',
           'Content-Length': chunkSize,
-          'Content-Type': mimeType,
-          'Access-Control-Allow-Origin': '*',
-          ...(options?.noCache && {'Cache-Control': 'no-store, no-cache, must-revalidate'}),
+          'Content-Type': mimeType,          ...(options?.noCache && {'Cache-Control': 'no-store, no-cache, must-revalidate'}),
         });
 
         createReadStream(filePath, { start, end, highWaterMark: 2 * 1024 * 1024 }).pipe(res); // 2MB buffer for NAS/network latency
@@ -952,9 +1224,7 @@ export class UnifiedMediaServer {
         res.writeHead(200, {
           'Content-Length': fileSize,
           'Content-Type': mimeType,
-          'Accept-Ranges': 'bytes',
-          'Access-Control-Allow-Origin': '*',
-          ...(options?.noCache && {'Cache-Control': 'no-store, no-cache, must-revalidate'}),
+          'Accept-Ranges': 'bytes',          ...(options?.noCache && {'Cache-Control': 'no-store, no-cache, must-revalidate'}),
         });
 
         createReadStream(filePath, { highWaterMark: 2 * 1024 * 1024 }).pipe(res); // 2MB buffer for NAS/network latency
@@ -980,8 +1250,11 @@ export class UnifiedMediaServer {
     let filePath: string = pathname === '/' ? '/index.html' : pathname;
     filePath = path.join(this.staticPath, filePath);
 
-    // Security: ensure path is within static directory
-    if (!filePath.startsWith(this.staticPath)) {
+    // Security: ensure path is within the static directory. The separator
+    // matters — a bare prefix check also accepts sibling directories whose
+    // name merely starts with the static path.
+    const staticRoot: string = this.staticPath.endsWith(path.sep) ? this.staticPath : `${this.staticPath}${path.sep}`;
+    if (filePath !== this.staticPath && !filePath.startsWith(staticRoot)) {
       res.writeHead(403);
       res.end(JSON.stringify({ error: 'Forbidden' }));
       return;
@@ -1115,9 +1388,7 @@ export class UnifiedMediaServer {
       ];
       res.writeHead(200, {
         'Content-Type': 'audio/aac',
-        'Transfer-Encoding': 'chunked',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-cache',
+        'Transfer-Encoding': 'chunked',        'Cache-Control': 'no-cache',
       });
     } else if (canRemux) {
       // Remux mode: stream copy (no re-encoding) for compatible codecs
@@ -1141,9 +1412,7 @@ export class UnifiedMediaServer {
       ];
       res.writeHead(200, {
         'Content-Type': 'video/mp4',
-        'Transfer-Encoding': 'chunked',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-cache',
+        'Transfer-Encoding': 'chunked',        'Cache-Control': 'no-cache',
       });
     } else if (needsHybridTranscode) {
       // Hybrid mode: copy video, transcode audio only
@@ -1174,9 +1443,7 @@ export class UnifiedMediaServer {
       ];
       res.writeHead(200, {
         'Content-Type': 'video/mp4',
-        'Transfer-Encoding': 'chunked',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-cache',
+        'Transfer-Encoding': 'chunked',        'Cache-Control': 'no-cache',
       });
     } else {
       // Full transcode mode: re-encode video and audio for incompatible codecs
@@ -1231,9 +1498,7 @@ export class UnifiedMediaServer {
       ];
       res.writeHead(200, {
         'Content-Type': 'video/mp4',
-        'Transfer-Encoding': 'chunked',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-cache',
+        'Transfer-Encoding': 'chunked',        'Cache-Control': 'no-cache',
       });
     }
 
@@ -1498,9 +1763,7 @@ export class UnifiedMediaServer {
 
     res.writeHead(200, {
       'Content-Type': contentType,
-      'Transfer-Encoding': 'chunked',
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'no-cache',
+      'Transfer-Encoding': 'chunked',      'Cache-Control': 'no-cache',
     });
 
     logProcessSpawn(ffmpegLogger, 'ffmpeg', ffmpegArgs);
@@ -1540,12 +1803,38 @@ export class UnifiedMediaServer {
    * @param filePath - Absolute path to the MIDI file
    * @returns 16-character hex hash string
    */
-  private hashMidiFile(filePath: string): string {
-    const content: Buffer = readFileSync(filePath);
+  private async hashMidiFile(filePath: string): Promise<string> {
     const soundfont: string = this.findSoundFont() ?? '';
-    const hash: string = createHash('sha256').update(soundfont).update(content).digest('hex').slice(0, 16);
+    const hash: string = await UnifiedMediaServer.hashFileContents(filePath, soundfont);
     midiLogger.info(`hashMidiFile: soundfont="${soundfont}", hash="${hash}"`);
     return hash;
+  }
+
+  /**
+   * Content-hashes a file by streaming it.
+   *
+   * Reading the whole file into memory blocked the main process — and with it
+   * the UI and the media server — for the duration of the read, which is
+   * pronounced for large modules on a network share.
+   *
+   * @param filePath - Absolute path to the file to hash
+   * @param prefix - Value mixed in before the contents, so that changing it
+   *   invalidates previously cached renders
+   * @returns 16-character hex hash string
+   */
+  private static hashFileContents(filePath: string, prefix: string): Promise<string> {
+    return new Promise((resolve: (value: string) => void, reject: (reason: Readonly<Error>) => void): void => {
+      const hash: ReturnType<typeof createHash> = createHash('sha256').update(prefix);
+      const stream: ReturnType<typeof createReadStream> = createReadStream(filePath);
+
+      stream.on('data', (chunk: Readonly<Buffer> | string): void => {
+        hash.update(chunk);
+      });
+      stream.on('error', reject);
+      stream.on('end', (): void => {
+        resolve(hash.digest('hex').slice(0, 16));
+      });
+    });
   }
 
   /**
@@ -1593,8 +1882,24 @@ export class UnifiedMediaServer {
       return inProgress;
     }
 
+    // 3. Register before the render suspends. Hashing is asynchronous, so a
+    // second caller would otherwise slip past the check above and start a
+    // duplicate render.
+    const render: Promise<string> = this.performMidiRender(filePath);
+    this.midiRenderInProgress.set(filePath, render);
+    return render;
+  }
+
+  /**
+   * Renders a MIDI file, assuming caching and deduplication have been handled
+   * by {@link renderMidiToFile}.
+   *
+   * @param filePath - Absolute path to the MIDI file
+   * @returns Path to the rendered MP3
+   */
+  private async performMidiRender(filePath: string): Promise<string> {
     // 3. Compute content-hash filename (deterministic across restarts)
-    const hash: string = this.hashMidiFile(filePath);
+    const hash: string = await this.hashMidiFile(filePath);
     const tempDir: string = path.join(app.getPath('temp'), 'onixplayer-midi');
     mkdirSync(tempDir, {recursive: true});
     const tempFile: string = path.join(tempDir, `midi-${hash}.mp3`);
@@ -1816,12 +2121,11 @@ export class UnifiedMediaServer {
    * @param filePath - Absolute path to the tracker module
    * @returns 16-character hex hash string
    */
-  private hashTrackerFile(filePath: string): string {
-    const content: Buffer = readFileSync(filePath);
+  private hashTrackerFile(filePath: string): Promise<string> {
     // The version tag ('v2') is part of the cache key so that changes to the
     // render pipeline invalidate stale on-disk renders (e.g. the empty files
     // produced before the openmpt123 --batch fix) without manual cleanup.
-    return createHash('sha256').update('tracker-v2').update(content).digest('hex').slice(0, 16);
+    return UnifiedMediaServer.hashFileContents(filePath, 'tracker-v2');
   }
 
   /**
@@ -1868,8 +2172,22 @@ export class UnifiedMediaServer {
       return inProgress;
     }
 
+    // 3. Register before the render suspends (see renderMidiToFile).
+    const render: Promise<string> = this.performTrackerRender(filePath);
+    this.trackerRenderInProgress.set(filePath, render);
+    return render;
+  }
+
+  /**
+   * Renders a tracker module, assuming caching and deduplication have been
+   * handled by {@link renderTrackerToFile}.
+   *
+   * @param filePath - Absolute path to the tracker module
+   * @returns Path to the rendered MP3
+   */
+  private async performTrackerRender(filePath: string): Promise<string> {
     // 3. Compute content-hash filename (deterministic across restarts)
-    const hash: string = this.hashTrackerFile(filePath);
+    const hash: string = await this.hashTrackerFile(filePath);
     const tempDir: string = path.join(app.getPath('temp'), 'onixplayer-tracker');
     mkdirSync(tempDir, {recursive: true});
     const tempFile: string = path.join(tempDir, `tracker-${hash}.mp3`);
@@ -2489,10 +2807,10 @@ export class UnifiedMediaServer {
         });
       }
 
-      // Not cached yet — start background render and return approximate duration
-      this.renderMidiToFile(filePath).catch((err: Error): void => {
-        midiLogger.error(`Background MIDI render failed for ${path.basename(filePath)}: ${err.message}`);
-      });
+      // Not cached yet — queue a background render and return the approximate
+      // duration meanwhile. Queued rather than fired immediately so a bulk add
+      // does not start one decode pipeline per file.
+      this.enqueueRender((): Promise<void> => this.renderMidiToFile(filePath).then((): void => undefined));
       const duration: number = parseMidiDuration(filePath);
       return Promise.resolve({
         duration,
@@ -2518,15 +2836,29 @@ export class UnifiedMediaServer {
         });
       }
 
-      this.renderTrackerToFile(filePath).catch((err: Error): void => {
-        midiLogger.error(`Background tracker render failed for ${path.basename(filePath)}: ${err.message}`);
-      });
+      this.enqueueRender((): Promise<void> => this.renderTrackerToFile(filePath).then((): void => undefined));
       return Promise.resolve({
         duration: 0,
         type: 'audio' as const,
         title: path.basename(filePath, ext),
         filePath,
       });
+    }
+
+    // Reuse the cached probe when the file is unchanged. Files are probed once
+    // when added to the playlist, and without this every play/next/select
+    // spawned ffprobe again purely to rediscover the same metadata.
+    if (!UnifiedMediaServer.isRemoteUrl(filePath)) {
+      const cachedInfo: MediaInfo | undefined = this.mediaInfoCache.get(filePath);
+      if (cachedInfo) {
+        try {
+          if (this.mediaInfoMtimes.get(filePath) === statSync(filePath).mtimeMs) {
+            return Promise.resolve(cachedInfo);
+          }
+        } catch {
+          // Unreadable now — fall through and let ffprobe report the failure.
+        }
+      }
     }
 
     return new Promise((resolve: (value: Readonly<MediaInfo>) => void, reject: (reason: Readonly<Error>) => void): void => {
@@ -2655,8 +2987,14 @@ export class UnifiedMediaServer {
             subtitleTracks: subtitleTracks && subtitleTracks.length > 0 ? subtitleTracks : undefined,
           };
 
-          // Cache MediaInfo for stream handler codec lookup
+          // Cache MediaInfo for stream handler codec lookup, stamped with the
+          // file's mtime so a re-probe happens only when the file changes.
           this.mediaInfoCache.set(filePath, mediaInfo);
+          try {
+            this.mediaInfoMtimes.set(filePath, statSync(filePath).mtimeMs);
+          } catch {
+            // Remote sources have no mtime; the entry simply never validates.
+          }
 
           resolve(mediaInfo);
         } catch (e) {
@@ -2816,8 +3154,10 @@ export class UnifiedMediaServer {
     this.pausedTime = 0;
     this.stopTimeTracking();
 
-    // Nuke MIDI cache on stop to ensure fresh renders next time
-    this.nukeMidiCache();
+    // The MIDI cache is deliberately NOT cleared here. Stopping changes none
+    // of a render's inputs, so discarding it only forced a full fluidsynth +
+    // ffmpeg re-render on the next play. Soundfont changes, which do
+    // invalidate renders, clear it separately.
 
     this.broadcastState();
     this.broadcastTime();
@@ -3027,9 +3367,12 @@ export class UnifiedMediaServer {
       return;
     }
 
-    // Probe all files in parallel for metadata
-    const results: PromiseSettledResult<MediaInfo>[] = await Promise.allSettled(
-      (paths as string[]).map((filePath: string): Promise<MediaInfo> => this.probeMedia(filePath))
+    // Probe with bounded concurrency: one ffprobe per file all at once is a
+    // process storm when a folder of hundreds of files is dropped in.
+    const results: PromiseSettledResult<MediaInfo>[] = await UnifiedMediaServer.mapWithConcurrency(
+      paths as string[],
+      UnifiedMediaServer.MAX_CONCURRENT_PROBES,
+      (filePath: string): Promise<MediaInfo> => this.probeMedia(filePath)
     );
 
     const items: Omit<PlaylistItem, 'id'>[] = [];
@@ -3404,6 +3747,19 @@ export class UnifiedMediaServer {
       return;
     }
 
+    // The target is attacker-controlled input as far as this handler knows, so
+    // constrain it to an absolute, traversal-free .opp path. Without this the
+    // endpoint is an arbitrary-file-overwrite primitive.
+    const validation: { valid: boolean; error?: string; normalizedPath?: string } =
+      UnifiedMediaServer.validatePlaylistSavePath(filePath);
+    if (!validation.valid || !validation.normalizedPath) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: validation.error }));
+      return;
+    }
+
+    const targetPath: string = validation.normalizedPath;
+
     const state: PlaylistState = this.playlist.getState();
 
     if (state.items.length === 0) {
@@ -3429,11 +3785,11 @@ export class UnifiedMediaServer {
     };
 
     try {
-      writeFileSync(filePath, JSON.stringify(oppData, null, 2), 'utf-8');
-      this.playlist.setSourceFilePath(filePath);
-      playlistLogger.info(`Playlist saved to: ${filePath}`);
+      writeFileSync(targetPath, JSON.stringify(oppData, null, 2), 'utf-8');
+      this.playlist.setSourceFilePath(targetPath);
+      playlistLogger.info(`Playlist saved to: ${targetPath}`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, filePath }));
+      res.end(JSON.stringify({ success: true, filePath: targetPath }));
     } catch (err) {
       playlistLogger.error(`Failed to save playlist: ${(err as Error).message}`);
       res.writeHead(500);
@@ -3942,38 +4298,48 @@ export class UnifiedMediaServer {
    * Call this on: app startup, app shutdown, playback stop, soundfont change.
    */
   public nukeMidiCache(): void {
-    // Clear in-memory caches
+    // Clear in-memory caches synchronously — callers rely on renders being
+    // invalidated the moment this returns.
     const cacheSize: number = this.midiRenderCache.size;
     const inProgressSize: number = this.midiRenderInProgress.size;
     this.midiRenderCache.clear();
     this.midiRenderInProgress.clear();
 
-    // Delete the entire disk cache directory
-    const tempDir: string = path.join(app.getPath('temp'), 'onixplayer-midi');
-    let filesDeleted: number = 0;
+    // The disk directory is removed in the background: this runs on the main
+    // process, and a synchronous readdir/unlink sweep blocks the UI, IPC and
+    // the media server itself for as long as it takes.
+    this.removeCacheDirectory('onixplayer-midi');
+
+    midiLogger.info(`Nuked MIDI cache: ${cacheSize} in-memory, ${inProgressSize} in-progress`);
+  }
+
+  /**
+   * Removes a render cache directory without blocking the event loop.
+   *
+   * @param directoryName - Directory name under the OS temp directory
+   */
+  private removeCacheDirectory(directoryName: string): void {
+    const tempDir: string = path.join(app.getPath('temp'), directoryName);
+    if (!existsSync(tempDir)) return;
+
+    // Move the directory aside before deleting it. A recursive delete takes
+    // long enough that a render starting straight afterwards could write into
+    // a directory that is halfway through being removed; renaming is a single
+    // metadata operation, so once it returns the old cache is unreachable and
+    // a fresh one can be created immediately. The slow part still happens in
+    // the background.
+    const discarded: string = `${tempDir}-discarded-${randomBytes(6).toString('hex')}`;
     try {
-      if (existsSync(tempDir)) {
-        const files: string[] = readdirSync(tempDir);
-        for (const file of files) {
-          try {
-            unlinkSync(path.join(tempDir, file));
-            filesDeleted++;
-          } catch {
-            // Ignore individual file deletion errors (may be in use)
-          }
-        }
-        // Try to remove the directory itself
-        try {
-          rmdirSync(tempDir);
-        } catch {
-          // Directory may not be empty if some files couldn't be deleted
-        }
-      }
-    } catch (err) {
-      midiLogger.warn(`Failed to clean MIDI cache directory: ${err}`);
+      renameSync(tempDir, discarded);
+    } catch (err: unknown) {
+      // Losing the race to another remover is fine — it is going away either way.
+      midiLogger.warn(`Could not set aside cache directory ${directoryName}: ${(err as Error).message}`);
+      return;
     }
 
-    midiLogger.info(`Nuked MIDI cache: ${cacheSize} in-memory, ${inProgressSize} in-progress, ${filesDeleted} disk files`);
+    void rm(discarded, { recursive: true, force: true }).catch((err: Error): void => {
+      midiLogger.warn(`Failed to clean cache directory ${directoryName}: ${err.message}`);
+    });
   }
 
   /**
@@ -3988,31 +4354,9 @@ export class UnifiedMediaServer {
     this.trackerRenderCache.clear();
     this.trackerRenderInProgress.clear();
 
-    // Delete the entire disk cache directory
-    const tempDir: string = path.join(app.getPath('temp'), 'onixplayer-tracker');
-    let filesDeleted: number = 0;
-    try {
-      if (existsSync(tempDir)) {
-        const files: string[] = readdirSync(tempDir);
-        for (const file of files) {
-          try {
-            unlinkSync(path.join(tempDir, file));
-            filesDeleted++;
-          } catch {
-            // Ignore individual file deletion errors (may be in use)
-          }
-        }
-        try {
-          rmdirSync(tempDir);
-        } catch {
-          // Directory may not be empty if some files couldn't be deleted
-        }
-      }
-    } catch (err) {
-      midiLogger.warn(`Failed to clean tracker cache directory: ${err}`);
-    }
+    this.removeCacheDirectory('onixplayer-tracker');
 
-    midiLogger.info(`Nuked tracker cache: ${cacheSize} in-memory, ${inProgressSize} in-progress, ${filesDeleted} disk files`);
+    midiLogger.info(`Nuked tracker cache: ${cacheSize} in-memory, ${inProgressSize} in-progress`);
   }
 
   /**

@@ -1732,3 +1732,134 @@ ONIXPlayer is a **production-ready** media player with:
 ---
 
 *This document was generated from comprehensive code analysis and development history. It serves as both release documentation and context for future AI-assisted development sessions.*
+
+---
+---
+
+# Session Handoff — Audit Remediation (paused 2026-08-19)
+
+> **Scope note:** everything *above* this line is the pre-existing project
+> reference document. It predates the audit remediation work and has drifted in
+> places (see "Known staleness" below). Everything *below* is a handoff note for
+> resuming the audit work in a new session.
+
+## Where we landed
+
+All 41 audit issues (#4–#44) are **implemented and pushed**, awaiting review.
+
+- **Branch:** `hardening/audit-remediation` (pushed to origin)
+- **PR:** https://github.com/onix-labs/onixlabs-media-player/pull/45 → `main`
+- **Commits:** 19, +8,274 / −3,408 across 61 files
+- **Head at pause:** `f969799`
+
+**The issues are still OPEN on GitHub, and that is correct.** Each commit carries
+a `Closes #N` trailer, which fires only when the commits reach the default
+branch. They will all close on merge. Do not close them manually — that would
+mark them done while the work is unmerged.
+
+## Verification state
+
+Both suites pass and both coverage gates hold. Verified by running, not asserted:
+
+| Suite | Command | Result |
+|---|---|---|
+| Angular | `npm run test:angular` | 746 passing (26 files) |
+| Electron | `npm run test:electron` | 467 passing (9 files) |
+| Angular coverage | `npm run test:angular:coverage` | 31.4 / 37.37 / 34.4 / 30.73 (stmts/branch/funcs/lines) |
+| Electron coverage | `npm run test:electron:coverage` | 43.38 / 48.15 / 42.24 / 43.77 |
+
+Thresholds are set just under the measured figures — `angular.json`
+(`test` target, `coverage` configuration) and `vitest.electron.config.ts`.
+The Electron config also carries **per-file floors** for `playlist-manager.ts`,
+`sse-manager.ts` and `media-download-manager.ts`, because a global average
+stays flat while a well-covered module rots.
+
+**Not verified — needs a human at the keyboard.** Nothing visual or interactive
+was tested:
+- Visualizations: idle behaviour after the 5s fade-out, ghost-clearing cadence
+  at 4K, Black Hole across a hue cycle and a window resize
+- Subtitle rendering vs the config preview, side by side
+- Drag-and-drop on all four surfaces (audio, video, playlist, idle state),
+  including dragging something invalid
+- First-run setup wizard with valid / invalid / already-taken ports
+- A dependency install and a SoundFont install with the server erroring
+- Seek deep into a track then immediately skip; switch video mid-subtitle-load
+
+## Gotchas for the next session
+
+1. **The sandbox blocks socket binding.** `unified-media-server.spec.ts` fails
+   with `listen EPERM` unless the command runs with the sandbox disabled. The
+   other 8 Electron spec files are fine either way.
+2. **Check for an existing spec before writing one.** Several audit issues say a
+   module "has no spec" — that was true when they were filed, not necessarily
+   now. `media-download-manager.spec.ts` was overwritten this way and had to be
+   recovered from git (`f87c226`).
+3. **`ng test` was broken and silently skipped in CI** until `316224a`. It had
+   not compiled since `21e1f42`; the job ran, the build failed, and the suite
+   never executed. If it starts failing to compile again, CI will *not* tell you
+   loudly.
+4. **Angular specs rely on vitest globals** — do not `import {describe, ...}
+   from 'vitest'`; no existing spec does.
+5. Components that own a real media element or a `ResizeObserver` are tested via
+   `TestBed.inject(Component)` rather than `createComponent`, with `ElementRef`
+   and any ViewChild refs stubbed. See `video-outlet.spec.ts` and
+   `open-url-dialog.spec.ts`.
+
+## Decisions taken that a future session should not silently reverse
+
+Each is argued in its commit body; these are the short forms.
+
+- **#36 dialog-filter drift was real but unreachable.** Both production callers
+  already passed complete filters; only the unused default had drifted. Fixed as
+  cleanup, not as a user-facing bug.
+- **#33's "merge the track-load effect" was declined.** The video outlet's
+  cache-clear rule is deliberately narrower than the audio one, to avoid
+  double-loading a track selected right after being added. Only the genuinely
+  shared rule was extracted (`ResumePositionTracker`).
+- **#34's five-way `ElectronService` split stopped at two.** `SseClient` and
+  `TrackSelectionCache` are internals with real logic. `PlayerApi`, `WindowIpc`
+  and `MenuEvents` *are* the facade's public surface; moving them trades one
+  indirection for another without improving testability.
+- **#41's aspect-mode cycling** is covered; the rest of `VideoOutlet` is not.
+- **The `open-url-dialog` `setTimeout(0)` on paste was kept.** It is the standard
+  let-the-paste-commit idiom with no completion signal to replace it.
+
+## New shared code introduced (worth knowing before adding more)
+
+| File | Purpose |
+|---|---|
+| `src/angular/utils/webvtt.ts` | WebVTT parse, cue selection, subtitle sanitizer (pure) |
+| `src/angular/utils/subtitle-style.ts` | `hexToRgba`, 8-direction `buildTextShadow` |
+| `src/angular/utils/media-clock-sync.ts` | Server-clock anchoring shared by both outlets |
+| `src/angular/utils/resume-position.ts` | Resume-after-stop rule |
+| `src/angular/directives/file-drop-target.ts` | `appFileDropTarget`, replaces 4 copies |
+| `src/angular/services/sse-client.service.ts` | SSE transport + reconnect backoff |
+| `src/angular/services/track-selection-cache.service.ts` | Per-file subtitle/audio track choices |
+
+## Immediate next steps
+
+1. Human pass over the manual/visual list above.
+2. Review and merge PR #45 — that auto-closes all 41 issues.
+3. After merge, check GitHub's Dependabot alerts. The push warned of **33
+   vulnerabilities on `main`** (18 high, 14 moderate, 1 low). This branch takes
+   `npm audit` to zero, so most should clear, but Dependabot counts differently
+   from `npm audit` — verify rather than assume.
+4. Optional follow-ups deliberately left undone: the remaining three
+   `ElectronService` splits, replacing the ~15 menu counter-signals with a real
+   event emitter, and broader `VideoOutlet` coverage.
+
+## Known staleness in the document above
+
+The reference doc above was written before this work and is now wrong in places:
+
+- Electron 39 → now **43.4.1**; Angular 21.2.17 → **21.2.20**
+- The HTTP API tables omit the session-token requirement — **every** route now
+  needs `X-Onix-Token` (header or `token` query param), and Host is validated
+- "22 IPC channels" and the file-structure tables predate the new services,
+  directives and utils listed above
+- Extension sets are now `FFMPEG_AUDIO_EXTENSIONS` + `FFMPEG_VIDEO_EXTENSIONS`
+  (with `FFMPEG_EXTENSIONS` derived), plus `TRACKER_EXTENSIONS`
+- The "Quality Score 93/100" and "all 31 review items resolved" framing refers to
+  an earlier review, not this audit
+
+Updating it is not part of the audit scope and was not done.

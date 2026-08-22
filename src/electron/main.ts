@@ -14,7 +14,7 @@
  * @module electron/main
  */
 
-import {app, BrowserWindow, dialog, ipcMain, nativeTheme, net, protocol, screen} from "electron";
+import {app, BrowserWindow, dialog, ipcMain, nativeTheme, net, protocol, screen, session, shell} from "electron";
 import * as path from "path";
 import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.js';
@@ -23,7 +23,7 @@ import type {WindowBounds, MacOSVisualEffectState, AppearanceSettings, RecentIte
 import type {SettingsManager} from './settings-manager.js';
 import type {DependencyState} from './dependency-manager.js';
 import {initializeLogger, mainLogger, ipcLogger, windowLogger, getLogFilePath} from './logger.js';
-import {existsSync} from 'fs';
+import {existsSync, statSync} from 'fs';
 
 /**
  * Supported audio file extensions for file association handling.
@@ -266,6 +266,8 @@ class Program {
     this.registerMediaProtocol();
     mainLogger.debug('Media protocol registered');
 
+    this.registerContentSecurityPolicy();
+
     // Start the unified media server (HTTP API + SSE)
     // In production, also serve the Angular app via HTTP to avoid file:// CORS issues
     const staticPath: string | undefined = Program.IS_DEVELOPMENT
@@ -397,8 +399,115 @@ class Program {
         return new Response('Forbidden', {status: 403});
       }
 
+      if (!path.isAbsolute(filePath) || path.normalize(filePath) !== filePath) {
+        return new Response('Forbidden', {status: 403});
+      }
+
+      // Only ever hand back regular files. Without this the scheme resolves
+      // directories, sockets and devices as well.
+      try {
+        if (!statSync(filePath).isFile()) {
+          return new Response('Forbidden', {status: 403});
+        }
+      } catch {
+        return new Response('Not found', {status: 404});
+      }
+
       return net.fetch('file://' + filePath);
     });
+  }
+
+  /**
+   * Applies navigation lockdown to a window's web contents.
+   *
+   * Without these guards a navigation triggered inside the renderer can point
+   * a window at remote content, which would then be running alongside the
+   * preload bridge. Any attempt to leave the app origin is cancelled, and
+   * window.open is denied outright — external links go to the system browser.
+   *
+   * @param window - The window whose web contents should be locked down
+   */
+  private hardenWindow(window: Readonly<BrowserWindow>): void {
+    window.webContents.on('will-navigate', (event: Electron.Event, targetUrl: string): void => {
+      if (!this.isAllowedNavigationUrl(targetUrl)) {
+        windowLogger.warn(`Blocked navigation to ${targetUrl}`);
+        event.preventDefault();
+      }
+    });
+
+    window.webContents.setWindowOpenHandler((details: Readonly<Electron.HandlerDetails>): {action: 'deny'} => {
+      // Never open a new Electron window; hand http(s) to the system browser.
+      if (details.url.startsWith('http://') || details.url.startsWith('https://')) {
+        void shell.openExternal(details.url);
+      } else {
+        windowLogger.warn(`Blocked window.open for ${details.url}`);
+      }
+      return {action: 'deny'};
+    });
+  }
+
+  /**
+   * Determines whether a navigation target is part of the application itself.
+   *
+   * @param targetUrl - The URL the renderer is attempting to navigate to
+   * @returns True when the URL belongs to the app's own origin
+   */
+  private isAllowedNavigationUrl(targetUrl: string): boolean {
+    let parsed: URL;
+    try {
+      parsed = new URL(targetUrl);
+    } catch {
+      return false;
+    }
+
+    const allowedOrigins: string[] = [`http://127.0.0.1:${this.serverPort}`];
+
+    if (!app.isPackaged) {
+      allowedOrigins.push(new URL(Program.DEVELOPMENT_SERVER_URL).origin);
+    }
+
+    return allowedOrigins.includes(parsed.origin);
+  }
+
+  /**
+   * Installs a Content-Security-Policy on every response served to the renderer.
+   *
+   * Applied only to packaged builds: the development server relies on inline
+   * scripts and a websocket for live reload, which a policy this strict blocks.
+   *
+   * `img-src` allows https because Open URL renders remote thumbnails, and
+   * `style-src` allows inline styles because Angular injects component styles
+   * as inline <style> elements.
+   */
+  private registerContentSecurityPolicy(): void {
+    if (!app.isPackaged) {
+      return;
+    }
+
+    const policy: string = [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "media-src 'self' blob: data:",
+      "font-src 'self' data:",
+      "connect-src 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'none'",
+    ].join('; ');
+
+    session.defaultSession.webRequest.onHeadersReceived(
+      (details: Readonly<Electron.OnHeadersReceivedListenerDetails>, callback: (response: Electron.HeadersReceivedResponse) => void): void => {
+        callback({
+          responseHeaders: {
+            ...details.responseHeaders,
+            'Content-Security-Policy': [policy],
+          },
+        });
+      }
+    );
   }
 
   /**
@@ -492,6 +601,8 @@ class Program {
 
     // Prevent pinch-to-zoom
     window.webContents.setVisualZoomLevelLimits(1, 1);
+
+    this.hardenWindow(window);
 
     return window;
   }
@@ -665,6 +776,8 @@ class Program {
       }
     });
 
+    this.hardenWindow(this.configWindow);
+
     // Hide menu bar on Windows/Linux
     this.configWindow.setMenuBarVisibility(false);
 
@@ -775,6 +888,8 @@ class Program {
       }
     });
 
+    this.hardenWindow(this.aboutWindow);
+
     // Hide menu bar on Windows/Linux
     this.aboutWindow.setMenuBarVisibility(false);
 
@@ -875,6 +990,8 @@ class Program {
         webSecurity: true
       }
     });
+
+    this.hardenWindow(this.openUrlWindow);
 
     this.openUrlWindow.setMenuBarVisibility(false);
 
@@ -982,6 +1099,8 @@ class Program {
         webSecurity: true
       }
     });
+
+    this.hardenWindow(this.setupWizardWindow);
 
     // Hide menu bar on Windows/Linux
     this.setupWizardWindow.setMenuBarVisibility(false);
@@ -1355,6 +1474,12 @@ class Program {
       const port: number = this.mediaServer?.getPort() || 0;
       ipcLogger.debug(`app:getServerPort - returning ${port}`);
       return port;
+    });
+
+    // Get the session token the renderer must present on every API request.
+    // Deliberately never logged — IPC is the only channel that hands it out.
+    ipcMain.handle("app:getServerToken", (): string => {
+      return this.mediaServer?.getAuthToken() ?? '';
     });
 
     // Get platform info - needed for renderer to show platform-specific UI
