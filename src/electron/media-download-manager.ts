@@ -83,6 +83,29 @@ interface YtDlpInfoJson {
  * mirroring the `jobs` dictionary in ReClip's app.py.
  */
 export class MediaDownloadManager {
+  /**
+   * Rejects anything that is not a plain http(s) URL before it reaches yt-dlp.
+   *
+   * yt-dlp accepts a wide range of inputs, including local file paths, so
+   * without this a caller could point it at the filesystem or at schemes the
+   * player has no business fetching.
+   *
+   * @param url - Candidate URL
+   * @throws Error if the URL is malformed or not http(s)
+   */
+  private static assertSupportedUrl(url: string): void {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error('Invalid URL');
+    }
+
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error('Unsupported URL: only http and https are allowed');
+    }
+  }
+
   /** Resolves the current yt-dlp binary path (null when not installed) */
   private readonly getYtDlpPath: () => string | null;
 
@@ -143,7 +166,16 @@ export class MediaDownloadManager {
         return;
       }
 
-      const args: string[] = ['--no-playlist', '-j', url];
+      try {
+        MediaDownloadManager.assertSupportedUrl(url);
+      } catch (err) {
+        reject(err as Error);
+        return;
+      }
+
+      // '--' terminates option parsing: without it a URL beginning with '-'
+      // is interpreted by yt-dlp as a flag.
+      const args: string[] = ['--no-playlist', '-j', '--', url];
       logProcessSpawn(downloadLogger, 'yt-dlp', args);
 
       execFile(
@@ -249,6 +281,13 @@ export class MediaDownloadManager {
       return id;
     }
 
+    try {
+      MediaDownloadManager.assertSupportedUrl(url);
+    } catch (err) {
+      this.failJob(job, (err as Error).message, onUpdate);
+      return id;
+    }
+
     const outputTemplate: string = path.join(this.downloadsDir, `${id}.%(ext)s`);
     const args: string[] = ['--no-playlist', '--newline', '-o', outputTemplate];
 
@@ -264,7 +303,8 @@ export class MediaDownloadManager {
     } else {
       args.push('-f', 'bestvideo+bestaudio/best', '--merge-output-format', 'mp4');
     }
-    args.push(url);
+    // '--' terminates option parsing (see assertSupportedUrl / getInfo).
+    args.push('--', url);
 
     logProcessSpawn(downloadLogger, 'yt-dlp', args);
     const child: ChildProcess = spawn(ytdlp, args);
@@ -436,7 +476,15 @@ export class MediaDownloadManager {
             `best${heightFilter}`,
           ].join('/');
 
-      const args: string[] = ['--no-playlist', '-f', selector, '-g', url];
+      try {
+        MediaDownloadManager.assertSupportedUrl(url);
+      } catch (err) {
+        reject(err as Error);
+        return;
+      }
+
+      // '--' terminates option parsing (see assertSupportedUrl / getInfo).
+      const args: string[] = ['--no-playlist', '-f', selector, '-g', '--', url];
       logProcessSpawn(downloadLogger, 'yt-dlp', args);
 
       execFile(

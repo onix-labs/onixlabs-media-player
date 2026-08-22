@@ -78,7 +78,28 @@
           "builder": "@angular/build:unit-test",
           "options": {
             "tsConfig": "tsconfig.spec.json",
-            "include": ["src/angular/**/*.spec.ts"]
+            "runnerConfig": "vitest-base.config.ts",
+            "include": ["src/angular/**/*.spec.ts"],
+            "coverageInclude": ["src/angular/**/*.ts"],
+            "coverageExclude": [
+              "src/angular/**/*.spec.ts",
+              "src/angular/**/*.d.ts",
+              "src/angular/main.ts",
+              "src/angular/app.config.ts",
+              "src/angular/app.routes.ts"
+            ],
+            "coverageReporters": ["text-summary", "lcov"]
+          },
+          "configurations": {
+            "coverage": {
+              "coverage": true,
+              "coverageThresholds": {
+                "statements": 31,
+                "branches": 37,
+                "functions": 34,
+                "lines": 30
+              }
+            }
           }
         }
       }

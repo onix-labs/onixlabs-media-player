@@ -81,6 +81,7 @@ globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
  */
 const mockApi: {
   getServerPort: ReturnType<typeof vi.fn>;
+  getServerToken: ReturnType<typeof vi.fn>;
   getPlatformInfo: ReturnType<typeof vi.fn>;
   openFileDialog: ReturnType<typeof vi.fn>;
   openSoundFontDialog: ReturnType<typeof vi.fn>;
@@ -126,6 +127,7 @@ const mockApi: {
   setupInstallBundledSoundFont: ReturnType<typeof vi.fn>;
 } = {
   getServerPort: vi.fn().mockResolvedValue(12345),
+  getServerToken: vi.fn().mockResolvedValue('test-session-token'),
   getPlatformInfo: vi.fn().mockResolvedValue({platform: 'darwin', supportsGlass: true, systemTheme: 'dark'}),
   openFileDialog: vi.fn().mockResolvedValue([]),
   openSoundFontDialog: vi.fn().mockResolvedValue([]),
@@ -358,14 +360,32 @@ describe('ElectronService', (): void => {
         expect(callback).not.toHaveBeenCalled();
       });
 
-      it('should allow overwriting a previously registered settings callback', (): void => {
+      it('should keep both subscribers rather than replacing the first', (): void => {
+        // Registration used to be assignment, so a second subscriber silently
+        // unhooked the first. Each registration now returns its own remover.
         const callback1: (settings: AppSettings) => void = vi.fn();
         const callback2: (settings: AppSettings) => void = vi.fn();
-        service.onSettingsUpdate(callback1);
-        service.onSettingsUpdate(callback2);
-        // No error; second callback replaces first
-        expect(callback1).not.toHaveBeenCalled();
-        expect(callback2).not.toHaveBeenCalled();
+
+        const unsubscribe1: () => void = service.onSettingsUpdate(callback1);
+        const unsubscribe2: () => void = service.onSettingsUpdate(callback2);
+
+        expect(typeof unsubscribe1).toBe('function');
+        expect(typeof unsubscribe2).toBe('function');
+        expect(unsubscribe1).not.toBe(unsubscribe2);
+      });
+
+      it('should return an unsubscribe function from every registration', (): void => {
+        expect(typeof service.onSettingsUpdate(vi.fn())).toBe('function');
+        expect(typeof service.onDependencyStateUpdate(vi.fn())).toBe('function');
+        expect(typeof service.onDependencyProgressUpdate(vi.fn())).toBe('function');
+      });
+
+      it('should tolerate unsubscribing twice', (): void => {
+        const unsubscribe: () => void = service.onSettingsUpdate(vi.fn());
+
+        unsubscribe();
+
+        expect((): void => unsubscribe()).not.toThrow();
       });
     });
 
@@ -479,7 +499,7 @@ describe('ElectronService', (): void => {
           'http://127.0.0.1:12345/player/seek',
           expect.objectContaining({
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: expect.objectContaining({'Content-Type': 'application/json'}),
             body: JSON.stringify({time: 42.5}),
           }),
         );
@@ -633,7 +653,12 @@ describe('ElectronService', (): void => {
 
         const result: unknown = await service.getPlayerState();
 
-        expect(mockFetch).toHaveBeenCalledWith('http://127.0.0.1:12345/player/state');
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://127.0.0.1:12345/player/state',
+          expect.objectContaining({
+            headers: expect.objectContaining({'X-Onix-Token': expect.any(String)}),
+          }),
+        );
         expect(result).toEqual(mockState);
       });
 
@@ -653,7 +678,12 @@ describe('ElectronService', (): void => {
 
         const result: PlaylistState = await service.getPlaylist();
 
-        expect(mockFetch).toHaveBeenCalledWith('http://127.0.0.1:12345/playlist');
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://127.0.0.1:12345/playlist',
+          expect.objectContaining({
+            headers: expect.objectContaining({'X-Onix-Token': expect.any(String)}),
+          }),
+        );
         expect(result).toEqual(mockPlaylist);
       });
 
@@ -675,6 +705,9 @@ describe('ElectronService', (): void => {
 
         expect(mockFetch).toHaveBeenCalledWith(
           'http://127.0.0.1:12345/media/info?path=%2Ftest%2Ffile.mp3',
+          expect.objectContaining({
+            headers: expect.objectContaining({'X-Onix-Token': expect.any(String)}),
+          }),
         );
       });
 

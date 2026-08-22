@@ -205,6 +205,17 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
   private cachedBody: {r: number; g: number; b: number} = {r: 0, g: 0, b: 0};
   private cachedWave: {r: number; g: number; b: number} = {r: 0, g: 0, b: 0};
 
+  /**
+   * Accretion-disk gradients, one per band, held across frames.
+   *
+   * The gradient is a pure function of the disk geometry and the cached
+   * palette, so it only needs rebuilding when the layout or the hue changes.
+   * Each band keeps its own because each is built from — and painted onto —
+   * its own trail canvas.
+   */
+  private haloGradient: CanvasGradient | null = null;
+  private frontGradient: CanvasGradient | null = null;
+
   /** Pre-allocated points and their normalized samples. */
   private readonly edgePoints: Array<{x: number; y: number}>;
   private readonly frontPoints: Array<{x: number; y: number}>;
@@ -283,7 +294,7 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
       this.haloCanvas!, this.haloCtx!,
       BlackHoleVisualization.HALO_ROTATION_SPEED, BlackHoleVisualization.DISK_ZOOM_SCALE, BlackHoleVisualization.DISK_FADE_RATE
     );
-    this.drawDiskBand(this.haloCtx!, this.edgePoints, this.diskMaxRadius, 1);
+    this.drawDiskBand(this.haloCtx!, this.edgePoints, this.diskMaxRadius, 1, 'halo');
 
     this.advanceTrail(
       this.infallCanvas!, this.infallCtx!,
@@ -295,7 +306,7 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
       this.frontCanvas!, this.frontCtx!,
       BlackHoleVisualization.FRONT_ROTATION_SPEED, BlackHoleVisualization.DISK_ZOOM_SCALE, BlackHoleVisualization.DISK_FADE_RATE
     );
-    this.drawDiskBand(this.frontCtx!, this.frontPoints, this.frontMaxRadius, BlackHoleVisualization.DISK_TILT);
+    this.drawDiskBand(this.frontCtx!, this.frontPoints, this.frontMaxRadius, BlackHoleVisualization.DISK_TILT, 'front');
 
     // Composite back-to-front: lensed starfield, halo, black core, infalling
     // matter, front disk.
@@ -330,6 +341,9 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     this.frontAmplitude = this.diskAmplitude * width;
     this.frontMaxRadius = this.frontBaseRadius + this.frontAmplitude;
     this.waveDepth = this.eventHorizonRadius * BlackHoleVisualization.WAVE_DEPTH_FRACTION;
+
+    // Every radius the gradients are built from has just moved.
+    this.invalidateDiskGradients();
 
     this.haloCanvas = this.ensureCanvas(this.haloCanvas);
     this.haloCtx = this.haloCanvas.getContext('2d', {alpha: true});
@@ -384,6 +398,7 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     const hueInt: number = Math.floor(this.hueOffset);
     if (hueInt === this.cachedHue) return;
     this.cachedHue = hueInt;
+    this.invalidateDiskGradients();
     const sat: number = BlackHoleVisualization.SAT_FULL;
     this.cachedInner = this.hslToRgb(this.hueOffset, sat, BlackHoleVisualization.LIGHT_HOT);
     this.cachedBody = this.hslToRgb(this.hueOffset, sat, BlackHoleVisualization.LIGHT_BODY);
@@ -506,16 +521,50 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     ctx: CanvasRenderingContext2D,
     points: ReadonlyArray<{x: number; y: number}>,
     maxRadius: number,
-    tilt: number
+    tilt: number,
+    band: 'halo' | 'front'
   ): void {
-    const inner: {r: number; g: number; b: number} = this.cachedInner;
-    const body: {r: number; g: number; b: number} = this.cachedBody;
-
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.translate(this.centerX, this.centerY);
     ctx.scale(1, tilt);
     ctx.translate(-this.centerX, -this.centerY);
+
+    ctx.fillStyle = this.getDiskGradient(ctx, maxRadius, band);
+    ctx.beginPath();
+    this.buildSmoothPath(ctx, points, BlackHoleVisualization.NUM_SAMPLES);
+    ctx.closePath();
+    // Punch out the inner circle (an ellipse under the transform) so the disk is
+    // a band, leaving the core visible.
+    ctx.moveTo(this.centerX + this.eventHorizonRadius, this.centerY);
+    ctx.arc(this.centerX, this.centerY, this.eventHorizonRadius, 0, TWO_PI);
+    ctx.fill('evenodd');
+    ctx.restore();
+  }
+
+  /** Drops both cached disk gradients so the next frame rebuilds them. */
+  private invalidateDiskGradients(): void {
+    this.haloGradient = null;
+    this.frontGradient = null;
+  }
+
+  /**
+   * Returns a band's accretion-disk gradient, building it on first use after an
+   * invalidation. Rebuilding it per frame cost two CanvasGradient allocations
+   * and six colour-stop parses every frame for a value that only changes when
+   * the layout or the hue does.
+   *
+   * @param ctx - The band's trail context, which the gradient is created from
+   * @param maxRadius - Outer radius of this band
+   * @param band - Which cache slot this band owns
+   * @returns The gradient to fill the band with
+   */
+  private getDiskGradient(ctx: CanvasRenderingContext2D, maxRadius: number, band: 'halo' | 'front'): CanvasGradient {
+    const cached: CanvasGradient | null = band === 'halo' ? this.haloGradient : this.frontGradient;
+    if (cached) return cached;
+
+    const inner: {r: number; g: number; b: number} = this.cachedInner;
+    const body: {r: number; g: number; b: number} = this.cachedBody;
 
     const gradient: CanvasGradient = ctx.createRadialGradient(
       this.centerX, this.centerY, this.eventHorizonRadius,
@@ -528,16 +577,12 @@ export class BlackHoleVisualization extends Canvas2DVisualization {
     gradient.addColorStop(midOffset, `rgba(${body.r}, ${body.g}, ${body.b}, ${BlackHoleVisualization.DISK_BODY_ALPHA})`);
     gradient.addColorStop(1, `rgba(${body.r}, ${body.g}, ${body.b}, 0)`);
 
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    this.buildSmoothPath(ctx, points, BlackHoleVisualization.NUM_SAMPLES);
-    ctx.closePath();
-    // Punch out the inner circle (an ellipse under the transform) so the disk is
-    // a band, leaving the core visible.
-    ctx.moveTo(this.centerX + this.eventHorizonRadius, this.centerY);
-    ctx.arc(this.centerX, this.centerY, this.eventHorizonRadius, 0, TWO_PI);
-    ctx.fill('evenodd');
-    ctx.restore();
+    if (band === 'halo') {
+      this.haloGradient = gradient;
+    } else {
+      this.frontGradient = gradient;
+    }
+    return gradient;
   }
 
   /** Draws the bright, glowing infall waveform stroke (troughs facing inward). */

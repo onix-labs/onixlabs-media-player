@@ -11,12 +11,44 @@ export default defineConfig({
       include: ['src/electron/**/*.ts'],
       exclude: ['src/electron/**/*.spec.ts', 'src/electron/dist/**'],
       thresholds: {
-        // Global thresholds (conservative — main.ts, preload.ts, and
-        // unified-media-server.ts are hard to unit test without Electron runtime)
-        statements: 20,
-        branches: 35,
-        functions: 20,
-        lines: 20,
+        // Global thresholds, set just under the figures MEASURED IN CI, which
+        // is the only place they are enforced. A local run on macOS reports
+        // roughly 0.6 points higher across the board, because the darwin
+        // branches in application-menu.ts and unified-media-server.ts execute
+        // there and never do on the Linux runner. Calibrating against a local
+        // run is what put statements and functions above what CI can reach.
+        //
+        // They stay low in absolute terms because main.ts and preload.ts are 0%
+        // — both need the Electron runtime — and unified-media-server.ts is
+        // 4,000 lines of mostly-streaming code. Raise these as those come down.
+        statements: 42,
+        branches: 47,
+        functions: 41,
+        lines: 42,
+
+        // Per-file floors for the pure-logic modules. These are the strongest
+        // guard available: a global percentage can stay flat while a
+        // well-covered module quietly rots, because the large hard-to-test
+        // files dominate the average. Each of these has a dedicated suite, so
+        // a drop here means coverage was actually removed.
+        'src/electron/playlist-manager.ts': {
+          statements: 94,
+          branches: 90,
+          functions: 96,
+          lines: 95,
+        },
+        'src/electron/sse-manager.ts': {
+          statements: 100,
+          branches: 100,
+          functions: 100,
+          lines: 100,
+        },
+        'src/electron/media-download-manager.ts': {
+          statements: 100,
+          branches: 95,
+          functions: 100,
+          lines: 100,
+        },
       },
     },
   },

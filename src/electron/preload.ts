@@ -106,6 +106,14 @@ export interface MediaPlayerAPI {
   readonly getServerPort: () => Promise<number>;
 
   /**
+   * Gets the session token required on every media server API request.
+   * Called once at startup, alongside getServerPort.
+   *
+   * @returns Promise resolving to the session token
+   */
+  readonly getServerToken: () => Promise<string>;
+
+  /**
    * Gets platform information including glass effect support.
    * Used by the settings UI to show/hide platform-specific options.
    *
@@ -440,6 +448,7 @@ const api: MediaPlayerAPI = {
   openSoundFontDialog: (): Promise<string[]> => ipcRenderer.invoke('dialog:openSoundFont'),
   getPathForFile: (file: Readonly<File>): string => webUtils.getPathForFile(file),
   getServerPort: (): Promise<number> => ipcRenderer.invoke('app:getServerPort'),
+  getServerToken: (): Promise<string> => ipcRenderer.invoke('app:getServerToken'),
   getPlatformInfo: (): Promise<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}> => ipcRenderer.invoke('app:getPlatformInfo'),
   enterFullscreen: (): Promise<void> => ipcRenderer.invoke('window:enterFullscreen'),
   exitFullscreen: (): Promise<void> => ipcRenderer.invoke('window:exitFullscreen'),

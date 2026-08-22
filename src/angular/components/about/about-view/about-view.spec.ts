@@ -89,9 +89,9 @@ describe('AboutView', (): void => {
       expect(extensions).toHaveLength(6);
     });
 
-    it('dependencies should contain FFmpeg and FluidSynth', (): void => {
+    it('dependencies should contain FFmpeg, FluidSynth and libopenmpt', (): void => {
       const deps: readonly {name: string; description: string; url: string}[] = component.dependencies;
-      expect(deps).toHaveLength(2);
+      expect(deps).toHaveLength(3);
 
       const ffmpeg: {name: string; description: string; url: string} | undefined =
         deps.find((d: {name: string}): boolean => d.name === 'FFmpeg');

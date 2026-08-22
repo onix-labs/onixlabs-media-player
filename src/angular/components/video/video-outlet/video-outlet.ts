@@ -23,12 +23,16 @@ import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, s
 import {DOCUMENT} from '@angular/common';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
-import {FileDropService} from '../../../services/file-drop.service';
+import {FileDropTarget} from '../../../directives/file-drop-target';
+import {MediaClockSync} from '../../../utils/media-clock-sync';
+import {ResumePositionTracker} from '../../../utils/resume-position';
 import {SettingsService, VideoAspectMode, VIDEO_ASPECT_OPTIONS, SubtitleFontFamily, PreferredAudioLanguage, PreferredSubtitleLanguage} from '../../../services/settings.service';
 import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equalizer';
 import {buildVideoFilter} from '../../../services/video-adjustments';
 import {SeekSpinner} from './seek-spinner';
 import type {PlaylistItem, SubtitleTrack, AudioTrack} from '../../../services/electron.service';
+import {hexToRgba, buildTextShadow} from '../../../utils/subtitle-style';
+import {parseWebVTT, sanitizeSubtitleHtml, cueTextAt, type ParsedSubtitleCue, type LoadedSubtitleTrack} from '../../../utils/webvtt';
 
 /**
  * Video formats that Chromium can play natively.
@@ -88,29 +92,6 @@ export const VIDEO_FLIP_OPTIONS: readonly VideoFlipOption[] = [
 ];
 
 /**
- * Represents a parsed WebVTT cue with timing and text content.
- * Used for custom subtitle rendering that bypasses the browser's TextTrack API.
- */
-interface ParsedSubtitleCue {
-  /** Start time in seconds */
-  readonly startTime: number;
-  /** End time in seconds */
-  readonly endTime: number;
-  /** Text content (may contain HTML formatting) */
-  readonly text: string;
-}
-
-/**
- * Represents a loaded subtitle track with all its parsed cues.
- */
-interface LoadedSubtitleTrack {
-  /** Track index (matches SubtitleTrack.index) */
-  readonly index: number;
-  /** All parsed cues for this track */
-  readonly cues: readonly ParsedSubtitleCue[];
-}
-
-/**
  * Video outlet component for video media playback.
  *
  * This component is displayed when the current media is video (not audio).
@@ -135,7 +116,7 @@ interface LoadedSubtitleTrack {
 @Component({
   selector: 'app-video-outlet',
   standalone: true,
-  imports: [],
+  imports: [FileDropTarget],
   templateUrl: './video-outlet.html',
   styleUrl: './video-outlet.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -164,9 +145,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Electron service for file operations and fullscreen */
   private readonly electron: ElectronService = inject(ElectronService);
 
-  /** File drop service for drag-and-drop handling */
-  private readonly fileDrop: FileDropService = inject(FileDropService);
-
   /** Settings service for video aspect mode and subtitle appearance */
   private readonly settings: SettingsService = inject(SettingsService);
 
@@ -192,12 +170,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /** Currently playing track */
   public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
-
-  /** Whether files are being dragged over this component (valid files) */
-  public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-
-  /** Whether invalid files are being dragged over this component */
-  public readonly isDragInvalid: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** Current video aspect mode */
   public readonly aspectMode: ReturnType<typeof computed<VideoAspectMode>> = computed(
@@ -246,7 +218,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /** Sanitized subtitle HTML (allows only safe formatting tags) */
   public readonly sanitizedSubtitleHtml: ReturnType<typeof computed<string>> = computed(
-    (): string => this.sanitizeSubtitleHtml(this.subtitleText())
+    (): string => sanitizeSubtitleHtml(this.subtitleText())
   );
 
   /** Audio tracks available for the current video (only when multiple exist) */
@@ -281,10 +253,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
   private currentFilePath: string | null = null;
 
   /** Path of the last successfully loaded video (state reached 'playing') */
-  private lastSuccessfullyLoadedPath: string | null = null;
+  private readonly resume: ResumePositionTracker = new ResumePositionTracker();
 
   /** Playback state that preceded the current 'loading' transition */
-  private stateBeforeLoading: string = 'idle';
 
   /**
    * Web Audio graph for routing video audio through the equalizer.
@@ -310,21 +281,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Timestamp when the current video source was loaded */
   private mediaLoadedAt: number = 0;
 
-  /** Timestamp of the last clock sync sent to the server (for throttling) */
-  private lastSyncSentAt: number = 0;
-
-  /** Minimum drift (seconds) between element and server clock before syncing */
-  private readonly syncDriftThreshold: number = 0.75;
-
-  /** Minimum interval (ms) between clock syncs */
-  private readonly syncThrottleMs: number = 1000;
-
-  /** Settle time (ms) after a load or seek before clock syncs resume */
-  private readonly syncSettleMs: number = 2000;
-
-  /** Grace period (ms) after a user seek during which stall holds are skipped */
-  private readonly stallSeekGraceMs: number = 500;
-
   /**
    * Window (ms) after a source (re)load during which server-time corrections
    * are ignored — the time signal may still hold the previous track's
@@ -332,8 +288,16 @@ export class VideoOutlet implements OnInit, OnDestroy {
    */
   private readonly postLoadGuardMs: number = 500;
 
-  /** Interval holding the server clock at the element position while stalled */
-  private stallSyncInterval: ReturnType<typeof setInterval> | null = null;
+  /** Keeps the server clock anchored to the video element (shared with AudioOutlet). */
+  private readonly clock: MediaClockSync = new MediaClockSync(this.mediaPlayer, this.electron, {
+    element: (): HTMLMediaElement => this.videoRef.nativeElement,
+    mediaLoadedAt: (): number => this.mediaLoadedAt,
+    lastLocalSeekAt: (): number => this.lastSeekTime,
+    seekPending: (): boolean => this.seekPending,
+    // A transcode is served from the seek point, so the element counts from
+    // zero into a window that starts at transcodeSeekOffset.
+    offset: (): number => (this.isTranscoded ? this.transcodeSeekOffset : 0),
+  });
 
   /** Max difference (s) for a seek alignment to match this outlet's pending seek */
   private readonly seekAlignMatchEpsilon: number = 0.01;
@@ -359,6 +323,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
   private videoSeekedHandler: (() => void) | null = null;
   private videoLoadedMetadataHandler: (() => void) | null = null;
 
+  /**
+   * One-shot 'canplay' handler that positions a newly loaded source, tracked
+   * so a load can retire the previous source's pending seek. See armPendingSeek.
+   */
+  private pendingSeekHandler: (() => void) | null = null;
+
   /** Fade-out interval handle (stored for cleanup) */
   private fadeInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -367,6 +337,16 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /** Loaded subtitle tracks with parsed cues (for custom rendering) */
   private loadedSubtitleTracks: LoadedSubtitleTrack[] = [];
+
+  /**
+   * Bumped whenever loaded subtitle state is discarded. A load captures the
+   * value at entry and abandons itself once it no longer matches, so only the
+   * newest load can mutate shared subtitle state.
+   */
+  private subtitleLoadGeneration: number = 0;
+
+  /** Aborts the in-flight subtitle fetch when its load is superseded. */
+  private subtitleLoadAbort: AbortController | null = null;
 
   /** Video timeupdate handler (stored for cleanup) */
   private videoTimeUpdateHandler: (() => void) | null = null;
@@ -404,22 +384,13 @@ export class VideoOutlet implements OnInit, OnDestroy {
       const state: string = this.mediaPlayer.playbackState();
 
       // Track when we successfully loaded a video (state reached 'playing')
-      if (state === 'playing' && this.currentFilePath) {
-        this.lastSuccessfullyLoadedPath = this.currentFilePath;
-      }
-
-      // Remember the state that preceded a 'loading' transition. This
-      // distinguishes resuming after a stop (stopped → loading) from a
-      // restart or re-selection (playing → loading), which must start at 0.
-      if (state !== 'loading') {
-        this.stateBeforeLoading = state;
-      }
+      this.resume.observe(state, this.currentFilePath);
 
       // For re-selection: only clear currentFilePath if we're loading a track
       // that was already successfully played. This prevents double-loading when
       // selectTrack is called right after addToPlaylist (the track hasn't been
       // successfully loaded yet, so we shouldn't clear and reload).
-      if (state === 'loading' && track?.filePath === this.lastSuccessfullyLoadedPath) {
+      if (state === 'loading' && this.resume.hasPlayed(track?.filePath)) {
         this.currentFilePath = null;
       }
 
@@ -436,12 +407,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
         //   it must never be used as a start position here; if the server is
         //   genuinely mid-track, its broadcasts re-position the element via
         //   the seek effect.
-        const isStopResume: boolean = state === 'loading'
-          && this.stateBeforeLoading === 'stopped'
-          && track.filePath === this.lastSuccessfullyLoadedPath;
-        const startTime: number = isStopResume
-          ? untracked((): number => this.mediaPlayer.currentTime())
-          : 0;
+        const startTime: number = this.resume.startPosition(
+          state,
+          track.filePath,
+          (): number => untracked((): number => this.mediaPlayer.currentTime())
+        );
         // Reset flip on a genuine track switch, but preserve it across
         // view-mode changes (e.g. entering fullscreen) which reload the
         // same file.
@@ -763,7 +733,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     video.pause();
     video.src = '';
     this.currentFilePath = null;
-    this.lastSuccessfullyLoadedPath = null;
+    this.resume.reset();
 
     // Tear down the equalizer audio graph
     if (this.audioContext) {
@@ -796,7 +766,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
     if (this.videoPlayingHandler) {
       video.removeEventListener('playing', this.videoPlayingHandler);
     }
-    this.stopStallClockHold();
+    this.clearPendingSeek(video);
+    this.clock.stopStallHold();
 
     // Remove subtitle style element
     if (this.subtitleStyleElement) {
@@ -896,6 +867,41 @@ export class VideoOutlet implements OnInit, OnDestroy {
   }
 
   /**
+   * Positions the element at `seekTime` as soon as the new source can play.
+   *
+   * Tracked in a field rather than left as an anonymous listener: a listener
+   * that only unregisters when it fires outlives a source that is replaced
+   * before it ever reaches 'canplay' — a rapid seek on a transcoded stream, an
+   * audio-track switch, a fast skip — and then applies the dead source's seek
+   * to whatever loads next. Callers must clearPendingSeek before every load,
+   * including loads that need no seek of their own.
+   *
+   * @param video - The video element being loaded
+   * @param seekTime - Absolute media time to position at
+   */
+  private armPendingSeek(video: HTMLVideoElement, seekTime: number): void {
+    this.clearPendingSeek(video);
+
+    this.pendingSeekHandler = (): void => {
+      this.pendingSeekHandler = null;
+      video.currentTime = seekTime;
+    };
+
+    video.addEventListener('canplay', this.pendingSeekHandler, {once: true});
+  }
+
+  /**
+   * Retires a seek still waiting on a previous source's 'canplay'.
+   *
+   * @param video - The video element to detach from
+   */
+  private clearPendingSeek(video: HTMLVideoElement): void {
+    if (!this.pendingSeekHandler) return;
+    video.removeEventListener('canplay', this.pendingSeekHandler);
+    this.pendingSeekHandler = null;
+  }
+
+  /**
    * Reloads the video with the selected audio track and seeks to the specified time.
    *
    * @param seekTime - Time to seek to after reload (absolute media time)
@@ -914,9 +920,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     // Build stream URL with audio track parameter
     // Note: canRemux is now determined server-side based on the selected track's codec
-    const streamUrl: string = this.isTranscoded
-      ? `${this.electron.serverUrl()}/media/stream?path=${encodeURIComponent(this.currentFilePath)}&t=${seekTime}&audioTrack=${audioTrack}`
-      : `${this.electron.serverUrl()}/media/stream?path=${encodeURIComponent(this.currentFilePath)}&audioTrack=${audioTrack}`;
+    const streamUrl: string = this.electron.appendAuth(
+      this.isTranscoded
+        ? `${this.electron.serverUrl()}/media/stream?path=${encodeURIComponent(this.currentFilePath)}&t=${seekTime}&audioTrack=${audioTrack}`
+        : `${this.electron.serverUrl()}/media/stream?path=${encodeURIComponent(this.currentFilePath)}&audioTrack=${audioTrack}`
+    );
 
     // Update transcodeSeekOffset for the new stream position
     if (this.isTranscoded) {
@@ -927,13 +935,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
     video.src = streamUrl;
     video.load();
 
-    // For native formats, seek after load; for transcoded, time is in URL
+    // For native formats, seek after load; for transcoded, time is in URL.
+    // Cleared unconditionally first so a seek armed for the source this one
+    // replaces cannot fire against it.
+    this.clearPendingSeek(video);
     if (!this.isTranscoded && seekTime > 0) {
-      const onCanPlay: () => void = (): void => {
-        video.currentTime = seekTime;
-        video.removeEventListener('canplay', onCanPlay);
-      };
-      video.addEventListener('canplay', onCanPlay);
+      this.armPendingSeek(video, seekTime);
     }
 
     if (autoPlay) {
@@ -981,52 +988,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
     this.flipMode.set(mode);
   }
 
-  /**
-   * Handles dragover to enable drop target with visual validation feedback.
-   */
-  public onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const hasValid: boolean = this.fileDrop.hasValidFiles(event);
-    this.isDragOver.set(hasValid);
-    this.isDragInvalid.set(!hasValid);
-
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = hasValid ? 'copy' : 'none';
-    }
-  }
-
-  /**
-   * Handles dragleave to reset visual feedback.
-   */
-  public onDragLeave(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-    this.isDragInvalid.set(false);
-  }
-
-  /**
-   * Handles file drop to add media to playlist with smart auto-play.
-   *
-   * Uses unified auto-play behavior:
-   * - Single file: plays immediately
-   * - Multiple files + empty playlist: plays from beginning
-   * - Multiple files + existing playlist: appends without interrupting
-   */
-  public async onDrop(event: DragEvent): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-    this.isDragInvalid.set(false);
-
-    const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
-    if (filePaths.length === 0) return;
-
-    await this.electron.addFilesWithAutoPlay(filePaths);
-  }
-
   // ============================================================================
   // Subtitle Styling
   // ============================================================================
@@ -1067,26 +1028,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
     }
 
     // Convert hex background color to rgba
-    const bgRgba: string = this.hexToRgba(bgColor, bgOpacity);
+    const bgRgba: string = hexToRgba(bgColor, bgOpacity);
 
-    // Build shadow CSS - uses 8 directions for a complete outline effect
-    // Directions: N, NE, E, SE, S, SW, W, NW
-    let shadowCss: string = 'none';
-    if (textShadow) {
-      const s: number = shadowSpread;
-      const b: number = shadowBlur;
-      const c: string = shadowColor;
-      shadowCss = [
-        `0 -${s}px ${b}px ${c}`,      // N
-        `${s}px -${s}px ${b}px ${c}`, // NE
-        `${s}px 0 ${b}px ${c}`,       // E
-        `${s}px ${s}px ${b}px ${c}`,  // SE
-        `0 ${s}px ${b}px ${c}`,       // S
-        `-${s}px ${s}px ${b}px ${c}`, // SW
-        `-${s}px 0 ${b}px ${c}`,      // W
-        `-${s}px -${s}px ${b}px ${c}` // NW
-      ].join(', ');
-    }
+    const shadowCss: string = textShadow ? buildTextShadow(shadowSpread, shadowBlur, shadowColor) : 'none';
 
     // Build the CSS rules for the custom overlay
     const css: string = `
@@ -1101,89 +1045,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     // Update the style element content
     this.subtitleStyleElement.textContent = css;
-  }
-
-  /**
-   * Converts a hex color to rgba format.
-   *
-   * @param hex - Hex color string (e.g., '#ffffff')
-   * @param alpha - Alpha value (0-1)
-   * @returns RGBA color string
-   */
-  private hexToRgba(hex: string, alpha: number): string {
-    const r: number = parseInt(hex.slice(1, 3), 16);
-    const g: number = parseInt(hex.slice(3, 5), 16);
-    const b: number = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
-
-  /**
-   * Sanitizes subtitle text to allow only safe HTML formatting tags.
-   *
-   * Subtitles may contain HTML formatting tags like <i>, <b>, <u>, etc.
-   * This method strips all unsafe tags while preserving safe formatting.
-   * Newlines are converted to <br> tags for proper multi-line display.
-   *
-   * @param text - Raw subtitle text that may contain HTML
-   * @returns Sanitized HTML string safe for innerHTML binding
-   */
-  private sanitizeSubtitleHtml(text: string): string {
-    if (!text) return '';
-
-    // First, escape any content that's not inside our allowed tags
-    // to prevent XSS. Then selectively allow safe formatting tags.
-
-    // Convert newlines to placeholders first
-    let sanitized: string = text.replace(/\n/g, '{{NEWLINE}}');
-
-    // List of allowed formatting tags (WebVTT and common subtitle formats)
-    const allowedTags: string[] = ['i', 'b', 'u', 'em', 'strong'];
-
-    // Create a regex to match allowed tags (both opening and closing)
-    const tagPattern: string = allowedTags.map((tag: string): string => `<\\/?${tag}\\s*>`).join('|');
-    const allowedTagsRegex: RegExp = new RegExp(`(${tagPattern})`, 'gi');
-
-    // Extract allowed tags and their positions
-    const tagMatches: RegExpMatchArray | null = sanitized.match(allowedTagsRegex);
-    const tagPositions: Array<{index: number; tag: string}> = [];
-
-    if (tagMatches) {
-      let searchPos: number = 0;
-      for (const tag of tagMatches) {
-        const idx: number = sanitized.indexOf(tag, searchPos);
-        if (idx !== -1) {
-          tagPositions.push({index: idx, tag});
-          searchPos = idx + tag.length;
-        }
-      }
-    }
-
-    // Escape all HTML entities
-    sanitized = sanitized
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-
-    // Restore allowed tags (they were escaped, so we need to un-escape them)
-    for (const tagName of allowedTags) {
-      // Restore opening tags: &lt;tagname&gt; -> <tagname>
-      sanitized = sanitized.replace(
-        new RegExp(`&lt;(${tagName})\\s*&gt;`, 'gi'),
-        `<$1>`
-      );
-      // Restore closing tags: &lt;/tagname&gt; -> </tagname>
-      sanitized = sanitized.replace(
-        new RegExp(`&lt;/(${tagName})\\s*&gt;`, 'gi'),
-        `</$1>`
-      );
-    }
-
-    // Convert newline placeholders to <br> tags
-    sanitized = sanitized.replace(/\{\{NEWLINE\}\}/g, '<br>');
-
-    return sanitized;
   }
 
   // ============================================================================
@@ -1299,19 +1160,18 @@ export class VideoOutlet implements OnInit, OnDestroy {
       // For native formats, audio track is not used (browser plays all tracks)
     }
 
-    video.src = url;
+    video.src = this.electron.appendAuth(url);
     video.load();
 
     // For native formats, position the element once it can play (HTTP range
     // requests make this instant). Handles resuming at a position seeked
     // while stopped as well as view-mode remounts. Transcoded formats
     // already start at the right position via the 't' URL parameter.
+    // Cleared unconditionally first: a seek armed for the previous source must
+    // not survive into this one, even when this load needs no seek itself.
+    this.clearPendingSeek(video);
     if (!this.isTranscoded && seekTime > 0) {
-      const onCanPlay: () => void = (): void => {
-        video.currentTime = seekTime;
-        video.removeEventListener('canplay', onCanPlay);
-      };
-      video.addEventListener('canplay', onCanPlay);
+      this.armPendingSeek(video, seekTime);
     }
 
     console.log(`Loading video: ${filePath}, transcoded: ${this.isTranscoded}, seekTime: ${seekTime}, audioTrack: ${audioTrack}`);
@@ -1380,7 +1240,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     // Also keeps the server clock anchored to the element's real position.
     this.videoTimeUpdateHandler = (): void => {
       this.updateSubtitleDisplay(video.currentTime);
-      this.maybeSyncServerClock(video);
+      this.clock.maybeSync();
     };
     video.addEventListener('timeupdate', this.videoTimeUpdateHandler);
 
@@ -1389,54 +1249,19 @@ export class VideoOutlet implements OnInit, OnDestroy {
     // at the element's position until playback resumes, so the recovery
     // never looks like a seek and the seek bar never runs ahead of content.
     this.videoWaitingHandler = (): void => {
-      this.startStallClockHold();
+      this.clock.startStallHold();
     };
     video.addEventListener('waiting', this.videoWaitingHandler);
 
     this.videoPlayingHandler = (): void => {
-      this.stopStallClockHold();
+      this.clock.stopStallHold();
       // Backup for the canplay hide — playback has definitely resumed
       this.hideSeekLoadingOverlay();
     };
     video.addEventListener('playing', this.videoPlayingHandler);
   }
 
-  /**
-   * Starts periodically anchoring the server clock to the element's current
-   * position while the element is stalled (buffering / pipeline startup).
-   *
-   * Skips ticks in a short grace window after a user seek so a stale element
-   * position can never cancel the seek target.
-   */
-  private startStallClockHold(): void {
-    if (this.stallSyncInterval !== null) return;
 
-    const video: HTMLVideoElement = this.videoRef.nativeElement;
-    const holdClock: () => void = (): void => {
-      if (!this.mediaPlayer.isPlaying()) return;
-      if (Date.now() - this.electron.lastSeekAt < this.stallSeekGraceMs) return;
-      // Never report a freshly (re)loaded element — its position may not
-      // reflect the new track yet (the server ignores such syncs too)
-      if (Date.now() - this.mediaLoadedAt < this.syncSettleMs) return;
-      const actualTime: number = this.isTranscoded
-        ? this.transcodeSeekOffset + video.currentTime
-        : video.currentTime;
-      this.electron.syncPlaybackTime(actualTime);
-    };
-
-    holdClock();
-    this.stallSyncInterval = setInterval(holdClock, this.syncThrottleMs);
-  }
-
-  /**
-   * Stops the stall clock hold once the element is playing again.
-   */
-  private stopStallClockHold(): void {
-    if (this.stallSyncInterval !== null) {
-      clearInterval(this.stallSyncInterval);
-      this.stallSyncInterval = null;
-    }
-  }
 
   /**
    * Shows the seek-loading overlay: captures the video's current frame onto
@@ -1539,42 +1364,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
     this.electron.setStreamingBusy(false);
   }
 
-  /**
-   * Reports the video element's actual playback position to the server when
-   * it has drifted from the server's wall-clock time.
-   *
-   * Drift happens when the element stalls to buffer (network hiccups, NAS
-   * latency, remote streams) while the server clock keeps running. Left
-   * uncorrected, the seek bar runs ahead of the content and the seek effect
-   * eventually "corrects" the element by skipping it forward — the classic
-   * streaming desync. Anchoring the clock to the element fixes both.
-   *
-   * Syncs are suppressed while the element is settling after a load or a
-   * seek, so a stale element position never cancels a user's seek.
-   *
-   * @param video - The video element to read the position from
-   */
-  private maybeSyncServerClock(video: Readonly<HTMLVideoElement>): void {
-    if (!this.mediaPlayer.isPlaying()) return;
-    if (video.paused || video.seeking || this.seekPending) return;
-    if (video.readyState < 3) return;
-
-    const now: number = Date.now();
-    if (now - this.lastSyncSentAt < this.syncThrottleMs) return;
-    if (now - this.mediaLoadedAt < this.syncSettleMs) return;
-    if (now - this.lastSeekTime < this.syncSettleMs) return;
-    if (now - this.electron.lastSeekAt < this.syncSettleMs) return;
-
-    const actualTime: number = this.isTranscoded
-      ? this.transcodeSeekOffset + video.currentTime
-      : video.currentTime;
-    const drift: number = actualTime - this.mediaPlayer.currentTime();
-
-    if (Math.abs(drift) > this.syncDriftThreshold) {
-      this.lastSyncSentAt = now;
-      this.electron.syncPlaybackTime(actualTime);
-    }
-  }
 
   /**
    * Loads subtitle tracks by fetching and parsing WebVTT content.
@@ -1593,10 +1382,21 @@ export class VideoOutlet implements OnInit, OnDestroy {
     filePath: string
   ): Promise<void> {
     console.log(`[Subtitles] Loading ${tracks.length} tracks: ${tracks.map((t: SubtitleTrack): string => `${t.index}="${t.title}" (${t.codec})`).join(', ')}`);
+
+    // Claim this load. cleanupSubtitleTracks bumps the generation and aborts
+    // the controller, so a load for a video the user has already moved on from
+    // stops before it can touch loadedSubtitleTracks or the selection cache.
+    const generation: number = this.subtitleLoadGeneration;
+    const abort: AbortController = new AbortController();
+    this.subtitleLoadAbort = abort;
+
     for (const track of tracks) {
+      if (generation !== this.subtitleLoadGeneration) return;
+
       try {
         const url: string = `${serverUrl}/media/subtitles?path=${encodeURIComponent(filePath)}&track=${track.index}`;
-        const response: Response = await fetch(url);
+        const response: Response = await this.electron.authFetch(url, {signal: abort.signal});
+        if (generation !== this.subtitleLoadGeneration) return;
 
         if (!response.ok) {
           console.error(`Failed to load subtitle track ${track.index}: ${response.status}`);
@@ -1604,7 +1404,9 @@ export class VideoOutlet implements OnInit, OnDestroy {
         }
 
         const webvttContent: string = await response.text();
-        const cues: ParsedSubtitleCue[] = this.parseWebVTT(webvttContent);
+        if (generation !== this.subtitleLoadGeneration) return;
+
+        const cues: ParsedSubtitleCue[] = parseWebVTT(webvttContent);
 
         this.loadedSubtitleTracks.push({
           index: track.index,
@@ -1613,9 +1415,14 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
         console.log(`Loaded subtitle track ${track.index} with ${cues.length} cues`);
       } catch (error: unknown) {
+        // A superseded load's fetch is aborted deliberately; that is not a failure.
+        if (generation !== this.subtitleLoadGeneration) return;
         console.error(`Error loading subtitle track ${track.index}:`, error);
       }
     }
+
+    if (generation !== this.subtitleLoadGeneration) return;
+    this.subtitleLoadAbort = null;
 
     // Check for a cached selection (persists across view mode changes - user's manual choice takes precedence)
     const cachedSelection: number | undefined = this.electron.getSubtitleSelection(filePath);
@@ -1673,7 +1480,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     try {
       const url: string = `${serverUrl}/media/subtitles/external?path=${encodeURIComponent(subtitlePath)}`;
-      const response: Response = await fetch(url);
+      const response: Response = await this.electron.authFetch(url);
 
       if (!response.ok) {
         console.error(`Failed to load external subtitle: ${response.status}`);
@@ -1681,7 +1488,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
       }
 
       const webvttContent: string = await response.text();
-      const cues: ParsedSubtitleCue[] = this.parseWebVTT(webvttContent);
+      const cues: ParsedSubtitleCue[] = parseWebVTT(webvttContent);
 
       this.loadedSubtitleTracks.push({
         index: EXTERNAL_SUBTITLE_TRACK_INDEX,
@@ -1697,88 +1504,6 @@ export class VideoOutlet implements OnInit, OnDestroy {
     } catch (error: unknown) {
       console.error('Error loading external subtitle:', error);
     }
-  }
-
-  /**
-   * Parses WebVTT content into an array of cues.
-   *
-   * @param content - Raw WebVTT file content
-   * @returns Array of parsed cues with timing and text
-   */
-  private parseWebVTT(content: string): ParsedSubtitleCue[] {
-    const cues: ParsedSubtitleCue[] = [];
-    const lines: string[] = content.split('\n');
-
-    let i: number = 0;
-
-    // Skip WEBVTT header and any metadata
-    while (i < lines.length && !lines[i].includes('-->')) {
-      i++;
-    }
-
-    // Parse cues
-    while (i < lines.length) {
-      const line: string = lines[i].trim();
-
-      // Look for timing line (contains "-->")
-      if (line.includes('-->')) {
-        const timing: { start: number; end: number } | null = this.parseTimingLine(line);
-        if (timing) {
-          // Collect text lines until we hit an empty line or EOF
-          const textLines: string[] = [];
-          i++;
-          while (i < lines.length && lines[i].trim() !== '') {
-            textLines.push(lines[i].trim());
-            i++;
-          }
-
-          if (textLines.length > 0) {
-            cues.push({
-              startTime: timing.start,
-              endTime: timing.end,
-              text: textLines.join('\n'),
-            });
-          }
-        }
-      }
-      i++;
-    }
-
-    return cues;
-  }
-
-  /**
-   * Parses a WebVTT timing line to extract start and end times.
-   *
-   * @param line - Timing line (e.g., "00:01:23.456 --> 00:01:27.890")
-   * @returns Object with start and end times in seconds, or null if invalid
-   */
-  private parseTimingLine(line: string): { start: number; end: number } | null {
-    // Match pattern: HH:MM:SS.mmm --> HH:MM:SS.mmm (hours optional)
-    const match: RegExpMatchArray | null = line.match(
-      /(\d{1,2}:)?(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{1,2}:)?(\d{2}):(\d{2})\.(\d{3})/
-    );
-
-    if (!match) return null;
-
-    const startHours: number = match[1] ? parseInt(match[1].replace(':', ''), 10) : 0;
-    const startMinutes: number = parseInt(match[2], 10);
-    const startSeconds: number = parseInt(match[3], 10);
-    const startMs: number = parseInt(match[4], 10);
-
-    const endHours: number = match[5] ? parseInt(match[5].replace(':', ''), 10) : 0;
-    const endMinutes: number = parseInt(match[6], 10);
-    const endSeconds: number = parseInt(match[7], 10);
-    const endMs: number = parseInt(match[8], 10);
-
-    const secondsPerMinute: number = 60;
-    const secondsPerHour: number = 3600;
-    const msPerSecond: number = 1000;
-
-    const start: number = startHours * secondsPerHour + startMinutes * secondsPerMinute + startSeconds + startMs / msPerSecond;
-    const end: number = endHours * secondsPerHour + endMinutes * secondsPerMinute + endSeconds + endMs / msPerSecond;
-
-    return { start, end };
   }
 
   /**
@@ -1814,25 +1539,23 @@ export class VideoOutlet implements OnInit, OnDestroy {
       return;
     }
 
-    // Find active cues at this time
-    const activeCues: ParsedSubtitleCue[] = track.cues.filter(
-      (cue: ParsedSubtitleCue): boolean =>
-        adjustedTime >= cue.startTime && adjustedTime <= cue.endTime
-    );
-
-    if (activeCues.length > 0) {
-      // Join multiple cues with newline
-      const text: string = activeCues.map((c: ParsedSubtitleCue): string => c.text).join('\n');
-      this.subtitleText.set(text);
-    } else {
-      this.subtitleText.set('');
-    }
+    this.subtitleText.set(cueTextAt(track.cues, adjustedTime));
   }
 
   /**
    * Cleans up loaded subtitle tracks.
+   *
+   * Also retires any load still in flight. Loading is a sequence of awaited
+   * fetches that can take seconds across many tracks, and it resolves
+   * `loadedSubtitleTracks` at push time — so a load left running for a
+   * previous video would deposit that video's cues into this one's list and
+   * overwrite the selection cache under the old file path.
    */
   private cleanupSubtitleTracks(): void {
+    this.subtitleLoadGeneration++;
+    this.subtitleLoadAbort?.abort();
+    this.subtitleLoadAbort = null;
+
     this.loadedSubtitleTracks = [];
     this.subtitleText.set('');
   }

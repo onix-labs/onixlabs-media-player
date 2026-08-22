@@ -1,10 +1,6 @@
 <audio #audioElement crossorigin="anonymous" style="display: none;"></audio>
 <div class="visualizer-container"
-     [class.drag-over]="isDragOver()"
-     [class.drag-invalid]="isDragInvalid()"
      (dblclick)="onDoubleClick()"
-     (dragover)="onDragOver($event)"
-     (dragleave)="onDragLeave($event)"
-     (drop)="onDrop($event)">
+     appFileDropTarget>
   <canvas #canvas></canvas>
 </div>

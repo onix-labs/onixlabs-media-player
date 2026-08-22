@@ -30,7 +30,9 @@ import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, s
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {SettingsService, PerVisualizationSettings, RenderResolution, CrossfadeStyle, CROSSFADE_STYLES} from '../../../services/settings.service';
-import {FileDropService} from '../../../services/file-drop.service';
+import {FileDropTarget} from '../../../directives/file-drop-target';
+import {MediaClockSync} from '../../../utils/media-clock-sync';
+import {ResumePositionTracker} from '../../../utils/resume-position';
 import type {PlaylistItem} from '../../../types/electron';
 import {Visualization, createVisualization, VISUALIZATION_TYPES, VISUALIZATION_METADATA} from './visualizations';
 import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equalizer';
@@ -58,7 +60,7 @@ import {createEqualizerFilters, applyEqualizerGains} from '../../../services/equ
 @Component({
   selector: 'app-audio-outlet',
   standalone: true,
-  imports: [],
+  imports: [FileDropTarget],
   templateUrl: './audio-outlet.html',
   styleUrl: './audio-outlet.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -94,21 +96,12 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Settings service for user preferences */
   private readonly settings: SettingsService = inject(SettingsService);
 
-  /** File drop service for drag-and-drop handling */
-  private readonly fileDrop: FileDropService = inject(FileDropService);
-
   // ============================================================================
   // Reactive State
   // ============================================================================
 
   /** Whether the application is in fullscreen mode */
   public readonly isFullscreen: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.isFullscreen());
-
-  /** Whether files are being dragged over this component */
-  public readonly isDragOver: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-
-  /** Whether dragged files are invalid (no valid media extensions) */
-  public readonly isDragInvalid: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /** Currently playing track (for display purposes) */
   public readonly currentTrack: ReturnType<typeof computed<PlaylistItem | null>> = computed((): PlaylistItem | null => this.mediaPlayer.currentTrack());
@@ -152,6 +145,20 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
   /** Animation frame ID for the visualization loop */
   private animationId: number | null = null;
+
+  /** Observer that keeps the cached canvas display size current. */
+  private canvasResizeObserver: ResizeObserver | null = null;
+
+  /**
+   * Canvas display size in CSS pixels, refreshed by canvasResizeObserver.
+   *
+   * Cached so the draw loop never has to force a layout read; see observeCanvasSize.
+   */
+  private displayWidth: number = 0;
+  private displayHeight: number = 0;
+
+  /** Whether the loop has parked because the visualization has nothing to render. */
+  private renderIdle: boolean = false;
 
   /** Timestamp of last frame render (for frame rate limiting) */
   private lastFrameTime: number = 0;
@@ -219,10 +226,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private currentFilePath: string | null = null;
 
   /** Path of the last successfully loaded audio (state reached 'playing') */
-  private lastSuccessfullyLoadedPath: string | null = null;
+  private readonly resume: ResumePositionTracker = new ResumePositionTracker();
 
   /** Playback state that preceded the current 'loading' transition */
-  private stateBeforeLoading: string = 'idle';
 
   /** Whether the current source is a remote URL streamed through FFmpeg */
   private isRemoteStream: boolean = false;
@@ -239,21 +245,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Timestamp when the current audio source was loaded */
   private mediaLoadedAt: number = 0;
 
-  /** Timestamp of the last clock sync sent to the server (for throttling) */
-  private lastSyncSentAt: number = 0;
-
-  /** Minimum drift (seconds) between element and server clock before syncing */
-  private readonly syncDriftThreshold: number = 0.75;
-
-  /** Minimum interval (ms) between clock syncs */
-  private readonly syncThrottleMs: number = 1000;
-
-  /** Settle time (ms) after a load or seek before clock syncs resume */
-  private readonly syncSettleMs: number = 2000;
-
-  /** Grace period (ms) after a user seek during which stall holds are skipped */
-  private readonly stallSeekGraceMs: number = 500;
-
   /**
    * Window (ms) after a source (re)load during which server-time corrections
    * are ignored — the time signal may still hold the previous track's
@@ -261,8 +252,16 @@ export class AudioOutlet implements OnInit, OnDestroy {
    */
   private readonly postLoadGuardMs: number = 500;
 
-  /** Interval holding the server clock at the element position while stalled */
-  private stallSyncInterval: ReturnType<typeof setInterval> | null = null;
+  /** Keeps the server clock anchored to the audio element (shared with VideoOutlet). */
+  private readonly clock: MediaClockSync = new MediaClockSync(this.mediaPlayer, this.electron, {
+    element: (): HTMLMediaElement => this.audioRef.nativeElement,
+    mediaLoadedAt: (): number => this.mediaLoadedAt,
+    lastLocalSeekAt: (): number => this.lastStreamSeekAt,
+    seekPending: (): boolean => this.streamSeekPending,
+    // Remote streams are non-seekable, so the resume position is baked into
+    // the request and the element counts from zero.
+    offset: (): number => (this.isRemoteStream ? this.streamSeekOffset : 0),
+  });
 
   /** Whether the default visualization from settings has been applied */
   private defaultVisualizationApplied: boolean = false;
@@ -310,18 +309,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       const state: string = this.mediaPlayer.playbackState();
       const forceReload: number = this.electron.forceReloadCounter();
 
-      // Track when we successfully loaded this file (state reached 'playing')
-      // so re-loading the same file can resume at the server position
-      if (state === 'playing' && this.currentFilePath) {
-        this.lastSuccessfullyLoadedPath = this.currentFilePath;
-      }
-
-      // Remember the state that preceded a 'loading' transition. This
-      // distinguishes resuming after a stop (stopped → loading) from a
-      // restart or re-selection (playing → loading), which must start at 0.
-      if (state !== 'loading') {
-        this.stateBeforeLoading = state;
-      }
+      this.resume.observe(state, this.currentFilePath);
 
       // Clear cached path on loading or force reload (soundfont change)
       if (state === 'loading' || forceReload > 0) {
@@ -329,17 +317,13 @@ export class AudioOutlet implements OnInit, OnDestroy {
       }
 
       if (track?.type === 'audio' && track.filePath !== this.currentFilePath) {
-        // Resume after stop: replaying the same track when the state before
-        // 'loading' was 'stopped' resumes at the server position — the user
-        // may have dragged the seek bar while stopped before pressing play
-        // (the server keeps that position on play). All other loads start
-        // from 0 (the server resets its clock for those flows).
-        const isStopResume: boolean = state === 'loading'
-          && this.stateBeforeLoading === 'stopped'
-          && track.filePath === this.lastSuccessfullyLoadedPath;
-        const resumeTime: number = isStopResume
-          ? untracked((): number => this.mediaPlayer.currentTime())
-          : 0;
+        // Resume after stop picks up the server position; every other load
+        // starts from 0, because the server resets its clock for those flows.
+        const resumeTime: number = this.resume.startPosition(
+          state,
+          track.filePath,
+          (): number => untracked((): number => this.mediaPlayer.currentTime())
+        );
         void this.loadAudioSource(track.filePath, resumeTime);
       }
     });
@@ -561,6 +545,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
    */
   public ngOnInit(): void {
     this.setupUserGestureHandler();
+    // Must precede initVisualization: that sizes the visualization from the
+    // cached display size, so the cache has to be seeded first.
+    this.observeCanvasSize(this.canvasRef.nativeElement);
     this.initVisualization();
     this.startAnimationLoop();
 
@@ -569,7 +556,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
     if (audio) {
       this.onAudioPlaying = (): void => {
-        this.stopStallClockHold();
+        this.clock.stopStallHold();
         // Playback has (re)started — drop the waiting cursor
         this.electron.setStreamingBusy(false);
         // Remote stream seek completed — anchor the server clock to the
@@ -585,14 +572,14 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
       // Keep the server clock anchored to the element's real position
       this.onAudioTimeUpdate = (): void => {
-        this.maybeSyncServerClock(audio);
+        this.clock.maybeSync();
       };
       audio.addEventListener('timeupdate', this.onAudioTimeUpdate);
 
       // While the element stalls to buffer (mainly remote streams), hold the
       // server clock at the element's position until playback resumes
       this.onAudioWaiting = (): void => {
-        this.startStallClockHold();
+        this.clock.startStallHold();
       };
       audio.addEventListener('waiting', this.onAudioWaiting);
     }
@@ -608,38 +595,47 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private onAudioWaiting: (() => void) | null = null;
 
   /**
-   * Starts periodically anchoring the server clock to the element's current
-   * position while the element is stalled buffering. Skips ticks in a short
-   * grace window after a user seek so a stale element position can never
-   * cancel the seek target.
+   * One-shot 'canplay' handler that positions a newly loaded track, tracked so
+   * a load can retire the previous track's pending resume. See armPendingSeek.
    */
-  private startStallClockHold(): void {
-    if (this.stallSyncInterval !== null) return;
+  private pendingSeekHandler: (() => void) | null = null;
 
-    const audio: HTMLAudioElement = this.audioRef.nativeElement;
-    const holdClock: () => void = (): void => {
-      if (!this.mediaPlayer.isPlaying()) return;
-      if (Date.now() - this.electron.lastSeekAt < this.stallSeekGraceMs) return;
-      // Never report a freshly (re)loaded element — its position may not
-      // reflect the new track yet (the server ignores such syncs too)
-      if (Date.now() - this.mediaLoadedAt < this.syncSettleMs) return;
-      const actualTime: number = (this.isRemoteStream ? this.streamSeekOffset : 0) + audio.currentTime;
-      this.electron.syncPlaybackTime(actualTime);
+  /**
+   * Positions the element at `seekTime` as soon as the new source can play.
+   *
+   * Tracked in a field rather than left as an anonymous listener: a listener
+   * that only unregisters when it fires outlives a track replaced before it
+   * ever reaches 'canplay' — skipping quickly through a playlist — and then
+   * applies the dead track's resume position to whatever loads next. Callers
+   * must clearPendingSeek before every load, including loads that need no
+   * seek of their own.
+   *
+   * @param audio - The audio element being loaded
+   * @param seekTime - Absolute media time to position at
+   */
+  private armPendingSeek(audio: HTMLAudioElement, seekTime: number): void {
+    this.clearPendingSeek(audio);
+
+    this.pendingSeekHandler = (): void => {
+      this.pendingSeekHandler = null;
+      audio.currentTime = seekTime;
     };
 
-    holdClock();
-    this.stallSyncInterval = setInterval(holdClock, this.syncThrottleMs);
+    audio.addEventListener('canplay', this.pendingSeekHandler, {once: true});
   }
 
   /**
-   * Stops the stall clock hold once the element is playing again.
+   * Retires a resume still waiting on a previous track's 'canplay'.
+   *
+   * @param audio - The audio element to detach from
    */
-  private stopStallClockHold(): void {
-    if (this.stallSyncInterval !== null) {
-      clearInterval(this.stallSyncInterval);
-      this.stallSyncInterval = null;
-    }
+  private clearPendingSeek(audio: HTMLAudioElement): void {
+    if (!this.pendingSeekHandler) return;
+    audio.removeEventListener('canplay', this.pendingSeekHandler);
+    this.pendingSeekHandler = null;
   }
+
+
 
   /**
    * Cleanup when component is destroyed.
@@ -651,19 +647,34 @@ export class AudioOutlet implements OnInit, OnDestroy {
       clearTimeout(this.fadeTimeoutId);
       this.fadeTimeoutId = null;
     }
-    if (this.animationId) {
+    if (this.animationId !== null) {
       cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+    if (this.canvasResizeObserver) {
+      this.canvasResizeObserver.disconnect();
+      this.canvasResizeObserver = null;
     }
     this.outgoingVisualization?.destroy();
     this.visualization?.destroy();
     if (this.audioContext) {
-      this.audioContext.close();
+      // Rejects if the context is already closed, which teardown ordering can
+      // easily produce; nothing here can act on it, so it is swallowed rather
+      // than left to surface as an unhandled rejection. Matches VideoOutlet.
+      void this.audioContext.close().catch((): void => {});
     }
     if (this.gestureHandler) {
       document.removeEventListener('click', this.gestureHandler);
       document.removeEventListener('keydown', this.gestureHandler);
       this.gestureHandler = null;
     }
+    // Clean up any resume still waiting on 'canplay'
+    if (this.pendingSeekHandler) {
+      const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
+      audio?.removeEventListener('canplay', this.pendingSeekHandler);
+      this.pendingSeekHandler = null;
+    }
+
     // Clean up audio playing event listener
     if (this.onAudioPlaying) {
       const audio: HTMLAudioElement | undefined = this.audioRef?.nativeElement;
@@ -682,7 +693,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       audio?.removeEventListener('waiting', this.onAudioWaiting);
       this.onAudioWaiting = null;
     }
-    this.stopStallClockHold();
+    this.clock.stopStallHold();
     this.electron.setStreamingBusy(false);
   }
 
@@ -695,53 +706,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
    */
   public onDoubleClick(): void {
     void this.electron.toggleFullscreen();
-  }
-
-  /**
-   * Handles dragover to enable drop target.
-   * Validates dragged files and shows appropriate visual feedback.
-   */
-  public onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const hasValid: boolean = this.fileDrop.hasValidFiles(event);
-    this.isDragOver.set(hasValid);
-    this.isDragInvalid.set(!hasValid);
-
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = hasValid ? 'copy' : 'none';
-    }
-  }
-
-  /**
-   * Handles dragleave to reset visual feedback.
-   */
-  public onDragLeave(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-    this.isDragInvalid.set(false);
-  }
-
-  /**
-   * Handles file drop to add media to playlist with smart auto-play.
-   *
-   * Uses unified auto-play behavior:
-   * - Single file: plays immediately
-   * - Multiple files + empty playlist: plays from beginning
-   * - Multiple files + existing playlist: appends without interrupting
-   */
-  public async onDrop(event: DragEvent): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-    this.isDragOver.set(false);
-    this.isDragInvalid.set(false);
-
-    const filePaths: string[] = this.fileDrop.extractMediaFilePaths(event);
-    if (filePaths.length === 0) return;
-
-    await this.electron.addFilesWithAutoPlay(filePaths);
   }
 
   // ============================================================================
@@ -795,17 +759,15 @@ export class AudioOutlet implements OnInit, OnDestroy {
     }
 
     // Set the source and load
-    audio.src = url;
+    audio.src = this.electron.appendAuth(url);
     audio.load();
 
     // For local formats, position the element once it can play (HTTP range
-    // requests make this instant)
+    // requests make this instant). Cleared unconditionally first so a resume
+    // armed for the track this one replaces cannot fire against it.
+    this.clearPendingSeek(audio);
     if (!this.isRemoteStream && resumeTime > 0) {
-      const onCanPlay: () => void = (): void => {
-        audio.currentTime = resumeTime;
-        audio.removeEventListener('canplay', onCanPlay);
-      };
-      audio.addEventListener('canplay', onCanPlay);
+      this.armPendingSeek(audio, resumeTime);
     }
 
     console.log(`Audio source loaded: ${filePath}`);
@@ -846,7 +808,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.mediaLoadedAt = Date.now();
     // Waiting cursor while the stream pipeline restarts for the seek
     this.electron.setStreamingBusy(true);
-    audio.src = `${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}&r=${cacheBuster}&t=${seekTime}`;
+    audio.src = this.electron.appendAuth(`${serverUrl}/media/stream?path=${encodeURIComponent(filePath)}&r=${cacheBuster}&t=${seekTime}`);
     audio.load();
 
     console.log(`Seeking remote audio stream to ${seekTime}s`);
@@ -856,38 +818,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
     }
   }
 
-  /**
-   * Reports the audio element's actual playback position to the server when
-   * it has drifted from the server's wall-clock time.
-   *
-   * Drift happens when the element stalls to buffer (mainly remote streams)
-   * while the server clock keeps running, pushing the seek bar ahead of the
-   * audible content. Anchoring the clock to the element keeps them in sync.
-   *
-   * Syncs are suppressed while the element is settling after a load or a
-   * seek, so a stale element position never cancels a user's seek.
-   *
-   * @param audio - The audio element to read the position from
-   */
-  private maybeSyncServerClock(audio: Readonly<HTMLAudioElement>): void {
-    if (!this.mediaPlayer.isPlaying()) return;
-    if (audio.paused || audio.seeking || this.streamSeekPending) return;
-    if (audio.readyState < 3) return;
-
-    const now: number = Date.now();
-    if (now - this.lastSyncSentAt < this.syncThrottleMs) return;
-    if (now - this.mediaLoadedAt < this.syncSettleMs) return;
-    if (now - this.lastStreamSeekAt < this.syncSettleMs) return;
-    if (now - this.electron.lastSeekAt < this.syncSettleMs) return;
-
-    const actualTime: number = (this.isRemoteStream ? this.streamSeekOffset : 0) + audio.currentTime;
-    const drift: number = actualTime - this.mediaPlayer.currentTime();
-
-    if (Math.abs(drift) > this.syncDriftThreshold) {
-      this.lastSyncSentAt = now;
-      this.electron.syncPlaybackTime(actualTime);
-    }
-  }
 
   // ============================================================================
   // Web Audio API Initialization
@@ -1169,14 +1099,14 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * Computes the visualization's target backing-store size for the current
    * render-resolution setting.
    *
-   * 'native' tracks the canvas's displayed pixel size. A fixed resolution returns
-   * that exact size, so the smaller backing store is stretched by CSS to fill the
-   * screen with nearest-neighbour scaling (pixelated, no blending).
+   * 'native' tracks the canvas's displayed pixel size, read from the cache that
+   * observeCanvasSize maintains. A fixed resolution returns that exact size, so
+   * the smaller backing store is stretched by CSS to fill the screen with
+   * nearest-neighbour scaling (pixelated, no blending).
    *
-   * @param canvas - The visualization canvas element
    * @returns The target width/height and whether pixelated scaling applies
    */
-  private getRenderSize(canvas: HTMLCanvasElement): {width: number; height: number; pixelated: boolean} {
+  private getRenderSize(): {width: number; height: number; pixelated: boolean} {
     const resolution: RenderResolution = this.settings.renderResolution();
     if (resolution !== 'native' && !this.visualization?.rendersAtNativeResolution) {
       const separator: number = resolution.indexOf('x');
@@ -1186,8 +1116,37 @@ export class AudioOutlet implements OnInit, OnDestroy {
         return {width, height, pixelated: true};
       }
     }
-    const rect: DOMRect = canvas.getBoundingClientRect();
-    return {width: Math.round(rect.width), height: Math.round(rect.height), pixelated: false};
+    return {width: this.displayWidth, height: this.displayHeight, pixelated: false};
+  }
+
+  /**
+   * Tracks the canvas's display size, caching it for the draw loop.
+   *
+   * The loop needs the canvas's laid-out size every frame to keep the
+   * backing store in sync, but reading it there means a synchronous layout
+   * measurement per frame — and a forced reflow whenever something else has
+   * dirtied layout, such as the controls fading in and out over the
+   * visualization. A ResizeObserver moves that read onto the rare occasions
+   * the size actually changes.
+   *
+   * The measurement is still getBoundingClientRect so the cached values match
+   * what the loop used to compute; the observer only controls when it runs.
+   *
+   * @param canvas - The visualization canvas to observe
+   */
+  private observeCanvasSize(canvas: HTMLCanvasElement): void {
+    const measure: () => void = (): void => {
+      const rect: DOMRect = canvas.getBoundingClientRect();
+      this.displayWidth = Math.round(rect.width);
+      this.displayHeight = Math.round(rect.height);
+    };
+
+    // Seed synchronously: the observer's first callback does not arrive until
+    // after this frame, and the loop may render before then.
+    measure();
+
+    this.canvasResizeObserver = new ResizeObserver(measure);
+    this.canvasResizeObserver.observe(canvas);
   }
 
   /**
@@ -1197,7 +1156,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private applyRenderSize(): void {
     if (!this.visualization) return;
     const canvas: HTMLCanvasElement = this.canvasRef.nativeElement;
-    const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize(canvas);
+    const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize();
     canvas.style.imageRendering = size.pixelated ? 'pixelated' : 'auto';
     this.visualization.resize(size.width, size.height);
   }
@@ -1235,7 +1194,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
       // Target backing-store size: the display size ('native') or the fixed
       // render resolution (stretched to fill via CSS with nearest-neighbour).
-      const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize(canvas);
+      const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize();
 
       // Keep the visible (compositor) canvas sized to the render target.
       if (canvas.width !== size.width || canvas.height !== size.height) {
@@ -1249,6 +1208,20 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.visualization?.resize(size.width, size.height);
       }
 
+      // Playback has stopped and the fade has run to completion, so draw() would
+      // spend a full frame's work compositing an entirely transparent result.
+      // Blank the visible canvas once, then keep ticking without rendering until
+      // playback resumes. A crossfade still needs both buffers drawn, so it is
+      // never treated as idle.
+      if (!this.isCrossfading && this.visualization?.isIdle()) {
+        if (!this.renderIdle) {
+          this.compositeCtx?.clearRect(0, 0, size.width, size.height);
+          this.renderIdle = true;
+        }
+        return;
+      }
+      this.renderIdle = false;
+
       // Render the active visualization into its own offscreen buffer.
       this.visualization?.draw();
 
@@ -1257,7 +1230,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.renderComposite(size.width, size.height);
     };
 
-    requestAnimationFrame(draw);
+    this.animationId = requestAnimationFrame(draw);
   }
 
   /**

@@ -21,6 +21,8 @@ import {DependencyService} from '../../../services/dependency.service';
 import {EQ_FREQUENCIES, EQ_PRESETS, EQ_GAIN_MIN, EQ_GAIN_MAX, type EqualizerPreset} from '../../../services/equalizer';
 import {VIDEO_ADJUSTMENT_PRESETS, VIDEO_ADJUSTMENT_CONTROLS, type VideoAdjustmentPreset, type VideoAdjustmentControl, type VideoAdjustmentValues} from '../../../services/video-adjustments';
 import type {DependencyId, DependencyState, DependencyStatus, SoundFontInfo, InstallProgress, HardwareEncoderInfo} from '../../../services/dependency.service';
+import {hexToRgba, buildTextShadow} from '../../../utils/subtitle-style';
+import {FFMPEG_AUDIO_EXTENSIONS, FFMPEG_VIDEO_EXTENSIONS, MIDI_EXTENSIONS} from '../../../constants/media.constants';
 
 /**
  * macOS visual effect state options for the settings UI.
@@ -50,19 +52,25 @@ export const SUBTITLE_FONT_FAMILY_OPTIONS: readonly {value: SubtitleFontFamily; 
   {value: 'Arial', label: 'Arial'},
 ];
 
+/** Strips the leading dot from each extension, for display. */
+function bare(set: ReadonlySet<string>): string[] {
+  return [...set].map((ext: string): string => ext.replace(/^\./, ''));
+}
+
 /**
  * Supported audio file extensions for file association display.
+ *
+ * Derived from the shared extension sets rather than hand-listed: the copy
+ * that used to live here drifted, and so did the one in the dialog filters.
  */
 export const SUPPORTED_AUDIO_EXTENSIONS: readonly string[] = [
-  'mp3', 'flac', 'wav', 'ogg', 'm4a', 'aac', 'wma', 'mid', 'midi'
+  ...bare(FFMPEG_AUDIO_EXTENSIONS), ...bare(MIDI_EXTENSIONS),
 ];
 
 /**
  * Supported video file extensions for file association display.
  */
-export const SUPPORTED_VIDEO_EXTENSIONS: readonly string[] = [
-  'mp4', 'm4v', 'mkv', 'avi', 'webm', 'mov'
-];
+export const SUPPORTED_VIDEO_EXTENSIONS: readonly string[] = bare(FFMPEG_VIDEO_EXTENSIONS);
 
 /**
  * Safely extracts value from an input element event target.
@@ -773,34 +781,18 @@ export class ConfigurationView {
 
   /** Preview color for subtitle background with opacity */
   public readonly subtitleBackgroundPreviewColor: ReturnType<typeof computed<string>> = computed(
-    (): string => {
-      const hex: string = this.currentSubtitleBackgroundColor();
-      const opacity: number = this.currentSubtitleBackgroundOpacity();
-      const r: number = parseInt(hex.slice(1, 3), 16);
-      const g: number = parseInt(hex.slice(3, 5), 16);
-      const b: number = parseInt(hex.slice(5, 7), 16);
-      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-    }
+    (): string => hexToRgba(this.currentSubtitleBackgroundColor(), this.currentSubtitleBackgroundOpacity())
   );
 
   /** Preview style for subtitle shadow (returns CSS value for text-shadow) */
   public readonly subtitleShadowPreviewStyle: ReturnType<typeof computed<string>> = computed(
-    (): string => {
-      if (!this.currentSubtitleTextShadow()) return 'none';
-      const s: number = this.currentSubtitleShadowSpread();
-      const b: number = this.currentSubtitleShadowBlur();
-      const c: string = this.currentSubtitleShadowColor();
-      return [
-        `0 -${s}px ${b}px ${c}`,
-        `${s}px -${s}px ${b}px ${c}`,
-        `${s}px 0 ${b}px ${c}`,
-        `${s}px ${s}px ${b}px ${c}`,
-        `0 ${s}px ${b}px ${c}`,
-        `-${s}px ${s}px ${b}px ${c}`,
-        `-${s}px 0 ${b}px ${c}`,
-        `-${s}px -${s}px ${b}px ${c}`
-      ].join(', ');
-    }
+    (): string => this.currentSubtitleTextShadow()
+      ? buildTextShadow(
+          this.currentSubtitleShadowSpread(),
+          this.currentSubtitleShadowBlur(),
+          this.currentSubtitleShadowColor()
+        )
+      : 'none'
   );
 
   // ============================================================================
@@ -850,6 +842,11 @@ export class ConfigurationView {
   /** Current install/uninstall progress */
   public readonly depProgress: ReturnType<typeof computed<InstallProgress | null>> = computed(
     (): InstallProgress | null => this.dependencyService.installProgress()
+  );
+
+  /** Why the last SoundFont operation failed, or null if it succeeded */
+  public readonly soundFontError: ReturnType<typeof computed<string | null>> = computed(
+    (): string | null => this.dependencyService.soundFontError()
   );
 
   /** Whether an install/uninstall operation is in progress */
@@ -1519,7 +1516,9 @@ export class ConfigurationView {
    * Opens the manual download URL in the default browser.
    */
   public onOpenManualDownload(url: string): void {
-    window.open(url, '_blank');
+    // Routed through the preload bridge, which allowlists http(s), rather than
+    // window.open — the latter opens remote pages in an app window.
+    void window.mediaPlayer?.openExternal(url);
   }
 
   /**

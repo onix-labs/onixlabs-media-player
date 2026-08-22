@@ -64,7 +64,8 @@ jobs:
           key: node-modules-${{ hashFiles('package-lock.json') }}
       - if: steps.deps.outputs.cache-hit != 'true'
         run: npm ci
-      - run: npm run test:angular
+      - name: Run Angular tests with coverage
+        run: npm run test:angular:coverage
 
   test-electron:
     name: Electron Tests (${{ matrix.os }})

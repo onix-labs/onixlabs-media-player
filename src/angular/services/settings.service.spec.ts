@@ -22,15 +22,18 @@ import {
  */
 function createMockElectronService(): {
   serverUrl: ReturnType<typeof signal<string>>;
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
   onSettingsUpdate: ReturnType<typeof vi.fn>;
   onDependencyStateUpdate: ReturnType<typeof vi.fn>;
   onDependencyProgressUpdate: ReturnType<typeof vi.fn>;
 } {
   return {
     serverUrl: signal('http://127.0.0.1:12345'),
-    onSettingsUpdate: vi.fn(),
-    onDependencyStateUpdate: vi.fn(),
-    onDependencyProgressUpdate: vi.fn(),
+    // Delegates to the stubbed global fetch so tests keep asserting on it.
+    authFetch: (url: string, init?: RequestInit): Promise<Response> => fetch(url, init),
+    onSettingsUpdate: vi.fn().mockReturnValue((): void => {}),
+    onDependencyStateUpdate: vi.fn().mockReturnValue((): void => {}),
+    onDependencyProgressUpdate: vi.fn().mockReturnValue((): void => {}),
   };
 }
 
@@ -45,7 +48,7 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       maxFrameRate: 0,
       fftSize: 2048,
       renderResolution: 'native',
-      perVisualizationSettings: {},
+      perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade',
     },
     application: {
       serverPort: 0,
@@ -162,7 +165,7 @@ describe('SettingsService', (): void => {
   describe('computed signals', (): void => {
     it('defaultVisualization reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'waveform', maxFrameRate: 0, fftSize: 2048, renderResolution: 'native', perVisualizationSettings: {}},
+        visualization: {defaultType: 'waveform', maxFrameRate: 0, fftSize: 2048, renderResolution: 'native', perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade'},
       });
       service.updateFromSSE(testSettings);
 
@@ -172,7 +175,7 @@ describe('SettingsService', (): void => {
 
     it('maxFrameRate reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'bars', maxFrameRate: 60, fftSize: 2048, renderResolution: 'native', perVisualizationSettings: {}},
+        visualization: {defaultType: 'bars', maxFrameRate: 60, fftSize: 2048, renderResolution: 'native', perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade'},
       });
       service.updateFromSSE(testSettings);
 
@@ -182,7 +185,7 @@ describe('SettingsService', (): void => {
 
     it('fftSize reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'bars', maxFrameRate: 0, fftSize: 4096, renderResolution: 'native', perVisualizationSettings: {}},
+        visualization: {defaultType: 'bars', maxFrameRate: 0, fftSize: 4096, renderResolution: 'native', perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade'},
       });
       service.updateFromSSE(testSettings);
 
@@ -298,7 +301,7 @@ describe('SettingsService', (): void => {
   describe('updateFromSSE', (): void => {
     it('updates settings signal', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'tunnel', maxFrameRate: 30, fftSize: 1024, renderResolution: 'native', perVisualizationSettings: {}},
+        visualization: {defaultType: 'tunnel', maxFrameRate: 30, fftSize: 1024, renderResolution: 'native', perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade'},
       });
 
       service.updateFromSSE(testSettings);
@@ -334,7 +337,7 @@ describe('SettingsService', (): void => {
           renderResolution: 'native',
           perVisualizationSettings: {
             bars: {sensitivity: customSensitivity},
-          },
+          }, crossfadeDuration: 1000, crossfadeStyle: 'fade',
         },
       });
       service.updateFromSSE(testSettings);
@@ -350,7 +353,7 @@ describe('SettingsService', (): void => {
           maxFrameRate: 0,
           fftSize: 2048,
           renderResolution: 'native',
-          perVisualizationSettings: {},
+          perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade',
         },
       });
       service.updateFromSSE(testSettings);
@@ -366,7 +369,7 @@ describe('SettingsService', (): void => {
           maxFrameRate: 0,
           fftSize: 2048,
           renderResolution: 'native',
-          perVisualizationSettings: {},
+          perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade',
         },
       });
       service.updateFromSSE(testSettings);
@@ -390,7 +393,7 @@ describe('SettingsService', (): void => {
           renderResolution: 'native',
           perVisualizationSettings: {
             bars: {sensitivity: 0.9},
-          },
+          }, crossfadeDuration: 1000, crossfadeStyle: 'fade',
         },
       });
       service.updateFromSSE(testSettings);
@@ -406,7 +409,7 @@ describe('SettingsService', (): void => {
           maxFrameRate: 0,
           fftSize: 2048,
           renderResolution: 'native',
-          perVisualizationSettings: {},
+          perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade',
         },
       });
       service.updateFromSSE(testSettings);
