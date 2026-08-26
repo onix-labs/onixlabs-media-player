@@ -43,8 +43,17 @@ export class PulsarVisualization extends Canvas2DVisualization {
   /** Per-frame outward zoom applied to the trail. */
   private static readonly ZOOM_SCALE: number = 1.02;
 
-  /** Degrees the hue advances per frame. */
-  private static readonly HUE_CYCLE_SPEED: number = 0.4;
+  /**
+   * Degrees the hue advances per frame.
+   *
+   * How much hue is on screen at once is set by how long content survives, and
+   * that is governed by the outward zoom rather than by the fade: at roughly
+   * two percent per frame, content injected near the middle reaches the edge
+   * in about a hundred frames, well before the fade has touched it. So this
+   * rate times a hundred is the spread of hue visible at any moment - around
+   * 25 degrees here, a coherent band that travels rather than a static wheel.
+   */
+  private static readonly HUE_CYCLE_SPEED: number = 0.25;
 
   /**
    * Number of concentric rings the trail is redrawn in.
@@ -86,7 +95,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * expanding and contracting. Its time-average is zero, leaving the net flow
    * at each radius outward and the frame filled.
    */
-  private static readonly RING_RIPPLE: number = 0.03;
+  private static readonly RING_RIPPLE: number = 0.012;
 
   /**
    * How much slower the outermost ring zooms than the innermost.
@@ -123,7 +132,21 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * TRAIL_RING_COUNT has to keep up: below about five rings per cycle the
    * rings cannot resolve the ripple.
    */
-  private static readonly RIPPLE_CYCLES: number = 4;
+  private static readonly RIPPLE_CYCLES: number = 2;
+
+  /**
+   * Ring widths the ring boundaries slide per frame.
+   *
+   * The boundaries are where one ring's zoom meets the next one's, so any step
+   * in zoom lands there as a seam. Holding them at fixed radii lets those
+   * seams bake into the trail frame after frame until they read as hard
+   * concentric shells pushing past each other. Sliding them means a given
+   * radius falls in one ring on some frames and its neighbour on others, so
+   * the step is dithered over time and the trail averages it away.
+   *
+   * Deliberately not harmonic with RIPPLE_DRIFT, so the two do not lock.
+   */
+  private static readonly RING_BOUNDARY_DRIFT: number = 0.013;
 
   /**
    * Radians the ripple pattern drifts per frame.
@@ -141,8 +164,16 @@ export class PulsarVisualization extends Canvas2DVisualization {
    */
   private static readonly TRANSIENT_REFRACTORY_MS: number = 400;
 
-  /** Degrees the hue jumps on a transient. */
-  private static readonly TRANSIENT_HUE_KICK: number = 55;
+  /**
+   * Degrees the hue jumps on a transient.
+   *
+   * Has to stay small against the smooth cycle or it swamps it. At 55 degrees
+   * with a 400ms refractory the kick could contribute 138 degrees a second
+   * against the cycle's 15, so on anything with a beat the hue lurched about
+   * instead of cycling and the smooth drift was invisible underneath. This is
+   * an accent on the cycle, not a replacement for it.
+   */
+  private static readonly TRANSIENT_HUE_KICK: number = 18;
 
   /** Number of low-frequency bins averaged for bass transient detection. */
   private static readonly BASS_BINS: number = 16;
@@ -248,6 +279,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
   /** Phase of the ring ripple, so the bands migrate rather than sitting still. */
   private ripplePhase: number = 0;
 
+  /** Offset of the ring boundaries, in ring widths, so seams do not bake in. */
+  private ringPhase: number = 0;
+
   /** Pre-allocated point arrays to avoid GC pressure. */
   private readonly leftPoints: Array<{x: number; y: number}>;
   private readonly rightPoints: Array<{x: number; y: number}>;
@@ -345,6 +379,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     // Apply trail intensity multiplier to fade rate.
     const effectiveFadeRate: number = PulsarVisualization.FADE_RATE * this.getFadeMultiplier();
     this.ripplePhase = (this.ripplePhase + PulsarVisualization.RIPPLE_DRIFT) % TWO_PI;
+    this.ringPhase = (this.ringPhase + PulsarVisualization.RING_BOUNDARY_DRIFT) % 1;
     this.drawShearedTrail(trailCtx, tempCanvas, effectiveFadeRate);
 
     // Get waveform data
@@ -411,10 +446,15 @@ export class PulsarVisualization extends Canvas2DVisualization {
       Math.max(centerY, this.height - centerY)
     );
 
-    for (let i: number = 0; i < rings; i++) {
-      const inner: number = (i / rings) * maxRadius;
-      const outer: number = ((i + 1) / rings) * maxRadius;
-      const across: number = (i + 0.5) / rings;
+    // One extra band, because the sliding offset leaves a partial ring at each
+    // end: the innermost shrinks to nothing as the offset advances and a new
+    // one opens at the rim.
+    const offset: number = this.ringPhase;
+    for (let i: number = 0; i <= rings; i++) {
+      const inner: number = Math.max(0, ((i - 1 + offset) / rings) * maxRadius);
+      const outer: number = Math.min(maxRadius, ((i + offset) / rings) * maxRadius);
+      if (outer <= inner) continue;
+      const across: number = ((inner + outer) * 0.5) / maxRadius;
       const spin: number =
         (PulsarVisualization.ROTATION_SPEED + PulsarVisualization.RING_SHEAR * across)
         * this.spinDirection;
