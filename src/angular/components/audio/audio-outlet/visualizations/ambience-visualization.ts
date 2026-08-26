@@ -139,6 +139,17 @@ export const STRETCH_CUBIC: number = 0.16;
 /** Trig: angle advance per frame. Engine range +/- 0.05 radians. */
 export const TRIG_ANGLE_DELTA: number = 0.02;
 
+/**
+ * Trig, as Ambience runs it: a slower angle advance, so the entry reads as a
+ * drift rather than a spin.
+ *
+ * Battery / Cos Edge Gradiant pairs with the same displacement and keeps the
+ * faster TRIG_ANGLE_DELTA above; the two are deliberately separate so either
+ * can be tuned without disturbing the other. Still inside the engine's
+ * u * 0.1 - 0.05 range.
+ */
+export const TRIG_ANGLE_DELTA_AMBIENCE: number = 0.006;
+
 /** Trig: perturbation amplitude. Engine range u * 0.1 - 0.05. */
 export const TRIG_AMPLITUDE: number = 0.03;
 
@@ -1132,7 +1143,7 @@ export class AmbienceTrigVisualization extends AmbienceVisualization {
       startHue: 90,
       hueDrift: HUE_DRIFT_MED,
       generator: GeneratorMode.WaveEdge,
-      params: {angleDelta: TRIG_ANGLE_DELTA, amplitude: TRIG_AMPLITUDE, subMode: TRIG_SUB_MODE},
+      params: {angleDelta: TRIG_ANGLE_DELTA_AMBIENCE, amplitude: TRIG_AMPLITUDE, subMode: TRIG_SUB_MODE},
     });
   }
 }
