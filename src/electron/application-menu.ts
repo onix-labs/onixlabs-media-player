@@ -57,7 +57,6 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     category: 'Battery',
     items: [
       {id: 'battery-waveedge', name: 'Wave Edge'},
-      {id: 'battery-jiggyscribble', name: 'Jiggy Scribble'},
     ],
   },
   {

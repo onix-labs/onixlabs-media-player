@@ -454,7 +454,6 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'ambience-trigstretch', name: 'Trig Stretch', category: 'Ambience', applicableSettings: []},
   // Battery category
   {id: 'battery-waveedge', name: 'Wave Edge', category: 'Battery', applicableSettings: []},
-  {id: 'battery-jiggyscribble', name: 'Jiggy Scribble', category: 'Battery', applicableSettings: []},
   // Simple category
   {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
   {id: 'logo', name: 'Logo', category: 'Simple', applicableSettings: []},
@@ -553,7 +552,6 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'ambience-trigstretch', label: 'Ambience : Trig Stretch', description: 'Trigonometric perturbation with cubic stretch'},
   // Battery category
   {value: 'battery-waveedge', label: 'Battery : Wave Edge', description: 'Waveform trace across the surface'},
-  {value: 'battery-jiggyscribble', label: 'Battery : Jiggy Scribble', description: 'Wandering scribble jittered by the waveform'},
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},
   {value: 'logo', label: 'Simple : Logo', description: 'The ONIXPlayer logo, centred'},

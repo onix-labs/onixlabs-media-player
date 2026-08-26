@@ -55,9 +55,6 @@ import {
   GeneratorMode,
   ZOOM_ANGLE_DELTA,
   ZOOM_RADIAL,
-  SHIMMER_AMPLITUDE,
-  SHIMMER_FREQUENCY,
-  SHIMMER_SUB_MODE,
 } from './ambience-visualization';
 import {VisualizationConfig} from './visualization';
 
@@ -91,18 +88,3 @@ export class BatteryWaveEdgeVisualization extends AmbienceVisualization {
 
 
 
-/** Battery - Jiggy Scribble. Wandering scribble jittered by the waveform, through a sine shimmer. */
-export class BatteryJiggyScribbleVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Jiggy Scribble',
-      category: 'Battery',
-      shift: ShiftMode.SinShimmer,
-      generator: GeneratorMode.JiggyScribble,
-      decay: BATTERY_DECAY,
-      startHue: 40,
-      hueDrift: BATTERY_HUE_DRIFT,
-      params: {amplitude: SHIMMER_AMPLITUDE, frequency: SHIMMER_FREQUENCY, subMode: SHIMMER_SUB_MODE},
-    });
-  }
-}

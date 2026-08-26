@@ -39,7 +39,6 @@ export {LogoVisualization} from './logo-visualization';
 export {ParticlesVisualization} from './particles-visualization';
 export {
   BatteryWaveEdgeVisualization,
-  BatteryJiggyScribbleVisualization,
 } from './battery-visualization';
 export {
   AmbienceZoomVisualization,
@@ -63,7 +62,6 @@ import {LogoVisualization} from './logo-visualization';
 import {ParticlesVisualization} from './particles-visualization';
 import {
   BatteryWaveEdgeVisualization,
-  BatteryJiggyScribbleVisualization,
 } from './battery-visualization';
 import {
   AmbienceZoomVisualization,
@@ -88,7 +86,6 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   spotlight: SpotlightVisualization,
   particles: ParticlesVisualization,
   'battery-waveedge': BatteryWaveEdgeVisualization,
-  'battery-jiggyscribble': BatteryJiggyScribbleVisualization,
   'ambience-zoom': AmbienceZoomVisualization,
   'ambience-stretch': AmbienceStretchVisualization,
   'ambience-trigstretch': AmbienceTrigStretchVisualization,
@@ -113,7 +110,6 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   spotlight: {name: 'Spotlight', category: 'Signature'},
   particles: {name: 'Particles', category: 'Waves'},
   'battery-waveedge': {name: 'Wave Edge', category: 'Battery'},
-  'battery-jiggyscribble': {name: 'Jiggy Scribble', category: 'Battery'},
   'ambience-zoom': {name: 'Zoom', category: 'Ambience'},
   'ambience-stretch': {name: 'Stretch', category: 'Ambience'},
   'ambience-trigstretch': {name: 'Trig Stretch', category: 'Ambience'},
@@ -170,7 +166,7 @@ export const VISUALIZATION_TYPES: string[] = [
     // Ambience
   'ambience-zoom', 'ambience-stretch', 'ambience-trigstretch',
   // Battery
-  'battery-waveedge', 'battery-jiggyscribble',
+  'battery-waveedge',
   // Simple
   'blank', 'logo',
 ];
