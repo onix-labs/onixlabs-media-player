@@ -78,17 +78,22 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * Canvas2D somewhere to put the same idea: alternating bands push out and
    * draw in rather than the whole field zooming uniformly.
    */
-  private static readonly RING_RIPPLE: number = 0.012;
+  private static readonly RING_RIPPLE: number = 0.005;
 
   /**
-   * Cubic inward pull at the outermost ring.
+   * How much slower the outermost ring zooms than the innermost.
    *
-   * The cubic is what gives Trig Stretch its character: the centre barely
-   * moves while the rim is dragged in hard. Combined with the base zoom the
-   * field circulates - outward near the middle, inward at the edge - instead
-   * of everything marching off the edge together.
+   * Trig Stretch pulls the rim inward outright, but that empties the outer
+   * region: content drains toward the centre with nothing drawn out there to
+   * replace it, and the field collapses into a circle with dark corners.
+   *
+   * So the cubic is kept as a *differential* rather than a reversal. Every
+   * ring still zooms outward - the base zoom minus ripple minus this stays
+   * above 1 - so the field fills the frame as it did before, but the rim
+   * expands more slowly than the middle and content bunches up as it travels
+   * out. That keeps the folding character without the collapse.
    */
-  private static readonly RING_CUBIC_PULL: number = 0.05;
+  private static readonly RING_CUBIC_PULL: number = 0.008;
 
   /** Radians the ripple pattern drifts per frame, so bands migrate. */
   private static readonly RIPPLE_DRIFT: number = 0.006;
@@ -120,13 +125,13 @@ export class PulsarVisualization extends Canvas2DVisualization {
   private static readonly CENTER_CIRCLE_POINTS: number = 64;
 
   /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 22;
+  private static readonly BASE_GLOW_BLUR: number = 18;
 
   /** Alpha of the neon halo stroke, before the caller's own alpha. */
-  private static readonly NEON_HALO_ALPHA: number = 0.34;
+  private static readonly NEON_HALO_ALPHA: number = 0.22;
 
   /** Alpha of the halo's shadow, which is what actually spreads the colour. */
-  private static readonly NEON_HALO_SHADOW_ALPHA: number = 0.85;
+  private static readonly NEON_HALO_SHADOW_ALPHA: number = 0.55;
 
   /** Extra line width of the halo stroke, in pixels. */
   private static readonly NEON_HALO_WIDTH: number = 5;
@@ -135,10 +140,10 @@ export class PulsarVisualization extends Canvas2DVisualization {
   private static readonly NEON_CORE_BLUR_SCALE: number = 0.45;
 
   /** How far the hot centre line is lifted toward white, per channel. */
-  private static readonly NEON_HOT_LIFT: number = 110;
+  private static readonly NEON_HOT_LIFT: number = 70;
 
   /** Alpha of the hot centre line. */
-  private static readonly NEON_HOT_ALPHA: number = 0.8;
+  private static readonly NEON_HOT_ALPHA: number = 0.55;
 
   /** Width of the hot centre line, as a fraction of the core width. */
   private static readonly NEON_HOT_WIDTH_FRACTION: number = 0.5;
@@ -152,10 +157,16 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * once content has been baked into the trail buffer there is no stroke left
    * to attach a shadow to.
    */
-  private static readonly BLOOM_BLUR: number = 14;
+  private static readonly BLOOM_BLUR: number = 12;
 
-  /** Strength of the additive bloom pass. */
-  private static readonly BLOOM_STRENGTH: number = 0.6;
+  /**
+   * Strength of the additive bloom pass.
+   *
+   * Safe to raise, unlike additive strokes: the bloom is composited onto the
+   * main canvas, which is cleared every frame, so it brightens once rather
+   * than compounding.
+   */
+  private static readonly BLOOM_STRENGTH: number = 0.3;
 
   /** Saturation and lightness levels for the center-circle gradient. */
   private static readonly GRADIENT_LEVELS: ReadonlyArray<{s: number; l: number}> = [
@@ -585,8 +596,12 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const g: number = color.g;
     const b: number = color.b;
 
+    // Deliberately not additive. These strokes land in the trail buffer, which
+    // accumulates and fades at a fraction of a percent per frame, so anything
+    // drawn with 'lighter' compounds frame on frame and saturates to white
+    // within seconds. The neon look here comes from layering - wide soft halo,
+    // core, hot filament - not from blend mode.
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
