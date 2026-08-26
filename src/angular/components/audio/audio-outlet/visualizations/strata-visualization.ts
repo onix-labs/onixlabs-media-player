@@ -35,6 +35,8 @@
  * - Spectrum and waveform packed into one 1D texture, sampled per fragment
  * - Radius-to-frequency mapping is deliberately non-linear, so the bass end
  *   is not crushed into the innermost few pixels
+ * - Radius is normalised against the centre-to-corner distance, so the field
+ *   fills the view rather than being inscribed in the screen height
  *
  * @module app/components/audio/audio-outlet/visualizations/strata-visualization
  */
@@ -153,11 +155,19 @@ const SWEEP_BASS: number = 0.035;
 /** Dim disc injected alongside the arms, as a fraction of arm brightness. */
 const DISC_FLOOR: number = 0.1;
 
-/** Radius, as a fraction of half-height, beyond which injection fades out. */
-const INJECT_EDGE: number = 0.98;
+/**
+ * Radius beyond which injection fades out, as a fraction of the distance from
+ * centre to corner.
+ *
+ * Near 1.0 deliberately: the field is normalised so 1.0 sits at the corners,
+ * so this only feathers the very outermost sliver and the disc otherwise fills
+ * the view edge to edge. Lowering it pulls the field back into an inscribed
+ * circle with dark corners.
+ */
+const INJECT_EDGE: number = 0.92;
 
-/** Softness of that outer fade. */
-const INJECT_FEATHER: number = 0.35;
+/** Softness of that outer fade, in the same units. */
+const INJECT_FEATHER: number = 0.14;
 
 // ============================================================================
 // Colour
@@ -238,10 +248,20 @@ vec2 fromCentred(vec2 c) {
   return vec2(c.x / uAspect + 0.5, c.y + 0.5);
 }
 
-/* Radius normalised so 1.0 sits at the top and bottom edges, then curved so
-   the low end of the spectrum gets a usable share of the disc. */
-float bandAt(float radius) {
-  float normalised = clamp(radius * 2.0, 0.0, 1.0);
+/* Distance from the centre to a corner. Normalising against this rather than
+   against half-height is what lets the field reach the corners instead of
+   being inscribed in the screen height. */
+float maxRadius() {
+  return length(vec2(uAspect, 1.0)) * 0.5;
+}
+
+/* Radius normalised so 1.0 sits at the corners. */
+float normRadius(float radius) {
+  return clamp(radius / maxRadius(), 0.0, 1.0);
+}
+
+/* Curved so the low end of the spectrum gets a usable share of the field. */
+float bandAt(float normalised) {
   return spectrumAt(pow(normalised, ${FREQUENCY_CURVE}));
 }
 
@@ -251,7 +271,7 @@ vec2 applyField(vec2 uv) {
   float radius = length(centred);
   float angle = atan(centred.y, centred.x);
 
-  float energy = bandAt(radius);
+  float energy = bandAt(normRadius(radius));
 
   /* Sampling from behind in angle makes content appear to rotate forward. */
   angle -= ${BASE_SPIN} + energy * ${SHEAR_GAIN};
@@ -275,7 +295,8 @@ vec3 inject(vec2 uv) {
   float radius = length(centred);
   float angle = atan(centred.y, centred.x);
 
-  float energy = bandAt(radius);
+  float rn = normRadius(radius);
+  float energy = bandAt(rn);
 
   /* Distance in angle to the nearest arm, wrapped into one arm's sector. */
   float sector = TAU / float(${ARM_COUNT});
@@ -285,15 +306,14 @@ vec3 inject(vec2 uv) {
 
   /* The waveform rides along each arm, so they are ragged rather than straight
      and the shear has fine detail to pull on as well as the arm itself. */
-  float ripple = 0.6 + 0.8 * abs(waveformAt(clamp(radius * 2.0, 0.0, 1.0)) - 0.5) * 2.0;
+  float ripple = 0.6 + 0.8 * abs(waveformAt(rn) - 0.5) * 2.0;
 
-  float edge = 1.0 - smoothstep(${INJECT_EDGE} * 0.5,
-                                (${INJECT_EDGE} + ${INJECT_FEATHER}) * 0.5, radius);
+  float edge = 1.0 - smoothstep(${INJECT_EDGE}, ${INJECT_EDGE} + ${INJECT_FEATHER}, rn);
 
   float amount = energy * (arm * ripple + ${DISC_FLOOR}) * edge * uGain
                * (1.0 + uBass * ${BASS_LIFT}) * ${INJECT_GAIN};
 
-  float hue = fract(uHue + clamp(radius * 2.0, 0.0, 1.0) * ${HUE_SPAN});
+  float hue = fract(uHue + rn * ${HUE_SPAN});
   return hueToRgb(hue, ${SATURATION}, amount);
 }
 
