@@ -22,6 +22,7 @@
  */
 
 import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from './visualization';
+import {TWO_PI} from './visualization-constants';
 
 /**
  * Pulsar visualization with curved mirrored waveforms.
@@ -43,7 +44,42 @@ export class PulsarVisualization extends Canvas2DVisualization {
   private static readonly ZOOM_SCALE: number = 1.02;
 
   /** Degrees the hue advances per frame. */
-  private static readonly HUE_CYCLE_SPEED: number = 0.15;
+  private static readonly HUE_CYCLE_SPEED: number = 0.4;
+
+  /**
+   * Number of concentric rings the trail is redrawn in.
+   *
+   * Canvas2D can only transform a whole image at once, so a single rotate
+   * turns every radius by the same amount - a uniform smear that never forms
+   * structure. Splitting the trail into rings and turning each by a slightly
+   * different amount is the closest this renderer gets to differential
+   * rotation: neighbouring rings shear against each other and the feedback
+   * loop compounds that into spiral filaments.
+   *
+   * Set to 1 to go back to a single uniform rotation.
+   */
+  private static readonly TRAIL_RING_COUNT: number = 10;
+
+  /**
+   * Extra rotation at the outermost ring versus the innermost, in radians per
+   * frame.
+   *
+   * This is the shear. Rings tile the trail exactly rather than overlapping:
+   * an overlap would composite the shared band twice and leave bright seams,
+   * where an exact edge only risks a faint one.
+   */
+  private static readonly RING_SHEAR: number = 0.004;
+
+  /**
+   * Minimum gap between transients acting, in milliseconds.
+   *
+   * The spin flip is dramatic, so without a refractory period a busy passage
+   * would reverse the field several times a second and read as a stutter.
+   */
+  private static readonly TRANSIENT_REFRACTORY_MS: number = 400;
+
+  /** Degrees the hue jumps on a transient. */
+  private static readonly TRANSIENT_HUE_KICK: number = 55;
 
   /** Number of low-frequency bins averaged for bass transient detection. */
   private static readonly BASS_BINS: number = 16;
@@ -98,6 +134,12 @@ export class PulsarVisualization extends Canvas2DVisualization {
 
   /** Current waveform rotation angle. */
   private waveformAngle: number = 0;
+
+  /** Direction the trail currently rotates, +1 or -1. Flipped by transients. */
+  private spinDirection: number = 1;
+
+  /** Timestamp of the last transient that was acted on, in milliseconds. */
+  private lastTransientMs: number = 0;
 
   /** Pre-allocated point arrays to avoid GC pressure. */
   private readonly leftPoints: Array<{x: number; y: number}>;
@@ -160,10 +202,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
     const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
 
-    // Analyze bass frequencies to detect transients. A strong bass hit produces
-    // a transient that we still detect here (so the trigger remains available),
-    // but for now it is a no-op: it no longer flips the spin direction or fires
-    // a color switch.
+    // Analyze bass frequencies to detect transients: a frame-over-frame rise in
+    // low-band energy, above an absolute floor so quiet passages do not trigger
+    // on noise.
     this.analyser.getByteFrequencyData(this.frequencyData);
     let bassSum: number = 0;
     for (let i: number = 0; i < PulsarVisualization.BASS_BINS; i++) {
@@ -175,10 +216,15 @@ export class PulsarVisualization extends Canvas2DVisualization {
 
     const isTransient: boolean = bassIncrease > PulsarVisualization.TRANSIENT_THRESHOLD && bassAvg > PulsarVisualization.MIN_LEVEL;
 
-    // Trigger detected. Intentionally a no-op for now - the direction flip and
-    // color switch it used to drive have been removed.
-    if (isTransient) {
-      // no-op
+    // Act on the trigger: reverse the spin and kick the hue. Guarded by a
+    // refractory period so a busy passage cannot reverse the field several
+    // times a second, which reads as a stutter rather than as a beat.
+    const now: number = performance.now();
+    if (isTransient && now - this.lastTransientMs >= PulsarVisualization.TRANSIENT_REFRACTORY_MS) {
+      this.lastTransientMs = now;
+      this.spinDirection = -this.spinDirection;
+      this.hueOffset = (this.hueOffset + PulsarVisualization.TRANSIENT_HUE_KICK) % 360;
+      this.updateGradientColors();
     }
 
     // Copy current trails to temp canvas (reused, not recreated)
@@ -191,26 +237,13 @@ export class PulsarVisualization extends Canvas2DVisualization {
     // Draw back previous trails with rotation, zoom, and fade.
     // Apply trail intensity multiplier to fade rate.
     const effectiveFadeRate: number = PulsarVisualization.FADE_RATE * this.getFadeMultiplier();
-    trailCtx.save();
-    // Use high-quality image smoothing to reduce artifacts from repeated scaling
-    trailCtx.imageSmoothingEnabled = true;
-    trailCtx.imageSmoothingQuality = 'high';
-    trailCtx.globalAlpha = 1 - effectiveFadeRate;
-    // Use floor to avoid sub-pixel center point which causes quadrant artifacts
-    const floorCenterX: number = Math.floor(centerX);
-    const floorCenterY: number = Math.floor(centerY);
-    trailCtx.translate(floorCenterX, floorCenterY);
-    trailCtx.rotate(PulsarVisualization.ROTATION_SPEED);
-    trailCtx.scale(PulsarVisualization.ZOOM_SCALE, PulsarVisualization.ZOOM_SCALE);
-    trailCtx.translate(-floorCenterX, -floorCenterY);
-    trailCtx.drawImage(tempCanvas, 0, 0);
-    trailCtx.restore();
+    this.drawShearedTrail(trailCtx, tempCanvas, effectiveFadeRate);
 
     // Get waveform data
     this.analyser.getByteTimeDomainData(this.dataArray);
 
     // Update waveform rotation
-    this.waveformAngle -= PulsarVisualization.WAVEFORM_ROTATION_SPEED;
+    this.waveformAngle -= PulsarVisualization.WAVEFORM_ROTATION_SPEED * this.spinDirection;
 
     // Draw the mirrored waveforms with rotation
     trailCtx.save();
@@ -225,6 +258,71 @@ export class PulsarVisualization extends Canvas2DVisualization {
     ctx.drawImage(trailCanvas, 0, 0);
 
     this.applyFadeOverlay();
+  }
+
+  /**
+   * Redraws the previous trail with rotation, zoom and fade, sheared by radius.
+   *
+   * The trail is clipped into concentric rings and each ring is turned by a
+   * slightly different amount, so the outer field rotates faster than the
+   * inner one. A single whole-image rotate turns every radius equally, which
+   * smears rather than structures; letting neighbouring radii move at
+   * different rates gives the feedback loop something to wind.
+   *
+   * Rings tile the trail exactly. Overlapping them would composite the shared
+   * band twice and leave bright seams, which is worse than the faint one an
+   * exact shared edge can leave.
+   *
+   * @param trailCtx - Destination trail context
+   * @param tempCanvas - Copy of the previous trail to read from
+   * @param fadeRate - Per-frame fade already scaled by trail intensity
+   */
+  private drawShearedTrail(
+    trailCtx: CanvasRenderingContext2D,
+    tempCanvas: HTMLCanvasElement,
+    fadeRate: number
+  ): void {
+    // Floored to avoid a sub-pixel centre, which causes quadrant artifacts.
+    const centerX: number = Math.floor(this.centerX);
+    const centerY: number = Math.floor(this.centerY);
+    const rings: number = Math.max(1, PulsarVisualization.TRAIL_RING_COUNT);
+
+    // Far enough to cover the corners from wherever the centre sits.
+    const maxRadius: number = Math.hypot(
+      Math.max(centerX, this.width - centerX),
+      Math.max(centerY, this.height - centerY)
+    );
+
+    for (let i: number = 0; i < rings; i++) {
+      const inner: number = (i / rings) * maxRadius;
+      const outer: number = ((i + 1) / rings) * maxRadius;
+      const across: number = (i + 0.5) / rings;
+      const spin: number =
+        (PulsarVisualization.ROTATION_SPEED + PulsarVisualization.RING_SHEAR * across)
+        * this.spinDirection;
+
+      trailCtx.save();
+
+      // Clipped before the transform, so the ring is a region of the
+      // destination rather than of the source being read.
+      trailCtx.beginPath();
+      trailCtx.arc(centerX, centerY, outer, 0, TWO_PI);
+      if (inner > 0) {
+        trailCtx.arc(centerX, centerY, inner, 0, TWO_PI, true);
+      }
+      trailCtx.clip();
+
+      trailCtx.imageSmoothingEnabled = true;
+      trailCtx.imageSmoothingQuality = 'high';
+      trailCtx.globalAlpha = 1 - fadeRate;
+      trailCtx.translate(centerX, centerY);
+      trailCtx.rotate(spin);
+      trailCtx.scale(PulsarVisualization.ZOOM_SCALE, PulsarVisualization.ZOOM_SCALE);
+      trailCtx.translate(-centerX, -centerY);
+      trailCtx.drawImage(tempCanvas, 0, 0);
+
+      trailCtx.restore();
+    }
   }
 
   protected override onFftSizeChanged(): void {
