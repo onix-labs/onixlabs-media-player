@@ -71,6 +71,29 @@ export class PulsarVisualization extends Canvas2DVisualization {
   private static readonly RING_SHEAR: number = 0.004;
 
   /**
+   * Amplitude of the cosine ripple applied to each ring's zoom.
+   *
+   * Modelled on Ambience / Trig Stretch, whose displacement modulates radius by
+   * a cosine of radius and then pulls hard inward with a cubic term. Rings give
+   * Canvas2D somewhere to put the same idea: alternating bands push out and
+   * draw in rather than the whole field zooming uniformly.
+   */
+  private static readonly RING_RIPPLE: number = 0.012;
+
+  /**
+   * Cubic inward pull at the outermost ring.
+   *
+   * The cubic is what gives Trig Stretch its character: the centre barely
+   * moves while the rim is dragged in hard. Combined with the base zoom the
+   * field circulates - outward near the middle, inward at the edge - instead
+   * of everything marching off the edge together.
+   */
+  private static readonly RING_CUBIC_PULL: number = 0.05;
+
+  /** Radians the ripple pattern drifts per frame, so bands migrate. */
+  private static readonly RIPPLE_DRIFT: number = 0.006;
+
+  /**
    * Minimum gap between transients acting, in milliseconds.
    *
    * The spin flip is dramatic, so without a refractory period a busy passage
@@ -97,7 +120,42 @@ export class PulsarVisualization extends Canvas2DVisualization {
   private static readonly CENTER_CIRCLE_POINTS: number = 64;
 
   /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 15;
+  private static readonly BASE_GLOW_BLUR: number = 22;
+
+  /** Alpha of the neon halo stroke, before the caller's own alpha. */
+  private static readonly NEON_HALO_ALPHA: number = 0.34;
+
+  /** Alpha of the halo's shadow, which is what actually spreads the colour. */
+  private static readonly NEON_HALO_SHADOW_ALPHA: number = 0.85;
+
+  /** Extra line width of the halo stroke, in pixels. */
+  private static readonly NEON_HALO_WIDTH: number = 5;
+
+  /** Blur on the core stroke, as a fraction of the halo blur. */
+  private static readonly NEON_CORE_BLUR_SCALE: number = 0.45;
+
+  /** How far the hot centre line is lifted toward white, per channel. */
+  private static readonly NEON_HOT_LIFT: number = 110;
+
+  /** Alpha of the hot centre line. */
+  private static readonly NEON_HOT_ALPHA: number = 0.8;
+
+  /** Width of the hot centre line, as a fraction of the core width. */
+  private static readonly NEON_HOT_WIDTH_FRACTION: number = 0.5;
+
+  /**
+   * Blur radius of the bloom pass, in pixels.
+   *
+   * Applied to the whole trail at composite time rather than per stroke. One
+   * full-canvas blur is cheaper than giving every stroke a wide shadow, and it
+   * is the only thing that makes the *trails* glow as well as the strokes -
+   * once content has been baked into the trail buffer there is no stroke left
+   * to attach a shadow to.
+   */
+  private static readonly BLOOM_BLUR: number = 14;
+
+  /** Strength of the additive bloom pass. */
+  private static readonly BLOOM_STRENGTH: number = 0.6;
 
   /** Saturation and lightness levels for the center-circle gradient. */
   private static readonly GRADIENT_LEVELS: ReadonlyArray<{s: number; l: number}> = [
@@ -140,6 +198,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
 
   /** Timestamp of the last transient that was acted on, in milliseconds. */
   private lastTransientMs: number = 0;
+
+  /** Phase of the ring ripple, so the bands migrate rather than sitting still. */
+  private ripplePhase: number = 0;
 
   /** Pre-allocated point arrays to avoid GC pressure. */
   private readonly leftPoints: Array<{x: number; y: number}>;
@@ -237,6 +298,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     // Draw back previous trails with rotation, zoom, and fade.
     // Apply trail intensity multiplier to fade rate.
     const effectiveFadeRate: number = PulsarVisualization.FADE_RATE * this.getFadeMultiplier();
+    this.ripplePhase = (this.ripplePhase + PulsarVisualization.RIPPLE_DRIFT) % TWO_PI;
     this.drawShearedTrail(trailCtx, tempCanvas, effectiveFadeRate);
 
     // Get waveform data
@@ -253,9 +315,19 @@ export class PulsarVisualization extends Canvas2DVisualization {
     this.drawMirroredWaveform(trailCtx);
     trailCtx.restore();
 
-    // Clear main canvas and composite the trail onto it.
+    // Clear main canvas and composite the trail onto it, then add a blurred
+    // copy on top. The bloom is what makes the trails themselves glow: once
+    // content is baked into the trail buffer there is no stroke left to hang a
+    // shadow on, so the halo has to come from the buffer itself.
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(trailCanvas, 0, 0);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.filter = `blur(${PulsarVisualization.BLOOM_BLUR}px)`;
+    ctx.globalAlpha = PulsarVisualization.BLOOM_STRENGTH;
+    ctx.drawImage(trailCanvas, 0, 0);
+    ctx.restore();
 
     this.applyFadeOverlay();
   }
@@ -301,6 +373,15 @@ export class PulsarVisualization extends Canvas2DVisualization {
         (PulsarVisualization.ROTATION_SPEED + PulsarVisualization.RING_SHEAR * across)
         * this.spinDirection;
 
+      // Trig Stretch in Canvas2D terms: a cosine of radius alternates bands
+      // outward and inward, and a cubic term drags the rim in hard while the
+      // centre barely moves.
+      const ripple: number =
+        Math.cos(across * TWO_PI + this.ripplePhase) * PulsarVisualization.RING_RIPPLE;
+      const pull: number =
+        PulsarVisualization.RING_CUBIC_PULL * across * across * across;
+      const zoom: number = PulsarVisualization.ZOOM_SCALE + ripple - pull;
+
       trailCtx.save();
 
       // Clipped before the transform, so the ring is a region of the
@@ -317,7 +398,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
       trailCtx.globalAlpha = 1 - fadeRate;
       trailCtx.translate(centerX, centerY);
       trailCtx.rotate(spin);
-      trailCtx.scale(PulsarVisualization.ZOOM_SCALE, PulsarVisualization.ZOOM_SCALE);
+      trailCtx.scale(zoom, zoom);
       trailCtx.translate(-centerX, -centerY);
       trailCtx.drawImage(tempCanvas, 0, 0);
 
@@ -474,33 +555,66 @@ export class PulsarVisualization extends Canvas2DVisualization {
       ctx.closePath();
     };
 
-    const glowBlur: number = this.getScaledGlowBlur(PulsarVisualization.BASE_GLOW_BLUR);
+    this.strokeNeon(ctx, buildPath, color, 1);
+  }
 
-    // Draw glow layer
+  /**
+   * Strokes a path as a neon tube: saturated halo, coloured core, hot centre.
+   *
+   * All three passes composite additively, which is what makes it read as
+   * emitting rather than as a wide coloured line - where strokes overlap they
+   * reinforce toward white instead of flattening to a constant.
+   *
+   * The wide part of the halo comes from the shadow rather than the stroke
+   * width; the shadow alpha is therefore the dial for how far the colour
+   * spreads, and the stroke alpha for how solid the tube looks.
+   *
+   * @param ctx - Destination context
+   * @param buildPath - Rebuilds the path; called once per pass
+   * @param color - Core colour
+   * @param alpha - Overall opacity applied to every pass
+   */
+  private strokeNeon(
+    ctx: CanvasRenderingContext2D,
+    buildPath: () => void,
+    color: {r: number; g: number; b: number},
+    alpha: number
+  ): void {
+    const blur: number = this.getScaledGlowBlur(PulsarVisualization.BASE_GLOW_BLUR);
+    const r: number = color.r;
+    const g: number = color.g;
+    const b: number = color.b;
+
     ctx.save();
-    ctx.shadowBlur = glowBlur;
-    ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
-    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
-    ctx.lineWidth = this.lineWidth + 3;
+    ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+
+    // Halo.
+    ctx.shadowBlur = blur;
+    ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${PulsarVisualization.NEON_HALO_SHADOW_ALPHA * alpha})`;
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${PulsarVisualization.NEON_HALO_ALPHA * alpha})`;
+    ctx.lineWidth = this.lineWidth + PulsarVisualization.NEON_HALO_WIDTH;
     buildPath();
     ctx.stroke();
-    ctx.restore();
 
-    // Draw main circle
-    ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+    // Core.
+    ctx.shadowBlur = blur * PulsarVisualization.NEON_CORE_BLUR_SCALE;
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
     ctx.lineWidth = this.lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
     buildPath();
     ctx.stroke();
 
-    // Draw highlight
-    ctx.strokeStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.5)`;
-    ctx.lineWidth = 1;
+    // Hot centre. No shadow: this pass is the filament, not the glow.
+    const lift: number = PulsarVisualization.NEON_HOT_LIFT;
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = `rgba(${Math.min(255, r + lift)}, ${Math.min(255, g + lift)}, `
+      + `${Math.min(255, b + lift)}, ${PulsarVisualization.NEON_HOT_ALPHA * alpha})`;
+    ctx.lineWidth = Math.max(1, this.lineWidth * PulsarVisualization.NEON_HOT_WIDTH_FRACTION);
     buildPath();
     ctx.stroke();
+
+    ctx.restore();
   }
 
   private drawWaveformSegment(
@@ -517,33 +631,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
       this.buildSmoothPath(ctx, points, count - 1);
     };
 
-    const glowBlur: number = this.getScaledGlowBlur(PulsarVisualization.BASE_GLOW_BLUR);
-
-    // Draw glow layer (restored for visual quality)
-    ctx.save();
-    ctx.shadowBlur = glowBlur;
-    ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${0.6 * alpha})`;
-    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${0.3 * alpha})`;
-    ctx.lineWidth = this.lineWidth + 3;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
-    ctx.stroke();
-    ctx.restore();
-
-    // Draw main waveform
-    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
-    ctx.lineWidth = this.lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
-    ctx.stroke();
-
-    // Draw highlight
-    ctx.strokeStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, ${0.5 * alpha})`;
-    ctx.lineWidth = 1;
-    buildPath();
-    ctx.stroke();
+    this.strokeNeon(ctx, buildPath, color, alpha);
   }
 
   public override destroy(): void {
