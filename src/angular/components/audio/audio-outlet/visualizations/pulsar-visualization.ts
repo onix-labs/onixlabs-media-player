@@ -200,7 +200,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * circle and the amplitudes together is a true zoom, and the outer ends of
    * the waveforms crop at the sides as they should.
    */
-  private static readonly CONTENT_SCALE: number = 1.25;
+  private static readonly CONTENT_SCALE: number = 1.5;
 
   /** Base glow blur radius in pixels. */
   private static readonly BASE_GLOW_BLUR: number = 18;
