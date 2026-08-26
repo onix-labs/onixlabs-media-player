@@ -47,6 +47,12 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     ],
   },
   {
+    category: 'Retro',
+    items: [
+      {id: 'alchemy', name: 'Alchemy'},
+    ],
+  },
+  {
     category: 'Simple',
     items: [
       {id: 'blank', name: 'Blank'},

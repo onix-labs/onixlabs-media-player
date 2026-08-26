@@ -45,3 +45,7 @@ __screenshots__/
 Thumbs.db
 src/electron/dist/*.js
 .studio/*.user.json
+
+# Reverse-engineering spike reference binary - NEVER commit (proprietary Microsoft binary)
+mpvis.dll
+*.dll
