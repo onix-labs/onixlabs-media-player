@@ -49,7 +49,6 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     category: 'Ambience',
     items: [
       {id: 'ambience-zoom', name: 'Zoom'},
-      {id: 'ambience-ringspin', name: 'Ring Spin'},
       {id: 'ambience-stretch', name: 'Stretch'},
       {id: 'ambience-trig', name: 'Trig'},
       {id: 'ambience-trigstretch', name: 'Trig Stretch'},

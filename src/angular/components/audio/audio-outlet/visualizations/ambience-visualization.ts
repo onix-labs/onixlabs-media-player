@@ -1106,20 +1106,6 @@ export class AmbienceZoomVisualization extends AmbienceVisualization {
 }
 
 
-/** Ambience - Ring Spin. Radius split into concentric rings, each rotated by its ring index. */
-export class AmbienceRingSpinVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Ring Spin',
-      shift: ShiftMode.RingSpin,
-      decay: DECAY_SLOW,
-      startHue: 160,
-      hueDrift: HUE_DRIFT_SLOW,
-      generator: GeneratorMode.WaveEdge,
-      params: {angleDelta: RINGSPIN_ANGLE_DELTA, frequency: RINGSPIN_RING_WIDTH},
-    });
-  }
-}
 
 /** Ambience - Stretch. Cubic radial distortion in normalised radius. */
 export class AmbienceStretchVisualization extends AmbienceVisualization {

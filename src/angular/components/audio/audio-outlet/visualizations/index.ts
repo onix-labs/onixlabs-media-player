@@ -51,7 +51,6 @@ export {
 } from './battery-visualization';
 export {
   AmbienceZoomVisualization,
-  AmbienceRingSpinVisualization,
   AmbienceStretchVisualization,
   AmbienceTrigVisualization,
   AmbienceTrigStretchVisualization,
@@ -86,7 +85,6 @@ import {
 } from './battery-visualization';
 import {
   AmbienceZoomVisualization,
-  AmbienceRingSpinVisualization,
   AmbienceStretchVisualization,
   AmbienceTrigVisualization,
   AmbienceTrigStretchVisualization,
@@ -120,7 +118,6 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   'battery-galaxy': BatteryGalaxyVisualization,
   'battery-jiggyscribble': BatteryJiggyScribbleVisualization,
   'ambience-zoom': AmbienceZoomVisualization,
-  'ambience-ringspin': AmbienceRingSpinVisualization,
   'ambience-stretch': AmbienceStretchVisualization,
   'ambience-trig': AmbienceTrigVisualization,
   'ambience-trigstretch': AmbienceTrigStretchVisualization,
@@ -156,7 +153,6 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   'battery-galaxy': {name: 'Galaxy', category: 'Battery'},
   'battery-jiggyscribble': {name: 'Jiggy Scribble', category: 'Battery'},
   'ambience-zoom': {name: 'Zoom', category: 'Ambience'},
-  'ambience-ringspin': {name: 'Ring Spin', category: 'Ambience'},
   'ambience-stretch': {name: 'Stretch', category: 'Ambience'},
   'ambience-trig': {name: 'Trig', category: 'Ambience'},
   'ambience-trigstretch': {name: 'Trig Stretch', category: 'Ambience'},
@@ -212,7 +208,7 @@ export const VISUALIZATION_TYPES: string[] = [
   // Signature
   'spotlight', 'water',
     // Ambience
-  'ambience-zoom', 'ambience-ringspin', 'ambience-stretch', 'ambience-trig', 'ambience-trigstretch', 'ambience-thingus',
+  'ambience-zoom', 'ambience-stretch', 'ambience-trig', 'ambience-trigstretch', 'ambience-thingus',
   // Battery
   'battery-waveedge', 'battery-spectrumedge', 'battery-circlewaveform', 'battery-edgegradiant', 'battery-cosedgegradiant', 'battery-edgetrace', 'battery-dotplane', 'battery-jdar', 'battery-galaxy', 'battery-jiggyscribble',
   // Simple

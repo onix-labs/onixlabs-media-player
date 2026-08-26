@@ -811,7 +811,6 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'spotlight',
   'particles',
   'ambience-zoom',
-  'ambience-ringspin',
   'ambience-stretch',
   'ambience-trig',
   'ambience-trigstretch',

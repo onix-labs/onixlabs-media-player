@@ -450,7 +450,6 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
   // Ambience category
   {id: 'ambience-zoom', name: 'Zoom', category: 'Ambience', applicableSettings: []},
-  {id: 'ambience-ringspin', name: 'Ring Spin', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-stretch', name: 'Stretch', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-trig', name: 'Trig', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-trigstretch', name: 'Trig Stretch', category: 'Ambience', applicableSettings: []},
@@ -560,7 +559,6 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
   // Ambience category
   {value: 'ambience-zoom', label: 'Ambience : Zoom', description: 'Rotating zoom about the centre'},
-  {value: 'ambience-ringspin', label: 'Ambience : Ring Spin', description: 'Concentric rings rotating by index'},
   {value: 'ambience-stretch', label: 'Ambience : Stretch', description: 'Cubic radial distortion'},
   {value: 'ambience-trig', label: 'Ambience : Trig', description: 'Trigonometric angle and radius perturbation'},
   {value: 'ambience-trigstretch', label: 'Ambience : Trig Stretch', description: 'Trigonometric perturbation with cubic stretch'},
