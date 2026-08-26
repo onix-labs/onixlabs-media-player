@@ -32,7 +32,7 @@ import {TWO_PI} from './visualization-constants';
  */
 export class PulsarVisualization extends Canvas2DVisualization {
   /** Radians the trail rotates per frame. */
-  private static readonly ROTATION_SPEED: number = 0.005;
+  private static readonly ROTATION_SPEED: number = 0.011;
 
   /** Radians the waveforms rotate per frame. */
   private static readonly WAVEFORM_ROTATION_SPEED: number = 0.005;
@@ -49,12 +49,13 @@ export class PulsarVisualization extends Canvas2DVisualization {
   /**
    * Number of concentric rings the trail is redrawn in.
    *
-   * Canvas2D can only transform a whole image at once, so a single rotate
-   * turns every radius by the same amount - a uniform smear that never forms
-   * structure. Splitting the trail into rings and turning each by a slightly
-   * different amount is the closest this renderer gets to differential
-   * rotation: neighbouring rings shear against each other and the feedback
-   * loop compounds that into spiral filaments.
+   * Canvas2D can only transform a whole image at once, so a single rotate and
+   * scale moves every radius identically - a uniform smear that never forms
+   * structure. Rings give each radius its own transform.
+   *
+   * Most of the character comes from the per-ring *zoom* rather than the
+   * per-ring rotation, following Trig Stretch: that displacement rotates every
+   * radius by the same amount and puts all of its variation into the radius.
    *
    * Set to 1 to go back to a single uniform rotation.
    */
@@ -68,17 +69,24 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * an overlap would composite the shared band twice and leave bright seams,
    * where an exact edge only risks a faint one.
    */
-  private static readonly RING_SHEAR: number = 0.004;
+  private static readonly RING_SHEAR: number = 0.002;
 
   /**
    * Amplitude of the cosine ripple applied to each ring's zoom.
    *
-   * Modelled on Ambience / Trig Stretch, whose displacement modulates radius by
-   * a cosine of radius and then pulls hard inward with a cubic term. Rings give
-   * Canvas2D somewhere to put the same idea: alternating bands push out and
-   * draw in rather than the whole field zooming uniformly.
+   * Large enough that the trough dips below 1, so bands genuinely contract
+   * rather than merely expanding more slowly. That is what makes content ride
+   * in and out as it orbits, which is the part of Trig Stretch worth having.
+   *
+   * This does not empty the frame the way the cubic did, and the difference is
+   * worth being precise about. The cubic contracts the rim *always* - it is
+   * monotonic in radius and fixed in time - so the outer region drains and
+   * never refills. The ripple contracts a given radius only while the crest is
+   * elsewhere, and the phase drifts, so every radius spends equal time
+   * expanding and contracting. Its time-average is zero, leaving the net flow
+   * at each radius outward and the frame filled.
    */
-  private static readonly RING_RIPPLE: number = 0.005;
+  private static readonly RING_RIPPLE: number = 0.03;
 
   /**
    * How much slower the outermost ring zooms than the innermost.
@@ -95,8 +103,13 @@ export class PulsarVisualization extends Canvas2DVisualization {
    */
   private static readonly RING_CUBIC_PULL: number = 0.008;
 
-  /** Radians the ripple pattern drifts per frame, so bands migrate. */
-  private static readonly RIPPLE_DRIFT: number = 0.006;
+  /**
+   * Radians the ripple pattern drifts per frame.
+   *
+   * Signed so the bands travel outward with the flow rather than against it,
+   * and fast enough that no radius sits in the contracting half for long.
+   */
+  private static readonly RIPPLE_DRIFT: number = 0.02;
 
   /**
    * Minimum gap between transients acting, in milliseconds.
@@ -384,11 +397,12 @@ export class PulsarVisualization extends Canvas2DVisualization {
         (PulsarVisualization.ROTATION_SPEED + PulsarVisualization.RING_SHEAR * across)
         * this.spinDirection;
 
-      // Trig Stretch in Canvas2D terms: a cosine of radius alternates bands
-      // outward and inward, and a cubic term drags the rim in hard while the
-      // centre barely moves.
+      // Trig Stretch in Canvas2D terms: a cosine of radius alternately expands
+      // and contracts bands, travelling outward, over a small monotonic cubic.
+      // Rotation is nearly uniform across rings, as it is there - the variation
+      // that matters is radial.
       const ripple: number =
-        Math.cos(across * TWO_PI + this.ripplePhase) * PulsarVisualization.RING_RIPPLE;
+        Math.cos(across * TWO_PI - this.ripplePhase) * PulsarVisualization.RING_RIPPLE;
       const pull: number =
         PulsarVisualization.RING_CUBIC_PULL * across * across * across;
       const zoom: number = PulsarVisualization.ZOOM_SCALE + ripple - pull;
