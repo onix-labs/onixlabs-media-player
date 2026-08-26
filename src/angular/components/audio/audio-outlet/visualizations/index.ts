@@ -16,7 +16,7 @@
  * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
- * - strata: Strata - spectral differential rotation field winding bands into spirals (signature category)
+ * - hallucia: Hallucia - spectral differential rotation field winding bands into spirals (signature category)
  * - battery-*: Battery - one visualization per source generator in the Battery bank
  * - ambience-*: Ambience - one visualization per displacement in the Windows Media Player Ambience bank
  *
@@ -35,7 +35,7 @@ export {InfinityVisualization} from './infinity-visualization';
 export {OnixVisualization} from './onix-visualization';
 export {ModernVisualization} from './modern-visualization';
 export {SpotlightVisualization} from './spotlight-visualization';
-export {StrataVisualization} from './strata-visualization';
+export {HalluciaVisualization} from './hallucia-visualization';
 export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
 export {ParticlesVisualization} from './particles-visualization';
@@ -59,7 +59,7 @@ import {InfinityVisualization} from './infinity-visualization';
 import {OnixVisualization} from './onix-visualization';
 import {ModernVisualization} from './modern-visualization';
 import {SpotlightVisualization} from './spotlight-visualization';
-import {StrataVisualization} from './strata-visualization';
+import {HalluciaVisualization} from './hallucia-visualization';
 import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
 import {ParticlesVisualization} from './particles-visualization';
@@ -87,7 +87,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   onix: OnixVisualization,
   modern: ModernVisualization,
   spotlight: SpotlightVisualization,
-  strata: StrataVisualization,
+  hallucia: HalluciaVisualization,
   particles: ParticlesVisualization,
   'battery-waveedge': BatteryWaveEdgeVisualization,
   'ambience-zoom': AmbienceZoomVisualization,
@@ -112,7 +112,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   onix: {name: 'Onix', category: 'Waves'},
   modern: {name: 'Modern', category: 'Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
-  strata: {name: 'Strata', category: 'Signature'},
+  hallucia: {name: 'Hallucia', category: 'Signature'},
   particles: {name: 'Particles', category: 'Waves'},
   'battery-waveedge': {name: 'Wave Edge', category: 'Battery'},
   'ambience-zoom': {name: 'Zoom', category: 'Ambience'},
@@ -156,7 +156,7 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  * Categories (in order):
  * - Bars: bars
  * - Waves: waveform, modern, tunnel, infinity, neon, onix, particles, pulsar
- * - Signature: spotlight, water (Reactor), strata
+ * - Signature: spotlight, water (Reactor), hallucia
  * - Ambience: one entry per displacement in the Ambience bank
  * - Battery: one entry per source generator, each rolling its displacement
  * - Simple: blank, logo
@@ -167,7 +167,7 @@ export const VISUALIZATION_TYPES: string[] = [
   // Waves
   'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'particles', 'pulsar',
   // Signature
-  'spotlight', 'water', 'strata',
+  'spotlight', 'water', 'hallucia',
     // Ambience
   'ambience-zoom', 'ambience-stretch', 'ambience-trigstretch',
   // Battery

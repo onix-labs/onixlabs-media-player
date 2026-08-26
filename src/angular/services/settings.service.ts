@@ -446,7 +446,7 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   // Signature category
   {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
-  {id: 'strata', name: 'Strata', category: 'Signature', applicableSettings: []},
+  {id: 'hallucia', name: 'Hallucia', category: 'Signature', applicableSettings: []},
   {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: []},
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
   // Ambience category
@@ -547,7 +547,7 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   // Signature category
   {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
-  {value: 'strata', label: 'Signature : Strata', description: 'Spectral differential rotation winding bands into spiral filaments'},
+  {value: 'hallucia', label: 'Signature : Hallucia', description: 'Spectral differential rotation winding bands into spiral filaments'},
   // Ambience category
   {value: 'ambience-zoom', label: 'Ambience : Zoom', description: 'Rotating zoom about the centre'},
   {value: 'ambience-stretch', label: 'Ambience : Stretch', description: 'Cubic radial distortion'},

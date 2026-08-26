@@ -1,5 +1,5 @@
 /**
- * @fileoverview Strata visualization - a spectral differential rotation field.
+ * @fileoverview Hallucia visualization - a spectral differential rotation field.
  *
  * An original visualization, not a port of anything, though it grew out of the
  * feedback engine written for the Windows Media Player reimplementations and
@@ -7,7 +7,7 @@
  *
  * Every displacement in that engine is *globally uniform*: one rotation, one
  * zoom, one shear, applied identically to every pixel on the surface. The
- * parameters change over time but never across space. Strata takes the one
+ * parameters change over time but never across space. Hallucia takes the one
  * step that engine never took - it makes the warp a function of position, and
  * drives that function with the spectrum.
  *
@@ -38,7 +38,7 @@
  * - Radius is normalised against the centre-to-corner distance, so the field
  *   fills the view rather than being inscribed in the screen height
  *
- * @module app/components/audio/audio-outlet/visualizations/strata-visualization
+ * @module app/components/audio/audio-outlet/visualizations/hallucia-visualization
  */
 
 import {WebGLVisualization, VisualizationConfig} from './visualization';
@@ -472,14 +472,14 @@ void main() {
 `;
 
 /**
- * Strata - a spectral differential rotation field.
+ * Hallucia - a spectral differential rotation field.
  *
  * Each radius rotates at a rate set by the audio energy of the frequency band
  * mapped to it. Fed back on itself, that difference in rate shears concentric
  * bands into spiral filaments whose tightness tracks the spectral balance.
  */
-export class StrataVisualization extends WebGLVisualization {
-  public readonly name: string = 'Strata';
+export class HalluciaVisualization extends WebGLVisualization {
+  public readonly name: string = 'Hallucia';
   public readonly category: string = 'Signature';
 
   /** Time-domain samples, used for the angular envelope. */
