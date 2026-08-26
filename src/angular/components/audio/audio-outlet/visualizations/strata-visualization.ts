@@ -44,6 +44,23 @@
 import {WebGLVisualization, VisualizationConfig} from './visualization';
 import {RGB_MAX, TWO_PI} from './visualization-constants';
 
+/**
+ * Formats a number as a GLSL float literal.
+ *
+ * Template interpolation of a whole number yields "1", not "1.0", and GLSL ES
+ * 1.00 has no implicit int-to-float conversion - so an innocuous-looking
+ * constant change can turn a working shader into one that fails to compile.
+ * Every numeric constant interpolated into shader source below goes through
+ * this.
+ *
+ * @param value - The number to format
+ * @returns The value as source text guaranteed to parse as a GLSL float
+ */
+function glslFloat(value: number): string {
+  return Number.isInteger(value) ? `${value}.0` : `${value}`;
+}
+
+
 // ============================================================================
 // Surface
 // ============================================================================
@@ -282,8 +299,8 @@ float normRadius(float radius) {
    spanning only part of the spectrum so the corners land on a band that
    actually carries energy. Floored so silent bands still light and shear. */
 float bandAt(float normalised) {
-  float energy = spectrumAt(pow(normalised, ${FREQUENCY_CURVE}) * ${SPECTRUM_SPAN});
-  return max(energy, ${ENERGY_FLOOR});
+  float energy = spectrumAt(pow(normalised, ${glslFloat(FREQUENCY_CURVE)}) * ${glslFloat(SPECTRUM_SPAN)});
+  return max(energy, ${glslFloat(ENERGY_FLOOR)});
 }
 
 /* The field. Rotation rate and radial push both vary with the local band. */
@@ -295,10 +312,10 @@ vec2 applyField(vec2 uv) {
   float energy = bandAt(normRadius(radius));
 
   /* Sampling from behind in angle makes content appear to rotate forward. */
-  angle -= ${BASE_SPIN} + energy * ${SHEAR_GAIN};
+  angle -= ${glslFloat(BASE_SPIN)} + energy * ${glslFloat(SHEAR_GAIN)};
 
   /* Reading from a smaller radius pushes content outward. */
-  radius *= 1.0 - energy * ${BREATHE_GAIN} + ${RADIAL_DRIFT};
+  radius *= 1.0 - energy * ${glslFloat(BREATHE_GAIN)} + ${glslFloat(RADIAL_DRIFT)};
 
   return fromCentred(vec2(cos(angle), sin(angle)) * radius);
 }
@@ -320,22 +337,22 @@ vec3 inject(vec2 uv) {
   float energy = bandAt(rn);
 
   /* Distance in angle to the nearest arm, wrapped into one arm's sector. */
-  float sector = TAU / float(${ARM_COUNT});
+  float sector = TAU / ${glslFloat(ARM_COUNT)};
   float phase = mod(angle - uSweep, sector);
   float offset = min(phase, sector - phase);
-  float arm = exp(-(offset * offset) / ${ARM_WIDTH});
+  float arm = exp(-(offset * offset) / ${glslFloat(ARM_WIDTH)});
 
   /* The waveform rides along each arm, so they are ragged rather than straight
      and the shear has fine detail to pull on as well as the arm itself. */
   float ripple = 0.6 + 0.8 * abs(waveformAt(rn) - 0.5) * 2.0;
 
-  float edge = 1.0 - smoothstep(${INJECT_EDGE}, ${INJECT_EDGE} + ${INJECT_FEATHER}, rn);
+  float edge = 1.0 - smoothstep(${glslFloat(INJECT_EDGE)}, ${glslFloat(INJECT_EDGE)} + ${glslFloat(INJECT_FEATHER)}, rn);
 
-  float amount = energy * (arm * ripple + ${DISC_FLOOR}) * edge * uGain
-               * (1.0 + uBass * ${BASS_LIFT}) * ${INJECT_GAIN};
+  float amount = energy * (arm * ripple + ${glslFloat(DISC_FLOOR)}) * edge * uGain
+               * (1.0 + uBass * ${glslFloat(BASS_LIFT)}) * ${glslFloat(INJECT_GAIN)};
 
-  float hue = fract(uHue + rn * ${HUE_SPAN});
-  return hueToRgb(hue, ${SATURATION}, amount);
+  float hue = fract(uHue + rn * ${glslFloat(HUE_SPAN)});
+  return hueToRgb(hue, ${glslFloat(SATURATION)}, amount);
 }
 
 void main() {
@@ -343,7 +360,7 @@ void main() {
 
   vec3 previous = vec3(0.0);
   if (source.x >= 0.0 && source.x <= 1.0 && source.y >= 0.0 && source.y <= 1.0) {
-    previous = texture2D(uPrevious, source).rgb * ${DECAY};
+    previous = texture2D(uPrevious, source).rgb * ${glslFloat(DECAY)};
   }
 
   gl_FragColor = vec4(previous + inject(vUv), 1.0);

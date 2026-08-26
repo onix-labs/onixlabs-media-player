@@ -70,6 +70,23 @@
 import {WebGLVisualization, VisualizationConfig} from './visualization';
 import {DEGREES_FULL_CIRCLE, RGB_MAX, TWO_PI} from './visualization-constants';
 
+/**
+ * Formats a number as a GLSL float literal.
+ *
+ * Template interpolation of a whole number yields "1", not "1.0", and GLSL ES
+ * 1.00 has no implicit int-to-float conversion - so an innocuous-looking
+ * constant change can turn a working shader into one that fails to compile.
+ * Every numeric constant interpolated into shader source below goes through
+ * this.
+ *
+ * @param value - The number to format
+ * @returns The value as source text guaranteed to parse as a GLSL float
+ */
+function glslFloat(value: number): string {
+  return Number.isInteger(value) ? `${value}.0` : `${value}`;
+}
+
+
 // ============================================================================
 // Surface
 // ============================================================================
@@ -559,7 +576,7 @@ vec2 applyShift(vec2 p) {
    identifier: it is a reserved word in later GLSL versions and some drivers
    reject it here too. */
 float glow(float delta) {
-  return exp(-(delta * delta) / ${WAVE_SIGMA});
+  return exp(-(delta * delta) / ${glslFloat(WAVE_SIGMA)});
 }
 
 float waveformAt(float x) {
@@ -650,7 +667,7 @@ void main() {
     previous = texture2D(uPrevious, source).rgb * uDecay;
   }
 
-  gl_FragColor = vec4(previous + uTraceColor * generate(vUv) * ${WAVE_GAIN}, 1.0);
+  gl_FragColor = vec4(previous + uTraceColor * generate(vUv) * ${glslFloat(WAVE_GAIN)}, 1.0);
 }
 `;
 
