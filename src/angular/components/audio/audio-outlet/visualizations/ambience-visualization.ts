@@ -148,7 +148,7 @@ export const TRIG_ANGLE_DELTA: number = 0.02;
  * can be tuned without disturbing the other. Still inside the engine's
  * u * 0.1 - 0.05 range.
  */
-export const TRIG_ANGLE_DELTA_AMBIENCE: number = 0.006;
+export const TRIG_ANGLE_DELTA_AMBIENCE: number = 0.002;
 
 /** Trig: perturbation amplitude. Engine range u * 0.1 - 0.05. */
 export const TRIG_AMPLITUDE: number = 0.03;
