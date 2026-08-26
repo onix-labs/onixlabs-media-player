@@ -190,6 +190,18 @@ export class PulsarVisualization extends Canvas2DVisualization {
   /** Number of points around the pulsating center circle. */
   private static readonly CENTER_CIRCLE_POINTS: number = 64;
 
+  /**
+   * Uniform scale applied to everything drawn, as a zoom.
+   *
+   * Applied to the arc radius rather than to halfWidth, which doubles as the
+   * sweep length and the outermost radius: scaling that would run the sweep
+   * past the centre, collapsing the inner half of each waveform onto the
+   * minimum radius instead of enlarging it. Scaling the radius, the centre
+   * circle and the amplitudes together is a true zoom, and the outer ends of
+   * the waveforms crop at the sides as they should.
+   */
+  private static readonly CONTENT_SCALE: number = 1.25;
+
   /** Base glow blur radius in pixels. */
   private static readonly BASE_GLOW_BLUR: number = 18;
 
@@ -511,7 +523,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     this.centerY = this.height * 0.5;
     this.halfWidth = this.width * 0.5;
     this.minArcRadius = this.halfWidth * 0.18;
-    this.baseCircleRadius = this.halfWidth * 0.18;
+    this.baseCircleRadius = this.halfWidth * 0.18 * PulsarVisualization.CONTENT_SCALE;
 
     // Create trail canvas if needed
     if (!this.trailCanvas) {
@@ -558,7 +570,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const halfWidth: number = this.halfWidth;
     const minArcRadius: number = this.minArcRadius;
     const sensitivityFactor: number = this.sensitivityFactor;
-    const amplitudeScale: number = height * 0.3;
+    const amplitudeScale: number = height * 0.3 * PulsarVisualization.CONTENT_SCALE;
     const bendStrength: number = 1.2;
     const numSamples: number = PulsarVisualization.WAVEFORM_SAMPLES;
 
@@ -574,7 +586,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
       const baseX: number = t * halfWidth;
 
       const distFromCenter: number = centerX - baseX;
-      const arcRadius: number = distFromCenter > minArcRadius ? distFromCenter : minArcRadius;
+      const arcRadius: number =
+        (distFromCenter > minArcRadius ? distFromCenter : minArcRadius)
+        * PulsarVisualization.CONTENT_SCALE;
       const arcAngle: number = (amplitude * bendStrength) / arcRadius;
       const newAngle: number = Math.PI - arcAngle;
 
@@ -592,7 +606,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
       const baseX: number = this.width - t * halfWidth;
 
       const distFromCenter: number = baseX - centerX;
-      const arcRadius: number = distFromCenter > minArcRadius ? distFromCenter : minArcRadius;
+      const arcRadius: number =
+        (distFromCenter > minArcRadius ? distFromCenter : minArcRadius)
+        * PulsarVisualization.CONTENT_SCALE;
       const arcAngle: number = (amplitude * bendStrength) / arcRadius;
 
       this.rightPoints[i].x = centerX + arcRadius * Math.cos(arcAngle);
@@ -619,7 +635,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const baseRadius: number = this.baseCircleRadius;
     const numPoints: number = PulsarVisualization.CENTER_CIRCLE_POINTS;
     const sensitivityFactor: number = this.sensitivityFactor;
-    const amplitudeScale: number = height * 0.08;
+    const amplitudeScale: number = height * 0.08 * PulsarVisualization.CONTENT_SCALE;
     const sampleStep: number = (dataLength * 0.25) / numPoints;
 
     // Calculate points (reuse pre-allocated array)
