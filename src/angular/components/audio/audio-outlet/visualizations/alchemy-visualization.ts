@@ -713,7 +713,7 @@ export class AlchemyVisualization extends Canvas2DVisualization {
    * @returns The interpolated parameter block
    */
   private blendParams(from: AlchemyParams, to: AlchemyParams, t: number): AlchemyParams {
-    const mix = (a: number, b: number): number => a + (b - a) * t;
+    const mix: (a: number, b: number) => number = (a: number, b: number): number => a + (b - a) * t;
     return {
       falloff: mix(from.falloff, to.falloff),
       scale: mix(from.scale, to.scale),
