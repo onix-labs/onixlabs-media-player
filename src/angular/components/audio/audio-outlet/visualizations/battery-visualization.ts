@@ -24,9 +24,14 @@
  *   CCosEdgeGradiant  CEdgeTrace  CDotPlane  CJDar  CGalaxy
  *   CJiggyScribble
  *
- * Each generator is one visualization here, holding its generator fixed and
- * rolling only the displacement - so a given entry keeps its character while
- * never settling into one fixed field.
+ * Each generator is one visualization here, paired with a fixed displacement
+ * chosen so the ten entries stay visually distinct from one another - and so
+ * that every displacement in the bank is exercised somewhere across Ambience
+ * and Battery together, rather than left as dead code in the shader.
+ *
+ * The engine rolls this pairing at random on every viewing, which is what
+ * "Randomization" named. Fixing it is a deliberate departure: a chosen entry
+ * that changes character on a timer is hard to sit with.
  *
  * The render methods take (BYTE* pLevels, surface), where pLevels is the
  * engine's level block: spectrum for both channels first, then waveform at
@@ -44,7 +49,33 @@
  * @module app/components/audio/audio-outlet/visualizations/battery-visualization
  */
 
-import {AmbienceVisualization, ShiftMode, GeneratorMode} from './ambience-visualization';
+import {
+  AmbienceVisualization,
+  ShiftMode,
+  GeneratorMode,
+  ZOOM_ANGLE_DELTA,
+  ZOOM_RADIAL,
+  RINGSPIN_ANGLE_DELTA,
+  RINGSPIN_RING_WIDTH,
+  SWIRL_AMPLITUDE,
+  SWIRL_FREQUENCY,
+  EDGEFALLOFF_STRENGTH,
+  EDGEFALLOFF_EDGE,
+  TRIG_ANGLE_DELTA,
+  TRIG_AMPLITUDE,
+  TRIG_SUB_MODE,
+  LINEAR_DRIFT_X,
+  LINEAR_DRIFT_Y,
+  TILE_SIZE,
+  STARBURST_ANGLE_DELTA,
+  STARBURST_AMPLITUDE,
+  STARBURST_ARMS,
+  THINGUS_ANGLE,
+  THINGUS_RADIAL,
+  SHIMMER_AMPLITUDE,
+  SHIMMER_FREQUENCY,
+  SHIMMER_SUB_MODE,
+} from './ambience-visualization';
 import {VisualizationConfig} from './visualization';
 
 /** Per-frame multiplier applied to the previous frame. */
@@ -53,172 +84,163 @@ const BATTERY_DECAY: number = 0.978;
 /** Hue rotation per frame, in degrees. */
 const BATTERY_HUE_DRIFT: number = 0.45;
 
-/** Battery - Wave Edge. Waveform trace drawn across the surface. */
+/** Battery - Wave Edge. Waveform trace, drawn through a rotating zoom. */
 export class BatteryWaveEdgeVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Wave Edge',
       category: 'Battery',
-      // Seed only; the displacement is re-rolled on every randomise tick.
-      shift: ShiftMode.Swirl,
+      shift: ShiftMode.Zoom,
       generator: GeneratorMode.WaveEdge,
       decay: BATTERY_DECAY,
       startHue: 200,
       hueDrift: BATTERY_HUE_DRIFT,
-      randomiseDisplacement: true,
+      params: {angleDelta: ZOOM_ANGLE_DELTA, amplitude: ZOOM_RADIAL},
     });
   }
 }
 
-/** Battery - Spectrum Edge. Frequency spectrum rising from the bottom edge. */
+/** Battery - Spectrum Edge. Spectrum rising from the bottom edge, through concentric spinning rings. */
 export class BatterySpectrumEdgeVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Spectrum Edge',
       category: 'Battery',
-      // Seed only; the displacement is re-rolled on every randomise tick.
-      shift: ShiftMode.Swirl,
+      shift: ShiftMode.RingSpin,
       generator: GeneratorMode.SpectrumEdge,
       decay: BATTERY_DECAY,
       startHue: 20,
       hueDrift: BATTERY_HUE_DRIFT,
-      randomiseDisplacement: true,
+      params: {angleDelta: RINGSPIN_ANGLE_DELTA, frequency: RINGSPIN_RING_WIDTH},
     });
   }
 }
 
-/** Battery - Circle Waveform. Waveform wrapped around a circle. */
+/** Battery - Circle Waveform. Waveform wrapped around a circle, through a sine ripple. */
 export class BatteryCircleWaveformVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Circle Waveform',
       category: 'Battery',
-      // Seed only; the displacement is re-rolled on every randomise tick.
       shift: ShiftMode.Swirl,
       generator: GeneratorMode.CircleWaveform,
       decay: BATTERY_DECAY,
       startHue: 280,
       hueDrift: BATTERY_HUE_DRIFT,
-      randomiseDisplacement: true,
+      params: {amplitude: SWIRL_AMPLITUDE, frequency: SWIRL_FREQUENCY},
     });
   }
 }
 
-/** Battery - Edge Gradiant. Amplitude-modulated gradient banked against an edge. */
+/** Battery - Edge Gradiant. Gradient banked against an edge, sheared away from that edge. */
 export class BatteryEdgeGradiantVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Edge Gradiant',
       category: 'Battery',
-      // Seed only; the displacement is re-rolled on every randomise tick.
-      shift: ShiftMode.Swirl,
+      shift: ShiftMode.EdgeFalloff,
       generator: GeneratorMode.EdgeGradiant,
       decay: BATTERY_DECAY,
       startHue: 340,
       hueDrift: BATTERY_HUE_DRIFT,
-      randomiseDisplacement: true,
+      params: {amplitude: EDGEFALLOFF_STRENGTH, subMode: EDGEFALLOFF_EDGE},
     });
   }
 }
 
-/** Battery - Cos Edge Gradiant. Edge gradient with a cosine ripple along it. */
+/** Battery - Cos Edge Gradiant. Rippled edge gradient, through a trigonometric perturbation. */
 export class BatteryCosEdgeGradiantVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Cos Edge Gradiant',
       category: 'Battery',
-      // Seed only; the displacement is re-rolled on every randomise tick.
-      shift: ShiftMode.Swirl,
+      shift: ShiftMode.Trig,
       generator: GeneratorMode.CosEdgeGradiant,
       decay: BATTERY_DECAY,
       startHue: 300,
       hueDrift: BATTERY_HUE_DRIFT,
-      randomiseDisplacement: true,
+      params: {angleDelta: TRIG_ANGLE_DELTA, amplitude: TRIG_AMPLITUDE, subMode: TRIG_SUB_MODE},
     });
   }
 }
 
-/** Battery - Edge Trace. Thin rectified trace hugging the bottom edge. */
+/** Battery - Edge Trace. Rectified trace hugging the bottom edge, drifting diagonally. */
 export class BatteryEdgeTraceVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Edge Trace',
       category: 'Battery',
-      // Seed only; the displacement is re-rolled on every randomise tick.
-      shift: ShiftMode.Swirl,
+      shift: ShiftMode.Linear,
       generator: GeneratorMode.EdgeTrace,
       decay: BATTERY_DECAY,
       startHue: 150,
       hueDrift: BATTERY_HUE_DRIFT,
-      randomiseDisplacement: true,
+      params: {driftX: LINEAR_DRIFT_X, driftY: LINEAR_DRIFT_Y},
     });
   }
 }
 
-/** Battery - Dot Plane. Grid of dots sized by spectral magnitude. */
+/** Battery - Dot Plane. Grid of dots sized by the spectrum, wrapped into repeating tiles. */
 export class BatteryDotPlaneVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Dot Plane',
       category: 'Battery',
-      // Seed only; the displacement is re-rolled on every randomise tick.
-      shift: ShiftMode.Swirl,
+      shift: ShiftMode.Tile,
       generator: GeneratorMode.DotPlane,
       decay: BATTERY_DECAY,
       startHue: 90,
       hueDrift: BATTERY_HUE_DRIFT,
-      randomiseDisplacement: true,
+      params: {amplitude: TILE_SIZE},
     });
   }
 }
 
-/** Battery - JDar. Radar sweep whose angle accumulates with the low bins. */
+/** Battery - JDar. Radar sweep driven by the low bins, through radial arms. */
 export class BatteryJDarVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'JDar',
       category: 'Battery',
-      // Seed only; the displacement is re-rolled on every randomise tick.
-      shift: ShiftMode.Swirl,
+      shift: ShiftMode.Starburst,
       generator: GeneratorMode.JDar,
       decay: BATTERY_DECAY,
       startHue: 120,
       hueDrift: BATTERY_HUE_DRIFT,
-      randomiseDisplacement: true,
+      params: {angleDelta: STARBURST_ANGLE_DELTA, amplitude: STARBURST_AMPLITUDE,
+        frequency: STARBURST_ARMS},
     });
   }
 }
 
-/** Battery - Galaxy. Spiral arms about the centre, brightened by the spectrum. */
+/** Battery - Galaxy. Spiral arms brightened by the spectrum, offset in angle and radius. */
 export class BatteryGalaxyVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Galaxy',
       category: 'Battery',
-      // Seed only; the displacement is re-rolled on every randomise tick.
-      shift: ShiftMode.Swirl,
+      shift: ShiftMode.Thingus,
       generator: GeneratorMode.Galaxy,
       decay: BATTERY_DECAY,
       startHue: 240,
       hueDrift: BATTERY_HUE_DRIFT,
-      randomiseDisplacement: true,
+      params: {amplitude: THINGUS_ANGLE, frequency: THINGUS_RADIAL},
     });
   }
 }
 
-/** Battery - Jiggy Scribble. Wandering scribble whose path jitters with the waveform. */
+/** Battery - Jiggy Scribble. Wandering scribble jittered by the waveform, through a sine shimmer. */
 export class BatteryJiggyScribbleVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Jiggy Scribble',
       category: 'Battery',
-      // Seed only; the displacement is re-rolled on every randomise tick.
-      shift: ShiftMode.Swirl,
+      shift: ShiftMode.SinShimmer,
       generator: GeneratorMode.JiggyScribble,
       decay: BATTERY_DECAY,
       startHue: 40,
       hueDrift: BATTERY_HUE_DRIFT,
-      randomiseDisplacement: true,
+      params: {amplitude: SHIMMER_AMPLITUDE, frequency: SHIMMER_FREQUENCY, subMode: SHIMMER_SUB_MODE},
     });
   }
 }

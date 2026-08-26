@@ -68,7 +68,7 @@
  */
 
 import {WebGLVisualization, VisualizationConfig} from './visualization';
-import {DEGREES_FULL_CIRCLE, MS_PER_SECOND, RGB_MAX, TWO_PI} from './visualization-constants';
+import {DEGREES_FULL_CIRCLE, RGB_MAX, TWO_PI} from './visualization-constants';
 
 // ============================================================================
 // Surface
@@ -108,88 +108,99 @@ const DECAY_FAST: number = 0.95;
 // ============================================================================
 // Displacement parameters
 //
-// Every range below is taken from the corresponding class's randomise method.
-// The engine seeds `u = rand() / 32767` and scales it, so the spans and biases
-// are the literal constants those methods multiply and subtract.
+// Each visualization carries one fixed parameter set rather than drawing fresh
+// values on a timer, so a given entry always looks the same.
+//
+// The engine itself randomises: each displacement class has a randomise method
+// that seeds `u = rand() / 32767` and scales it. Those methods are what the
+// ranges quoted below come from, and every value here sits inside the range it
+// quotes - so these are points the original could itself have drawn, just held
+// still instead of redrawn every few seconds.
 // ============================================================================
 
-/** Modulus of the linear drift draw, per axis: rand() % 6 - 3. */
-const LINEAR_DRIFT_MODULUS: number = 6;
+/** Zoom: angle advance per frame. Engine range u * 0.1 - 0.05 radians. */
+export const ZOOM_ANGLE_DELTA: number = 0.02;
 
-/** Bias subtracted from the linear drift draw, giving [-3, +2] pixels. */
-const LINEAR_DRIFT_BIAS: number = 3;
+/** Zoom: radial scale. Engine range u * 0.2 - 0.1. */
+export const ZOOM_RADIAL: number = 0.025;
 
-/** Span of the shared angular delta draw: u * 0.1 - 0.05. */
-const ANGLE_SPAN: number = 0.1;
+/** Ring Spin: angle advance per ring index. Engine range +/- 0.05 radians. */
+export const RINGSPIN_ANGLE_DELTA: number = 0.03;
 
-/** Bias of the shared angular delta draw, giving [-0.05, +0.05] radians. */
-const ANGLE_BIAS: number = 0.05;
+/** Ring Spin: ring width as a fraction of half-height. Engine range u * 0.8. */
+export const RINGSPIN_RING_WIDTH: number = 0.28;
 
-/** Modulus of the swirl amplitude draw: rand() % 20 - 10 pixels. */
-const SWIRL_AMPLITUDE_MODULUS: number = 20;
+/** Stretch: angle advance per frame. Engine range +/- 0.05 radians. */
+export const STRETCH_ANGLE_DELTA: number = 0.012;
 
-/** Bias of the swirl amplitude draw. */
-const SWIRL_AMPLITUDE_BIAS: number = 10;
+/** Stretch: cubic radial coefficient. Engine range u * 0.3. */
+export const STRETCH_CUBIC: number = 0.16;
 
-/** Modulus of the swirl frequency draw: rand() % 24 - 12 cycles. */
-const SWIRL_FREQUENCY_MODULUS: number = 24;
+/** Trig: angle advance per frame. Engine range +/- 0.05 radians. */
+export const TRIG_ANGLE_DELTA: number = 0.02;
 
-/** Bias of the swirl frequency draw. */
-const SWIRL_FREQUENCY_BIAS: number = 12;
+/** Trig: perturbation amplitude. Engine range u * 0.1 - 0.05. */
+export const TRIG_AMPLITUDE: number = 0.03;
 
-/** Span of the zoom radial draw: u * 0.2 - 0.1. */
-const ZOOM_SPAN: number = 0.2;
+/** Trig: which of the three sub-modes to run. Engine range rand() % 3. */
+export const TRIG_SUB_MODE: number = 1;
 
-/** Bias of the zoom radial draw. */
-const ZOOM_BIAS: number = 0.1;
+/** Trig Stretch: angle advance per frame. Engine range +/- 0.05 radians. */
+export const TRIGSTRETCH_ANGLE_DELTA: number = 0.015;
 
-/** Span shared by the starburst, stretch and trig-stretch amplitude draws. */
-const AMPLITUDE_SPAN: number = 0.3;
+/** Trig Stretch: perturbation amplitude. Engine range u * 0.1 - 0.05. */
+export const TRIGSTRETCH_AMPLITUDE: number = 0.028;
 
-/** Modulus of the starburst arm-count draw: rand() % 40. */
-const STARBURST_ARM_MODULUS: number = 40;
+/** Trig Stretch: which sub-mode to run. Engine range rand() % 3. */
+export const TRIGSTRETCH_SUB_MODE: number = 2;
 
-/** Span of the ring-width draw, as a fraction of half the surface height. */
-const RING_SPAN: number = 0.8;
+/** Trig Stretch: cubic radial coefficient. Engine range u * 0.3. */
+export const TRIGSTRETCH_CUBIC: number = 0.14;
 
-/** Span of the tile-size draw, as a fraction of the surface. */
-const TILE_SPAN: number = 0.2;
+/** Thingus: angle offset. Engine range u * 0.8 - 0.4 radians. */
+export const THINGUS_ANGLE: number = 0.22;
 
-/** Span of the trig amplitude draw: u * 0.1 - 0.05. */
-const TRIG_SPAN: number = 0.1;
+/** Thingus: radial offset as a fraction of a quarter width. Engine range u * 0.2. */
+export const THINGUS_RADIAL: number = 0.06;
 
-/** Bias of the trig amplitude draw. */
-const TRIG_BIAS: number = 0.05;
+/** Swirl: ripple amplitude in surface pixels. Engine range rand() % 20 - 10. */
+export const SWIRL_AMPLITUDE: number = 4;
 
-/** Number of trig sub-modes: rand() % 3. */
-const TRIG_MODES: number = 3;
+/** Swirl: ripple frequency in cycles. Engine range rand() % 24 - 12. */
+export const SWIRL_FREQUENCY: number = 3;
 
-/** Span of the shimmer amplitude draw: u * 10 - 5 pixels. */
-const SHIMMER_SPAN: number = 10;
+/** Linear: horizontal drift in pixels per frame. Engine range rand() % 6 - 3. */
+export const LINEAR_DRIFT_X: number = 1;
 
-/** Bias of the shimmer amplitude draw. */
-const SHIMMER_BIAS: number = 5;
+/** Linear: vertical drift in pixels per frame. Engine range rand() % 6 - 3. */
+export const LINEAR_DRIFT_Y: number = -1;
 
-/** Span of the shimmer frequency draw: u * 2. */
-const SHIMMER_FREQUENCY_SPAN: number = 2;
+/** Tile: tile size as a fraction of the surface. Engine range u * 0.2. */
+export const TILE_SIZE: number = 0.12;
 
-/** Number of shimmer sub-modes: rand() % 2. */
-const SHIMMER_MODES: number = 2;
+/** Starburst: angle advance per frame. Engine range +/- 0.05 radians. */
+export const STARBURST_ANGLE_DELTA: number = 0.02;
 
-/** Span of the edge-falloff strength draw: u * 0.1. */
-const EDGE_SPAN: number = 0.1;
+/** Starburst: arm amplitude as a fraction of height. Engine range u * 0.3. */
+export const STARBURST_AMPLITUDE: number = 0.1;
 
-/** Number of edge-falloff sub-modes, one per edge: rand() % 4. */
-const EDGE_MODES: number = 4;
+/** Starburst: number of arms. Engine range rand() % 40. */
+export const STARBURST_ARMS: number = 7;
 
-/** Span of the Thingus angular draw: u * 0.8 - 0.4. */
-const THINGUS_SPAN: number = 0.8;
+/** Edge Falloff: shear strength. Engine range u * 0.1. */
+export const EDGEFALLOFF_STRENGTH: number = 0.045;
 
-/** Bias of the Thingus angular draw. */
-const THINGUS_BIAS: number = 0.4;
+/** Edge Falloff: which edge the shear grows from. Engine range rand() % 4. */
+export const EDGEFALLOFF_EDGE: number = 2;
 
-/** Span of the Thingus radial draw: u * 0.2. */
-const THINGUS_RADIAL_SPAN: number = 0.2;
+/** Shimmer: displacement amplitude in pixels. Engine range u * 10 - 5. */
+export const SHIMMER_AMPLITUDE: number = 2.5;
+
+/** Shimmer: displacement frequency. Engine range u * 2. */
+export const SHIMMER_FREQUENCY: number = 1.2;
+
+/** Shimmer: which of the two sub-modes to run. Engine range rand() % 2. */
+export const SHIMMER_SUB_MODE: number = 0;
 
 // ============================================================================
 // Waveform injection
@@ -234,19 +245,6 @@ const HUE_DRIFT_SLOW: number = 0.2;
 
 /** Moderate hue rotation, in degrees per frame. */
 const HUE_DRIFT_MED: number = 0.55;
-
-// ============================================================================
-// Preset cycling
-// ============================================================================
-
-/** How long each preset is held before advancing, in seconds. */
-const PRESET_HOLD_SECONDS: number = 16;
-
-/** How long each preset is held before advancing, in milliseconds. */
-const PRESET_HOLD_MS: number = PRESET_HOLD_SECONDS * MS_PER_SECOND;
-
-/** Longest frame delta the preset clock will honour, in milliseconds. */
-const PRESET_MAX_DELTA_MS: number = MS_PER_SECOND;
 
 /**
  * The displacement classes implemented in this pass.
@@ -316,11 +314,34 @@ export enum GeneratorMode {
   JiggyScribble = 9,
 }
 
-/** Number of generators, used when drawing a random one. */
-const GENERATOR_COUNT: number = 10;
 
-/** Number of displacements, used when drawing a random one. */
-const SHIFT_COUNT: number = 12;
+/**
+ * The displacement parameters a visualization holds.
+ *
+ * One block serves all twelve displacements; each reads only the fields it
+ * needs, which is why the shader takes five parameter uniforms rather than a
+ * union per class. Omitted fields default to zero, which every displacement
+ * treats as "no contribution".
+ */
+interface ShiftParams {
+  /** Horizontal drift, in surface pixels per frame. Linear only. */
+  readonly driftX?: number;
+
+  /** Vertical drift, in surface pixels per frame. Linear only. */
+  readonly driftY?: number;
+
+  /** General amplitude; meaning varies by displacement. */
+  readonly amplitude?: number;
+
+  /** General frequency, arm count or ring width; meaning varies. */
+  readonly frequency?: number;
+
+  /** Angular advance per frame, in radians. Polar displacements only. */
+  readonly angleDelta?: number;
+
+  /** Sub-mode selector for the displacements that carry one. */
+  readonly subMode?: number;
+}
 
 /**
  * The per-displacement configuration a concrete subclass supplies.
@@ -352,14 +373,8 @@ interface AmbienceSpec {
   /** Category this visualization is grouped under. Defaults to Ambience. */
   readonly category?: string;
 
-  /**
-   * When true, a fresh displacement is drawn at random on every randomise
-   * tick, not just fresh parameters for the existing one.
-   */
-  readonly randomiseDisplacement?: boolean;
-
-  /** When true, a fresh generator is drawn at random on every randomise tick. */
-  readonly randomiseGenerator?: boolean;
+  /** The fixed displacement parameters for this visualization. */
+  readonly params: ShiftParams;
 }
 
 
@@ -648,16 +663,10 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
   public readonly category: string;
 
   /** Which displacement this visualization runs. */
-  private shift: ShiftMode;
+  private readonly shift: ShiftMode;
 
   /** Which source generator draws into the surface. */
-  private generator: GeneratorMode;
-
-  /** Whether a fresh displacement is drawn at random each tick. */
-  private readonly randomiseDisplacement: boolean;
-
-  /** Whether a fresh generator is drawn at random each tick. */
-  private readonly randomiseGenerator: boolean;
+  private readonly generator: GeneratorMode;
 
   /**
    * Accumulated sweep angle, in radians.
@@ -710,12 +719,6 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
   private surfaceWidth: number = 0;
   private surfaceHeight: number = 0;
 
-  /** Milliseconds elapsed since the parameters were last redrawn. */
-  private sinceRandomiseMs: number = 0;
-
-  /** Timestamp of the previous randomise tick, in milliseconds. */
-  private lastRandomiseTickMs: number = performance.now();
-
   /** Current hue of the trace, in degrees. */
   private hue: number;
 
@@ -723,18 +726,19 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
   private bass: number = 0;
 
   /**
-   * Randomised displacement parameters for the running preset.
+   * The displacement parameters, fixed for the life of the visualization.
    *
-   * One generic set covers all twelve displacements; each reads only the
-   * fields it needs, which is why the shader takes five parameter uniforms
-   * rather than a union per class.
+   * The engine redraws these at random whenever a displacement is selected.
+   * Holding them still is a deliberate departure: with one visualization per
+   * displacement there is no selection event to hang a redraw off, and a
+   * timer-driven redraw made a chosen entry change character underneath you.
    */
-  private driftX: number = 0;
-  private driftY: number = 0;
-  private amplitude: number = 0;
-  private frequency: number = 0;
-  private angleDelta: number = 0;
-  private subMode: number = 0;
+  private readonly driftX: number;
+  private readonly driftY: number;
+  private readonly amplitude: number;
+  private readonly frequency: number;
+  private readonly angleDelta: number;
+  private readonly subMode: number;
 
   protected constructor(config: VisualizationConfig, spec: AmbienceSpec) {
     super(config);
@@ -742,15 +746,18 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
     this.category = spec.category ?? 'Ambience';
     this.shift = spec.shift;
     this.generator = spec.generator;
-    this.randomiseDisplacement = spec.randomiseDisplacement === true;
-    this.randomiseGenerator = spec.randomiseGenerator === true;
+    this.driftX = spec.params.driftX ?? 0;
+    this.driftY = spec.params.driftY ?? 0;
+    this.amplitude = spec.params.amplitude ?? 0;
+    this.frequency = spec.params.frequency ?? 0;
+    this.angleDelta = spec.params.angleDelta ?? 0;
+    this.subMode = spec.params.subMode ?? 0;
     this.decay = spec.decay;
     this.hueDrift = spec.hueDrift;
     this.hue = spec.startHue;
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.waveTexels = new Uint8Array(WAVE_TEXTURE_WIDTH * RGBA_STRIDE) as Uint8Array<ArrayBuffer>;
-    this.randomiseShift();
     this.initGL();
   }
 
@@ -933,7 +940,6 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
     this.analyser.getByteFrequencyData(this.freqArray);
 
     this.updateBass();
-    this.maybeRandomise();
     this.uploadWaveform();
 
     this.renderWarpPass();
@@ -956,108 +962,6 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
     // lose angular precision over a long session if it ran away.
     this.sweep = (this.sweep + SWEEP_BASE_RATE + this.bass * SWEEP_BASS_RATE) % TWO_PI;
   }
-
-  /**
-   * Redraws the displacement's parameters on an interval.
-   *
-   * The original randomises a displacement's parameters when it is selected
-   * rather than holding fixed values. Each displacement is its own
-   * visualization here, so there is no selection event to hang that off;
-   * instead the parameters are redrawn periodically, which keeps a single
-   * displacement from settling into one fixed, static field.
-   */
-  private maybeRandomise(): void {
-    const now: number = performance.now();
-    // Clamped so a long stall cannot skip an entire interval in one frame.
-    const deltaMs: number = Math.min(now - this.lastRandomiseTickMs, PRESET_MAX_DELTA_MS);
-    this.lastRandomiseTickMs = now;
-    this.sinceRandomiseMs += deltaMs;
-
-    if (this.sinceRandomiseMs < PRESET_HOLD_MS) return;
-
-    this.sinceRandomiseMs = 0;
-    this.randomiseShift();
-  }
-
-  /**
-   * Draws fresh random parameters for the active displacement.
-   *
-   * Mirrors the randomise method each displacement class implements. The
-   * linear drift in particular follows the original's shape: a small integer
-   * number of pixels per frame on each axis, in an arbitrary direction.
-   */
-  private randomiseShift(): void {
-    const unit: () => number = (): number => Math.random();
-    const pick: (modulus: number) => number =
-      (modulus: number): number => Math.floor(Math.random() * modulus);
-
-
-    if (this.randomiseDisplacement) {
-      this.shift = pick(SHIFT_COUNT) as ShiftMode;
-    }
-    if (this.randomiseGenerator) {
-      this.generator = pick(GENERATOR_COUNT) as GeneratorMode;
-    }
-
-    // Shared across every polar displacement: u * 0.1 - 0.05 radians.
-    this.angleDelta = unit() * ANGLE_SPAN - ANGLE_BIAS;
-    this.driftX = 0;
-    this.driftY = 0;
-    this.amplitude = 0;
-    this.frequency = 0;
-    this.subMode = 0;
-
-    switch (this.shift) {
-      case ShiftMode.Linear:
-        this.driftX = pick(LINEAR_DRIFT_MODULUS) - LINEAR_DRIFT_BIAS;
-        this.driftY = pick(LINEAR_DRIFT_MODULUS) - LINEAR_DRIFT_BIAS;
-        break;
-      case ShiftMode.Swirl:
-        this.amplitude = pick(SWIRL_AMPLITUDE_MODULUS) - SWIRL_AMPLITUDE_BIAS;
-        this.frequency = pick(SWIRL_FREQUENCY_MODULUS) - SWIRL_FREQUENCY_BIAS;
-        break;
-      case ShiftMode.Zoom:
-        this.amplitude = unit() * ZOOM_SPAN - ZOOM_BIAS;
-        break;
-      case ShiftMode.Starburst:
-        this.amplitude = unit() * AMPLITUDE_SPAN;
-        this.frequency = pick(STARBURST_ARM_MODULUS);
-        break;
-      case ShiftMode.RingSpin:
-        this.frequency = unit() * RING_SPAN;
-        break;
-      case ShiftMode.Stretch:
-        this.amplitude = unit() * AMPLITUDE_SPAN;
-        break;
-      case ShiftMode.Tile:
-        this.amplitude = unit() * TILE_SPAN;
-        break;
-      case ShiftMode.Trig:
-        this.amplitude = unit() * TRIG_SPAN - TRIG_BIAS;
-        this.subMode = pick(TRIG_MODES);
-        break;
-      case ShiftMode.TrigStretch:
-        this.amplitude = unit() * TRIG_SPAN - TRIG_BIAS;
-        this.subMode = pick(TRIG_MODES);
-        this.frequency = unit() * AMPLITUDE_SPAN;
-        break;
-      case ShiftMode.SinShimmer:
-        this.amplitude = unit() * SHIMMER_SPAN - SHIMMER_BIAS;
-        this.frequency = unit() * SHIMMER_FREQUENCY_SPAN;
-        this.subMode = pick(SHIMMER_MODES);
-        break;
-      case ShiftMode.EdgeFalloff:
-        this.amplitude = unit() * EDGE_SPAN;
-        this.subMode = pick(EDGE_MODES);
-        break;
-      default:
-        // Thingus
-        this.amplitude = unit() * THINGUS_SPAN - THINGUS_BIAS;
-        this.frequency = unit() * THINGUS_RADIAL_SPAN;
-        break;
-    }
-  }
-
 
   /** Packs the time-domain samples and spectrum into the source texture. */
   private uploadWaveform(): void {
@@ -1196,6 +1100,7 @@ export class AmbienceZoomVisualization extends AmbienceVisualization {
       startHue: 300,
       hueDrift: HUE_DRIFT_MED,
       generator: GeneratorMode.WaveEdge,
+      params: {angleDelta: ZOOM_ANGLE_DELTA, amplitude: ZOOM_RADIAL},
     });
   }
 }
@@ -1211,6 +1116,7 @@ export class AmbienceRingSpinVisualization extends AmbienceVisualization {
       startHue: 160,
       hueDrift: HUE_DRIFT_SLOW,
       generator: GeneratorMode.WaveEdge,
+      params: {angleDelta: RINGSPIN_ANGLE_DELTA, frequency: RINGSPIN_RING_WIDTH},
     });
   }
 }
@@ -1225,6 +1131,7 @@ export class AmbienceStretchVisualization extends AmbienceVisualization {
       startHue: 260,
       hueDrift: HUE_DRIFT_MED,
       generator: GeneratorMode.WaveEdge,
+      params: {angleDelta: STRETCH_ANGLE_DELTA, amplitude: STRETCH_CUBIC},
     });
   }
 }
@@ -1239,6 +1146,7 @@ export class AmbienceTrigVisualization extends AmbienceVisualization {
       startHue: 90,
       hueDrift: HUE_DRIFT_MED,
       generator: GeneratorMode.WaveEdge,
+      params: {angleDelta: TRIG_ANGLE_DELTA, amplitude: TRIG_AMPLITUDE, subMode: TRIG_SUB_MODE},
     });
   }
 }
@@ -1253,6 +1161,8 @@ export class AmbienceTrigStretchVisualization extends AmbienceVisualization {
       startHue: 340,
       hueDrift: HUE_DRIFT_MED,
       generator: GeneratorMode.WaveEdge,
+      params: {angleDelta: TRIGSTRETCH_ANGLE_DELTA, amplitude: TRIGSTRETCH_AMPLITUDE,
+        subMode: TRIGSTRETCH_SUB_MODE, frequency: TRIGSTRETCH_CUBIC},
     });
   }
 }
@@ -1269,6 +1179,7 @@ export class AmbienceThingusVisualization extends AmbienceVisualization {
       startHue: 280,
       hueDrift: HUE_DRIFT_MED,
       generator: GeneratorMode.WaveEdge,
+      params: {amplitude: THINGUS_ANGLE, frequency: THINGUS_RADIAL},
     });
   }
 }
