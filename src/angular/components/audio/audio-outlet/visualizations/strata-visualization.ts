@@ -40,7 +40,7 @@
  */
 
 import {WebGLVisualization, VisualizationConfig} from './visualization';
-import {RGB_MAX} from './visualization-constants';
+import {RGB_MAX, TWO_PI} from './visualization-constants';
 
 // ============================================================================
 // Surface
@@ -77,7 +77,7 @@ const DECAY: number = 0.982;
  * Without this the field stalls completely in silence. Kept small enough that
  * it reads as a drift rather than a spin.
  */
-const BASE_SPIN: number = 0.0015;
+const BASE_SPIN: number = 0.006;
 
 /**
  * Additional rotation per unit of band energy, in radians per frame.
@@ -87,7 +87,7 @@ const BASE_SPIN: number = 0.0015;
  * filaments wind. Raise it and the field shreds; lower it and the bands stay
  * concentric.
  */
-const SHEAR_GAIN: number = 0.055;
+const SHEAR_GAIN: number = 0.09;
 
 /**
  * Outward push per unit of band energy, as a fraction of radius per frame.
@@ -123,10 +123,35 @@ const FREQUENCY_CURVE: number = 1.8;
  * content away before it reaches that ceiling, but not by enough to ignore:
  * raise this much and the field blows out to flat white within a second.
  */
-const INJECT_GAIN: number = 0.05;
+const INJECT_GAIN: number = 0.3;
 
-/** Floor of the angular envelope, so bands are never fully erased in angle. */
-const ANGULAR_FLOOR: number = 0.35;
+/**
+ * Number of injection arms.
+ *
+ * Injection has to be sparse in angle, and persistently so. An earlier version
+ * injected a full disc modulated by the waveform, which looked reasonable
+ * frame by frame but was fatal: the waveform redraws completely every frame,
+ * so averaged over the decay window the field came out rotationally symmetric.
+ * Rotating a rotationally symmetric image produces no visible change, and the
+ * whole effect sat still despite the shear running correctly.
+ *
+ * Arms fix that. Each frame stamps a few radial spokes at a known angle; the
+ * differential rotation then drags their outer ends around faster or slower
+ * than their inner ends, which is what makes them spirals.
+ */
+const ARM_COUNT: number = 3;
+
+/** Angular width of an arm, as a Gaussian variance in radians squared. */
+const ARM_WIDTH: number = 0.015;
+
+/** Base advance of the injection angle per frame, in radians. */
+const SWEEP_BASE: number = 0.008;
+
+/** Additional sweep advance per unit of bass, in radians per frame. */
+const SWEEP_BASS: number = 0.035;
+
+/** Dim disc injected alongside the arms, as a fraction of arm brightness. */
+const DISC_FLOOR: number = 0.1;
 
 /** Radius, as a fraction of half-height, beyond which injection fades out. */
 const INJECT_EDGE: number = 0.98;
@@ -193,6 +218,7 @@ uniform float uAspect;
 uniform float uHue;
 uniform float uBass;
 uniform float uGain;
+uniform float uSweep;
 
 const float TAU = 6.28318531;
 
@@ -241,20 +267,30 @@ vec3 hueToRgb(float hue, float saturation, float value) {
   return value * mix(vec3(1.0), clamp(wrapped - 1.0, 0.0, 1.0), saturation);
 }
 
-/* Injection: band energy at this radius, broken up in angle by the waveform so
-   the shear has structure to act on rather than perfect rings. */
+/* Injection: rotating radial arms, weighted by the band energy at each radius.
+   The arms are the persistent angular structure the shear needs; the disc
+   floor underneath them only supplies colour body. */
 vec3 inject(vec2 uv) {
   vec2 centred = toCentred(uv);
   float radius = length(centred);
   float angle = atan(centred.y, centred.x);
 
   float energy = bandAt(radius);
-  float envelope = ${ANGULAR_FLOOR}
-                 + (1.0 - ${ANGULAR_FLOOR}) * abs(waveformAt(angle / TAU + 0.5) - 0.5) * 2.0;
+
+  /* Distance in angle to the nearest arm, wrapped into one arm's sector. */
+  float sector = TAU / float(${ARM_COUNT});
+  float phase = mod(angle - uSweep, sector);
+  float offset = min(phase, sector - phase);
+  float arm = exp(-(offset * offset) / ${ARM_WIDTH});
+
+  /* The waveform rides along each arm, so they are ragged rather than straight
+     and the shear has fine detail to pull on as well as the arm itself. */
+  float ripple = 0.6 + 0.8 * abs(waveformAt(clamp(radius * 2.0, 0.0, 1.0)) - 0.5) * 2.0;
+
   float edge = 1.0 - smoothstep(${INJECT_EDGE} * 0.5,
                                 (${INJECT_EDGE} + ${INJECT_FEATHER}) * 0.5, radius);
 
-  float amount = energy * energy * envelope * edge * uGain
+  float amount = energy * (arm * ripple + ${DISC_FLOOR}) * edge * uGain
                * (1.0 + uBass * ${BASS_LIFT}) * ${INJECT_GAIN};
 
   float hue = fract(uHue + clamp(radius * 2.0, 0.0, 1.0) * ${HUE_SPAN});
@@ -327,6 +363,14 @@ export class StrataVisualization extends WebGLVisualization {
   /** Smoothed bass level in the range 0 to 1. */
   private bass: number = 0;
 
+  /**
+   * Angle at which the arms are injected, in radians.
+   *
+   * Wrapped each frame: it feeds a shader mod and would lose angular precision
+   * if left to grow across a long session.
+   */
+  private sweep: number = 0;
+
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
@@ -350,7 +394,7 @@ export class StrataVisualization extends WebGLVisualization {
     this.fieldProgram = this.createProgram(VERTEX_SHADER, FIELD_FRAGMENT_SHADER);
     this.presentProgram = this.createProgram(VERTEX_SHADER, PRESENT_FRAGMENT_SHADER);
 
-    for (const key of ['uPrevious', 'uSource', 'uAspect', 'uHue', 'uBass', 'uGain']) {
+    for (const key of ['uPrevious', 'uSource', 'uAspect', 'uHue', 'uBass', 'uGain', 'uSweep']) {
       this.fieldUniforms[key] = gl.getUniformLocation(this.fieldProgram!, key);
     }
     for (const key of ['uSurface', 'uAlpha']) {
@@ -520,6 +564,7 @@ export class StrataVisualization extends WebGLVisualization {
 
     const level: number = (total / bins / RGB_MAX) * this.sensitivityFactor;
     this.bass += (level - this.bass) * BASS_SMOOTHING;
+    this.sweep = (this.sweep + SWEEP_BASE + this.bass * SWEEP_BASS) % TWO_PI;
   }
 
   /** Packs the waveform into red and the spectrum into green. */
@@ -567,6 +612,7 @@ export class StrataVisualization extends WebGLVisualization {
     gl.uniform1f(this.fieldUniforms['uHue'], this.hue);
     gl.uniform1f(this.fieldUniforms['uBass'], this.bass);
     gl.uniform1f(this.fieldUniforms['uGain'], this.sensitivityFactor);
+    gl.uniform1f(this.fieldUniforms['uSweep'], this.sweep);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
