@@ -1185,19 +1185,6 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
 // can build up.
 // ============================================================================
 
-/** Ambience - Swirl. Sine ripple: x displaced by a sine of y, y by a cosine of x. */
-export class AmbienceSwirlVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Swirl',
-      shift: ShiftMode.Swirl,
-      decay: DECAY_SLOW,
-      startHue: 200,
-      hueDrift: HUE_DRIFT_SLOW,
-      generator: GeneratorMode.WaveEdge,
-    });
-  }
-}
 
 /** Ambience - Zoom. Angle advanced and radius scaled about the centre each frame. */
 export class AmbienceZoomVisualization extends AmbienceVisualization {
@@ -1213,19 +1200,6 @@ export class AmbienceZoomVisualization extends AmbienceVisualization {
   }
 }
 
-/** Ambience - Starburst. Radius modulated by sin(arms * angle), scaled by normalised radius. */
-export class AmbienceStarburstVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Starburst',
-      shift: ShiftMode.Starburst,
-      decay: DECAY_SLOW,
-      startHue: 30,
-      hueDrift: HUE_DRIFT_MED,
-      generator: GeneratorMode.WaveEdge,
-    });
-  }
-}
 
 /** Ambience - Ring Spin. Radius split into concentric rings, each rotated by its ring index. */
 export class AmbienceRingSpinVisualization extends AmbienceVisualization {
@@ -1283,33 +1257,7 @@ export class AmbienceTrigStretchVisualization extends AmbienceVisualization {
   }
 }
 
-/** Ambience - Shimmer. Axis-aligned sine displacement, over two sub-modes. */
-export class AmbienceShimmerVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Shimmer',
-      shift: ShiftMode.SinShimmer,
-      decay: DECAY_SLOW,
-      startHue: 180,
-      hueDrift: HUE_DRIFT_SLOW,
-      generator: GeneratorMode.WaveEdge,
-    });
-  }
-}
 
-/** Ambience - Edge Falloff. Shear growing with distance from one of the four edges. */
-export class AmbienceEdgeFalloffVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Edge Falloff',
-      shift: ShiftMode.EdgeFalloff,
-      decay: DECAY_MID,
-      startHue: 45,
-      hueDrift: HUE_DRIFT_SLOW,
-      generator: GeneratorMode.WaveEdge,
-    });
-  }
-}
 
 /** Ambience - Thingus. Angle and radius offset, radius scaled by a quarter of the width. */
 export class AmbienceThingusVisualization extends AmbienceVisualization {
@@ -1325,30 +1273,4 @@ export class AmbienceThingusVisualization extends AmbienceVisualization {
   }
 }
 
-/** Ambience - Tile. Coordinate wrapped, repeating the surface as tiles. */
-export class AmbienceTileVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Tile',
-      shift: ShiftMode.Tile,
-      decay: DECAY_FAST,
-      startHue: 120,
-      hueDrift: HUE_DRIFT_MED,
-      generator: GeneratorMode.WaveEdge,
-    });
-  }
-}
 
-/** Ambience - Linear. Constant random drift of a few pixels per frame on each axis. */
-export class AmbienceLinearVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Linear',
-      shift: ShiftMode.Linear,
-      decay: DECAY_FAST,
-      startHue: 210,
-      hueDrift: HUE_DRIFT_SLOW,
-      generator: GeneratorMode.WaveEdge,
-    });
-  }
-}

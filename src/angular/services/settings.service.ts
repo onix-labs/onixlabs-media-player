@@ -132,7 +132,7 @@ export type LocalSettingKey = keyof VisualizationLocalSettings;
 export interface VisualizationMetadata {
   readonly id: string;
   readonly name: string;
-  readonly category: 'Bars' | 'Waves' | 'Signature' | 'Alchemy' | 'Ambience' | 'Battery' | 'Simple';
+  readonly category: 'Bars' | 'Waves' | 'Signature' | 'Ambience' | 'Battery' | 'Simple';
   readonly applicableSettings: readonly LocalSettingKey[];
 }
 
@@ -442,38 +442,19 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'tunnel', name: 'Plasma', category: 'Waves', applicableSettings: []},
   {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: []},
   {id: 'pulsar', name: 'Pulsar', category: 'Waves', applicableSettings: []},
-  {id: 'blackhole', name: 'Black Hole', category: 'Waves', applicableSettings: []},
   {id: 'particles', name: 'Particles', category: 'Waves', applicableSettings: []},
   // Signature category
   {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
   {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: []},
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
-  // Alchemy category
-  {id: 'alchemy-standard', name: "Standard Render Cycle", category: 'Alchemy', applicableSettings: []},
-  {id: 'alchemy-linearshift', name: "Linear Shift", category: 'Alchemy', applicableSettings: []},
-  {id: 'alchemy-stretchshift', name: "Stretch Shift", category: 'Alchemy', applicableSettings: []},
-  {id: 'alchemy-superstar', name: "SuperStar", category: 'Alchemy', applicableSettings: []},
-  {id: 'alchemy-wonderwave', name: "WonderWave", category: 'Alchemy', applicableSettings: []},
-  {id: 'alchemy-shiftoscope', name: "Shift O' Scope", category: 'Alchemy', applicableSettings: []},
-  {id: 'alchemy-funktional', name: "Funktional", category: 'Alchemy', applicableSettings: []},
-  {id: 'alchemy-blur', name: "Blur", category: 'Alchemy', applicableSettings: []},
-  {id: 'alchemy-switchblur', name: "SwitchBlur", category: 'Alchemy', applicableSettings: []},
-  {id: 'alchemy-shift', name: "Shift", category: 'Alchemy', applicableSettings: []},
-  {id: 'alchemy-bassbounce', name: "Bass Bounce", category: 'Alchemy', applicableSettings: []},
   // Ambience category
-  {id: 'ambience-swirl', name: 'Swirl', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-zoom', name: 'Zoom', category: 'Ambience', applicableSettings: []},
-  {id: 'ambience-starburst', name: 'Starburst', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-ringspin', name: 'Ring Spin', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-stretch', name: 'Stretch', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-trig', name: 'Trig', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-trigstretch', name: 'Trig Stretch', category: 'Ambience', applicableSettings: []},
-  {id: 'ambience-shimmer', name: 'Shimmer', category: 'Ambience', applicableSettings: []},
-  {id: 'ambience-edgefalloff', name: 'Edge Falloff', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-thingus', name: 'Thingus', category: 'Ambience', applicableSettings: []},
-  {id: 'ambience-tile', name: 'Tile', category: 'Ambience', applicableSettings: []},
-  {id: 'ambience-linear', name: 'Linear', category: 'Ambience', applicableSettings: []},
   // Battery category
   {id: 'battery-waveedge', name: 'Wave Edge', category: 'Battery', applicableSettings: []},
   {id: 'battery-spectrumedge', name: 'Spectrum Edge', category: 'Battery', applicableSettings: []},
@@ -574,35 +555,16 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'onix', label: 'Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
   {value: 'pulsar', label: 'Waves : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
-  {value: 'blackhole', label: 'Waves : Black Hole', description: 'Glowing accretion-disk waveform around a black core'},
   // Signature category
   {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
-  // Alchemy category
-  {value: 'alchemy-standard', label: "Alchemy : Standard Render Cycle", description: 'Slow outward creep with a light smear'},
-  {value: 'alchemy-linearshift', label: "Alchemy : Linear Shift", description: 'Constant diagonal translation, no zoom or rotation'},
-  {value: 'alchemy-stretchshift', label: "Alchemy : Stretch Shift", description: 'Anisotropic scaling, wider and shorter each frame'},
-  {value: 'alchemy-superstar', label: "Alchemy : SuperStar", description: 'Rotation and zoom kaleidoscoped into six mirrored arms'},
-  {value: 'alchemy-wonderwave', label: "Alchemy : WonderWave", description: 'Per-scanline displacement rolling like water'},
-  {value: 'alchemy-shiftoscope', label: "Alchemy : Shift O' Scope", description: 'Fast decay with a hard sideways slide'},
-  {value: 'alchemy-funktional', label: "Alchemy : Funktional", description: 'Fast whirl, fast zoom, ripple and heavy smear'},
-  {value: 'alchemy-blur', label: "Alchemy : Blur", description: 'Pure smear with no motion'},
-  {value: 'alchemy-switchblur', label: "Alchemy : SwitchBlur", description: 'Smear with slow rotational drift and a mirrored trace'},
-  {value: 'alchemy-shift', label: "Alchemy : Shift", description: 'The bare translation operation, unsmeared'},
-  {value: 'alchemy-bassbounce', label: "Alchemy : Bass Bounce", description: 'Zoom and amplitude driven hard by the bass'},
   // Ambience category
-  {value: 'ambience-swirl', label: 'Ambience : Swirl', description: 'Sine ripple across both axes'},
   {value: 'ambience-zoom', label: 'Ambience : Zoom', description: 'Rotating zoom about the centre'},
-  {value: 'ambience-starburst', label: 'Ambience : Starburst', description: 'Radial arms modulated by angle'},
   {value: 'ambience-ringspin', label: 'Ambience : Ring Spin', description: 'Concentric rings rotating by index'},
   {value: 'ambience-stretch', label: 'Ambience : Stretch', description: 'Cubic radial distortion'},
   {value: 'ambience-trig', label: 'Ambience : Trig', description: 'Trigonometric angle and radius perturbation'},
   {value: 'ambience-trigstretch', label: 'Ambience : Trig Stretch', description: 'Trigonometric perturbation with cubic stretch'},
-  {value: 'ambience-shimmer', label: 'Ambience : Shimmer', description: 'Axis-aligned sine displacement'},
-  {value: 'ambience-edgefalloff', label: 'Ambience : Edge Falloff', description: 'Shear growing away from one edge'},
   {value: 'ambience-thingus', label: 'Ambience : Thingus', description: 'Offset angle with quarter-width radius scale'},
-  {value: 'ambience-tile', label: 'Ambience : Tile', description: 'Surface wrapped into repeating tiles'},
-  {value: 'ambience-linear', label: 'Ambience : Linear', description: 'Constant drift in a random direction'},
   // Battery category
   {value: 'battery-waveedge', label: 'Battery : Wave Edge', description: 'Waveform trace across the surface'},
   {value: 'battery-spectrumedge', label: 'Battery : Spectrum Edge', description: 'Frequency spectrum rising from the bottom edge'},

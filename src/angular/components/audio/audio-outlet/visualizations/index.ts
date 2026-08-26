@@ -16,8 +16,6 @@
  * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
- * - blackhole: Black Hole - filled glowing accretion-disk waveform around a black core (waves category)
- * - alchemy-*: Alchemy - one visualization per preset in the Windows Media Player Alchemy bank
  * - battery-*: Battery - one visualization per source generator in the Battery bank
  * - ambience-*: Ambience - one visualization per displacement in the Windows Media Player Ambience bank
  *
@@ -36,23 +34,9 @@ export {InfinityVisualization} from './infinity-visualization';
 export {OnixVisualization} from './onix-visualization';
 export {ModernVisualization} from './modern-visualization';
 export {SpotlightVisualization} from './spotlight-visualization';
-export {BlackHoleVisualization} from './black-hole-visualization';
 export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
 export {ParticlesVisualization} from './particles-visualization';
-export {
-  AlchemyStandardRenderCycleVisualization,
-  AlchemyLinearShiftVisualization,
-  AlchemyStretchShiftVisualization,
-  AlchemySuperStarVisualization,
-  AlchemyWonderWaveVisualization,
-  AlchemyShiftOScopeVisualization,
-  AlchemyFunktionalVisualization,
-  AlchemyBlurVisualization,
-  AlchemySwitchBlurVisualization,
-  AlchemyShiftVisualization,
-  AlchemyBassBounceVisualization,
-} from './alchemy-visualization';
 export {
   BatteryWaveEdgeVisualization,
   BatterySpectrumEdgeVisualization,
@@ -66,18 +50,12 @@ export {
   BatteryJiggyScribbleVisualization,
 } from './battery-visualization';
 export {
-  AmbienceSwirlVisualization,
   AmbienceZoomVisualization,
-  AmbienceStarburstVisualization,
   AmbienceRingSpinVisualization,
   AmbienceStretchVisualization,
   AmbienceTrigVisualization,
   AmbienceTrigStretchVisualization,
-  AmbienceShimmerVisualization,
-  AmbienceEdgeFalloffVisualization,
   AmbienceThingusVisualization,
-  AmbienceTileVisualization,
-  AmbienceLinearVisualization,
 } from './ambience-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
@@ -91,23 +69,9 @@ import {InfinityVisualization} from './infinity-visualization';
 import {OnixVisualization} from './onix-visualization';
 import {ModernVisualization} from './modern-visualization';
 import {SpotlightVisualization} from './spotlight-visualization';
-import {BlackHoleVisualization} from './black-hole-visualization';
 import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
 import {ParticlesVisualization} from './particles-visualization';
-import {
-  AlchemyStandardRenderCycleVisualization,
-  AlchemyLinearShiftVisualization,
-  AlchemyStretchShiftVisualization,
-  AlchemySuperStarVisualization,
-  AlchemyWonderWaveVisualization,
-  AlchemyShiftOScopeVisualization,
-  AlchemyFunktionalVisualization,
-  AlchemyBlurVisualization,
-  AlchemySwitchBlurVisualization,
-  AlchemyShiftVisualization,
-  AlchemyBassBounceVisualization,
-} from './alchemy-visualization';
 import {
   BatteryWaveEdgeVisualization,
   BatterySpectrumEdgeVisualization,
@@ -121,18 +85,12 @@ import {
   BatteryJiggyScribbleVisualization,
 } from './battery-visualization';
 import {
-  AmbienceSwirlVisualization,
   AmbienceZoomVisualization,
-  AmbienceStarburstVisualization,
   AmbienceRingSpinVisualization,
   AmbienceStretchVisualization,
   AmbienceTrigVisualization,
   AmbienceTrigStretchVisualization,
-  AmbienceShimmerVisualization,
-  AmbienceEdgeFalloffVisualization,
   AmbienceThingusVisualization,
-  AmbienceTileVisualization,
-  AmbienceLinearVisualization,
 } from './ambience-visualization';
 
 /**
@@ -150,19 +108,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   onix: OnixVisualization,
   modern: ModernVisualization,
   spotlight: SpotlightVisualization,
-  blackhole: BlackHoleVisualization,
   particles: ParticlesVisualization,
-  'alchemy-standard': AlchemyStandardRenderCycleVisualization,
-  'alchemy-linearshift': AlchemyLinearShiftVisualization,
-  'alchemy-stretchshift': AlchemyStretchShiftVisualization,
-  'alchemy-superstar': AlchemySuperStarVisualization,
-  'alchemy-wonderwave': AlchemyWonderWaveVisualization,
-  'alchemy-shiftoscope': AlchemyShiftOScopeVisualization,
-  'alchemy-funktional': AlchemyFunktionalVisualization,
-  'alchemy-blur': AlchemyBlurVisualization,
-  'alchemy-switchblur': AlchemySwitchBlurVisualization,
-  'alchemy-shift': AlchemyShiftVisualization,
-  'alchemy-bassbounce': AlchemyBassBounceVisualization,
   'battery-waveedge': BatteryWaveEdgeVisualization,
   'battery-spectrumedge': BatterySpectrumEdgeVisualization,
   'battery-circlewaveform': BatteryCircleWaveformVisualization,
@@ -173,18 +119,12 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   'battery-jdar': BatteryJDarVisualization,
   'battery-galaxy': BatteryGalaxyVisualization,
   'battery-jiggyscribble': BatteryJiggyScribbleVisualization,
-  'ambience-swirl': AmbienceSwirlVisualization,
   'ambience-zoom': AmbienceZoomVisualization,
-  'ambience-starburst': AmbienceStarburstVisualization,
   'ambience-ringspin': AmbienceRingSpinVisualization,
   'ambience-stretch': AmbienceStretchVisualization,
   'ambience-trig': AmbienceTrigVisualization,
   'ambience-trigstretch': AmbienceTrigStretchVisualization,
-  'ambience-shimmer': AmbienceShimmerVisualization,
-  'ambience-edgefalloff': AmbienceEdgeFalloffVisualization,
   'ambience-thingus': AmbienceThingusVisualization,
-  'ambience-tile': AmbienceTileVisualization,
-  'ambience-linear': AmbienceLinearVisualization,
   blank: BlankVisualization,
   logo: LogoVisualization,
 };
@@ -204,19 +144,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   onix: {name: 'Onix', category: 'Waves'},
   modern: {name: 'Modern', category: 'Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
-  blackhole: {name: 'Black Hole', category: 'Waves'},
   particles: {name: 'Particles', category: 'Waves'},
-  'alchemy-standard': {name: "Standard Render Cycle", category: 'Alchemy'},
-  'alchemy-linearshift': {name: "Linear Shift", category: 'Alchemy'},
-  'alchemy-stretchshift': {name: "Stretch Shift", category: 'Alchemy'},
-  'alchemy-superstar': {name: "SuperStar", category: 'Alchemy'},
-  'alchemy-wonderwave': {name: "WonderWave", category: 'Alchemy'},
-  'alchemy-shiftoscope': {name: "Shift O' Scope", category: 'Alchemy'},
-  'alchemy-funktional': {name: "Funktional", category: 'Alchemy'},
-  'alchemy-blur': {name: "Blur", category: 'Alchemy'},
-  'alchemy-switchblur': {name: "SwitchBlur", category: 'Alchemy'},
-  'alchemy-shift': {name: "Shift", category: 'Alchemy'},
-  'alchemy-bassbounce': {name: "Bass Bounce", category: 'Alchemy'},
   'battery-waveedge': {name: 'Wave Edge', category: 'Battery'},
   'battery-spectrumedge': {name: 'Spectrum Edge', category: 'Battery'},
   'battery-circlewaveform': {name: 'Circle Waveform', category: 'Battery'},
@@ -227,18 +155,12 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   'battery-jdar': {name: 'JDar', category: 'Battery'},
   'battery-galaxy': {name: 'Galaxy', category: 'Battery'},
   'battery-jiggyscribble': {name: 'Jiggy Scribble', category: 'Battery'},
-  'ambience-swirl': {name: 'Swirl', category: 'Ambience'},
   'ambience-zoom': {name: 'Zoom', category: 'Ambience'},
-  'ambience-starburst': {name: 'Starburst', category: 'Ambience'},
   'ambience-ringspin': {name: 'Ring Spin', category: 'Ambience'},
   'ambience-stretch': {name: 'Stretch', category: 'Ambience'},
   'ambience-trig': {name: 'Trig', category: 'Ambience'},
   'ambience-trigstretch': {name: 'Trig Stretch', category: 'Ambience'},
-  'ambience-shimmer': {name: 'Shimmer', category: 'Ambience'},
-  'ambience-edgefalloff': {name: 'Edge Falloff', category: 'Ambience'},
   'ambience-thingus': {name: 'Thingus', category: 'Ambience'},
-  'ambience-tile': {name: 'Tile', category: 'Ambience'},
-  'ambience-linear': {name: 'Linear', category: 'Ambience'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
@@ -276,9 +198,8 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  *
  * Categories (in order):
  * - Bars: bars
- * - Waves: waveform, modern, tunnel, infinity, neon, onix, pulsar, blackhole
+ * - Waves: waveform, modern, tunnel, infinity, neon, onix, particles, pulsar
  * - Signature: spotlight, water (Reactor)
- * - Alchemy: one entry per preset in the Alchemy bank
  * - Ambience: one entry per displacement in the Ambience bank
  * - Battery: one entry per source generator, each rolling its displacement
  * - Simple: blank, logo
@@ -287,13 +208,11 @@ export const VISUALIZATION_TYPES: string[] = [
   // Bars
   'bars',
   // Waves
-  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'particles', 'pulsar', 'blackhole',
+  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'particles', 'pulsar',
   // Signature
   'spotlight', 'water',
-  // Alchemy
-  'alchemy-standard', 'alchemy-linearshift', 'alchemy-stretchshift', 'alchemy-superstar', 'alchemy-wonderwave', 'alchemy-shiftoscope', 'alchemy-funktional', 'alchemy-blur', 'alchemy-switchblur', 'alchemy-shift', 'alchemy-bassbounce',
-  // Ambience
-  'ambience-swirl', 'ambience-zoom', 'ambience-starburst', 'ambience-ringspin', 'ambience-stretch', 'ambience-trig', 'ambience-trigstretch', 'ambience-shimmer', 'ambience-edgefalloff', 'ambience-thingus', 'ambience-tile', 'ambience-linear',
+    // Ambience
+  'ambience-zoom', 'ambience-ringspin', 'ambience-stretch', 'ambience-trig', 'ambience-trigstretch', 'ambience-thingus',
   // Battery
   'battery-waveedge', 'battery-spectrumedge', 'battery-circlewaveform', 'battery-edgegradiant', 'battery-cosedgegradiant', 'battery-edgetrace', 'battery-dotplane', 'battery-jdar', 'battery-galaxy', 'battery-jiggyscribble',
   // Simple
