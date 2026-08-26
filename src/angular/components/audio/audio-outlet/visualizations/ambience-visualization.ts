@@ -30,19 +30,33 @@
  * either a per-pixel ImageData loop every frame or a strip decomposition that
  * cannot express arbitrary fields.
  *
- * This pass implements the engine plus four displacements, each modelled on
- * one of the classes in the original bank:
+ * All twelve displacements from the original bank are implemented here, named
+ * for the classes they model:
  *
- * - Linear    a constant random drift, a few pixels per frame on each axis
- * - Swirl     angle rotated in proportion to radius
- * - Zoom      radius scaled, drawing content toward or away from the centre
- * - Starburst radius modulated sinusoidally by angle, producing arms
+ * - Linear       constant random drift, a few pixels per frame on each axis
+ * - Swirl        sine ripple: x displaced by sin of y, y by cos of x
+ * - Zoom         angle advanced and radius scaled about the centre
+ * - Starburst    radius modulated by sin(arms * angle), scaled by radius
+ * - RingSpin     radius split into rings, each rotated by its ring index
+ * - Stretch      cubic radial distortion in normalised radius
+ * - Tile         coordinate wrapped, repeating the surface as tiles
+ * - Trig         three sub-modes perturbing angle or radius trigonometrically
+ * - TrigStretch  Trig composed with the cubic radial distortion
+ * - SinShimmer   axis-aligned sine displacement, two sub-modes
+ * - EdgeFalloff  shear growing with distance from one of the four edges
+ * - Thingus      angle and radius offset, radius scaled by a quarter width
  *
- * The original ships fourteen named presets over twelve displacement classes,
- * so presets evidently compose or parameterise displacements rather than
- * mapping one-to-one. Only three names tie to a class with certainty (Swirl,
- * Falloff, Thingus), so the presets below are named for the displacement they
- * exercise rather than guessing at the shipping names.
+ * Note the shader works in *pixel* space rather than normalised space. That is
+ * deliberate: the parameter ranges below are the literal constants recovered
+ * from each class's randomise method, and they are expressed in pixels and in
+ * fractions of the surface dimensions. Working in pixels lets them transfer
+ * without rescaling, at the cost of two extra multiplies per fragment.
+ *
+ * The original ships fourteen named presets over these twelve classes, and
+ * several classes carry sub-modes of their own, so presets parameterise
+ * displacements rather than mapping one-to-one. Only three shipping names tie
+ * to a class with certainty (Swirl, Falloff, Thingus), so presets here are
+ * named for the displacement they exercise rather than guessing.
  *
  * Technical details:
  * - Ping-pong framebuffer pair at a fixed internal resolution, upscaled to the
@@ -54,7 +68,7 @@
  */
 
 import {WebGLVisualization, VisualizationConfig} from './visualization';
-import {DEGREES_FULL_CIRCLE, MS_PER_SECOND, HALF, RGB_MAX} from './visualization-constants';
+import {DEGREES_FULL_CIRCLE, MS_PER_SECOND, RGB_MAX} from './visualization-constants';
 
 // ============================================================================
 // Surface
@@ -93,45 +107,89 @@ const DECAY_FAST: number = 0.95;
 
 // ============================================================================
 // Displacement parameters
+//
+// Every range below is taken from the corresponding class's randomise method.
+// The engine seeds `u = rand() / 32767` and scales it, so the spans and biases
+// are the literal constants those methods multiply and subtract.
 // ============================================================================
 
-/**
- * Bound on the per-frame linear drift, in surface pixels.
- *
- * The original draws this from a small integer range on each axis, giving a
- * drift of a few pixels per frame in an arbitrary direction.
- */
-const LINEAR_DRIFT_RANGE: number = 3;
+/** Modulus of the linear drift draw, per axis: rand() % 6 - 3. */
+const LINEAR_DRIFT_MODULUS: number = 6;
 
-/** Minimum swirl strength, in radians of rotation per unit radius. */
-const SWIRL_MIN: number = 0.35;
+/** Bias subtracted from the linear drift draw, giving [-3, +2] pixels. */
+const LINEAR_DRIFT_BIAS: number = 3;
 
-/** Maximum swirl strength, in radians of rotation per unit radius. */
-const SWIRL_MAX: number = 1.6;
+/** Span of the shared angular delta draw: u * 0.1 - 0.05. */
+const ANGLE_SPAN: number = 0.1;
 
-/** Strongest inward zoom per frame (radius sampled from further out). */
-const ZOOM_IN_MAX: number = 1.035;
+/** Bias of the shared angular delta draw, giving [-0.05, +0.05] radians. */
+const ANGLE_BIAS: number = 0.05;
 
-/** Strongest outward zoom per frame. */
-const ZOOM_OUT_MAX: number = 0.975;
+/** Modulus of the swirl amplitude draw: rand() % 20 - 10 pixels. */
+const SWIRL_AMPLITUDE_MODULUS: number = 20;
 
-/** Fewest arms on the starburst displacement. */
-const ARMS_MIN: number = 3;
+/** Bias of the swirl amplitude draw. */
+const SWIRL_AMPLITUDE_BIAS: number = 10;
 
-/** Most arms on the starburst displacement. */
-const ARMS_MAX: number = 9;
+/** Modulus of the swirl frequency draw: rand() % 24 - 12 cycles. */
+const SWIRL_FREQUENCY_MODULUS: number = 24;
 
-/** Minimum radial amplitude of the starburst arms, in normalised units. */
-const ARM_AMPLITUDE_MIN: number = 0.004;
+/** Bias of the swirl frequency draw. */
+const SWIRL_FREQUENCY_BIAS: number = 12;
 
-/** Maximum radial amplitude of the starburst arms, in normalised units. */
-const ARM_AMPLITUDE_MAX: number = 0.018;
+/** Span of the zoom radial draw: u * 0.2 - 0.1. */
+const ZOOM_SPAN: number = 0.2;
 
-/** Minimum constant angular drift, in radians per frame. */
-const SPIN_MIN: number = -0.012;
+/** Bias of the zoom radial draw. */
+const ZOOM_BIAS: number = 0.1;
 
-/** Maximum constant angular drift, in radians per frame. */
-const SPIN_MAX: number = 0.012;
+/** Span shared by the starburst, stretch and trig-stretch amplitude draws. */
+const AMPLITUDE_SPAN: number = 0.3;
+
+/** Modulus of the starburst arm-count draw: rand() % 40. */
+const STARBURST_ARM_MODULUS: number = 40;
+
+/** Span of the ring-width draw, as a fraction of half the surface height. */
+const RING_SPAN: number = 0.8;
+
+/** Span of the tile-size draw, as a fraction of the surface. */
+const TILE_SPAN: number = 0.2;
+
+/** Span of the trig amplitude draw: u * 0.1 - 0.05. */
+const TRIG_SPAN: number = 0.1;
+
+/** Bias of the trig amplitude draw. */
+const TRIG_BIAS: number = 0.05;
+
+/** Number of trig sub-modes: rand() % 3. */
+const TRIG_MODES: number = 3;
+
+/** Span of the shimmer amplitude draw: u * 10 - 5 pixels. */
+const SHIMMER_SPAN: number = 10;
+
+/** Bias of the shimmer amplitude draw. */
+const SHIMMER_BIAS: number = 5;
+
+/** Span of the shimmer frequency draw: u * 2. */
+const SHIMMER_FREQUENCY_SPAN: number = 2;
+
+/** Number of shimmer sub-modes: rand() % 2. */
+const SHIMMER_MODES: number = 2;
+
+/** Span of the edge-falloff strength draw: u * 0.1. */
+const EDGE_SPAN: number = 0.1;
+
+/** Number of edge-falloff sub-modes, one per edge: rand() % 4. */
+const EDGE_MODES: number = 4;
+
+/** Span of the Thingus angular draw: u * 0.8 - 0.4. */
+const THINGUS_SPAN: number = 0.8;
+
+/** Bias of the Thingus angular draw. */
+const THINGUS_BIAS: number = 0.4;
+
+/** Span of the Thingus radial draw: u * 0.2. */
+const THINGUS_RADIAL_SPAN: number = 0.2;
 
 // ============================================================================
 // Waveform injection
@@ -193,12 +251,28 @@ const PRESET_MAX_DELTA_MS: number = MS_PER_SECOND;
 enum ShiftMode {
   /** Constant random drift on both axes. */
   Linear = 0,
-  /** Angle rotated in proportion to radius. */
+  /** Sine ripple: x displaced by sin of y, y by cos of x. */
   Swirl = 1,
-  /** Radius scaled about the centre. */
+  /** Angle advanced, radius scaled about the centre. */
   Zoom = 2,
-  /** Radius modulated sinusoidally by angle. */
+  /** Radius modulated by sin(arms * angle). */
   Starburst = 3,
+  /** Concentric rings, each rotated by its ring index. */
+  RingSpin = 4,
+  /** Cubic radial distortion. */
+  Stretch = 5,
+  /** Coordinate wrapped into repeating tiles. */
+  Tile = 6,
+  /** Trigonometric perturbation of angle or radius, three sub-modes. */
+  Trig = 7,
+  /** Trig composed with the cubic radial distortion. */
+  TrigStretch = 8,
+  /** Axis-aligned sine displacement, two sub-modes. */
+  SinShimmer = 9,
+  /** Shear growing with distance from one of the four edges. */
+  EdgeFalloff = 10,
+  /** Angle and radius offset, radius scaled by a quarter width. */
+  Thingus = 11,
 }
 
 /** A preset: which displacement to run, and the look wrapped around it. */
@@ -219,12 +293,26 @@ interface AmbiencePreset {
   readonly hueDrift: number;
 }
 
-/** The preset table. */
+/**
+ * The preset table - one entry per displacement class.
+ *
+ * The decay and hue treatment are chosen per displacement so that each reads
+ * clearly: aggressive warps get a faster decay so the trace stays legible,
+ * gentle ones get long trails to let structure build up.
+ */
 const PRESETS: readonly AmbiencePreset[] = [
   {name: 'Swirl', shift: ShiftMode.Swirl, decay: DECAY_SLOW, startHue: 200, hueDrift: HUE_DRIFT_SLOW},
   {name: 'Zoom', shift: ShiftMode.Zoom, decay: DECAY_MID, startHue: 300, hueDrift: HUE_DRIFT_MED},
   {name: 'Starburst', shift: ShiftMode.Starburst, decay: DECAY_SLOW, startHue: 30, hueDrift: HUE_DRIFT_MED},
-  {name: 'Linear', shift: ShiftMode.Linear, decay: DECAY_FAST, startHue: 120, hueDrift: HUE_DRIFT_SLOW},
+  {name: 'Ring Spin', shift: ShiftMode.RingSpin, decay: DECAY_SLOW, startHue: 160, hueDrift: HUE_DRIFT_SLOW},
+  {name: 'Stretch', shift: ShiftMode.Stretch, decay: DECAY_MID, startHue: 260, hueDrift: HUE_DRIFT_MED},
+  {name: 'Trig', shift: ShiftMode.Trig, decay: DECAY_SLOW, startHue: 90, hueDrift: HUE_DRIFT_MED},
+  {name: 'Trig Stretch', shift: ShiftMode.TrigStretch, decay: DECAY_MID, startHue: 340, hueDrift: HUE_DRIFT_MED},
+  {name: 'Shimmer', shift: ShiftMode.SinShimmer, decay: DECAY_SLOW, startHue: 180, hueDrift: HUE_DRIFT_SLOW},
+  {name: 'Edge Falloff', shift: ShiftMode.EdgeFalloff, decay: DECAY_MID, startHue: 45, hueDrift: HUE_DRIFT_SLOW},
+  {name: 'Thingus', shift: ShiftMode.Thingus, decay: DECAY_SLOW, startHue: 280, hueDrift: HUE_DRIFT_MED},
+  {name: 'Tile', shift: ShiftMode.Tile, decay: DECAY_FAST, startHue: 120, hueDrift: HUE_DRIFT_MED},
+  {name: 'Linear', shift: ShiftMode.Linear, decay: DECAY_FAST, startHue: 210, hueDrift: HUE_DRIFT_SLOW},
 ];
 
 /** Vertex shader shared by both passes: a full-screen triangle pair. */
@@ -257,46 +345,128 @@ varying vec2 vUv;
 
 uniform sampler2D uPrevious;
 uniform sampler2D uWaveform;
-uniform float uAspect;
+uniform vec2  uSize;
 uniform float uDecay;
 uniform int   uShift;
-uniform vec2  uLinear;
-uniform float uSwirl;
-uniform float uZoom;
-uniform float uArms;
-uniform float uArmAmplitude;
-uniform float uSpin;
+uniform int   uSubMode;
+uniform vec2  uDrift;
+uniform float uAmplitude;
+uniform float uFrequency;
+uniform float uAngleDelta;
 uniform vec3  uTraceColor;
 uniform float uWaveAmplitude;
 
-/* Centre the coordinate and correct for aspect, so circles stay circular. */
-vec2 toCentred(vec2 uv) {
-  return vec2((uv.x - 0.5) * uAspect, uv.y - 0.5);
+/* The original multiplies by a literal 6.28 rather than a precise tau. Keeping
+   the same approximation keeps the recovered frequency ranges honest. */
+const float TAU_APPROX = 6.28;
+
+vec2 surfaceCentre() {
+  return uSize * 0.5;
 }
 
-vec2 fromCentred(vec2 c) {
-  return vec2(c.x / uAspect + 0.5, c.y + 0.5);
+/* Matches the engine's shared helper: the delta is centre-minus-point. */
+void toPolar(vec2 p, out float angle, out float radius) {
+  vec2 delta = surfaceCentre() - p;
+  angle = atan(delta.y, delta.x);
+  radius = length(delta);
 }
 
-vec2 applyShift(vec2 uv) {
+vec2 fromPolar(float angle, float radius) {
+  return surfaceCentre() - vec2(cos(angle), sin(angle)) * radius;
+}
+
+vec2 applyShift(vec2 p) {
+  vec2 origin = p;
+
   if (uShift == 0) {
-    return uv + uLinear;
+    return p + uDrift;
   }
-
-  vec2 centred = toCentred(uv);
-  float radius = length(centred);
-  float angle = atan(centred.y, centred.x);
 
   if (uShift == 1) {
-    angle += uSwirl * radius;
-  } else if (uShift == 2) {
-    radius *= uZoom;
-  } else {
-    radius += uArmAmplitude * sin(uArms * angle);
-    angle += uSpin;
+    /* Sine ripple. Both axes read the *original* coordinate, as the engine
+       saves x and y before displacing either. */
+    p.x += sin(uFrequency * TAU_APPROX / uSize.y * origin.y) * uAmplitude;
+    p.y += cos(uFrequency * TAU_APPROX / uSize.x * origin.x) * uAmplitude;
+    return p;
   }
 
-  return fromCentred(vec2(cos(angle), sin(angle)) * radius);
+  if (uShift == 6) {
+    float tile = max(uAmplitude * uSize.y, 2.0);
+    return mod(p, tile);
+  }
+
+  if (uShift == 9) {
+    float phase = TAU_APPROX * uFrequency;
+    if (uSubMode == 0) {
+      p.x += sin(origin.y / uSize.y * phase) * uAmplitude;
+    } else {
+      p.y += sin(origin.x / uSize.x * phase) * uAmplitude;
+    }
+    return p;
+  }
+
+  if (uShift == 10) {
+    /* (k + 1) * d - d collapses to k * d; d is the distance to the chosen
+       edge, so the shear grows away from it. */
+    float distance;
+    if (uSubMode == 0) {
+      distance = p.x;
+    } else if (uSubMode == 1) {
+      distance = p.y;
+    } else if (uSubMode == 2) {
+      distance = uSize.x - p.x - 1.0;
+    } else {
+      distance = uSize.y - p.y - 1.0;
+    }
+    float shear = uAmplitude * distance;
+    if (uSubMode == 0 || uSubMode == 2) {
+      p.x -= shear;
+    } else {
+      p.y -= shear;
+    }
+    return p;
+  }
+
+  /* Everything below is a polar perturbation. */
+  float angle;
+  float radius;
+  toPolar(p, angle, radius);
+
+  float halfWidth = max(uSize.x * 0.5, 1.0);
+  float maxRadius = max(length(uSize) * 0.5, 1.0);
+  float normalised = radius / halfWidth;
+
+  if (uShift == 2) {
+    angle += uAngleDelta;
+    radius *= 1.0 + uAmplitude;
+  } else if (uShift == 3) {
+    radius += sin(uFrequency * angle) * normalised * (uSize.y * uAmplitude);
+    angle += uAngleDelta;
+  } else if (uShift == 4) {
+    float ring = max(uSize.y * 0.5 * uFrequency, 1.0);
+    angle += uAngleDelta * floor(radius / ring);
+  } else if (uShift == 5) {
+    radius -= (uSize.y * uAmplitude) * normalised * normalised * normalised;
+    angle += uAngleDelta;
+  } else if (uShift == 7 || uShift == 8) {
+    if (uSubMode == 0) {
+      radius += sin(angle) * uAmplitude * maxRadius;
+    } else if (uSubMode == 1) {
+      angle += sin(radius / maxRadius * TAU_APPROX) * uAmplitude * TAU_APPROX;
+    } else {
+      radius += cos(radius / maxRadius * TAU_APPROX) * uAmplitude * maxRadius;
+    }
+    if (uShift == 8) {
+      radius -= (uSize.y * uFrequency) * normalised * normalised * normalised;
+    }
+    angle += uAngleDelta;
+  } else {
+    /* Thingus */
+    angle += uAmplitude;
+    radius += uFrequency * uSize.x * 0.25;
+  }
+
+  return fromPolar(angle, radius);
 }
 
 /* Distance-based glow around the waveform trace. "sample" is avoided as an
@@ -310,7 +480,7 @@ float waveGlow(vec2 uv) {
 }
 
 void main() {
-  vec2 source = applyShift(vUv);
+  vec2 source = applyShift(vUv * uSize) / uSize;
 
   /* Bounds-checked, matching the original's guarded table lookup: nothing
      bleeds in from outside the surface. */
@@ -397,14 +567,19 @@ export class AmbienceVisualization extends WebGLVisualization {
   /** Smoothed bass level in the range 0 to 1. */
   private bass: number = 0;
 
-  /** Randomised displacement parameters for the running preset. */
-  private linearX: number = 0;
-  private linearY: number = 0;
-  private swirl: number = 0;
-  private zoom: number = 1;
-  private arms: number = 0;
-  private armAmplitude: number = 0;
-  private spin: number = 0;
+  /**
+   * Randomised displacement parameters for the running preset.
+   *
+   * One generic set covers all twelve displacements; each reads only the
+   * fields it needs, which is why the shader takes five parameter uniforms
+   * rather than a union per class.
+   */
+  private driftX: number = 0;
+  private driftY: number = 0;
+  private amplitude: number = 0;
+  private frequency: number = 0;
+  private angleDelta: number = 0;
+  private subMode: number = 0;
 
   public constructor(config: VisualizationConfig) {
     super(config);
@@ -432,8 +607,8 @@ export class AmbienceVisualization extends WebGLVisualization {
     this.blitProgram = this.createProgram(VERTEX_SHADER, BLIT_FRAGMENT_SHADER);
 
     for (const key of [
-      'uPrevious', 'uWaveform', 'uAspect', 'uDecay', 'uShift', 'uLinear',
-      'uSwirl', 'uZoom', 'uArms', 'uArmAmplitude', 'uSpin', 'uTraceColor', 'uWaveAmplitude',
+      'uPrevious', 'uWaveform', 'uSize', 'uDecay', 'uShift', 'uSubMode',
+      'uDrift', 'uAmplitude', 'uFrequency', 'uAngleDelta', 'uTraceColor', 'uWaveAmplitude',
     ]) {
       this.warpUniforms[key] = gl.getUniformLocation(this.warpProgram!, key);
     }
@@ -643,19 +818,71 @@ export class AmbienceVisualization extends WebGLVisualization {
    * number of pixels per frame on each axis, in an arbitrary direction.
    */
   private randomiseShift(): void {
-    const drift: () => number = (): number =>
-      Math.floor(Math.random() * (LINEAR_DRIFT_RANGE * 2)) - LINEAR_DRIFT_RANGE;
-    const between: (min: number, max: number) => number =
-      (min: number, max: number): number => min + Math.random() * (max - min);
+    const unit: () => number = (): number => Math.random();
+    const pick: (modulus: number) => number =
+      (modulus: number): number => Math.floor(Math.random() * modulus);
 
-    this.linearX = drift();
-    this.linearY = drift();
-    this.swirl = between(SWIRL_MIN, SWIRL_MAX) * (Math.random() < HALF ? -1 : 1);
-    this.zoom = Math.random() < HALF ? between(1, ZOOM_IN_MAX) : between(ZOOM_OUT_MAX, 1);
-    this.arms = Math.round(between(ARMS_MIN, ARMS_MAX));
-    this.armAmplitude = between(ARM_AMPLITUDE_MIN, ARM_AMPLITUDE_MAX);
-    this.spin = between(SPIN_MIN, SPIN_MAX);
+    const shift: ShiftMode = PRESETS[this.presetIndex].shift;
+
+    // Shared across every polar displacement: u * 0.1 - 0.05 radians.
+    this.angleDelta = unit() * ANGLE_SPAN - ANGLE_BIAS;
+    this.driftX = 0;
+    this.driftY = 0;
+    this.amplitude = 0;
+    this.frequency = 0;
+    this.subMode = 0;
+
+    switch (shift) {
+      case ShiftMode.Linear:
+        this.driftX = pick(LINEAR_DRIFT_MODULUS) - LINEAR_DRIFT_BIAS;
+        this.driftY = pick(LINEAR_DRIFT_MODULUS) - LINEAR_DRIFT_BIAS;
+        break;
+      case ShiftMode.Swirl:
+        this.amplitude = pick(SWIRL_AMPLITUDE_MODULUS) - SWIRL_AMPLITUDE_BIAS;
+        this.frequency = pick(SWIRL_FREQUENCY_MODULUS) - SWIRL_FREQUENCY_BIAS;
+        break;
+      case ShiftMode.Zoom:
+        this.amplitude = unit() * ZOOM_SPAN - ZOOM_BIAS;
+        break;
+      case ShiftMode.Starburst:
+        this.amplitude = unit() * AMPLITUDE_SPAN;
+        this.frequency = pick(STARBURST_ARM_MODULUS);
+        break;
+      case ShiftMode.RingSpin:
+        this.frequency = unit() * RING_SPAN;
+        break;
+      case ShiftMode.Stretch:
+        this.amplitude = unit() * AMPLITUDE_SPAN;
+        break;
+      case ShiftMode.Tile:
+        this.amplitude = unit() * TILE_SPAN;
+        break;
+      case ShiftMode.Trig:
+        this.amplitude = unit() * TRIG_SPAN - TRIG_BIAS;
+        this.subMode = pick(TRIG_MODES);
+        break;
+      case ShiftMode.TrigStretch:
+        this.amplitude = unit() * TRIG_SPAN - TRIG_BIAS;
+        this.subMode = pick(TRIG_MODES);
+        this.frequency = unit() * AMPLITUDE_SPAN;
+        break;
+      case ShiftMode.SinShimmer:
+        this.amplitude = unit() * SHIMMER_SPAN - SHIMMER_BIAS;
+        this.frequency = unit() * SHIMMER_FREQUENCY_SPAN;
+        this.subMode = pick(SHIMMER_MODES);
+        break;
+      case ShiftMode.EdgeFalloff:
+        this.amplitude = unit() * EDGE_SPAN;
+        this.subMode = pick(EDGE_MODES);
+        break;
+      default:
+        // Thingus
+        this.amplitude = unit() * THINGUS_SPAN - THINGUS_BIAS;
+        this.frequency = unit() * THINGUS_RADIAL_SPAN;
+        break;
+    }
   }
+
 
   /** Packs the time-domain samples into the waveform texture. */
   private uploadWaveform(): void {
@@ -697,19 +924,14 @@ export class AmbienceVisualization extends WebGLVisualization {
     const rgb: {r: number; g: number; b: number} =
       this.hslToRgb(this.hue, TRACE_SATURATION, TRACE_LIGHTNESS);
 
-    gl.uniform1f(this.warpUniforms['uAspect'], this.surfaceWidth / this.surfaceHeight);
+    gl.uniform2f(this.warpUniforms['uSize'], this.surfaceWidth, this.surfaceHeight);
     gl.uniform1f(this.warpUniforms['uDecay'], preset.decay);
     gl.uniform1i(this.warpUniforms['uShift'], preset.shift);
-    gl.uniform2f(
-      this.warpUniforms['uLinear'],
-      this.linearX / this.surfaceWidth,
-      this.linearY / this.surfaceHeight
-    );
-    gl.uniform1f(this.warpUniforms['uSwirl'], this.swirl);
-    gl.uniform1f(this.warpUniforms['uZoom'], this.zoom);
-    gl.uniform1f(this.warpUniforms['uArms'], this.arms);
-    gl.uniform1f(this.warpUniforms['uArmAmplitude'], this.armAmplitude);
-    gl.uniform1f(this.warpUniforms['uSpin'], this.spin);
+    gl.uniform1i(this.warpUniforms['uSubMode'], this.subMode);
+    gl.uniform2f(this.warpUniforms['uDrift'], this.driftX, this.driftY);
+    gl.uniform1f(this.warpUniforms['uAmplitude'], this.amplitude);
+    gl.uniform1f(this.warpUniforms['uFrequency'], this.frequency);
+    gl.uniform1f(this.warpUniforms['uAngleDelta'], this.angleDelta);
     gl.uniform3f(this.warpUniforms['uTraceColor'], rgb.r / RGB_MAX, rgb.g / RGB_MAX, rgb.b / RGB_MAX);
     gl.uniform1f(
       this.warpUniforms['uWaveAmplitude'],
