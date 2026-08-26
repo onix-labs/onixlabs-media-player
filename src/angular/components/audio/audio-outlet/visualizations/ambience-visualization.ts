@@ -1155,19 +1155,5 @@ export class AmbienceTrigStretchVisualization extends AmbienceVisualization {
 
 
 
-/** Ambience - Thingus. Angle and radius offset, radius scaled by a quarter of the width. */
-export class AmbienceThingusVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Thingus',
-      shift: ShiftMode.Thingus,
-      decay: DECAY_SLOW,
-      startHue: 280,
-      hueDrift: HUE_DRIFT_MED,
-      generator: GeneratorMode.WaveEdge,
-      params: {amplitude: THINGUS_ANGLE, frequency: THINGUS_RADIAL},
-    });
-  }
-}
 
 

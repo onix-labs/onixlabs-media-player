@@ -453,7 +453,6 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'ambience-stretch', name: 'Stretch', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-trig', name: 'Trig', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-trigstretch', name: 'Trig Stretch', category: 'Ambience', applicableSettings: []},
-  {id: 'ambience-thingus', name: 'Thingus', category: 'Ambience', applicableSettings: []},
   // Battery category
   {id: 'battery-waveedge', name: 'Wave Edge', category: 'Battery', applicableSettings: []},
   {id: 'battery-spectrumedge', name: 'Spectrum Edge', category: 'Battery', applicableSettings: []},
@@ -562,7 +561,6 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'ambience-stretch', label: 'Ambience : Stretch', description: 'Cubic radial distortion'},
   {value: 'ambience-trig', label: 'Ambience : Trig', description: 'Trigonometric angle and radius perturbation'},
   {value: 'ambience-trigstretch', label: 'Ambience : Trig Stretch', description: 'Trigonometric perturbation with cubic stretch'},
-  {value: 'ambience-thingus', label: 'Ambience : Thingus', description: 'Offset angle with quarter-width radius scale'},
   // Battery category
   {value: 'battery-waveedge', label: 'Battery : Wave Edge', description: 'Waveform trace across the surface'},
   {value: 'battery-spectrumedge', label: 'Battery : Spectrum Edge', description: 'Frequency spectrum rising from the bottom edge'},

@@ -814,7 +814,6 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'ambience-stretch',
   'ambience-trig',
   'ambience-trigstretch',
-  'ambience-thingus',
   'battery-waveedge',
   'battery-spectrumedge',
   'battery-circlewaveform',
