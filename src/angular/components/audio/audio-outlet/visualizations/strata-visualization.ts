@@ -103,6 +103,25 @@ const BREATHE_GAIN: number = 0.012;
 const RADIAL_DRIFT: number = 0.0016;
 
 /**
+ * Fraction of the spectrum the radius is mapped across.
+ *
+ * Without this the corners read the topmost analyser bin, which in most music
+ * is close to silent - so the outermost part of the field stayed dark no
+ * matter what the edge fade did. Mapping the full radius across only the lower
+ * part of the spectrum puts a band with real energy at the corners. Raise it
+ * toward 1.0 for more spectral range at the cost of dark outer corners.
+ */
+const SPECTRUM_SPAN: number = 0.6;
+
+/**
+ * Minimum band energy, so a silent band still lights and still shears.
+ *
+ * Guarantees the arms remain visible right out to the corners during passages
+ * with no high-frequency content, rather than fading out part way.
+ */
+const ENERGY_FLOOR: number = 0.1;
+
+/**
  * Exponent mapping normalised radius to spectrum position.
  *
  * The analyser's bins are linear in frequency, so a direct mapping crushes the
@@ -159,12 +178,11 @@ const DISC_FLOOR: number = 0.1;
  * Radius beyond which injection fades out, as a fraction of the distance from
  * centre to corner.
  *
- * Near 1.0 deliberately: the field is normalised so 1.0 sits at the corners,
- * so this only feathers the very outermost sliver and the disc otherwise fills
- * the view edge to edge. Lowering it pulls the field back into an inscribed
- * circle with dark corners.
+ * At 1.0 the fade begins exactly at the corners, so nothing inside the view is
+ * attenuated at all and the field reaches every pixel. Lowering it pulls the
+ * field back toward an inscribed circle with darkened corners.
  */
-const INJECT_EDGE: number = 0.92;
+const INJECT_EDGE: number = 1.0;
 
 /** Softness of that outer fade, in the same units. */
 const INJECT_FEATHER: number = 0.14;
@@ -260,9 +278,12 @@ float normRadius(float radius) {
   return clamp(radius / maxRadius(), 0.0, 1.0);
 }
 
-/* Curved so the low end of the spectrum gets a usable share of the field. */
+/* Curved so the low end of the spectrum gets a usable share of the field, and
+   spanning only part of the spectrum so the corners land on a band that
+   actually carries energy. Floored so silent bands still light and shear. */
 float bandAt(float normalised) {
-  return spectrumAt(pow(normalised, ${FREQUENCY_CURVE}));
+  float energy = spectrumAt(pow(normalised, ${FREQUENCY_CURVE}) * ${SPECTRUM_SPAN});
+  return max(energy, ${ENERGY_FLOOR});
 }
 
 /* The field. Rotation rate and radial push both vary with the local band. */
