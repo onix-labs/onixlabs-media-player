@@ -39,14 +39,6 @@ export {LogoVisualization} from './logo-visualization';
 export {ParticlesVisualization} from './particles-visualization';
 export {
   BatteryWaveEdgeVisualization,
-  BatterySpectrumEdgeVisualization,
-  BatteryCircleWaveformVisualization,
-  BatteryEdgeGradiantVisualization,
-  BatteryCosEdgeGradiantVisualization,
-  BatteryEdgeTraceVisualization,
-  BatteryDotPlaneVisualization,
-  BatteryJDarVisualization,
-  BatteryGalaxyVisualization,
   BatteryJiggyScribbleVisualization,
 } from './battery-visualization';
 export {
@@ -71,14 +63,6 @@ import {LogoVisualization} from './logo-visualization';
 import {ParticlesVisualization} from './particles-visualization';
 import {
   BatteryWaveEdgeVisualization,
-  BatterySpectrumEdgeVisualization,
-  BatteryCircleWaveformVisualization,
-  BatteryEdgeGradiantVisualization,
-  BatteryCosEdgeGradiantVisualization,
-  BatteryEdgeTraceVisualization,
-  BatteryDotPlaneVisualization,
-  BatteryJDarVisualization,
-  BatteryGalaxyVisualization,
   BatteryJiggyScribbleVisualization,
 } from './battery-visualization';
 import {
@@ -104,14 +88,6 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   spotlight: SpotlightVisualization,
   particles: ParticlesVisualization,
   'battery-waveedge': BatteryWaveEdgeVisualization,
-  'battery-spectrumedge': BatterySpectrumEdgeVisualization,
-  'battery-circlewaveform': BatteryCircleWaveformVisualization,
-  'battery-edgegradiant': BatteryEdgeGradiantVisualization,
-  'battery-cosedgegradiant': BatteryCosEdgeGradiantVisualization,
-  'battery-edgetrace': BatteryEdgeTraceVisualization,
-  'battery-dotplane': BatteryDotPlaneVisualization,
-  'battery-jdar': BatteryJDarVisualization,
-  'battery-galaxy': BatteryGalaxyVisualization,
   'battery-jiggyscribble': BatteryJiggyScribbleVisualization,
   'ambience-zoom': AmbienceZoomVisualization,
   'ambience-stretch': AmbienceStretchVisualization,
@@ -137,14 +113,6 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   spotlight: {name: 'Spotlight', category: 'Signature'},
   particles: {name: 'Particles', category: 'Waves'},
   'battery-waveedge': {name: 'Wave Edge', category: 'Battery'},
-  'battery-spectrumedge': {name: 'Spectrum Edge', category: 'Battery'},
-  'battery-circlewaveform': {name: 'Circle Waveform', category: 'Battery'},
-  'battery-edgegradiant': {name: 'Edge Gradiant', category: 'Battery'},
-  'battery-cosedgegradiant': {name: 'Cos Edge Gradiant', category: 'Battery'},
-  'battery-edgetrace': {name: 'Edge Trace', category: 'Battery'},
-  'battery-dotplane': {name: 'Dot Plane', category: 'Battery'},
-  'battery-jdar': {name: 'JDar', category: 'Battery'},
-  'battery-galaxy': {name: 'Galaxy', category: 'Battery'},
   'battery-jiggyscribble': {name: 'Jiggy Scribble', category: 'Battery'},
   'ambience-zoom': {name: 'Zoom', category: 'Ambience'},
   'ambience-stretch': {name: 'Stretch', category: 'Ambience'},
@@ -202,7 +170,7 @@ export const VISUALIZATION_TYPES: string[] = [
     // Ambience
   'ambience-zoom', 'ambience-stretch', 'ambience-trigstretch',
   // Battery
-  'battery-waveedge', 'battery-spectrumedge', 'battery-circlewaveform', 'battery-edgegradiant', 'battery-cosedgegradiant', 'battery-edgetrace', 'battery-dotplane', 'battery-jdar', 'battery-galaxy', 'battery-jiggyscribble',
+  'battery-waveedge', 'battery-jiggyscribble',
   // Simple
   'blank', 'logo',
 ];

@@ -55,23 +55,6 @@ import {
   GeneratorMode,
   ZOOM_ANGLE_DELTA,
   ZOOM_RADIAL,
-  RINGSPIN_ANGLE_DELTA,
-  RINGSPIN_RING_WIDTH,
-  SWIRL_AMPLITUDE,
-  SWIRL_FREQUENCY,
-  EDGEFALLOFF_STRENGTH,
-  EDGEFALLOFF_EDGE,
-  TRIG_ANGLE_DELTA,
-  TRIG_AMPLITUDE,
-  TRIG_SUB_MODE,
-  LINEAR_DRIFT_X,
-  LINEAR_DRIFT_Y,
-  TILE_SIZE,
-  STARBURST_ANGLE_DELTA,
-  STARBURST_AMPLITUDE,
-  STARBURST_ARMS,
-  THINGUS_ANGLE,
-  THINGUS_RADIAL,
   SHIMMER_AMPLITUDE,
   SHIMMER_FREQUENCY,
   SHIMMER_SUB_MODE,
@@ -100,134 +83,13 @@ export class BatteryWaveEdgeVisualization extends AmbienceVisualization {
   }
 }
 
-/** Battery - Spectrum Edge. Spectrum rising from the bottom edge, through concentric spinning rings. */
-export class BatterySpectrumEdgeVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Spectrum Edge',
-      category: 'Battery',
-      shift: ShiftMode.RingSpin,
-      generator: GeneratorMode.SpectrumEdge,
-      decay: BATTERY_DECAY,
-      startHue: 20,
-      hueDrift: BATTERY_HUE_DRIFT,
-      params: {angleDelta: RINGSPIN_ANGLE_DELTA, frequency: RINGSPIN_RING_WIDTH},
-    });
-  }
-}
 
-/** Battery - Circle Waveform. Waveform wrapped around a circle, through a sine ripple. */
-export class BatteryCircleWaveformVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Circle Waveform',
-      category: 'Battery',
-      shift: ShiftMode.Swirl,
-      generator: GeneratorMode.CircleWaveform,
-      decay: BATTERY_DECAY,
-      startHue: 280,
-      hueDrift: BATTERY_HUE_DRIFT,
-      params: {amplitude: SWIRL_AMPLITUDE, frequency: SWIRL_FREQUENCY},
-    });
-  }
-}
 
-/** Battery - Edge Gradiant. Gradient banked against an edge, sheared away from that edge. */
-export class BatteryEdgeGradiantVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Edge Gradiant',
-      category: 'Battery',
-      shift: ShiftMode.EdgeFalloff,
-      generator: GeneratorMode.EdgeGradiant,
-      decay: BATTERY_DECAY,
-      startHue: 340,
-      hueDrift: BATTERY_HUE_DRIFT,
-      params: {amplitude: EDGEFALLOFF_STRENGTH, subMode: EDGEFALLOFF_EDGE},
-    });
-  }
-}
 
-/** Battery - Cos Edge Gradiant. Rippled edge gradient, through a trigonometric perturbation. */
-export class BatteryCosEdgeGradiantVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Cos Edge Gradiant',
-      category: 'Battery',
-      shift: ShiftMode.Trig,
-      generator: GeneratorMode.CosEdgeGradiant,
-      decay: BATTERY_DECAY,
-      startHue: 300,
-      hueDrift: BATTERY_HUE_DRIFT,
-      params: {angleDelta: TRIG_ANGLE_DELTA, amplitude: TRIG_AMPLITUDE, subMode: TRIG_SUB_MODE},
-    });
-  }
-}
 
-/** Battery - Edge Trace. Rectified trace hugging the bottom edge, drifting diagonally. */
-export class BatteryEdgeTraceVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Edge Trace',
-      category: 'Battery',
-      shift: ShiftMode.Linear,
-      generator: GeneratorMode.EdgeTrace,
-      decay: BATTERY_DECAY,
-      startHue: 150,
-      hueDrift: BATTERY_HUE_DRIFT,
-      params: {driftX: LINEAR_DRIFT_X, driftY: LINEAR_DRIFT_Y},
-    });
-  }
-}
 
-/** Battery - Dot Plane. Grid of dots sized by the spectrum, wrapped into repeating tiles. */
-export class BatteryDotPlaneVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Dot Plane',
-      category: 'Battery',
-      shift: ShiftMode.Tile,
-      generator: GeneratorMode.DotPlane,
-      decay: BATTERY_DECAY,
-      startHue: 90,
-      hueDrift: BATTERY_HUE_DRIFT,
-      params: {amplitude: TILE_SIZE},
-    });
-  }
-}
 
-/** Battery - JDar. Radar sweep driven by the low bins, through radial arms. */
-export class BatteryJDarVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'JDar',
-      category: 'Battery',
-      shift: ShiftMode.Starburst,
-      generator: GeneratorMode.JDar,
-      decay: BATTERY_DECAY,
-      startHue: 120,
-      hueDrift: BATTERY_HUE_DRIFT,
-      params: {angleDelta: STARBURST_ANGLE_DELTA, amplitude: STARBURST_AMPLITUDE,
-        frequency: STARBURST_ARMS},
-    });
-  }
-}
 
-/** Battery - Galaxy. Spiral arms brightened by the spectrum, offset in angle and radius. */
-export class BatteryGalaxyVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Galaxy',
-      category: 'Battery',
-      shift: ShiftMode.Thingus,
-      generator: GeneratorMode.Galaxy,
-      decay: BATTERY_DECAY,
-      startHue: 240,
-      hueDrift: BATTERY_HUE_DRIFT,
-      params: {amplitude: THINGUS_ANGLE, frequency: THINGUS_RADIAL},
-    });
-  }
-}
 
 /** Battery - Jiggy Scribble. Wandering scribble jittered by the waveform, through a sine shimmer. */
 export class BatteryJiggyScribbleVisualization extends AmbienceVisualization {

@@ -454,14 +454,6 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'ambience-trigstretch', name: 'Trig Stretch', category: 'Ambience', applicableSettings: []},
   // Battery category
   {id: 'battery-waveedge', name: 'Wave Edge', category: 'Battery', applicableSettings: []},
-  {id: 'battery-spectrumedge', name: 'Spectrum Edge', category: 'Battery', applicableSettings: []},
-  {id: 'battery-circlewaveform', name: 'Circle Waveform', category: 'Battery', applicableSettings: []},
-  {id: 'battery-edgegradiant', name: 'Edge Gradiant', category: 'Battery', applicableSettings: []},
-  {id: 'battery-cosedgegradiant', name: 'Cos Edge Gradiant', category: 'Battery', applicableSettings: []},
-  {id: 'battery-edgetrace', name: 'Edge Trace', category: 'Battery', applicableSettings: []},
-  {id: 'battery-dotplane', name: 'Dot Plane', category: 'Battery', applicableSettings: []},
-  {id: 'battery-jdar', name: 'JDar', category: 'Battery', applicableSettings: []},
-  {id: 'battery-galaxy', name: 'Galaxy', category: 'Battery', applicableSettings: []},
   {id: 'battery-jiggyscribble', name: 'Jiggy Scribble', category: 'Battery', applicableSettings: []},
   // Simple category
   {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
@@ -561,14 +553,6 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'ambience-trigstretch', label: 'Ambience : Trig Stretch', description: 'Trigonometric perturbation with cubic stretch'},
   // Battery category
   {value: 'battery-waveedge', label: 'Battery : Wave Edge', description: 'Waveform trace across the surface'},
-  {value: 'battery-spectrumedge', label: 'Battery : Spectrum Edge', description: 'Frequency spectrum rising from the bottom edge'},
-  {value: 'battery-circlewaveform', label: 'Battery : Circle Waveform', description: 'Waveform wrapped around a circle'},
-  {value: 'battery-edgegradiant', label: 'Battery : Edge Gradiant', description: 'Amplitude-modulated gradient banked against an edge'},
-  {value: 'battery-cosedgegradiant', label: 'Battery : Cos Edge Gradiant', description: 'Edge gradient with a cosine ripple along it'},
-  {value: 'battery-edgetrace', label: 'Battery : Edge Trace', description: 'Thin rectified trace hugging the bottom edge'},
-  {value: 'battery-dotplane', label: 'Battery : Dot Plane', description: 'Grid of dots sized by spectral magnitude'},
-  {value: 'battery-jdar', label: 'Battery : JDar', description: 'Radar sweep driven by the low bins'},
-  {value: 'battery-galaxy', label: 'Battery : Galaxy', description: 'Spiral arms brightened by the spectrum'},
   {value: 'battery-jiggyscribble', label: 'Battery : Jiggy Scribble', description: 'Wandering scribble jittered by the waveform'},
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},
