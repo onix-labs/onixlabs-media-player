@@ -59,7 +59,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    *
    * Set to 1 to go back to a single uniform rotation.
    */
-  private static readonly TRAIL_RING_COUNT: number = 10;
+  private static readonly TRAIL_RING_COUNT: number = 20;
 
   /**
    * Extra rotation at the outermost ring versus the innermost, in radians per
@@ -104,12 +104,34 @@ export class PulsarVisualization extends Canvas2DVisualization {
   private static readonly RING_CUBIC_PULL: number = 0.008;
 
   /**
+   * Number of ripple cycles spanning the radius.
+   *
+   * More than one, and this is why. At a single cycle there is one crest and
+   * one trough across the whole field, so as the phase drifts the crest sweeps
+   * everything: at one moment most of the visible area is expanding, half a
+   * cycle later most of it is contracting. That reads as the whole scene
+   * sucking in and exploding out rather than as bands travelling through it.
+   *
+   * Several cycles keep expanding and contracting bands on screen at the same
+   * time, so they cancel and only the local motion is left. The residual
+   * breathing falls roughly as one over this value, measured area-weighted
+   * since the outer rings cover most of the pixels:
+   *
+   *   cycles 1  swing 0.0194      cycles 3  swing 0.0067
+   *   cycles 2  swing 0.0099      cycles 4  swing 0.0051
+   *
+   * TRAIL_RING_COUNT has to keep up: below about five rings per cycle the
+   * rings cannot resolve the ripple.
+   */
+  private static readonly RIPPLE_CYCLES: number = 4;
+
+  /**
    * Radians the ripple pattern drifts per frame.
    *
    * Signed so the bands travel outward with the flow rather than against it,
    * and fast enough that no radius sits in the contracting half for long.
    */
-  private static readonly RIPPLE_DRIFT: number = 0.02;
+  private static readonly RIPPLE_DRIFT: number = 0.055;
 
   /**
    * Minimum gap between transients acting, in milliseconds.
@@ -402,7 +424,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
       // Rotation is nearly uniform across rings, as it is there - the variation
       // that matters is radial.
       const ripple: number =
-        Math.cos(across * TWO_PI - this.ripplePhase) * PulsarVisualization.RING_RIPPLE;
+        Math.cos(across * TWO_PI * PulsarVisualization.RIPPLE_CYCLES - this.ripplePhase) * PulsarVisualization.RING_RIPPLE;
       const pull: number =
         PulsarVisualization.RING_CUBIC_PULL * across * across * across;
       const zoom: number = PulsarVisualization.ZOOM_SCALE + ripple - pull;
