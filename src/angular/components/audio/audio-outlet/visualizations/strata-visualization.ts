@@ -106,7 +106,7 @@ const BASE_SPIN: number = 0.006;
  * filaments wind. Raise it and the field shreds; lower it and the bands stay
  * concentric.
  */
-const SHEAR_GAIN: number = 0.09;
+const SHEAR_GAIN: number = 0.05;
 
 /**
  * Outward push per unit of band energy, as a fraction of radius per frame.
@@ -136,7 +136,7 @@ const SPECTRUM_SPAN: number = 0.6;
  * Guarantees the arms remain visible right out to the corners during passages
  * with no high-frequency content, rather than fading out part way.
  */
-const ENERGY_FLOOR: number = 0.1;
+const ENERGY_FLOOR: number = 0.07;
 
 /**
  * Exponent mapping normalised radius to spectrum position.
@@ -161,7 +161,7 @@ const FREQUENCY_CURVE: number = 1.8;
  * content away before it reaches that ceiling, but not by enough to ignore:
  * raise this much and the field blows out to flat white within a second.
  */
-const INJECT_GAIN: number = 0.3;
+const INJECT_GAIN: number = 0.22;
 
 /**
  * Number of injection arms.
@@ -177,7 +177,7 @@ const INJECT_GAIN: number = 0.3;
  * differential rotation then drags their outer ends around faster or slower
  * than their inner ends, which is what makes them spirals.
  */
-const ARM_COUNT: number = 3;
+const ARM_COUNT: number = 2;
 
 /** Angular width of an arm, as a Gaussian variance in radians squared. */
 const ARM_WIDTH: number = 0.015;
@@ -188,8 +188,11 @@ const SWEEP_BASE: number = 0.008;
 /** Additional sweep advance per unit of bass, in radians per frame. */
 const SWEEP_BASS: number = 0.035;
 
+/** How far the waveform bends each arm sideways, in radians. */
+const ARM_WOBBLE: number = 0.4;
+
 /** Dim disc injected alongside the arms, as a fraction of arm brightness. */
-const DISC_FLOOR: number = 0.1;
+const DISC_FLOOR: number = 0.05;
 
 /**
  * Radius beyond which injection fades out, as a fraction of the distance from
@@ -205,11 +208,58 @@ const INJECT_EDGE: number = 1.0;
 const INJECT_FEATHER: number = 0.14;
 
 // ============================================================================
+// Oscilloscope ring
+// ============================================================================
+
+/** Resting radius of the waveform ring, in centre-to-corner units. */
+const SCOPE_BASE: number = 0.42;
+
+/** Radial deflection of the waveform ring at full amplitude. */
+const SCOPE_DEPTH: number = 0.3;
+
+/** Thickness of the ring, as a Gaussian variance in radius squared. */
+const SCOPE_WIDTH: number = 0.0007;
+
+/** How far the bass envelope pushes the ring outward. */
+const SCOPE_BASS_PUSH: number = 0.12;
+
+/** Brightness of the ring relative to the arms. */
+const SCOPE_GAIN: number = 0.6;
+
+/** Hue offset of the ring, in turns, so it reads apart from the field. */
+const SCOPE_HUE_OFFSET: number = 0.45;
+
+// ============================================================================
 // Colour
 // ============================================================================
 
 /** Hue rotation per frame, in turns. Slow, so colour identity persists. */
 const HUE_DRIFT: number = 0.00035;
+
+/**
+ * Hue advance per frame during a burst, in turns.
+ *
+ * Two orders of magnitude above the resting drift: a burst should rip the
+ * whole field through the colour wheel in well under a second, not nudge it.
+ */
+const HUE_BURST_RATE: number = 0.022;
+
+/** How long a burst lasts, in milliseconds. */
+const HUE_BURST_MS: number = 420;
+
+/**
+ * Minimum gap between bursts, in milliseconds.
+ *
+ * Without a refractory period a sustained loud passage retriggers every frame
+ * and the colour never settles, which reads as noise rather than as a beat.
+ */
+const HUE_BURST_REFRACTORY_MS: number = 1300;
+
+/** Bass level above which a burst triggers. */
+const HUE_BURST_THRESHOLD: number = 0.4;
+
+/** Longest frame delta the burst clock will honour, in milliseconds. */
+const BURST_MAX_DELTA_MS: number = 250;
 
 /** Hue span from centre to rim, in turns. */
 const HUE_SPAN: number = 0.62;
@@ -325,9 +375,10 @@ vec3 hueToRgb(float hue, float saturation, float value) {
   return value * mix(vec3(1.0), clamp(wrapped - 1.0, 0.0, 1.0), saturation);
 }
 
-/* Injection: rotating radial arms, weighted by the band energy at each radius.
-   The arms are the persistent angular structure the shear needs; the disc
-   floor underneath them only supplies colour body. */
+/* Injection: rotating radial arms plus an oscilloscope ring. The arms give
+   the shear persistent angular structure; the ring gives it a continuous
+   waveform to wind. Both are bent by the waveform, so neither is ever a clean
+   geometric shape for long. */
 vec3 inject(vec2 uv) {
   vec2 centred = toCentred(uv);
   float radius = length(centred);
@@ -336,23 +387,38 @@ vec3 inject(vec2 uv) {
   float rn = normRadius(radius);
   float energy = bandAt(rn);
 
-  /* Distance in angle to the nearest arm, wrapped into one arm's sector. */
+  /* Arms bend sideways with the waveform sampled along their length, so they
+     read as serpentine filaments rather than straight spokes. */
+  float wobble = (waveformAt(rn) - 0.5) * ${glslFloat(ARM_WOBBLE)};
   float sector = TAU / ${glslFloat(ARM_COUNT)};
-  float phase = mod(angle - uSweep, sector);
+  float phase = mod(angle - uSweep + wobble, sector);
   float offset = min(phase, sector - phase);
   float arm = exp(-(offset * offset) / ${glslFloat(ARM_WIDTH)});
 
-  /* The waveform rides along each arm, so they are ragged rather than straight
-     and the shear has fine detail to pull on as well as the arm itself. */
-  float ripple = 0.6 + 0.8 * abs(waveformAt(rn) - 0.5) * 2.0;
+  float ripple = 0.75 + 0.45 * abs(waveformAt(rn) - 0.5) * 2.0;
 
-  float edge = 1.0 - smoothstep(${glslFloat(INJECT_EDGE)}, ${glslFloat(INJECT_EDGE)} + ${glslFloat(INJECT_FEATHER)}, rn);
+  /* Oscilloscope ring: the waveform wrapped around a circle, riding outward on
+     the bass. The shear winds it like everything else, so what is drawn as a
+     circle becomes a scroll within a second or two. */
+  float scopeLevel = waveformAt(angle / TAU + 0.5);
+  float scopeRadius = ${glslFloat(SCOPE_BASE)}
+                    + uBass * ${glslFloat(SCOPE_BASS_PUSH)}
+                    + (scopeLevel - 0.5) * ${glslFloat(SCOPE_DEPTH)};
+  float scopeOffset = rn - scopeRadius;
+  float scope = exp(-(scopeOffset * scopeOffset) / ${glslFloat(SCOPE_WIDTH)})
+              * ${glslFloat(SCOPE_GAIN)};
 
-  float amount = energy * (arm * ripple + ${glslFloat(DISC_FLOOR)}) * edge * uGain
-               * (1.0 + uBass * ${glslFloat(BASS_LIFT)}) * ${glslFloat(INJECT_GAIN)};
+  float edge = 1.0 - smoothstep(${glslFloat(INJECT_EDGE)},
+                                ${glslFloat(INJECT_EDGE)} + ${glslFloat(INJECT_FEATHER)}, rn);
+  float lift = (1.0 + uBass * ${glslFloat(BASS_LIFT)}) * uGain
+             * ${glslFloat(INJECT_GAIN)} * edge;
 
-  float hue = fract(uHue + rn * ${glslFloat(HUE_SPAN)});
-  return hueToRgb(hue, ${glslFloat(SATURATION)}, amount);
+  float fieldHue = fract(uHue + rn * ${glslFloat(HUE_SPAN)});
+  float scopeHue = fract(fieldHue + ${glslFloat(SCOPE_HUE_OFFSET)});
+
+  return hueToRgb(fieldHue, ${glslFloat(SATURATION)},
+                  energy * (arm * ripple + ${glslFloat(DISC_FLOOR)}) * lift)
+       + hueToRgb(scopeHue, ${glslFloat(SATURATION)}, scope * lift);
 }
 
 void main() {
@@ -420,6 +486,18 @@ export class StrataVisualization extends WebGLVisualization {
 
   /** Smoothed bass level in the range 0 to 1. */
   private bass: number = 0;
+
+  /** Direction the hue currently cycles, +1 or -1. */
+  private hueDirection: number = 1;
+
+  /** Milliseconds remaining in the current hue burst, or 0 when resting. */
+  private burstRemainingMs: number = 0;
+
+  /** Milliseconds since the last burst started. */
+  private sinceBurstMs: number = HUE_BURST_REFRACTORY_MS;
+
+  /** Timestamp of the previous burst tick, in milliseconds. */
+  private lastTickMs: number = performance.now();
 
   /**
    * Angle at which the arms are injected, in radians.
@@ -605,6 +683,7 @@ export class StrataVisualization extends WebGLVisualization {
     this.analyser.getByteFrequencyData(this.freqArray);
 
     this.updateBass();
+    this.updateHue();
     this.uploadSource();
     this.renderFieldPass();
     this.renderPresentPass();
@@ -623,6 +702,42 @@ export class StrataVisualization extends WebGLVisualization {
     const level: number = (total / bins / RGB_MAX) * this.sensitivityFactor;
     this.bass += (level - this.bass) * BASS_SMOOTHING;
     this.sweep = (this.sweep + SWEEP_BASE + this.bass * SWEEP_BASS) % TWO_PI;
+  }
+
+  /**
+   * Advances the hue, in bursts triggered by the bass.
+   *
+   * At rest the hue barely moves, so the field keeps a stable colour identity
+   * long enough to read. When the bass crosses the threshold - and the
+   * refractory period has elapsed, so a loud passage cannot retrigger every
+   * frame - the hue rips through the wheel for a few hundred milliseconds and
+   * then settles again.
+   *
+   * Each burst picks its direction at random, so a run of beats walks the
+   * colour back and forth rather than marching steadily around the wheel and
+   * arriving back where it started.
+   */
+  private updateHue(): void {
+    const now: number = performance.now();
+    const deltaMs: number = Math.min(now - this.lastTickMs, BURST_MAX_DELTA_MS);
+    this.lastTickMs = now;
+    this.sinceBurstMs += deltaMs;
+
+    let rate: number = HUE_DRIFT;
+
+    if (this.burstRemainingMs > 0) {
+      this.burstRemainingMs -= deltaMs;
+      rate = HUE_BURST_RATE;
+    } else if (this.bass >= HUE_BURST_THRESHOLD && this.sinceBurstMs >= HUE_BURST_REFRACTORY_MS) {
+      this.burstRemainingMs = HUE_BURST_MS;
+      this.sinceBurstMs = 0;
+      this.hueDirection = Math.random() < 0.5 ? -1 : 1;
+      rate = HUE_BURST_RATE;
+    }
+
+    // Wrapped into [0, 1) with the sign folded in, so a negative direction does
+    // not leave the hue negative and fract() in the shader stays meaningful.
+    this.hue = (((this.hue + rate * this.hueDirection) % 1) + 1) % 1;
   }
 
   /** Packs the waveform into red and the spectrum into green. */
@@ -663,8 +778,6 @@ export class StrataVisualization extends WebGLVisualization {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.sourceTexture);
     gl.uniform1i(this.fieldUniforms['uSource'], 1);
-
-    this.hue = (this.hue + HUE_DRIFT) % 1;
 
     gl.uniform1f(this.fieldUniforms['uAspect'], this.surfaceWidth / this.surfaceHeight);
     gl.uniform1f(this.fieldUniforms['uHue'], this.hue);
