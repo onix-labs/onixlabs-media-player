@@ -34,7 +34,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'infinity', name: 'Infinity'},
       {id: 'neon', name: 'Neon'},
       {id: 'onix', name: 'Onix'},
-      {id: 'particles', name: 'Particles'},
+      {id: 'hawking', name: 'Hawking'},
       {id: 'pulsar', name: 'Pulsar'},
     ],
   },

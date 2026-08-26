@@ -262,7 +262,7 @@ describe('SettingsManager', () => {
 
     it('should accept all valid visualization types', () => {
       const validTypes: readonly string[] = [
-        'bars', 'waveform', 'tunnel', 'neon', 'pulsar', 'water', 'infinity', 'onix', 'modern', 'spotlight', 'hallucia', 'particles',
+        'bars', 'waveform', 'tunnel', 'neon', 'pulsar', 'water', 'infinity', 'onix', 'modern', 'spotlight', 'hallucia', 'hawking',
         'battery-waveedge',
         'ambience-zoom', 'ambience-stretch', 'ambience-trigstretch', 'blank', 'logo',
       ];

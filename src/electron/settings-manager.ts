@@ -810,7 +810,7 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'modern',
   'spotlight',
   'hallucia',
-  'particles',
+  'hawking',
   'ambience-zoom',
   'ambience-stretch',
   'ambience-trigstretch',

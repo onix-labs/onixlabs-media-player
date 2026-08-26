@@ -442,7 +442,7 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'tunnel', name: 'Plasma', category: 'Waves', applicableSettings: []},
   {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: []},
   {id: 'pulsar', name: 'Pulsar', category: 'Waves', applicableSettings: []},
-  {id: 'particles', name: 'Particles', category: 'Waves', applicableSettings: []},
+  {id: 'hawking', name: 'Hawking', category: 'Waves', applicableSettings: []},
   // Signature category
   {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
@@ -543,6 +543,7 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'infinity', label: 'Waves : Infinity', description: 'Dual orbiting circles with spectrum cycling'},
   {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'onix', label: 'Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
+  {value: 'hawking', label: 'Waves : Hawking', description: 'Spiked circular waveforms emitting particles outward'},
   {value: 'pulsar', label: 'Waves : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
   // Signature category
   {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},

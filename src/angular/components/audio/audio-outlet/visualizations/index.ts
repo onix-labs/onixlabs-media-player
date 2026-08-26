@@ -38,7 +38,7 @@ export {SpotlightVisualization} from './spotlight-visualization';
 export {HalluciaVisualization} from './hallucia-visualization';
 export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
-export {ParticlesVisualization} from './particles-visualization';
+export {HawkingVisualization} from './hawking-visualization';
 export {
   BatteryWaveEdgeVisualization,
 } from './battery-visualization';
@@ -62,7 +62,7 @@ import {SpotlightVisualization} from './spotlight-visualization';
 import {HalluciaVisualization} from './hallucia-visualization';
 import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
-import {ParticlesVisualization} from './particles-visualization';
+import {HawkingVisualization} from './hawking-visualization';
 import {
   BatteryWaveEdgeVisualization,
 } from './battery-visualization';
@@ -88,7 +88,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   modern: ModernVisualization,
   spotlight: SpotlightVisualization,
   hallucia: HalluciaVisualization,
-  particles: ParticlesVisualization,
+  hawking: HawkingVisualization,
   'battery-waveedge': BatteryWaveEdgeVisualization,
   'ambience-zoom': AmbienceZoomVisualization,
   'ambience-stretch': AmbienceStretchVisualization,
@@ -113,7 +113,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   modern: {name: 'Modern', category: 'Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
   hallucia: {name: 'Hallucia', category: 'Signature'},
-  particles: {name: 'Particles', category: 'Waves'},
+  hawking: {name: 'Hawking', category: 'Waves'},
   'battery-waveedge': {name: 'Wave Edge', category: 'Battery'},
   'ambience-zoom': {name: 'Zoom', category: 'Ambience'},
   'ambience-stretch': {name: 'Stretch', category: 'Ambience'},
@@ -155,7 +155,7 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  *
  * Categories (in order):
  * - Bars: bars
- * - Waves: waveform, modern, tunnel, infinity, neon, onix, particles, pulsar
+ * - Waves: waveform, modern, tunnel, infinity, neon, onix, hawking, pulsar
  * - Signature: spotlight, water (Reactor), hallucia
  * - Ambience: one entry per displacement in the Ambience bank
  * - Battery: one entry per source generator, each rolling its displacement
@@ -165,7 +165,7 @@ export const VISUALIZATION_TYPES: string[] = [
   // Bars
   'bars',
   // Waves
-  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'particles', 'pulsar',
+  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'hawking', 'pulsar',
   // Signature
   'spotlight', 'water', 'hallucia',
     // Ambience
