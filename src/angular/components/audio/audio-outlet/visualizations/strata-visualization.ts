@@ -91,22 +91,31 @@ const RGBA_STRIDE: number = 4;
 const DECAY: number = 0.982;
 
 /**
- * Rotation applied at every radius regardless of audio, in radians per frame.
+ * Bulk rotation applied at every radius, in radians per frame.
  *
- * Without this the field stalls completely in silence. Kept small enough that
- * it reads as a drift rather than a spin.
+ * Zero deliberately. A rotation that is equal at every radius contributes no
+ * shear and therefore no structure - all it does is turn the whole field,
+ * which reads as spinning. The differential term below is what makes the
+ * effect; this only ever added spin on top of it.
  */
-const BASE_SPIN: number = 0.006;
+const BASE_SPIN: number = 0;
 
 /**
- * Additional rotation per unit of band energy, in radians per frame.
+ * Rotation per unit of band energy *relative to the frame's mean*, in radians
+ * per frame.
  *
- * This is the parameter that matters: it sets how much *difference* there is
+ * This is the parameter that matters: it sets how much difference there is
  * between the fastest and slowest radius, and therefore how tightly the
  * filaments wind. Raise it and the field shreds; lower it and the bands stay
  * concentric.
+ *
+ * The subtraction of the mean is what keeps the field from spinning. Band
+ * energy is never negative, so rotating by energy alone gives every radius a
+ * push in the same direction and the whole field drifts round. Measuring each
+ * band against the mean instead makes loud bands turn one way and quiet bands
+ * the other, so there is shear everywhere and net rotation near zero.
  */
-const SHEAR_GAIN: number = 0.05;
+const SHEAR_GAIN: number = 0.09;
 
 /**
  * Outward push per unit of band energy, as a fraction of radius per frame.
@@ -182,11 +191,17 @@ const ARM_COUNT: number = 2;
 /** Angular width of an arm, as a Gaussian variance in radians squared. */
 const ARM_WIDTH: number = 0.015;
 
-/** Base advance of the injection angle per frame, in radians. */
-const SWEEP_BASE: number = 0.008;
+/**
+ * Base advance of the injection angle per frame, in radians.
+ *
+ * Zero deliberately: arms are pinned in place and let the shear bend them,
+ * rather than orbiting. Orbiting arms read as spinning even when the field
+ * underneath them is not. Set non-zero to reintroduce the sweep.
+ */
+const SWEEP_BASE: number = 0;
 
 /** Additional sweep advance per unit of bass, in radians per frame. */
-const SWEEP_BASS: number = 0.035;
+const SWEEP_BASS: number = 0;
 
 /** How far the waveform bends each arm sideways, in radians. */
 const ARM_WOBBLE: number = 0.4;
@@ -277,6 +292,15 @@ const BASS_BIN_COUNT: number = 24;
 /** Smoothing applied to the bass envelope, per frame. */
 const BASS_SMOOTHING: number = 0.2;
 
+/**
+ * Smoothing applied to the shear pivot, per frame.
+ *
+ * Slower than the bass envelope on purpose: the pivot decides which bands turn
+ * which way, so letting it react quickly would flip the field's direction on
+ * every transient.
+ */
+const PIVOT_SMOOTHING: number = 0.05;
+
 /** Extra brightness contributed by the bass envelope. */
 const BASS_LIFT: number = 0.7;
 
@@ -314,6 +338,7 @@ uniform float uHue;
 uniform float uBass;
 uniform float uGain;
 uniform float uSweep;
+uniform float uPivot;
 
 const float TAU = 6.28318531;
 
@@ -361,8 +386,10 @@ vec2 applyField(vec2 uv) {
 
   float energy = bandAt(normRadius(radius));
 
-  /* Sampling from behind in angle makes content appear to rotate forward. */
-  angle -= ${glslFloat(BASE_SPIN)} + energy * ${glslFloat(SHEAR_GAIN)};
+  /* Sampling from behind in angle makes content appear to rotate forward. The
+     pivot is the frame's mean band energy, so bands above it turn one way and
+     bands below turn the other and the field does not drift as a whole. */
+  angle -= ${glslFloat(BASE_SPIN)} + (energy - uPivot) * ${glslFloat(SHEAR_GAIN)};
 
   /* Reading from a smaller radius pushes content outward. */
   radius *= 1.0 - energy * ${glslFloat(BREATHE_GAIN)} + ${glslFloat(RADIAL_DRIFT)};
@@ -487,6 +514,16 @@ export class StrataVisualization extends WebGLVisualization {
   /** Smoothed bass level in the range 0 to 1. */
   private bass: number = 0;
 
+  /**
+   * Smoothed mean band energy across the mapped part of the spectrum.
+   *
+   * Used as the zero point for the shear, so the field counter-rotates about
+   * the frame's own average rather than drifting bodily. Smoothed so that a
+   * transient does not swing the pivot and momentarily reverse the whole
+   * field.
+   */
+  private pivot: number = 0;
+
   /** Direction the hue currently cycles, +1 or -1. */
   private hueDirection: number = 1;
 
@@ -530,7 +567,7 @@ export class StrataVisualization extends WebGLVisualization {
     this.fieldProgram = this.createProgram(VERTEX_SHADER, FIELD_FRAGMENT_SHADER);
     this.presentProgram = this.createProgram(VERTEX_SHADER, PRESENT_FRAGMENT_SHADER);
 
-    for (const key of ['uPrevious', 'uSource', 'uAspect', 'uHue', 'uBass', 'uGain', 'uSweep']) {
+    for (const key of ['uPrevious', 'uSource', 'uAspect', 'uHue', 'uBass', 'uGain', 'uSweep', 'uPivot']) {
       this.fieldUniforms[key] = gl.getUniformLocation(this.fieldProgram!, key);
     }
     for (const key of ['uSurface', 'uAlpha']) {
@@ -701,6 +738,16 @@ export class StrataVisualization extends WebGLVisualization {
 
     const level: number = (total / bins / RGB_MAX) * this.sensitivityFactor;
     this.bass += (level - this.bass) * BASS_SMOOTHING;
+
+    // Mean over the part of the spectrum the radius actually maps across, so
+    // the pivot matches what the field is showing rather than the whole range.
+    const mapped: number = Math.max(1, Math.floor(this.freqArray.length * SPECTRUM_SPAN));
+    let sum: number = 0;
+    for (let i: number = 0; i < mapped; i++) {
+      sum += this.freqArray[i];
+    }
+    const mean: number = Math.max(sum / mapped / RGB_MAX, ENERGY_FLOOR);
+    this.pivot += (mean - this.pivot) * PIVOT_SMOOTHING;
     this.sweep = (this.sweep + SWEEP_BASE + this.bass * SWEEP_BASS) % TWO_PI;
   }
 
@@ -784,6 +831,7 @@ export class StrataVisualization extends WebGLVisualization {
     gl.uniform1f(this.fieldUniforms['uBass'], this.bass);
     gl.uniform1f(this.fieldUniforms['uGain'], this.sensitivityFactor);
     gl.uniform1f(this.fieldUniforms['uSweep'], this.sweep);
+    gl.uniform1f(this.fieldUniforms['uPivot'], this.pivot);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
