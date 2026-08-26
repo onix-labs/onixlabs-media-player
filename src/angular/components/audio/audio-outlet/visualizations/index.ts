@@ -52,7 +52,6 @@ export {
 export {
   AmbienceZoomVisualization,
   AmbienceStretchVisualization,
-  AmbienceTrigVisualization,
   AmbienceTrigStretchVisualization,
 } from './ambience-visualization';
 
@@ -85,7 +84,6 @@ import {
 import {
   AmbienceZoomVisualization,
   AmbienceStretchVisualization,
-  AmbienceTrigVisualization,
   AmbienceTrigStretchVisualization,
 } from './ambience-visualization';
 
@@ -117,7 +115,6 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   'battery-jiggyscribble': BatteryJiggyScribbleVisualization,
   'ambience-zoom': AmbienceZoomVisualization,
   'ambience-stretch': AmbienceStretchVisualization,
-  'ambience-trig': AmbienceTrigVisualization,
   'ambience-trigstretch': AmbienceTrigStretchVisualization,
   blank: BlankVisualization,
   logo: LogoVisualization,
@@ -151,7 +148,6 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   'battery-jiggyscribble': {name: 'Jiggy Scribble', category: 'Battery'},
   'ambience-zoom': {name: 'Zoom', category: 'Ambience'},
   'ambience-stretch': {name: 'Stretch', category: 'Ambience'},
-  'ambience-trig': {name: 'Trig', category: 'Ambience'},
   'ambience-trigstretch': {name: 'Trig Stretch', category: 'Ambience'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
@@ -204,7 +200,7 @@ export const VISUALIZATION_TYPES: string[] = [
   // Signature
   'spotlight', 'water',
     // Ambience
-  'ambience-zoom', 'ambience-stretch', 'ambience-trig', 'ambience-trigstretch',
+  'ambience-zoom', 'ambience-stretch', 'ambience-trigstretch',
   // Battery
   'battery-waveedge', 'battery-spectrumedge', 'battery-circlewaveform', 'battery-edgegradiant', 'battery-cosedgegradiant', 'battery-edgetrace', 'battery-dotplane', 'battery-jdar', 'battery-galaxy', 'battery-jiggyscribble',
   // Simple

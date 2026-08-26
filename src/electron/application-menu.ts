@@ -50,7 +50,6 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     items: [
       {id: 'ambience-zoom', name: 'Zoom'},
       {id: 'ambience-stretch', name: 'Stretch'},
-      {id: 'ambience-trig', name: 'Trig'},
       {id: 'ambience-trigstretch', name: 'Trig Stretch'},
     ],
   },

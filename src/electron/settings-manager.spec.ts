@@ -264,7 +264,7 @@ describe('SettingsManager', () => {
       const validTypes: readonly string[] = [
         'bars', 'waveform', 'tunnel', 'neon', 'pulsar', 'water', 'infinity', 'onix', 'modern', 'spotlight', 'particles',
         'battery-waveedge', 'battery-spectrumedge', 'battery-circlewaveform', 'battery-edgegradiant', 'battery-cosedgegradiant', 'battery-edgetrace', 'battery-dotplane', 'battery-jdar', 'battery-galaxy', 'battery-jiggyscribble',
-        'ambience-zoom', 'ambience-stretch', 'ambience-trig', 'ambience-trigstretch', 'blank', 'logo',
+        'ambience-zoom', 'ambience-stretch', 'ambience-trigstretch', 'blank', 'logo',
       ];
 
       for (const vizType of validTypes) {

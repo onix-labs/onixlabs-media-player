@@ -812,7 +812,6 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'particles',
   'ambience-zoom',
   'ambience-stretch',
-  'ambience-trig',
   'ambience-trigstretch',
   'battery-waveedge',
   'battery-spectrumedge',

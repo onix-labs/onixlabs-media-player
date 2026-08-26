@@ -451,7 +451,6 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   // Ambience category
   {id: 'ambience-zoom', name: 'Zoom', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-stretch', name: 'Stretch', category: 'Ambience', applicableSettings: []},
-  {id: 'ambience-trig', name: 'Trig', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-trigstretch', name: 'Trig Stretch', category: 'Ambience', applicableSettings: []},
   // Battery category
   {id: 'battery-waveedge', name: 'Wave Edge', category: 'Battery', applicableSettings: []},
@@ -559,7 +558,6 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   // Ambience category
   {value: 'ambience-zoom', label: 'Ambience : Zoom', description: 'Rotating zoom about the centre'},
   {value: 'ambience-stretch', label: 'Ambience : Stretch', description: 'Cubic radial distortion'},
-  {value: 'ambience-trig', label: 'Ambience : Trig', description: 'Trigonometric angle and radius perturbation'},
   {value: 'ambience-trigstretch', label: 'Ambience : Trig Stretch', description: 'Trigonometric perturbation with cubic stretch'},
   // Battery category
   {value: 'battery-waveedge', label: 'Battery : Wave Edge', description: 'Waveform trace across the surface'},
