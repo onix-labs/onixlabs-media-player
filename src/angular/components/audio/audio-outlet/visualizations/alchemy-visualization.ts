@@ -25,21 +25,25 @@
  *
  * Crucially the original is *one* warp driven by a parameter block, not a set
  * of hand-written effects; its named presets are just different parameter
- * values. This implementation keeps that design, so presets are pure data and
- * can be interpolated into one another during transitions.
+ * values. This implementation keeps that design: the engine lives in an
+ * abstract base and each preset is a small subclass supplying only its
+ * parameter block.
+ *
+ * The eleven presets below are the ones the original registers, read from its
+ * string table (ids 101-110 and 115). The twelfth entry it lists, "Random", is
+ * a cycler rather than a preset and so has no counterpart here.
  *
  * Technical details:
  * - Ping-pong pair of low-resolution offscreen surfaces for the feedback path
  * - Per-row displacement applied as horizontal strips (a scanline warp that an
  *   affine transform cannot express)
  * - Additive scope rendering with rotational divisions and optional mirroring
- * - Presets auto-advance, with numeric parameters eased between them
  *
  * @module app/components/audio/audio-outlet/visualizations/alchemy-visualization
  */
 
 import {Canvas2DVisualization, VisualizationConfig} from './visualization';
-import {TWO_PI, HALF, RGB_MID, DEGREES_FULL_CIRCLE, MS_PER_SECOND} from './visualization-constants';
+import {TWO_PI, HALF, RGB_MID, DEGREES_FULL_CIRCLE} from './visualization-constants';
 
 // ============================================================================
 // Surface
@@ -252,19 +256,6 @@ const RADIAL_BASE_RADIUS: number = 0.22;
 /** Additional radial deflection, as a fraction of the smaller axis. */
 const RADIAL_WAVE_DEPTH: number = 0.3;
 
-// ============================================================================
-// Preset cycling
-// ============================================================================
-
-/** How long each preset is held before advancing, in seconds. */
-const PRESET_HOLD_SECONDS: number = 14;
-
-/** How long each preset is held before advancing, in milliseconds. */
-const PRESET_HOLD_MS: number = PRESET_HOLD_SECONDS * MS_PER_SECOND;
-
-/** How long the numeric blend between two presets takes, in milliseconds. */
-const PRESET_BLEND_MS: number = 3 * MS_PER_SECOND;
-
 /**
  * The numeric half of a preset.
  *
@@ -320,10 +311,10 @@ interface AlchemyParams {
 type ScopeMode = 'linear' | 'radial';
 
 /**
- * A complete preset: a parameter block plus the discrete choices that cannot
- * be meaningfully interpolated and so switch outright at a transition.
+ * A complete preset: the parameter block plus the discrete choices that go
+ * with it. Supplied by each concrete subclass through the constructor.
  */
-interface AlchemyPreset {
+interface AlchemySpec {
   /** Display name, matching the preset it is modelled on. */
   readonly name: string;
 
@@ -343,177 +334,6 @@ interface AlchemyPreset {
   readonly params: AlchemyParams;
 }
 
-/**
- * The preset table.
- *
- * These are modelled on the seven cycles the original engine ships with. The
- * names are kept because they describe what each one does; the values are
- * tuned by eye for this renderer, whose surface size, frame pacing and
- * compositing differ from the original's.
- */
-const PRESETS: readonly AlchemyPreset[] = [
-  {
-    name: 'Standard Render Cycle',
-    scope: 'linear',
-    divisions: 1,
-    mirrored: false,
-    startHue: 200,
-    params: {
-      falloff: FALLOFF_MID,
-      scale: SCALE_CREEP_OUT,
-      stretchX: STRETCH_EVEN,
-      stretchY: STRETCH_EVEN,
-      spin: SPIN_STILL,
-      xShift: SHIFT_STILL,
-      yShift: SHIFT_STILL,
-      ocean: OCEAN_FLAT,
-      sinLoops: LOOPS_LONG,
-      sinShake: SHAKE_CALM,
-      smear: SMEAR_SOFT,
-      bassJump: BASS_JUMP_SOFT,
-      bassFlex: BASS_FLEX_CALM,
-      hueDrift: HUE_DRIFT_SLOW,
-    },
-  },
-  {
-    name: 'Linear Shift',
-    scope: 'linear',
-    divisions: 1,
-    mirrored: false,
-    startHue: 120,
-    params: {
-      falloff: FALLOFF_MID,
-      scale: SCALE_HOLD,
-      stretchX: STRETCH_EVEN,
-      stretchY: STRETCH_EVEN,
-      spin: SPIN_STILL,
-      xShift: SHIFT_NUDGE,
-      yShift: -SHIFT_NUDGE,
-      ocean: OCEAN_FLAT,
-      sinLoops: LOOPS_LONG,
-      sinShake: SHAKE_CALM,
-      smear: SMEAR_NONE,
-      bassJump: BASS_JUMP_NONE,
-      bassFlex: BASS_FLEX_CALM,
-      hueDrift: HUE_DRIFT_MED,
-    },
-  },
-  {
-    name: 'Stretch Shift',
-    scope: 'linear',
-    divisions: 2,
-    mirrored: false,
-    startHue: 300,
-    params: {
-      falloff: FALLOFF_LOW,
-      scale: SCALE_HOLD,
-      stretchX: STRETCH_WIDE,
-      stretchY: STRETCH_NARROW,
-      spin: SPIN_STILL,
-      xShift: SHIFT_STILL,
-      yShift: SHIFT_NUDGE,
-      ocean: OCEAN_FLAT,
-      sinLoops: LOOPS_LONG,
-      sinShake: SHAKE_CALM,
-      smear: SMEAR_SOFT,
-      bassJump: BASS_JUMP_SOFT,
-      bassFlex: BASS_FLEX_WILD,
-      hueDrift: HUE_DRIFT_MED,
-    },
-  },
-  {
-    name: 'SuperStar',
-    scope: 'radial',
-    divisions: 6,
-    mirrored: true,
-    startHue: 240,
-    params: {
-      falloff: FALLOFF_LOW,
-      scale: SCALE_OUT,
-      stretchX: STRETCH_EVEN,
-      stretchY: STRETCH_EVEN,
-      spin: SPIN_TURN,
-      xShift: SHIFT_STILL,
-      yShift: SHIFT_STILL,
-      ocean: OCEAN_FLAT,
-      sinLoops: LOOPS_LONG,
-      sinShake: SHAKE_CALM,
-      smear: SMEAR_NONE,
-      bassJump: BASS_JUMP_HARD,
-      bassFlex: BASS_FLEX_WILD,
-      hueDrift: HUE_DRIFT_FAST,
-    },
-  },
-  {
-    name: 'WonderWave',
-    scope: 'linear',
-    divisions: 1,
-    mirrored: true,
-    startHue: 160,
-    params: {
-      falloff: FALLOFF_MID,
-      scale: SCALE_CREEP_OUT,
-      stretchX: STRETCH_EVEN,
-      stretchY: STRETCH_EVEN,
-      spin: SPIN_STILL,
-      xShift: SHIFT_STILL,
-      yShift: SHIFT_STILL,
-      ocean: OCEAN_SWELL,
-      sinLoops: LOOPS_LONG,
-      sinShake: SHAKE_CALM,
-      smear: SMEAR_SOFT,
-      bassJump: BASS_JUMP_SOFT,
-      bassFlex: BASS_FLEX_WILD,
-      hueDrift: HUE_DRIFT_MED,
-    },
-  },
-  {
-    name: "Shift O' Scope",
-    scope: 'linear',
-    divisions: 2,
-    mirrored: true,
-    startHue: 30,
-    params: {
-      falloff: FALLOFF_HIGH,
-      scale: SCALE_IN,
-      stretchX: STRETCH_EVEN,
-      stretchY: STRETCH_EVEN,
-      spin: SPIN_DRIFT,
-      xShift: SHIFT_SLIDE,
-      yShift: SHIFT_STILL,
-      ocean: OCEAN_RIPPLE,
-      sinLoops: LOOPS_SHORT,
-      sinShake: SHAKE_BRISK,
-      smear: SMEAR_NONE,
-      bassJump: BASS_JUMP_SOFT,
-      bassFlex: BASS_FLEX_CALM,
-      hueDrift: HUE_DRIFT_SLOW,
-    },
-  },
-  {
-    name: 'Funktional',
-    scope: 'radial',
-    divisions: 3,
-    mirrored: false,
-    startHue: 0,
-    params: {
-      falloff: FALLOFF_LOW,
-      scale: SCALE_OUT_FAST,
-      stretchX: STRETCH_EVEN,
-      stretchY: STRETCH_EVEN,
-      spin: SPIN_WHIRL,
-      xShift: SHIFT_STILL,
-      yShift: SHIFT_STILL,
-      ocean: OCEAN_RIPPLE,
-      sinLoops: LOOPS_SHORT,
-      sinShake: SHAKE_BRISK,
-      smear: SMEAR_HEAVY,
-      bassJump: BASS_JUMP_HARD,
-      bassFlex: BASS_FLEX_WILD,
-      hueDrift: HUE_DRIFT_FAST,
-    },
-  },
-];
 
 /**
  * Alchemy - a frame-feedback visualization that cycles through parameterised
@@ -524,9 +344,12 @@ const PRESETS: readonly AlchemyPreset[] = [
  * attenuated so it decays, and the oscilloscope trace is drawn on top. The
  * low-resolution surface is then stretched to fill the canvas.
  */
-export class AlchemyVisualization extends Canvas2DVisualization {
-  public readonly name: string = 'Alchemy';
-  public readonly category: string = 'Retro';
+export abstract class AlchemyVisualization extends Canvas2DVisualization {
+  public readonly name: string;
+  public readonly category: string = 'Alchemy';
+
+  /** The discrete choices and parameter block for this preset. */
+  private readonly spec: AlchemySpec;
 
   /** Time-domain samples for the trace. */
   private dataArray: Uint8Array<ArrayBuffer>;
@@ -546,20 +369,11 @@ export class AlchemyVisualization extends Canvas2DVisualization {
   private surfaceWidth: number = 0;
   private surfaceHeight: number = 0;
 
-  /** Index of the preset currently being displayed. */
-  private presetIndex: number = 0;
-
-  /** Index of the preset being eased into, or -1 when settled. */
-  private nextPresetIndex: number = -1;
-
-  /** Milliseconds elapsed on the current preset, including any blend. */
-  private presetElapsedMs: number = 0;
-
-  /** Live parameter block; equals the preset's params unless blending. */
-  private params: AlchemyParams = PRESETS[0].params;
+  /** The parameter block driving the warp. */
+  private readonly params: AlchemyParams;
 
   /** Current hue of the trace, in degrees. */
-  private hue: number = PRESETS[0].startHue;
+  private hue: number;
 
   /** Phase of the per-row displacement, in radians. */
   private wavePhase: number = 0;
@@ -567,17 +381,12 @@ export class AlchemyVisualization extends Canvas2DVisualization {
   /** Smoothed bass level in the range 0 to 1. */
   private bass: number = 0;
 
-  /**
-   * Timestamp of the previous preset tick, in milliseconds.
-   *
-   * The preset clock keeps its own timestamp rather than reading
-   * `lastFrameTime`, which `updateFade()` has already advanced to the current
-   * time by the point `draw()` reaches preset handling.
-   */
-  private lastPresetTickMs: number = performance.now();
-
-  public constructor(config: VisualizationConfig) {
+  protected constructor(config: VisualizationConfig, spec: AlchemySpec) {
     super(config);
+    this.name = spec.name;
+    this.spec = spec;
+    this.params = spec.params;
+    this.hue = spec.startHue;
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
@@ -641,7 +450,6 @@ export class AlchemyVisualization extends Canvas2DVisualization {
     this.analyser.getByteFrequencyData(this.freqArray);
 
     this.updateBass();
-    this.advancePresets();
 
     this.applyFeedback();
     this.renderScope();
@@ -667,69 +475,6 @@ export class AlchemyVisualization extends Canvas2DVisualization {
 
     const level: number = (total / bins / RGB_MID) * HALF * this.sensitivityFactor;
     this.bass += (level - this.bass) * BASS_SMOOTHING;
-  }
-
-  /**
-   * Advances the preset clock and eases the parameter block between presets.
-   *
-   * Discrete choices (scope layout, divisions, mirroring) switch outright when
-   * the blend starts; the feedback buffer smooths over the discontinuity.
-   */
-  private advancePresets(): void {
-    const now: number = performance.now();
-    // Clamped so a long stall (tab backgrounded, playback paused) cannot skip
-    // an entire preset in a single frame.
-    const deltaMs: number = Math.min(now - this.lastPresetTickMs, PRESET_BLEND_MS);
-    this.lastPresetTickMs = now;
-    this.presetElapsedMs += deltaMs;
-
-    if (this.nextPresetIndex < 0) {
-      if (this.presetElapsedMs >= PRESET_HOLD_MS) {
-        this.nextPresetIndex = (this.presetIndex + 1) % PRESETS.length;
-        this.presetElapsedMs = 0;
-      }
-      return;
-    }
-
-    const t: number = Math.min(1, this.presetElapsedMs / PRESET_BLEND_MS);
-    // Smoothstep, so the blend eases in and out rather than starting abruptly.
-    const eased: number = t * t * (3 - 2 * t);
-    this.params = this.blendParams(PRESETS[this.presetIndex].params, PRESETS[this.nextPresetIndex].params, eased);
-
-    if (t >= 1) {
-      this.presetIndex = this.nextPresetIndex;
-      this.nextPresetIndex = -1;
-      this.presetElapsedMs = 0;
-      this.params = PRESETS[this.presetIndex].params;
-    }
-  }
-
-  /**
-   * Linearly interpolates every field of two parameter blocks.
-   *
-   * @param from - Parameter block at t = 0
-   * @param to - Parameter block at t = 1
-   * @param t - Blend position in the range 0 to 1
-   * @returns The interpolated parameter block
-   */
-  private blendParams(from: AlchemyParams, to: AlchemyParams, t: number): AlchemyParams {
-    const mix: (a: number, b: number) => number = (a: number, b: number): number => a + (b - a) * t;
-    return {
-      falloff: mix(from.falloff, to.falloff),
-      scale: mix(from.scale, to.scale),
-      stretchX: mix(from.stretchX, to.stretchX),
-      stretchY: mix(from.stretchY, to.stretchY),
-      spin: mix(from.spin, to.spin),
-      xShift: mix(from.xShift, to.xShift),
-      yShift: mix(from.yShift, to.yShift),
-      ocean: mix(from.ocean, to.ocean),
-      sinLoops: mix(from.sinLoops, to.sinLoops),
-      sinShake: mix(from.sinShake, to.sinShake),
-      smear: mix(from.smear, to.smear),
-      bassJump: mix(from.bassJump, to.bassJump),
-      bassFlex: mix(from.bassFlex, to.bassFlex),
-      hueDrift: mix(from.hueDrift, to.hueDrift),
-    };
   }
 
   /**
@@ -857,7 +602,7 @@ export class AlchemyVisualization extends Canvas2DVisualization {
    */
   private renderScope(): void {
     const ctx: CanvasRenderingContext2D = this.frontCtx!;
-    const preset: AlchemyPreset = PRESETS[this.nextPresetIndex >= 0 ? this.nextPresetIndex : this.presetIndex];
+    const spec: AlchemySpec = this.spec;
     const params: AlchemyParams = this.params;
 
     this.hue = (this.hue + params.hueDrift) % DEGREES_FULL_CIRCLE;
@@ -872,14 +617,14 @@ export class AlchemyVisualization extends Canvas2DVisualization {
     ctx.lineCap = 'round';
     ctx.shadowBlur = this.getScaledGlowBlur(SCOPE_GLOW_BLUR);
 
-    this.strokeDivisions(ctx, preset, amplitude, this.hue);
+    this.strokeDivisions(ctx, spec, amplitude, this.hue);
 
-    if (preset.mirrored) {
+    if (spec.mirrored) {
       const mirrorHue: number = (this.hue + MIRROR_HUE_OFFSET) % DEGREES_FULL_CIRCLE;
       ctx.save();
       ctx.translate(this.surfaceWidth, 0);
       ctx.scale(-1, 1);
-      this.strokeDivisions(ctx, preset, amplitude, mirrorHue);
+      this.strokeDivisions(ctx, spec, amplitude, mirrorHue);
       ctx.restore();
     }
 
@@ -890,13 +635,13 @@ export class AlchemyVisualization extends Canvas2DVisualization {
    * Strokes the trace once per rotational division.
    *
    * @param ctx - Surface context
-   * @param preset - Preset supplying the layout and division count
+   * @param spec - Spec supplying the layout and division count
    * @param amplitude - Amplitude multiplier for the trace
    * @param hue - Trace hue in degrees
    */
   private strokeDivisions(
     ctx: CanvasRenderingContext2D,
-    preset: AlchemyPreset,
+    spec: AlchemySpec,
     amplitude: number,
     hue: number
   ): void {
@@ -906,7 +651,7 @@ export class AlchemyVisualization extends Canvas2DVisualization {
 
     const centreX: number = this.surfaceWidth * HALF;
     const centreY: number = this.surfaceHeight * HALF;
-    const divisions: number = Math.max(1, preset.divisions);
+    const divisions: number = Math.max(1, spec.divisions);
 
     for (let division: number = 0; division < divisions; division++) {
       ctx.save();
@@ -915,7 +660,7 @@ export class AlchemyVisualization extends Canvas2DVisualization {
         ctx.rotate((division * TWO_PI) / divisions);
         ctx.translate(-centreX, -centreY);
       }
-      if (preset.scope === 'radial') {
+      if (spec.scope === 'radial') {
         this.traceRadial(ctx, amplitude);
       } else {
         this.traceLinear(ctx, amplitude);
@@ -1005,5 +750,333 @@ export class AlchemyVisualization extends Canvas2DVisualization {
     this.frontCtx = null;
     this.backCanvas = null;
     this.backCtx = null;
+  }
+}
+
+// ============================================================================
+// Concrete presets
+//
+// One visualization per preset the original registers, read from its string
+// table. They share the engine above and differ only in their parameter block
+// and the discrete choices - scope layout, division count, mirroring - that go
+// with it.
+// ============================================================================
+
+/** Alchemy - Standard Render Cycle. The default cycle: a slow outward creep with a light smear. */
+export class AlchemyStandardRenderCycleVisualization extends AlchemyVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: "Standard Render Cycle",
+      scope: 'linear',
+      divisions: 1,
+      mirrored: false,
+      startHue: 200,
+      params: {
+        falloff: FALLOFF_MID,
+        scale: SCALE_CREEP_OUT,
+        stretchX: STRETCH_EVEN,
+        stretchY: STRETCH_EVEN,
+        spin: SPIN_STILL,
+        xShift: SHIFT_STILL,
+        yShift: SHIFT_STILL,
+        ocean: OCEAN_FLAT,
+        sinLoops: LOOPS_LONG,
+        sinShake: SHAKE_CALM,
+        smear: SMEAR_SOFT,
+        bassJump: BASS_JUMP_SOFT,
+        bassFlex: BASS_FLEX_CALM,
+        hueDrift: HUE_DRIFT_SLOW,
+      },
+    });
+  }
+}
+
+/** Alchemy - Linear Shift. Constant diagonal translation with no zoom or rotation. */
+export class AlchemyLinearShiftVisualization extends AlchemyVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: "Linear Shift",
+      scope: 'linear',
+      divisions: 1,
+      mirrored: false,
+      startHue: 120,
+      params: {
+        falloff: FALLOFF_MID,
+        scale: SCALE_HOLD,
+        stretchX: STRETCH_EVEN,
+        stretchY: STRETCH_EVEN,
+        spin: SPIN_STILL,
+        xShift: SHIFT_NUDGE,
+        yShift: -SHIFT_NUDGE,
+        ocean: OCEAN_FLAT,
+        sinLoops: LOOPS_LONG,
+        sinShake: SHAKE_CALM,
+        smear: SMEAR_NONE,
+        bassJump: BASS_JUMP_NONE,
+        bassFlex: BASS_FLEX_CALM,
+        hueDrift: HUE_DRIFT_MED,
+      },
+    });
+  }
+}
+
+/** Alchemy - Stretch Shift. Anisotropic scaling: wider each frame, shorter each frame. */
+export class AlchemyStretchShiftVisualization extends AlchemyVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: "Stretch Shift",
+      scope: 'linear',
+      divisions: 2,
+      mirrored: false,
+      startHue: 300,
+      params: {
+        falloff: FALLOFF_LOW,
+        scale: SCALE_HOLD,
+        stretchX: STRETCH_WIDE,
+        stretchY: STRETCH_NARROW,
+        spin: SPIN_STILL,
+        xShift: SHIFT_STILL,
+        yShift: SHIFT_NUDGE,
+        ocean: OCEAN_FLAT,
+        sinLoops: LOOPS_LONG,
+        sinShake: SHAKE_CALM,
+        smear: SMEAR_SOFT,
+        bassJump: BASS_JUMP_SOFT,
+        bassFlex: BASS_FLEX_WILD,
+        hueDrift: HUE_DRIFT_MED,
+      },
+    });
+  }
+}
+
+/** Alchemy - SuperStar. Rotation plus outward zoom, kaleidoscoped into six mirrored arms. */
+export class AlchemySuperStarVisualization extends AlchemyVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: "SuperStar",
+      scope: 'radial',
+      divisions: 6,
+      mirrored: true,
+      startHue: 240,
+      params: {
+        falloff: FALLOFF_LOW,
+        scale: SCALE_OUT,
+        stretchX: STRETCH_EVEN,
+        stretchY: STRETCH_EVEN,
+        spin: SPIN_TURN,
+        xShift: SHIFT_STILL,
+        yShift: SHIFT_STILL,
+        ocean: OCEAN_FLAT,
+        sinLoops: LOOPS_LONG,
+        sinShake: SHAKE_CALM,
+        smear: SMEAR_NONE,
+        bassJump: BASS_JUMP_HARD,
+        bassFlex: BASS_FLEX_WILD,
+        hueDrift: HUE_DRIFT_FAST,
+      },
+    });
+  }
+}
+
+/** Alchemy - WonderWave. Strong per-scanline displacement, the surface rolling like water. */
+export class AlchemyWonderWaveVisualization extends AlchemyVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: "WonderWave",
+      scope: 'linear',
+      divisions: 1,
+      mirrored: true,
+      startHue: 160,
+      params: {
+        falloff: FALLOFF_MID,
+        scale: SCALE_CREEP_OUT,
+        stretchX: STRETCH_EVEN,
+        stretchY: STRETCH_EVEN,
+        spin: SPIN_STILL,
+        xShift: SHIFT_STILL,
+        yShift: SHIFT_STILL,
+        ocean: OCEAN_SWELL,
+        sinLoops: LOOPS_LONG,
+        sinShake: SHAKE_CALM,
+        smear: SMEAR_SOFT,
+        bassJump: BASS_JUMP_SOFT,
+        bassFlex: BASS_FLEX_WILD,
+        hueDrift: HUE_DRIFT_MED,
+      },
+    });
+  }
+}
+
+/** Alchemy - Shift O' Scope. Fast decay and a hard sideways slide, keeping the trace legible. */
+export class AlchemyShiftOScopeVisualization extends AlchemyVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: "Shift O' Scope",
+      scope: 'linear',
+      divisions: 2,
+      mirrored: true,
+      startHue: 30,
+      params: {
+        falloff: FALLOFF_HIGH,
+        scale: SCALE_IN,
+        stretchX: STRETCH_EVEN,
+        stretchY: STRETCH_EVEN,
+        spin: SPIN_DRIFT,
+        xShift: SHIFT_SLIDE,
+        yShift: SHIFT_STILL,
+        ocean: OCEAN_RIPPLE,
+        sinLoops: LOOPS_SHORT,
+        sinShake: SHAKE_BRISK,
+        smear: SMEAR_NONE,
+        bassJump: BASS_JUMP_SOFT,
+        bassFlex: BASS_FLEX_CALM,
+        hueDrift: HUE_DRIFT_SLOW,
+      },
+    });
+  }
+}
+
+/** Alchemy - Funktional. Everything at once: fast whirl, fast zoom, ripple and heavy smear. */
+export class AlchemyFunktionalVisualization extends AlchemyVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: "Funktional",
+      scope: 'radial',
+      divisions: 3,
+      mirrored: false,
+      startHue: 0,
+      params: {
+        falloff: FALLOFF_LOW,
+        scale: SCALE_OUT_FAST,
+        stretchX: STRETCH_EVEN,
+        stretchY: STRETCH_EVEN,
+        spin: SPIN_WHIRL,
+        xShift: SHIFT_STILL,
+        yShift: SHIFT_STILL,
+        ocean: OCEAN_RIPPLE,
+        sinLoops: LOOPS_SHORT,
+        sinShake: SHAKE_BRISK,
+        smear: SMEAR_HEAVY,
+        bassJump: BASS_JUMP_HARD,
+        bassFlex: BASS_FLEX_WILD,
+        hueDrift: HUE_DRIFT_FAST,
+      },
+    });
+  }
+}
+
+/** Alchemy - Blur. Pure smear with no motion: the trace bleeds outward in place. */
+export class AlchemyBlurVisualization extends AlchemyVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: "Blur",
+      scope: 'linear',
+      divisions: 1,
+      mirrored: false,
+      startHue: 210,
+      params: {
+        falloff: FALLOFF_MID,
+        scale: SCALE_HOLD,
+        stretchX: STRETCH_EVEN,
+        stretchY: STRETCH_EVEN,
+        spin: SPIN_STILL,
+        xShift: SHIFT_STILL,
+        yShift: SHIFT_STILL,
+        ocean: OCEAN_FLAT,
+        sinLoops: LOOPS_LONG,
+        sinShake: SHAKE_CALM,
+        smear: SMEAR_HEAVY,
+        bassJump: BASS_JUMP_NONE,
+        bassFlex: BASS_FLEX_CALM,
+        hueDrift: HUE_DRIFT_SLOW,
+      },
+    });
+  }
+}
+
+/** Alchemy - SwitchBlur. Smear with a slow rotational drift and a mirrored second trace. */
+export class AlchemySwitchBlurVisualization extends AlchemyVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: "SwitchBlur",
+      scope: 'linear',
+      divisions: 2,
+      mirrored: true,
+      startHue: 270,
+      params: {
+        falloff: FALLOFF_MID,
+        scale: SCALE_CREEP_OUT,
+        stretchX: STRETCH_EVEN,
+        stretchY: STRETCH_EVEN,
+        spin: SPIN_DRIFT,
+        xShift: SHIFT_STILL,
+        yShift: SHIFT_STILL,
+        ocean: OCEAN_FLAT,
+        sinLoops: LOOPS_LONG,
+        sinShake: SHAKE_CALM,
+        smear: SMEAR_HEAVY,
+        bassJump: BASS_JUMP_SOFT,
+        bassFlex: BASS_FLEX_CALM,
+        hueDrift: HUE_DRIFT_MED,
+      },
+    });
+  }
+}
+
+/** Alchemy - Shift. The bare translation operation, harder than Linear Shift and unsmeared. */
+export class AlchemyShiftVisualization extends AlchemyVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: "Shift",
+      scope: 'linear',
+      divisions: 1,
+      mirrored: false,
+      startHue: 90,
+      params: {
+        falloff: FALLOFF_MID,
+        scale: SCALE_HOLD,
+        stretchX: STRETCH_EVEN,
+        stretchY: STRETCH_EVEN,
+        spin: SPIN_STILL,
+        xShift: SHIFT_SLIDE,
+        yShift: SHIFT_NUDGE,
+        ocean: OCEAN_FLAT,
+        sinLoops: LOOPS_LONG,
+        sinShake: SHAKE_CALM,
+        smear: SMEAR_NONE,
+        bassJump: BASS_JUMP_NONE,
+        bassFlex: BASS_FLEX_CALM,
+        hueDrift: HUE_DRIFT_SLOW,
+      },
+    });
+  }
+}
+
+/** Alchemy - Bass Bounce. Zoom and trace amplitude driven hard by the bass envelope. */
+export class AlchemyBassBounceVisualization extends AlchemyVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: "Bass Bounce",
+      scope: 'radial',
+      divisions: 1,
+      mirrored: false,
+      startHue: 340,
+      params: {
+        falloff: FALLOFF_MID,
+        scale: SCALE_CREEP_OUT,
+        stretchX: STRETCH_EVEN,
+        stretchY: STRETCH_EVEN,
+        spin: SPIN_STILL,
+        xShift: SHIFT_STILL,
+        yShift: SHIFT_STILL,
+        ocean: OCEAN_FLAT,
+        sinLoops: LOOPS_LONG,
+        sinShake: SHAKE_CALM,
+        smear: SMEAR_SOFT,
+        bassJump: BASS_JUMP_HARD,
+        bassFlex: BASS_FLEX_WILD,
+        hueDrift: HUE_DRIFT_MED,
+      },
+    });
   }
 }

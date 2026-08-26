@@ -132,7 +132,7 @@ export type LocalSettingKey = keyof VisualizationLocalSettings;
 export interface VisualizationMetadata {
   readonly id: string;
   readonly name: string;
-  readonly category: 'Bars' | 'Waves' | 'Signature' | 'Retro' | 'Ambience' | 'Simple';
+  readonly category: 'Bars' | 'Waves' | 'Signature' | 'Alchemy' | 'Ambience' | 'Battery' | 'Simple';
   readonly applicableSettings: readonly LocalSettingKey[];
 }
 
@@ -449,8 +449,18 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
   {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: []},
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
-  // Retro category
-  {id: 'alchemy', name: 'Alchemy', category: 'Retro', applicableSettings: []},
+  // Alchemy category
+  {id: 'alchemy-standard', name: "Standard Render Cycle", category: 'Alchemy', applicableSettings: []},
+  {id: 'alchemy-linearshift', name: "Linear Shift", category: 'Alchemy', applicableSettings: []},
+  {id: 'alchemy-stretchshift', name: "Stretch Shift", category: 'Alchemy', applicableSettings: []},
+  {id: 'alchemy-superstar', name: "SuperStar", category: 'Alchemy', applicableSettings: []},
+  {id: 'alchemy-wonderwave', name: "WonderWave", category: 'Alchemy', applicableSettings: []},
+  {id: 'alchemy-shiftoscope', name: "Shift O' Scope", category: 'Alchemy', applicableSettings: []},
+  {id: 'alchemy-funktional', name: "Funktional", category: 'Alchemy', applicableSettings: []},
+  {id: 'alchemy-blur', name: "Blur", category: 'Alchemy', applicableSettings: []},
+  {id: 'alchemy-switchblur', name: "SwitchBlur", category: 'Alchemy', applicableSettings: []},
+  {id: 'alchemy-shift', name: "Shift", category: 'Alchemy', applicableSettings: []},
+  {id: 'alchemy-bassbounce', name: "Bass Bounce", category: 'Alchemy', applicableSettings: []},
   // Ambience category
   {id: 'ambience-swirl', name: 'Swirl', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-zoom', name: 'Zoom', category: 'Ambience', applicableSettings: []},
@@ -464,6 +474,8 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'ambience-thingus', name: 'Thingus', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-tile', name: 'Tile', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-linear', name: 'Linear', category: 'Ambience', applicableSettings: []},
+  // Battery category
+  {id: 'battery-randomization', name: 'Randomization', category: 'Battery', applicableSettings: []},
   // Simple category
   {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
   {id: 'logo', name: 'Logo', category: 'Simple', applicableSettings: []},
@@ -557,8 +569,18 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   // Signature category
   {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
-  // Retro category
-  {value: 'alchemy', label: 'Retro : Alchemy', description: 'Frame-feedback smear engine cycling through warp presets'},
+  // Alchemy category
+  {value: 'alchemy-standard', label: "Alchemy : Standard Render Cycle", description: 'Slow outward creep with a light smear'},
+  {value: 'alchemy-linearshift', label: "Alchemy : Linear Shift", description: 'Constant diagonal translation, no zoom or rotation'},
+  {value: 'alchemy-stretchshift', label: "Alchemy : Stretch Shift", description: 'Anisotropic scaling, wider and shorter each frame'},
+  {value: 'alchemy-superstar', label: "Alchemy : SuperStar", description: 'Rotation and zoom kaleidoscoped into six mirrored arms'},
+  {value: 'alchemy-wonderwave', label: "Alchemy : WonderWave", description: 'Per-scanline displacement rolling like water'},
+  {value: 'alchemy-shiftoscope', label: "Alchemy : Shift O' Scope", description: 'Fast decay with a hard sideways slide'},
+  {value: 'alchemy-funktional', label: "Alchemy : Funktional", description: 'Fast whirl, fast zoom, ripple and heavy smear'},
+  {value: 'alchemy-blur', label: "Alchemy : Blur", description: 'Pure smear with no motion'},
+  {value: 'alchemy-switchblur', label: "Alchemy : SwitchBlur", description: 'Smear with slow rotational drift and a mirrored trace'},
+  {value: 'alchemy-shift', label: "Alchemy : Shift", description: 'The bare translation operation, unsmeared'},
+  {value: 'alchemy-bassbounce', label: "Alchemy : Bass Bounce", description: 'Zoom and amplitude driven hard by the bass'},
   // Ambience category
   {value: 'ambience-swirl', label: 'Ambience : Swirl', description: 'Sine ripple across both axes'},
   {value: 'ambience-zoom', label: 'Ambience : Zoom', description: 'Rotating zoom about the centre'},
@@ -572,6 +594,8 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'ambience-thingus', label: 'Ambience : Thingus', description: 'Offset angle with quarter-width radius scale'},
   {value: 'ambience-tile', label: 'Ambience : Tile', description: 'Surface wrapped into repeating tiles'},
   {value: 'ambience-linear', label: 'Ambience : Linear', description: 'Constant drift in a random direction'},
+  // Battery category
+  {value: 'battery-randomization', label: 'Battery : Randomization', description: 'Random displacement and generator on every roll'},
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},
   {value: 'logo', label: 'Simple : Logo', description: 'The ONIXPlayer logo, centred'},

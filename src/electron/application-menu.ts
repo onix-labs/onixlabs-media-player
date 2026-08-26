@@ -47,9 +47,19 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     ],
   },
   {
-    category: 'Retro',
+    category: 'Alchemy',
     items: [
-      {id: 'alchemy', name: 'Alchemy'},
+      {id: 'alchemy-standard', name: "Standard Render Cycle"},
+      {id: 'alchemy-linearshift', name: "Linear Shift"},
+      {id: 'alchemy-stretchshift', name: "Stretch Shift"},
+      {id: 'alchemy-superstar', name: "SuperStar"},
+      {id: 'alchemy-wonderwave', name: "WonderWave"},
+      {id: 'alchemy-shiftoscope', name: "Shift O' Scope"},
+      {id: 'alchemy-funktional', name: "Funktional"},
+      {id: 'alchemy-blur', name: "Blur"},
+      {id: 'alchemy-switchblur', name: "SwitchBlur"},
+      {id: 'alchemy-shift', name: "Shift"},
+      {id: 'alchemy-bassbounce', name: "Bass Bounce"},
     ],
   },
   {
@@ -67,6 +77,12 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'ambience-thingus', name: 'Thingus'},
       {id: 'ambience-tile', name: 'Tile'},
       {id: 'ambience-linear', name: 'Linear'},
+    ],
+  },
+  {
+    category: 'Battery',
+    items: [
+      {id: 'battery-randomization', name: 'Randomization'},
     ],
   },
   {

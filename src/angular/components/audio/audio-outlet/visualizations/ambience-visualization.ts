@@ -248,7 +248,7 @@ const PRESET_MAX_DELTA_MS: number = MS_PER_SECOND;
  * Values are consumed directly by the shader's branch on `uShift`, so they
  * must stay in step with the GLSL below.
  */
-enum ShiftMode {
+export enum ShiftMode {
   /** Constant random drift on both axes. */
   Linear = 0,
   /** Sine ripple: x displaced by sin of y, y by cos of x. */
@@ -276,6 +276,41 @@ enum ShiftMode {
 }
 
 /**
+ * The source generators - what gets drawn into the surface before the warp.
+ *
+ * The original carries a second bank of classes alongside the displacements
+ * (CWaveEdge, CSpectrumEdge, CCircleWaveform, CEdgeGradiant, CCosEdgeGradiant,
+ * CEdgeTrace, CDotPlane, CGalaxy, CJDar, CJiggyScribble), each an independently
+ * creatable COM object. Pairing one generator with one displacement is what
+ * lets Battery "always show a unique visualization".
+ *
+ * The class names are recovered; their internals are not. What each generator
+ * draws below is an original reading of its name, not a decode of its code.
+ */
+export enum GeneratorMode {
+  /** Waveform trace across the surface. */
+  WaveEdge = 0,
+  /** Frequency spectrum rising from the bottom edge. */
+  SpectrumEdge = 1,
+  /** Waveform wrapped around a circle. */
+  CircleWaveform = 2,
+  /** Amplitude-modulated gradient banked against an edge. */
+  EdgeGradiant = 3,
+  /** As EdgeGradiant, with a cosine ripple along the edge. */
+  CosEdgeGradiant = 4,
+  /** Thin rectified trace hugging the bottom edge. */
+  EdgeTrace = 5,
+  /** Grid of dots sized by spectral magnitude. */
+  DotPlane = 6,
+}
+
+/** Number of generators, used when drawing a random one. */
+const GENERATOR_COUNT: number = 7;
+
+/** Number of displacements, used when drawing a random one. */
+const SHIFT_COUNT: number = 12;
+
+/**
  * The per-displacement configuration a concrete subclass supplies.
  *
  * Passed through the constructor rather than declared as abstract members:
@@ -298,6 +333,18 @@ interface AmbienceSpec {
 
   /** Hue rotation per frame, in degrees. */
   readonly hueDrift: number;
+
+  /** Which source generator draws into the surface. */
+  readonly generator: GeneratorMode;
+
+  /** Category this visualization is grouped under. Defaults to Ambience. */
+  readonly category?: string;
+
+  /**
+   * When true, the displacement and generator are re-drawn at random on every
+   * randomise tick, not just their parameters. This is what Battery does.
+   */
+  readonly randomiseAll?: boolean;
 }
 
 
@@ -335,6 +382,7 @@ uniform vec2  uSize;
 uniform float uDecay;
 uniform int   uShift;
 uniform int   uSubMode;
+uniform int   uGenerator;
 uniform vec2  uDrift;
 uniform float uAmplitude;
 uniform float uFrequency;
@@ -455,14 +503,65 @@ vec2 applyShift(vec2 p) {
   return fromPolar(angle, radius);
 }
 
-/* Distance-based glow around the waveform trace. "sample" is avoided as an
+/* Gaussian falloff about a target coordinate. "sample" is avoided as an
    identifier: it is a reserved word in later GLSL versions and some drivers
    reject it here too. */
-float waveGlow(vec2 uv) {
-  float level = texture2D(uWaveform, vec2(uv.x, 0.5)).r;
-  float traceY = 0.5 + (level - 0.5) * uWaveAmplitude;
-  float delta = uv.y - traceY;
+float glow(float delta) {
   return exp(-(delta * delta) / ${WAVE_SIGMA});
+}
+
+float waveformAt(float x) {
+  return texture2D(uWaveform, vec2(x, 0.5)).r;
+}
+
+float spectrumAt(float x) {
+  return texture2D(uWaveform, vec2(x, 0.5)).g;
+}
+
+/* The source generators. Each returns an intensity in roughly [0, 1] for the
+   destination pixel; the warp pass adds that to the decayed previous frame. */
+float generate(vec2 uv) {
+  if (uGenerator == 0) {
+    float traceY = 0.5 + (waveformAt(uv.x) - 0.5) * uWaveAmplitude;
+    return glow(uv.y - traceY);
+  }
+
+  if (uGenerator == 1) {
+    float top = spectrumAt(uv.x) * uWaveAmplitude;
+    if (uv.y > top) {
+      return 0.0;
+    }
+    return 1.0 - uv.y / max(top, 0.001);
+  }
+
+  if (uGenerator == 2) {
+    vec2 centred = (uv - 0.5) * vec2(uSize.x / uSize.y, 1.0);
+    float angle = atan(centred.y, centred.x);
+    float level = waveformAt(angle / TAU_APPROX + 0.5);
+    float target = 0.25 + (level - 0.5) * uWaveAmplitude * 0.5;
+    return glow(length(centred) - target);
+  }
+
+  if (uGenerator == 3) {
+    float band = max(0.0, 1.0 - uv.y * 8.0);
+    return band * abs(waveformAt(uv.x) - 0.5) * 2.0;
+  }
+
+  if (uGenerator == 4) {
+    float band = max(0.0, 1.0 - uv.y * 8.0);
+    float ripple = 0.5 + 0.5 * cos(uv.x * TAU_APPROX * 4.0);
+    return band * ripple * abs(waveformAt(uv.x) - 0.5) * 2.0;
+  }
+
+  if (uGenerator == 5) {
+    float height = abs(waveformAt(uv.x) - 0.5) * 2.0 * uWaveAmplitude;
+    return glow(uv.y - height);
+  }
+
+  /* DotPlane */
+  vec2 cell = fract(uv * 12.0) - 0.5;
+  float magnitude = spectrumAt(uv.x);
+  return smoothstep(0.35 * magnitude + 0.02, 0.0, length(cell));
 }
 
 void main() {
@@ -475,7 +574,7 @@ void main() {
     previous = texture2D(uPrevious, source).rgb * uDecay;
   }
 
-  gl_FragColor = vec4(previous + uTraceColor * waveGlow(vUv) * ${WAVE_GAIN}, 1.0);
+  gl_FragColor = vec4(previous + uTraceColor * generate(vUv) * ${WAVE_GAIN}, 1.0);
 }
 `;
 
@@ -500,10 +599,16 @@ void main() {
  */
 export abstract class AmbienceVisualization extends WebGLVisualization {
   public readonly name: string;
-  public readonly category: string = 'Ambience';
+  public readonly category: string;
 
   /** Which displacement this visualization runs. */
-  private readonly shift: ShiftMode;
+  private shift: ShiftMode;
+
+  /** Which source generator draws into the surface. */
+  private generator: GeneratorMode;
+
+  /** Whether displacement and generator are re-drawn at random each tick. */
+  private readonly randomiseAll: boolean;
 
   /** Per-frame multiplier applied to the previous frame. */
   private readonly decay: number;
@@ -576,7 +681,10 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
   protected constructor(config: VisualizationConfig, spec: AmbienceSpec) {
     super(config);
     this.name = spec.name;
+    this.category = spec.category ?? 'Ambience';
     this.shift = spec.shift;
+    this.generator = spec.generator;
+    this.randomiseAll = spec.randomiseAll === true;
     this.decay = spec.decay;
     this.hueDrift = spec.hueDrift;
     this.hue = spec.startHue;
@@ -605,7 +713,8 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
 
     for (const key of [
       'uPrevious', 'uWaveform', 'uSize', 'uDecay', 'uShift', 'uSubMode',
-      'uDrift', 'uAmplitude', 'uFrequency', 'uAngleDelta', 'uTraceColor', 'uWaveAmplitude',
+      'uGenerator', 'uDrift', 'uAmplitude', 'uFrequency', 'uAngleDelta',
+      'uTraceColor', 'uWaveAmplitude',
     ]) {
       this.warpUniforms[key] = gl.getUniformLocation(this.warpProgram!, key);
     }
@@ -821,6 +930,11 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
       (modulus: number): number => Math.floor(Math.random() * modulus);
 
 
+    if (this.randomiseAll) {
+      this.shift = pick(SHIFT_COUNT) as ShiftMode;
+      this.generator = pick(GENERATOR_COUNT) as GeneratorMode;
+    }
+
     // Shared across every polar displacement: u * 0.1 - 0.05 radians.
     this.angleDelta = unit() * ANGLE_SPAN - ANGLE_BIAS;
     this.driftX = 0;
@@ -881,14 +995,20 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
   }
 
 
-  /** Packs the time-domain samples into the waveform texture. */
+  /** Packs the time-domain samples and spectrum into the source texture. */
   private uploadWaveform(): void {
     const gl: WebGLRenderingContext = this.gl;
     const samples: number = this.dataArray.length;
 
+    const bins: number = this.freqArray.length;
     for (let i: number = 0; i < WAVE_TEXTURE_WIDTH; i++) {
-      const index: number = Math.min(samples - 1, Math.floor((i / WAVE_TEXTURE_WIDTH) * samples));
+      const fraction: number = i / WAVE_TEXTURE_WIDTH;
+      const index: number = Math.min(samples - 1, Math.floor(fraction * samples));
+      // Red carries the time-domain trace, green the spectrum, so generators
+      // that need either read one texture rather than two.
       this.waveTexels[i * RGBA_STRIDE] = this.dataArray[index];
+      this.waveTexels[i * RGBA_STRIDE + 1] =
+        bins > 0 ? this.freqArray[Math.min(bins - 1, Math.floor(fraction * bins))] : 0;
     }
 
     gl.bindTexture(gl.TEXTURE_2D, this.waveTexture);
@@ -924,6 +1044,7 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
     gl.uniform1f(this.warpUniforms['uDecay'], this.decay);
     gl.uniform1i(this.warpUniforms['uShift'], this.shift);
     gl.uniform1i(this.warpUniforms['uSubMode'], this.subMode);
+    gl.uniform1i(this.warpUniforms['uGenerator'], this.generator);
     gl.uniform2f(this.warpUniforms['uDrift'], this.driftX, this.driftY);
     gl.uniform1f(this.warpUniforms['uAmplitude'], this.amplitude);
     gl.uniform1f(this.warpUniforms['uFrequency'], this.frequency);
@@ -1008,6 +1129,7 @@ export class AmbienceSwirlVisualization extends AmbienceVisualization {
       decay: DECAY_SLOW,
       startHue: 200,
       hueDrift: HUE_DRIFT_SLOW,
+      generator: GeneratorMode.WaveEdge,
     });
   }
 }
@@ -1021,6 +1143,7 @@ export class AmbienceZoomVisualization extends AmbienceVisualization {
       decay: DECAY_MID,
       startHue: 300,
       hueDrift: HUE_DRIFT_MED,
+      generator: GeneratorMode.WaveEdge,
     });
   }
 }
@@ -1034,6 +1157,7 @@ export class AmbienceStarburstVisualization extends AmbienceVisualization {
       decay: DECAY_SLOW,
       startHue: 30,
       hueDrift: HUE_DRIFT_MED,
+      generator: GeneratorMode.WaveEdge,
     });
   }
 }
@@ -1047,6 +1171,7 @@ export class AmbienceRingSpinVisualization extends AmbienceVisualization {
       decay: DECAY_SLOW,
       startHue: 160,
       hueDrift: HUE_DRIFT_SLOW,
+      generator: GeneratorMode.WaveEdge,
     });
   }
 }
@@ -1060,6 +1185,7 @@ export class AmbienceStretchVisualization extends AmbienceVisualization {
       decay: DECAY_MID,
       startHue: 260,
       hueDrift: HUE_DRIFT_MED,
+      generator: GeneratorMode.WaveEdge,
     });
   }
 }
@@ -1073,6 +1199,7 @@ export class AmbienceTrigVisualization extends AmbienceVisualization {
       decay: DECAY_SLOW,
       startHue: 90,
       hueDrift: HUE_DRIFT_MED,
+      generator: GeneratorMode.WaveEdge,
     });
   }
 }
@@ -1086,6 +1213,7 @@ export class AmbienceTrigStretchVisualization extends AmbienceVisualization {
       decay: DECAY_MID,
       startHue: 340,
       hueDrift: HUE_DRIFT_MED,
+      generator: GeneratorMode.WaveEdge,
     });
   }
 }
@@ -1099,6 +1227,7 @@ export class AmbienceShimmerVisualization extends AmbienceVisualization {
       decay: DECAY_SLOW,
       startHue: 180,
       hueDrift: HUE_DRIFT_SLOW,
+      generator: GeneratorMode.WaveEdge,
     });
   }
 }
@@ -1112,6 +1241,7 @@ export class AmbienceEdgeFalloffVisualization extends AmbienceVisualization {
       decay: DECAY_MID,
       startHue: 45,
       hueDrift: HUE_DRIFT_SLOW,
+      generator: GeneratorMode.WaveEdge,
     });
   }
 }
@@ -1125,6 +1255,7 @@ export class AmbienceThingusVisualization extends AmbienceVisualization {
       decay: DECAY_SLOW,
       startHue: 280,
       hueDrift: HUE_DRIFT_MED,
+      generator: GeneratorMode.WaveEdge,
     });
   }
 }
@@ -1138,6 +1269,7 @@ export class AmbienceTileVisualization extends AmbienceVisualization {
       decay: DECAY_FAST,
       startHue: 120,
       hueDrift: HUE_DRIFT_MED,
+      generator: GeneratorMode.WaveEdge,
     });
   }
 }
@@ -1151,6 +1283,7 @@ export class AmbienceLinearVisualization extends AmbienceVisualization {
       decay: DECAY_FAST,
       startHue: 210,
       hueDrift: HUE_DRIFT_SLOW,
+      generator: GeneratorMode.WaveEdge,
     });
   }
 }

@@ -17,7 +17,8 @@
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
  * - blackhole: Black Hole - filled glowing accretion-disk waveform around a black core (waves category)
- * - alchemy: Alchemy - frame-feedback effect engine after the Windows Media Player visualization (retro category)
+ * - alchemy-*: Alchemy - one visualization per preset in the Windows Media Player Alchemy bank
+ * - battery-randomization: Battery - random displacement and generator on every roll
  * - ambience-*: Ambience - one visualization per displacement in the Windows Media Player Ambience bank
  *
  * @module app/components/audio/audio-outlet/visualizations
@@ -39,7 +40,20 @@ export {BlackHoleVisualization} from './black-hole-visualization';
 export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
 export {ParticlesVisualization} from './particles-visualization';
-export {AlchemyVisualization} from './alchemy-visualization';
+export {
+  AlchemyStandardRenderCycleVisualization,
+  AlchemyLinearShiftVisualization,
+  AlchemyStretchShiftVisualization,
+  AlchemySuperStarVisualization,
+  AlchemyWonderWaveVisualization,
+  AlchemyShiftOScopeVisualization,
+  AlchemyFunktionalVisualization,
+  AlchemyBlurVisualization,
+  AlchemySwitchBlurVisualization,
+  AlchemyShiftVisualization,
+  AlchemyBassBounceVisualization,
+} from './alchemy-visualization';
+export {BatteryRandomizationVisualization} from './battery-visualization';
 export {
   AmbienceSwirlVisualization,
   AmbienceZoomVisualization,
@@ -70,7 +84,20 @@ import {BlackHoleVisualization} from './black-hole-visualization';
 import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
 import {ParticlesVisualization} from './particles-visualization';
-import {AlchemyVisualization} from './alchemy-visualization';
+import {
+  AlchemyStandardRenderCycleVisualization,
+  AlchemyLinearShiftVisualization,
+  AlchemyStretchShiftVisualization,
+  AlchemySuperStarVisualization,
+  AlchemyWonderWaveVisualization,
+  AlchemyShiftOScopeVisualization,
+  AlchemyFunktionalVisualization,
+  AlchemyBlurVisualization,
+  AlchemySwitchBlurVisualization,
+  AlchemyShiftVisualization,
+  AlchemyBassBounceVisualization,
+} from './alchemy-visualization';
+import {BatteryRandomizationVisualization} from './battery-visualization';
 import {
   AmbienceSwirlVisualization,
   AmbienceZoomVisualization,
@@ -103,7 +130,18 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   spotlight: SpotlightVisualization,
   blackhole: BlackHoleVisualization,
   particles: ParticlesVisualization,
-  alchemy: AlchemyVisualization,
+  'alchemy-standard': AlchemyStandardRenderCycleVisualization,
+  'alchemy-linearshift': AlchemyLinearShiftVisualization,
+  'alchemy-stretchshift': AlchemyStretchShiftVisualization,
+  'alchemy-superstar': AlchemySuperStarVisualization,
+  'alchemy-wonderwave': AlchemyWonderWaveVisualization,
+  'alchemy-shiftoscope': AlchemyShiftOScopeVisualization,
+  'alchemy-funktional': AlchemyFunktionalVisualization,
+  'alchemy-blur': AlchemyBlurVisualization,
+  'alchemy-switchblur': AlchemySwitchBlurVisualization,
+  'alchemy-shift': AlchemyShiftVisualization,
+  'alchemy-bassbounce': AlchemyBassBounceVisualization,
+  'battery-randomization': BatteryRandomizationVisualization,
   'ambience-swirl': AmbienceSwirlVisualization,
   'ambience-zoom': AmbienceZoomVisualization,
   'ambience-starburst': AmbienceStarburstVisualization,
@@ -137,7 +175,18 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   spotlight: {name: 'Spotlight', category: 'Signature'},
   blackhole: {name: 'Black Hole', category: 'Waves'},
   particles: {name: 'Particles', category: 'Waves'},
-  alchemy: {name: 'Alchemy', category: 'Retro'},
+  'alchemy-standard': {name: "Standard Render Cycle", category: 'Alchemy'},
+  'alchemy-linearshift': {name: "Linear Shift", category: 'Alchemy'},
+  'alchemy-stretchshift': {name: "Stretch Shift", category: 'Alchemy'},
+  'alchemy-superstar': {name: "SuperStar", category: 'Alchemy'},
+  'alchemy-wonderwave': {name: "WonderWave", category: 'Alchemy'},
+  'alchemy-shiftoscope': {name: "Shift O' Scope", category: 'Alchemy'},
+  'alchemy-funktional': {name: "Funktional", category: 'Alchemy'},
+  'alchemy-blur': {name: "Blur", category: 'Alchemy'},
+  'alchemy-switchblur': {name: "SwitchBlur", category: 'Alchemy'},
+  'alchemy-shift': {name: "Shift", category: 'Alchemy'},
+  'alchemy-bassbounce': {name: "Bass Bounce", category: 'Alchemy'},
+  'battery-randomization': {name: 'Randomization', category: 'Battery'},
   'ambience-swirl': {name: 'Swirl', category: 'Ambience'},
   'ambience-zoom': {name: 'Zoom', category: 'Ambience'},
   'ambience-starburst': {name: 'Starburst', category: 'Ambience'},
@@ -189,8 +238,9 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  * - Bars: bars
  * - Waves: waveform, modern, tunnel, infinity, neon, onix, pulsar, blackhole
  * - Signature: spotlight, water (Reactor)
- * - Retro: alchemy
+ * - Alchemy: one entry per preset in the Alchemy bank
  * - Ambience: one entry per displacement in the Ambience bank
+ * - Battery: a single randomised entry
  * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
@@ -200,10 +250,12 @@ export const VISUALIZATION_TYPES: string[] = [
   'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'particles', 'pulsar', 'blackhole',
   // Signature
   'spotlight', 'water',
-  // Retro
-  'alchemy',
+  // Alchemy
+  'alchemy-standard', 'alchemy-linearshift', 'alchemy-stretchshift', 'alchemy-superstar', 'alchemy-wonderwave', 'alchemy-shiftoscope', 'alchemy-funktional', 'alchemy-blur', 'alchemy-switchblur', 'alchemy-shift', 'alchemy-bassbounce',
   // Ambience
   'ambience-swirl', 'ambience-zoom', 'ambience-starburst', 'ambience-ringspin', 'ambience-stretch', 'ambience-trig', 'ambience-trigstretch', 'ambience-shimmer', 'ambience-edgefalloff', 'ambience-thingus', 'ambience-tile', 'ambience-linear',
+  // Battery
+  'battery-randomization',
   // Simple
   'blank', 'logo',
 ];
