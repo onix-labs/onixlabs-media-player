@@ -809,6 +809,7 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'onix',
   'modern',
   'spotlight',
+  'strata',
   'particles',
   'ambience-zoom',
   'ambience-stretch',
