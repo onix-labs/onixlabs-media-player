@@ -50,7 +50,23 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     category: 'Retro',
     items: [
       {id: 'alchemy', name: 'Alchemy'},
-      {id: 'ambience', name: 'Ambience'},
+    ],
+  },
+  {
+    category: 'Ambience',
+    items: [
+      {id: 'ambience-swirl', name: 'Swirl'},
+      {id: 'ambience-zoom', name: 'Zoom'},
+      {id: 'ambience-starburst', name: 'Starburst'},
+      {id: 'ambience-ringspin', name: 'Ring Spin'},
+      {id: 'ambience-stretch', name: 'Stretch'},
+      {id: 'ambience-trig', name: 'Trig'},
+      {id: 'ambience-trigstretch', name: 'Trig Stretch'},
+      {id: 'ambience-shimmer', name: 'Shimmer'},
+      {id: 'ambience-edgefalloff', name: 'Edge Falloff'},
+      {id: 'ambience-thingus', name: 'Thingus'},
+      {id: 'ambience-tile', name: 'Tile'},
+      {id: 'ambience-linear', name: 'Linear'},
     ],
   },
   {

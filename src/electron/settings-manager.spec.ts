@@ -262,7 +262,8 @@ describe('SettingsManager', () => {
 
     it('should accept all valid visualization types', () => {
       const validTypes: readonly string[] = [
-        'bars', 'waveform', 'tunnel', 'neon', 'pulsar', 'water', 'infinity', 'onix', 'modern', 'spotlight', 'blackhole', 'particles', 'alchemy', 'ambience', 'blank', 'logo',
+        'bars', 'waveform', 'tunnel', 'neon', 'pulsar', 'water', 'infinity', 'onix', 'modern', 'spotlight', 'blackhole', 'particles', 'alchemy',
+        'ambience-swirl', 'ambience-zoom', 'ambience-starburst', 'ambience-ringspin', 'ambience-stretch', 'ambience-trig', 'ambience-trigstretch', 'ambience-shimmer', 'ambience-edgefalloff', 'ambience-thingus', 'ambience-tile', 'ambience-linear', 'blank', 'logo',
       ];
 
       for (const vizType of validTypes) {

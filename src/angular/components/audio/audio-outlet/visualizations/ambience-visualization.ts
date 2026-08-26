@@ -275,8 +275,15 @@ enum ShiftMode {
   Thingus = 11,
 }
 
-/** A preset: which displacement to run, and the look wrapped around it. */
-interface AmbiencePreset {
+/**
+ * The per-displacement configuration a concrete subclass supplies.
+ *
+ * Passed through the constructor rather than declared as abstract members:
+ * abstract property initialisers in a subclass run *after* the base
+ * constructor body, so the base could not read them while seeding its first
+ * randomise.
+ */
+interface AmbienceSpec {
   /** Display name, describing the displacement it exercises. */
   readonly name: string;
 
@@ -293,27 +300,6 @@ interface AmbiencePreset {
   readonly hueDrift: number;
 }
 
-/**
- * The preset table - one entry per displacement class.
- *
- * The decay and hue treatment are chosen per displacement so that each reads
- * clearly: aggressive warps get a faster decay so the trace stays legible,
- * gentle ones get long trails to let structure build up.
- */
-const PRESETS: readonly AmbiencePreset[] = [
-  {name: 'Swirl', shift: ShiftMode.Swirl, decay: DECAY_SLOW, startHue: 200, hueDrift: HUE_DRIFT_SLOW},
-  {name: 'Zoom', shift: ShiftMode.Zoom, decay: DECAY_MID, startHue: 300, hueDrift: HUE_DRIFT_MED},
-  {name: 'Starburst', shift: ShiftMode.Starburst, decay: DECAY_SLOW, startHue: 30, hueDrift: HUE_DRIFT_MED},
-  {name: 'Ring Spin', shift: ShiftMode.RingSpin, decay: DECAY_SLOW, startHue: 160, hueDrift: HUE_DRIFT_SLOW},
-  {name: 'Stretch', shift: ShiftMode.Stretch, decay: DECAY_MID, startHue: 260, hueDrift: HUE_DRIFT_MED},
-  {name: 'Trig', shift: ShiftMode.Trig, decay: DECAY_SLOW, startHue: 90, hueDrift: HUE_DRIFT_MED},
-  {name: 'Trig Stretch', shift: ShiftMode.TrigStretch, decay: DECAY_MID, startHue: 340, hueDrift: HUE_DRIFT_MED},
-  {name: 'Shimmer', shift: ShiftMode.SinShimmer, decay: DECAY_SLOW, startHue: 180, hueDrift: HUE_DRIFT_SLOW},
-  {name: 'Edge Falloff', shift: ShiftMode.EdgeFalloff, decay: DECAY_MID, startHue: 45, hueDrift: HUE_DRIFT_SLOW},
-  {name: 'Thingus', shift: ShiftMode.Thingus, decay: DECAY_SLOW, startHue: 280, hueDrift: HUE_DRIFT_MED},
-  {name: 'Tile', shift: ShiftMode.Tile, decay: DECAY_FAST, startHue: 120, hueDrift: HUE_DRIFT_MED},
-  {name: 'Linear', shift: ShiftMode.Linear, decay: DECAY_FAST, startHue: 210, hueDrift: HUE_DRIFT_SLOW},
-];
 
 /** Vertex shader shared by both passes: a full-screen triangle pair. */
 const VERTEX_SHADER: string = `
@@ -512,9 +498,18 @@ void main() {
  * next frame's input. Because the output of one frame is the input of the
  * next, a small per-pixel displacement compounds into large-scale flow.
  */
-export class AmbienceVisualization extends WebGLVisualization {
-  public readonly name: string = 'Ambience';
-  public readonly category: string = 'Retro';
+export abstract class AmbienceVisualization extends WebGLVisualization {
+  public readonly name: string;
+  public readonly category: string = 'Ambience';
+
+  /** Which displacement this visualization runs. */
+  private readonly shift: ShiftMode;
+
+  /** Per-frame multiplier applied to the previous frame. */
+  private readonly decay: number;
+
+  /** Hue rotation per frame, in degrees. */
+  private readonly hueDrift: number;
 
   /** Time-domain samples for the trace. */
   private dataArray: Uint8Array<ArrayBuffer>;
@@ -552,17 +547,14 @@ export class AmbienceVisualization extends WebGLVisualization {
   private surfaceWidth: number = 0;
   private surfaceHeight: number = 0;
 
-  /** Index of the preset currently running. */
-  private presetIndex: number = 0;
+  /** Milliseconds elapsed since the parameters were last redrawn. */
+  private sinceRandomiseMs: number = 0;
 
-  /** Milliseconds elapsed on the current preset. */
-  private presetElapsedMs: number = 0;
-
-  /** Timestamp of the previous preset tick, in milliseconds. */
-  private lastPresetTickMs: number = performance.now();
+  /** Timestamp of the previous randomise tick, in milliseconds. */
+  private lastRandomiseTickMs: number = performance.now();
 
   /** Current hue of the trace, in degrees. */
-  private hue: number = PRESETS[0].startHue;
+  private hue: number;
 
   /** Smoothed bass level in the range 0 to 1. */
   private bass: number = 0;
@@ -581,8 +573,13 @@ export class AmbienceVisualization extends WebGLVisualization {
   private angleDelta: number = 0;
   private subMode: number = 0;
 
-  public constructor(config: VisualizationConfig) {
+  protected constructor(config: VisualizationConfig, spec: AmbienceSpec) {
     super(config);
+    this.name = spec.name;
+    this.shift = spec.shift;
+    this.decay = spec.decay;
+    this.hueDrift = spec.hueDrift;
+    this.hue = spec.startHue;
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.waveTexels = new Uint8Array(WAVE_TEXTURE_WIDTH * RGBA_STRIDE) as Uint8Array<ArrayBuffer>;
@@ -768,7 +765,7 @@ export class AmbienceVisualization extends WebGLVisualization {
     this.analyser.getByteFrequencyData(this.freqArray);
 
     this.updateBass();
-    this.advancePresets();
+    this.maybeRandomise();
     this.uploadWaveform();
 
     this.renderWarpPass();
@@ -790,23 +787,24 @@ export class AmbienceVisualization extends WebGLVisualization {
   }
 
   /**
-   * Advances the preset clock, re-randomising the displacement on each change.
+   * Redraws the displacement's parameters on an interval.
    *
    * The original randomises a displacement's parameters when it is selected
-   * rather than holding fixed values, so the same preset looks different each
-   * time it comes around.
+   * rather than holding fixed values. Each displacement is its own
+   * visualization here, so there is no selection event to hang that off;
+   * instead the parameters are redrawn periodically, which keeps a single
+   * displacement from settling into one fixed, static field.
    */
-  private advancePresets(): void {
+  private maybeRandomise(): void {
     const now: number = performance.now();
-    const deltaMs: number = Math.min(now - this.lastPresetTickMs, PRESET_MAX_DELTA_MS);
-    this.lastPresetTickMs = now;
-    this.presetElapsedMs += deltaMs;
+    // Clamped so a long stall cannot skip an entire interval in one frame.
+    const deltaMs: number = Math.min(now - this.lastRandomiseTickMs, PRESET_MAX_DELTA_MS);
+    this.lastRandomiseTickMs = now;
+    this.sinceRandomiseMs += deltaMs;
 
-    if (this.presetElapsedMs < PRESET_HOLD_MS) return;
+    if (this.sinceRandomiseMs < PRESET_HOLD_MS) return;
 
-    this.presetElapsedMs = 0;
-    this.presetIndex = (this.presetIndex + 1) % PRESETS.length;
-    this.hue = PRESETS[this.presetIndex].startHue;
+    this.sinceRandomiseMs = 0;
     this.randomiseShift();
   }
 
@@ -822,7 +820,6 @@ export class AmbienceVisualization extends WebGLVisualization {
     const pick: (modulus: number) => number =
       (modulus: number): number => Math.floor(Math.random() * modulus);
 
-    const shift: ShiftMode = PRESETS[this.presetIndex].shift;
 
     // Shared across every polar displacement: u * 0.1 - 0.05 radians.
     this.angleDelta = unit() * ANGLE_SPAN - ANGLE_BIAS;
@@ -832,7 +829,7 @@ export class AmbienceVisualization extends WebGLVisualization {
     this.frequency = 0;
     this.subMode = 0;
 
-    switch (shift) {
+    switch (this.shift) {
       case ShiftMode.Linear:
         this.driftX = pick(LINEAR_DRIFT_MODULUS) - LINEAR_DRIFT_BIAS;
         this.driftY = pick(LINEAR_DRIFT_MODULUS) - LINEAR_DRIFT_BIAS;
@@ -904,7 +901,6 @@ export class AmbienceVisualization extends WebGLVisualization {
   /** Runs the warp pass into the back surface, then swaps. */
   private renderWarpPass(): void {
     const gl: WebGLRenderingContext = this.gl;
-    const preset: AmbiencePreset = PRESETS[this.presetIndex];
     const back: number = 1 - this.front;
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.surfaceBuffers[back]);
@@ -920,13 +916,13 @@ export class AmbienceVisualization extends WebGLVisualization {
     gl.bindTexture(gl.TEXTURE_2D, this.waveTexture);
     gl.uniform1i(this.warpUniforms['uWaveform'], 1);
 
-    this.hue = (this.hue + preset.hueDrift) % DEGREES_FULL_CIRCLE;
+    this.hue = (this.hue + this.hueDrift) % DEGREES_FULL_CIRCLE;
     const rgb: {r: number; g: number; b: number} =
       this.hslToRgb(this.hue, TRACE_SATURATION, TRACE_LIGHTNESS);
 
     gl.uniform2f(this.warpUniforms['uSize'], this.surfaceWidth, this.surfaceHeight);
-    gl.uniform1f(this.warpUniforms['uDecay'], preset.decay);
-    gl.uniform1i(this.warpUniforms['uShift'], preset.shift);
+    gl.uniform1f(this.warpUniforms['uDecay'], this.decay);
+    gl.uniform1i(this.warpUniforms['uShift'], this.shift);
     gl.uniform1i(this.warpUniforms['uSubMode'], this.subMode);
     gl.uniform2f(this.warpUniforms['uDrift'], this.driftX, this.driftY);
     gl.uniform1f(this.warpUniforms['uAmplitude'], this.amplitude);
@@ -990,5 +986,171 @@ export class AmbienceVisualization extends WebGLVisualization {
     // Base class drops the context itself; do that only once our own objects
     // have been released.
     super.destroy();
+  }
+}
+
+// ============================================================================
+// Concrete displacements
+//
+// One visualization per displacement class in the original bank. They share
+// the engine above and differ only in which displacement they run and the
+// decay and hue treatment wrapped around it: aggressive warps take a faster
+// decay so the trace stays legible, gentle ones take long trails so structure
+// can build up.
+// ============================================================================
+
+/** Ambience - Swirl. Sine ripple: x displaced by a sine of y, y by a cosine of x. */
+export class AmbienceSwirlVisualization extends AmbienceVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: 'Swirl',
+      shift: ShiftMode.Swirl,
+      decay: DECAY_SLOW,
+      startHue: 200,
+      hueDrift: HUE_DRIFT_SLOW,
+    });
+  }
+}
+
+/** Ambience - Zoom. Angle advanced and radius scaled about the centre each frame. */
+export class AmbienceZoomVisualization extends AmbienceVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: 'Zoom',
+      shift: ShiftMode.Zoom,
+      decay: DECAY_MID,
+      startHue: 300,
+      hueDrift: HUE_DRIFT_MED,
+    });
+  }
+}
+
+/** Ambience - Starburst. Radius modulated by sin(arms * angle), scaled by normalised radius. */
+export class AmbienceStarburstVisualization extends AmbienceVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: 'Starburst',
+      shift: ShiftMode.Starburst,
+      decay: DECAY_SLOW,
+      startHue: 30,
+      hueDrift: HUE_DRIFT_MED,
+    });
+  }
+}
+
+/** Ambience - Ring Spin. Radius split into concentric rings, each rotated by its ring index. */
+export class AmbienceRingSpinVisualization extends AmbienceVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: 'Ring Spin',
+      shift: ShiftMode.RingSpin,
+      decay: DECAY_SLOW,
+      startHue: 160,
+      hueDrift: HUE_DRIFT_SLOW,
+    });
+  }
+}
+
+/** Ambience - Stretch. Cubic radial distortion in normalised radius. */
+export class AmbienceStretchVisualization extends AmbienceVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: 'Stretch',
+      shift: ShiftMode.Stretch,
+      decay: DECAY_MID,
+      startHue: 260,
+      hueDrift: HUE_DRIFT_MED,
+    });
+  }
+}
+
+/** Ambience - Trig. Trigonometric perturbation of angle or radius, over three sub-modes. */
+export class AmbienceTrigVisualization extends AmbienceVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: 'Trig',
+      shift: ShiftMode.Trig,
+      decay: DECAY_SLOW,
+      startHue: 90,
+      hueDrift: HUE_DRIFT_MED,
+    });
+  }
+}
+
+/** Ambience - Trig Stretch. Trig composed with the cubic radial distortion. */
+export class AmbienceTrigStretchVisualization extends AmbienceVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: 'Trig Stretch',
+      shift: ShiftMode.TrigStretch,
+      decay: DECAY_MID,
+      startHue: 340,
+      hueDrift: HUE_DRIFT_MED,
+    });
+  }
+}
+
+/** Ambience - Shimmer. Axis-aligned sine displacement, over two sub-modes. */
+export class AmbienceShimmerVisualization extends AmbienceVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: 'Shimmer',
+      shift: ShiftMode.SinShimmer,
+      decay: DECAY_SLOW,
+      startHue: 180,
+      hueDrift: HUE_DRIFT_SLOW,
+    });
+  }
+}
+
+/** Ambience - Edge Falloff. Shear growing with distance from one of the four edges. */
+export class AmbienceEdgeFalloffVisualization extends AmbienceVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: 'Edge Falloff',
+      shift: ShiftMode.EdgeFalloff,
+      decay: DECAY_MID,
+      startHue: 45,
+      hueDrift: HUE_DRIFT_SLOW,
+    });
+  }
+}
+
+/** Ambience - Thingus. Angle and radius offset, radius scaled by a quarter of the width. */
+export class AmbienceThingusVisualization extends AmbienceVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: 'Thingus',
+      shift: ShiftMode.Thingus,
+      decay: DECAY_SLOW,
+      startHue: 280,
+      hueDrift: HUE_DRIFT_MED,
+    });
+  }
+}
+
+/** Ambience - Tile. Coordinate wrapped, repeating the surface as tiles. */
+export class AmbienceTileVisualization extends AmbienceVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: 'Tile',
+      shift: ShiftMode.Tile,
+      decay: DECAY_FAST,
+      startHue: 120,
+      hueDrift: HUE_DRIFT_MED,
+    });
+  }
+}
+
+/** Ambience - Linear. Constant random drift of a few pixels per frame on each axis. */
+export class AmbienceLinearVisualization extends AmbienceVisualization {
+  public constructor(config: VisualizationConfig) {
+    super(config, {
+      name: 'Linear',
+      shift: ShiftMode.Linear,
+      decay: DECAY_FAST,
+      startHue: 210,
+      hueDrift: HUE_DRIFT_SLOW,
+    });
   }
 }

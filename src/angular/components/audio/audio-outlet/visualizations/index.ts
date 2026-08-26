@@ -18,7 +18,7 @@
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
  * - blackhole: Black Hole - filled glowing accretion-disk waveform around a black core (waves category)
  * - alchemy: Alchemy - frame-feedback effect engine after the Windows Media Player visualization (retro category)
- * - ambience: Ambience - per-pixel coordinate warp engine after the Windows Media Player visualization (retro category)
+ * - ambience-*: Ambience - one visualization per displacement in the Windows Media Player Ambience bank
  *
  * @module app/components/audio/audio-outlet/visualizations
  */
@@ -40,7 +40,20 @@ export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
 export {ParticlesVisualization} from './particles-visualization';
 export {AlchemyVisualization} from './alchemy-visualization';
-export {AmbienceVisualization} from './ambience-visualization';
+export {
+  AmbienceSwirlVisualization,
+  AmbienceZoomVisualization,
+  AmbienceStarburstVisualization,
+  AmbienceRingSpinVisualization,
+  AmbienceStretchVisualization,
+  AmbienceTrigVisualization,
+  AmbienceTrigStretchVisualization,
+  AmbienceShimmerVisualization,
+  AmbienceEdgeFalloffVisualization,
+  AmbienceThingusVisualization,
+  AmbienceTileVisualization,
+  AmbienceLinearVisualization,
+} from './ambience-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
@@ -58,7 +71,20 @@ import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
 import {ParticlesVisualization} from './particles-visualization';
 import {AlchemyVisualization} from './alchemy-visualization';
-import {AmbienceVisualization} from './ambience-visualization';
+import {
+  AmbienceSwirlVisualization,
+  AmbienceZoomVisualization,
+  AmbienceStarburstVisualization,
+  AmbienceRingSpinVisualization,
+  AmbienceStretchVisualization,
+  AmbienceTrigVisualization,
+  AmbienceTrigStretchVisualization,
+  AmbienceShimmerVisualization,
+  AmbienceEdgeFalloffVisualization,
+  AmbienceThingusVisualization,
+  AmbienceTileVisualization,
+  AmbienceLinearVisualization,
+} from './ambience-visualization';
 
 /**
  * Map of visualization types to their constructor classes.
@@ -78,7 +104,18 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   blackhole: BlackHoleVisualization,
   particles: ParticlesVisualization,
   alchemy: AlchemyVisualization,
-  ambience: AmbienceVisualization,
+  'ambience-swirl': AmbienceSwirlVisualization,
+  'ambience-zoom': AmbienceZoomVisualization,
+  'ambience-starburst': AmbienceStarburstVisualization,
+  'ambience-ringspin': AmbienceRingSpinVisualization,
+  'ambience-stretch': AmbienceStretchVisualization,
+  'ambience-trig': AmbienceTrigVisualization,
+  'ambience-trigstretch': AmbienceTrigStretchVisualization,
+  'ambience-shimmer': AmbienceShimmerVisualization,
+  'ambience-edgefalloff': AmbienceEdgeFalloffVisualization,
+  'ambience-thingus': AmbienceThingusVisualization,
+  'ambience-tile': AmbienceTileVisualization,
+  'ambience-linear': AmbienceLinearVisualization,
   blank: BlankVisualization,
   logo: LogoVisualization,
 };
@@ -101,7 +138,18 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   blackhole: {name: 'Black Hole', category: 'Waves'},
   particles: {name: 'Particles', category: 'Waves'},
   alchemy: {name: 'Alchemy', category: 'Retro'},
-  ambience: {name: 'Ambience', category: 'Retro'},
+  'ambience-swirl': {name: 'Swirl', category: 'Ambience'},
+  'ambience-zoom': {name: 'Zoom', category: 'Ambience'},
+  'ambience-starburst': {name: 'Starburst', category: 'Ambience'},
+  'ambience-ringspin': {name: 'Ring Spin', category: 'Ambience'},
+  'ambience-stretch': {name: 'Stretch', category: 'Ambience'},
+  'ambience-trig': {name: 'Trig', category: 'Ambience'},
+  'ambience-trigstretch': {name: 'Trig Stretch', category: 'Ambience'},
+  'ambience-shimmer': {name: 'Shimmer', category: 'Ambience'},
+  'ambience-edgefalloff': {name: 'Edge Falloff', category: 'Ambience'},
+  'ambience-thingus': {name: 'Thingus', category: 'Ambience'},
+  'ambience-tile': {name: 'Tile', category: 'Ambience'},
+  'ambience-linear': {name: 'Linear', category: 'Ambience'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
@@ -141,7 +189,8 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  * - Bars: bars
  * - Waves: waveform, modern, tunnel, infinity, neon, onix, pulsar, blackhole
  * - Signature: spotlight, water (Reactor)
- * - Retro: alchemy, ambience
+ * - Retro: alchemy
+ * - Ambience: one entry per displacement in the Ambience bank
  * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
@@ -152,7 +201,9 @@ export const VISUALIZATION_TYPES: string[] = [
   // Signature
   'spotlight', 'water',
   // Retro
-  'alchemy', 'ambience',
+  'alchemy',
+  // Ambience
+  'ambience-swirl', 'ambience-zoom', 'ambience-starburst', 'ambience-ringspin', 'ambience-stretch', 'ambience-trig', 'ambience-trigstretch', 'ambience-shimmer', 'ambience-edgefalloff', 'ambience-thingus', 'ambience-tile', 'ambience-linear',
   // Simple
   'blank', 'logo',
 ];

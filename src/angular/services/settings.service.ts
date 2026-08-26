@@ -132,7 +132,7 @@ export type LocalSettingKey = keyof VisualizationLocalSettings;
 export interface VisualizationMetadata {
   readonly id: string;
   readonly name: string;
-  readonly category: 'Bars' | 'Waves' | 'Signature' | 'Retro' | 'Simple';
+  readonly category: 'Bars' | 'Waves' | 'Signature' | 'Retro' | 'Ambience' | 'Simple';
   readonly applicableSettings: readonly LocalSettingKey[];
 }
 
@@ -451,7 +451,19 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
   // Retro category
   {id: 'alchemy', name: 'Alchemy', category: 'Retro', applicableSettings: []},
-  {id: 'ambience', name: 'Ambience', category: 'Retro', applicableSettings: []},
+  // Ambience category
+  {id: 'ambience-swirl', name: 'Swirl', category: 'Ambience', applicableSettings: []},
+  {id: 'ambience-zoom', name: 'Zoom', category: 'Ambience', applicableSettings: []},
+  {id: 'ambience-starburst', name: 'Starburst', category: 'Ambience', applicableSettings: []},
+  {id: 'ambience-ringspin', name: 'Ring Spin', category: 'Ambience', applicableSettings: []},
+  {id: 'ambience-stretch', name: 'Stretch', category: 'Ambience', applicableSettings: []},
+  {id: 'ambience-trig', name: 'Trig', category: 'Ambience', applicableSettings: []},
+  {id: 'ambience-trigstretch', name: 'Trig Stretch', category: 'Ambience', applicableSettings: []},
+  {id: 'ambience-shimmer', name: 'Shimmer', category: 'Ambience', applicableSettings: []},
+  {id: 'ambience-edgefalloff', name: 'Edge Falloff', category: 'Ambience', applicableSettings: []},
+  {id: 'ambience-thingus', name: 'Thingus', category: 'Ambience', applicableSettings: []},
+  {id: 'ambience-tile', name: 'Tile', category: 'Ambience', applicableSettings: []},
+  {id: 'ambience-linear', name: 'Linear', category: 'Ambience', applicableSettings: []},
   // Simple category
   {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
   {id: 'logo', name: 'Logo', category: 'Simple', applicableSettings: []},
@@ -547,7 +559,19 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
   // Retro category
   {value: 'alchemy', label: 'Retro : Alchemy', description: 'Frame-feedback smear engine cycling through warp presets'},
-  {value: 'ambience', label: 'Retro : Ambience', description: 'Per-pixel coordinate warp - swirl, zoom and starburst displacement fields'},
+  // Ambience category
+  {value: 'ambience-swirl', label: 'Ambience : Swirl', description: 'Sine ripple across both axes'},
+  {value: 'ambience-zoom', label: 'Ambience : Zoom', description: 'Rotating zoom about the centre'},
+  {value: 'ambience-starburst', label: 'Ambience : Starburst', description: 'Radial arms modulated by angle'},
+  {value: 'ambience-ringspin', label: 'Ambience : Ring Spin', description: 'Concentric rings rotating by index'},
+  {value: 'ambience-stretch', label: 'Ambience : Stretch', description: 'Cubic radial distortion'},
+  {value: 'ambience-trig', label: 'Ambience : Trig', description: 'Trigonometric angle and radius perturbation'},
+  {value: 'ambience-trigstretch', label: 'Ambience : Trig Stretch', description: 'Trigonometric perturbation with cubic stretch'},
+  {value: 'ambience-shimmer', label: 'Ambience : Shimmer', description: 'Axis-aligned sine displacement'},
+  {value: 'ambience-edgefalloff', label: 'Ambience : Edge Falloff', description: 'Shear growing away from one edge'},
+  {value: 'ambience-thingus', label: 'Ambience : Thingus', description: 'Offset angle with quarter-width radius scale'},
+  {value: 'ambience-tile', label: 'Ambience : Tile', description: 'Surface wrapped into repeating tiles'},
+  {value: 'ambience-linear', label: 'Ambience : Linear', description: 'Constant drift in a random direction'},
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},
   {value: 'logo', label: 'Simple : Logo', description: 'The ONIXPlayer logo, centred'},
