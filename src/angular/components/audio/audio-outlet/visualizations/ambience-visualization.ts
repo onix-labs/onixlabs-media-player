@@ -124,6 +124,20 @@ export const ZOOM_ANGLE_DELTA: number = 0.02;
 /** Zoom: radial scale. Engine range u * 0.2 - 0.1. */
 export const ZOOM_RADIAL: number = 0.025;
 
+/**
+ * Zoom, as Ambience runs it: the same rate, outward.
+ *
+ * applyShift returns the coordinate to *sample from*, so a positive radial
+ * scale reads from further out and content migrates toward the centre - it is
+ * sucked in. Negating it reads from nearer the centre, so content is pulled
+ * out instead.
+ *
+ * Battery / Wave Edge pairs with the same displacement and keeps the inward
+ * ZOOM_RADIAL above. Still inside the engine's u * 0.2 - 0.1 range, which
+ * spans both directions.
+ */
+export const ZOOM_RADIAL_AMBIENCE: number = -0.025;
+
 /** Ring Spin: angle advance per ring index. Engine range +/- 0.05 radians. */
 export const RINGSPIN_ANGLE_DELTA: number = 0.03;
 
@@ -1111,7 +1125,7 @@ export class AmbienceZoomVisualization extends AmbienceVisualization {
       startHue: 300,
       hueDrift: HUE_DRIFT_MED,
       generator: GeneratorMode.WaveEdge,
-      params: {angleDelta: ZOOM_ANGLE_DELTA, amplitude: ZOOM_RADIAL},
+      params: {angleDelta: ZOOM_ANGLE_DELTA, amplitude: ZOOM_RADIAL_AMBIENCE},
     });
   }
 }
