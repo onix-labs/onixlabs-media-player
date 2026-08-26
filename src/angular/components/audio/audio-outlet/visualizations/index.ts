@@ -18,7 +18,7 @@
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
  * - blackhole: Black Hole - filled glowing accretion-disk waveform around a black core (waves category)
  * - alchemy-*: Alchemy - one visualization per preset in the Windows Media Player Alchemy bank
- * - battery-randomization: Battery - random displacement and generator on every roll
+ * - battery-*: Battery - one visualization per source generator in the Battery bank
  * - ambience-*: Ambience - one visualization per displacement in the Windows Media Player Ambience bank
  *
  * @module app/components/audio/audio-outlet/visualizations
@@ -53,7 +53,18 @@ export {
   AlchemyShiftVisualization,
   AlchemyBassBounceVisualization,
 } from './alchemy-visualization';
-export {BatteryRandomizationVisualization} from './battery-visualization';
+export {
+  BatteryWaveEdgeVisualization,
+  BatterySpectrumEdgeVisualization,
+  BatteryCircleWaveformVisualization,
+  BatteryEdgeGradiantVisualization,
+  BatteryCosEdgeGradiantVisualization,
+  BatteryEdgeTraceVisualization,
+  BatteryDotPlaneVisualization,
+  BatteryJDarVisualization,
+  BatteryGalaxyVisualization,
+  BatteryJiggyScribbleVisualization,
+} from './battery-visualization';
 export {
   AmbienceSwirlVisualization,
   AmbienceZoomVisualization,
@@ -97,7 +108,18 @@ import {
   AlchemyShiftVisualization,
   AlchemyBassBounceVisualization,
 } from './alchemy-visualization';
-import {BatteryRandomizationVisualization} from './battery-visualization';
+import {
+  BatteryWaveEdgeVisualization,
+  BatterySpectrumEdgeVisualization,
+  BatteryCircleWaveformVisualization,
+  BatteryEdgeGradiantVisualization,
+  BatteryCosEdgeGradiantVisualization,
+  BatteryEdgeTraceVisualization,
+  BatteryDotPlaneVisualization,
+  BatteryJDarVisualization,
+  BatteryGalaxyVisualization,
+  BatteryJiggyScribbleVisualization,
+} from './battery-visualization';
 import {
   AmbienceSwirlVisualization,
   AmbienceZoomVisualization,
@@ -141,7 +163,16 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   'alchemy-switchblur': AlchemySwitchBlurVisualization,
   'alchemy-shift': AlchemyShiftVisualization,
   'alchemy-bassbounce': AlchemyBassBounceVisualization,
-  'battery-randomization': BatteryRandomizationVisualization,
+  'battery-waveedge': BatteryWaveEdgeVisualization,
+  'battery-spectrumedge': BatterySpectrumEdgeVisualization,
+  'battery-circlewaveform': BatteryCircleWaveformVisualization,
+  'battery-edgegradiant': BatteryEdgeGradiantVisualization,
+  'battery-cosedgegradiant': BatteryCosEdgeGradiantVisualization,
+  'battery-edgetrace': BatteryEdgeTraceVisualization,
+  'battery-dotplane': BatteryDotPlaneVisualization,
+  'battery-jdar': BatteryJDarVisualization,
+  'battery-galaxy': BatteryGalaxyVisualization,
+  'battery-jiggyscribble': BatteryJiggyScribbleVisualization,
   'ambience-swirl': AmbienceSwirlVisualization,
   'ambience-zoom': AmbienceZoomVisualization,
   'ambience-starburst': AmbienceStarburstVisualization,
@@ -186,7 +217,16 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   'alchemy-switchblur': {name: "SwitchBlur", category: 'Alchemy'},
   'alchemy-shift': {name: "Shift", category: 'Alchemy'},
   'alchemy-bassbounce': {name: "Bass Bounce", category: 'Alchemy'},
-  'battery-randomization': {name: 'Randomization', category: 'Battery'},
+  'battery-waveedge': {name: 'Wave Edge', category: 'Battery'},
+  'battery-spectrumedge': {name: 'Spectrum Edge', category: 'Battery'},
+  'battery-circlewaveform': {name: 'Circle Waveform', category: 'Battery'},
+  'battery-edgegradiant': {name: 'Edge Gradiant', category: 'Battery'},
+  'battery-cosedgegradiant': {name: 'Cos Edge Gradiant', category: 'Battery'},
+  'battery-edgetrace': {name: 'Edge Trace', category: 'Battery'},
+  'battery-dotplane': {name: 'Dot Plane', category: 'Battery'},
+  'battery-jdar': {name: 'JDar', category: 'Battery'},
+  'battery-galaxy': {name: 'Galaxy', category: 'Battery'},
+  'battery-jiggyscribble': {name: 'Jiggy Scribble', category: 'Battery'},
   'ambience-swirl': {name: 'Swirl', category: 'Ambience'},
   'ambience-zoom': {name: 'Zoom', category: 'Ambience'},
   'ambience-starburst': {name: 'Starburst', category: 'Ambience'},
@@ -240,7 +280,7 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  * - Signature: spotlight, water (Reactor)
  * - Alchemy: one entry per preset in the Alchemy bank
  * - Ambience: one entry per displacement in the Ambience bank
- * - Battery: a single randomised entry
+ * - Battery: one entry per source generator, each rolling its displacement
  * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
@@ -255,7 +295,7 @@ export const VISUALIZATION_TYPES: string[] = [
   // Ambience
   'ambience-swirl', 'ambience-zoom', 'ambience-starburst', 'ambience-ringspin', 'ambience-stretch', 'ambience-trig', 'ambience-trigstretch', 'ambience-shimmer', 'ambience-edgefalloff', 'ambience-thingus', 'ambience-tile', 'ambience-linear',
   // Battery
-  'battery-randomization',
+  'battery-waveedge', 'battery-spectrumedge', 'battery-circlewaveform', 'battery-edgegradiant', 'battery-cosedgegradiant', 'battery-edgetrace', 'battery-dotplane', 'battery-jdar', 'battery-galaxy', 'battery-jiggyscribble',
   // Simple
   'blank', 'logo',
 ];

@@ -68,7 +68,7 @@
  */
 
 import {WebGLVisualization, VisualizationConfig} from './visualization';
-import {DEGREES_FULL_CIRCLE, MS_PER_SECOND, RGB_MAX} from './visualization-constants';
+import {DEGREES_FULL_CIRCLE, MS_PER_SECOND, RGB_MAX, TWO_PI} from './visualization-constants';
 
 // ============================================================================
 // Surface
@@ -210,6 +210,12 @@ const BASS_BIN_COUNT: number = 24;
 /** Smoothing applied to the bass envelope, per frame. */
 const BASS_SMOOTHING: number = 0.18;
 
+/** Base sweep advance per frame, in radians. */
+const SWEEP_BASE_RATE: number = 0.012;
+
+/** Extra sweep advance contributed by the bass envelope, in radians. */
+const SWEEP_BASS_RATE: number = 0.06;
+
 /** Extra trace amplitude contributed by the bass envelope. */
 const BASS_FLEX: number = 0.6;
 
@@ -302,10 +308,16 @@ export enum GeneratorMode {
   EdgeTrace = 5,
   /** Grid of dots sized by spectral magnitude. */
   DotPlane = 6,
+  /** Radar sweep whose angle accumulates with the low bins. */
+  JDar = 7,
+  /** Spiral arms about the centre, brightened by the spectrum. */
+  Galaxy = 8,
+  /** Wandering scribble whose path jitters with the waveform. */
+  JiggyScribble = 9,
 }
 
 /** Number of generators, used when drawing a random one. */
-const GENERATOR_COUNT: number = 7;
+const GENERATOR_COUNT: number = 10;
 
 /** Number of displacements, used when drawing a random one. */
 const SHIFT_COUNT: number = 12;
@@ -341,10 +353,13 @@ interface AmbienceSpec {
   readonly category?: string;
 
   /**
-   * When true, the displacement and generator are re-drawn at random on every
-   * randomise tick, not just their parameters. This is what Battery does.
+   * When true, a fresh displacement is drawn at random on every randomise
+   * tick, not just fresh parameters for the existing one.
    */
-  readonly randomiseAll?: boolean;
+  readonly randomiseDisplacement?: boolean;
+
+  /** When true, a fresh generator is drawn at random on every randomise tick. */
+  readonly randomiseGenerator?: boolean;
 }
 
 
@@ -383,6 +398,7 @@ uniform float uDecay;
 uniform int   uShift;
 uniform int   uSubMode;
 uniform int   uGenerator;
+uniform float uSweep;
 uniform vec2  uDrift;
 uniform float uAmplitude;
 uniform float uFrequency;
@@ -393,6 +409,12 @@ uniform float uWaveAmplitude;
 /* The original multiplies by a literal 6.28 rather than a precise tau. Keeping
    the same approximation keeps the recovered frequency ranges honest. */
 const float TAU_APPROX = 6.28;
+
+/* Precise values, used by the generators. TAU_APPROX is deliberately the
+   engine's own rounded literal and is kept only where it mirrors the original;
+   the generators are ours, so they use the real thing. */
+const float PI_PRECISE = 3.14159265;
+const float TAU_PRECISE = 6.28318531;
 
 vec2 surfaceCentre() {
   return uSize * 0.5;
@@ -537,7 +559,7 @@ float generate(vec2 uv) {
   if (uGenerator == 2) {
     vec2 centred = (uv - 0.5) * vec2(uSize.x / uSize.y, 1.0);
     float angle = atan(centred.y, centred.x);
-    float level = waveformAt(angle / TAU_APPROX + 0.5);
+    float level = waveformAt(angle / TAU_PRECISE + 0.5);
     float target = 0.25 + (level - 0.5) * uWaveAmplitude * 0.5;
     return glow(length(centred) - target);
   }
@@ -558,10 +580,34 @@ float generate(vec2 uv) {
     return glow(uv.y - height);
   }
 
-  /* DotPlane */
-  vec2 cell = fract(uv * 12.0) - 0.5;
-  float magnitude = spectrumAt(uv.x);
-  return smoothstep(0.35 * magnitude + 0.02, 0.0, length(cell));
+  if (uGenerator == 6) {
+    vec2 cell = fract(uv * 12.0) - 0.5;
+    float magnitude = spectrumAt(uv.x);
+    return smoothstep(0.35 * magnitude + 0.02, 0.0, length(cell));
+  }
+
+  vec2 centred = (uv - 0.5) * vec2(uSize.x / uSize.y, 1.0);
+  float radius = length(centred);
+  float angle = atan(centred.y, centred.x);
+
+  if (uGenerator == 7) {
+    /* Radar sweep: a narrow beam at the accumulated angle, fading outward. */
+    float offset = abs(mod(angle - uSweep + PI_PRECISE, TAU_PRECISE) - PI_PRECISE);
+    return exp(-(offset * offset) / 0.002) * smoothstep(0.5, 0.0, radius);
+  }
+
+  if (uGenerator == 8) {
+    /* Spiral arms, brightened where the spectrum is loud at that radius. */
+    float arm = sin(2.0 * (angle + radius * 8.0) + uSweep);
+    return max(0.0, arm) * exp(-(radius * radius) / 0.08)
+           * (0.3 + spectrumAt(fract(radius * 2.0)));
+  }
+
+  /* JiggyScribble: two out-of-step sines wandering the surface, displaced by
+     the trace so the path never quite repeats. */
+  float path = sin(centred.x * 9.0 + uSweep * 3.0) * 0.25
+             + sin(centred.y * 7.0 - uSweep * 2.0) * 0.2;
+  return glow(centred.y - path * (0.5 + (waveformAt(uv.x) - 0.5)));
 }
 
 void main() {
@@ -607,8 +653,20 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
   /** Which source generator draws into the surface. */
   private generator: GeneratorMode;
 
-  /** Whether displacement and generator are re-drawn at random each tick. */
-  private readonly randomiseAll: boolean;
+  /** Whether a fresh displacement is drawn at random each tick. */
+  private readonly randomiseDisplacement: boolean;
+
+  /** Whether a fresh generator is drawn at random each tick. */
+  private readonly randomiseGenerator: boolean;
+
+  /**
+   * Accumulated sweep angle, in radians.
+   *
+   * Generators that move independently of the warp - the radar sweep, the
+   * spiral, the scribble - advance off this rather than off wall-clock time,
+   * so their motion is tied to the audio like everything else.
+   */
+  private sweep: number = 0;
 
   /** Per-frame multiplier applied to the previous frame. */
   private readonly decay: number;
@@ -684,7 +742,8 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
     this.category = spec.category ?? 'Ambience';
     this.shift = spec.shift;
     this.generator = spec.generator;
-    this.randomiseAll = spec.randomiseAll === true;
+    this.randomiseDisplacement = spec.randomiseDisplacement === true;
+    this.randomiseGenerator = spec.randomiseGenerator === true;
     this.decay = spec.decay;
     this.hueDrift = spec.hueDrift;
     this.hue = spec.startHue;
@@ -713,7 +772,7 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
 
     for (const key of [
       'uPrevious', 'uWaveform', 'uSize', 'uDecay', 'uShift', 'uSubMode',
-      'uGenerator', 'uDrift', 'uAmplitude', 'uFrequency', 'uAngleDelta',
+      'uGenerator', 'uSweep', 'uDrift', 'uAmplitude', 'uFrequency', 'uAngleDelta',
       'uTraceColor', 'uWaveAmplitude',
     ]) {
       this.warpUniforms[key] = gl.getUniformLocation(this.warpProgram!, key);
@@ -893,6 +952,9 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
 
     const level: number = (total / bins / RGB_MAX) * this.sensitivityFactor;
     this.bass += (level - this.bass) * BASS_SMOOTHING;
+    // Wrapped rather than left to grow: the sweep feeds a shader mod and would
+    // lose angular precision over a long session if it ran away.
+    this.sweep = (this.sweep + SWEEP_BASE_RATE + this.bass * SWEEP_BASS_RATE) % TWO_PI;
   }
 
   /**
@@ -930,8 +992,10 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
       (modulus: number): number => Math.floor(Math.random() * modulus);
 
 
-    if (this.randomiseAll) {
+    if (this.randomiseDisplacement) {
       this.shift = pick(SHIFT_COUNT) as ShiftMode;
+    }
+    if (this.randomiseGenerator) {
       this.generator = pick(GENERATOR_COUNT) as GeneratorMode;
     }
 
@@ -1045,6 +1109,7 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
     gl.uniform1i(this.warpUniforms['uShift'], this.shift);
     gl.uniform1i(this.warpUniforms['uSubMode'], this.subMode);
     gl.uniform1i(this.warpUniforms['uGenerator'], this.generator);
+    gl.uniform1f(this.warpUniforms['uSweep'], this.sweep);
     gl.uniform2f(this.warpUniforms['uDrift'], this.driftX, this.driftY);
     gl.uniform1f(this.warpUniforms['uAmplitude'], this.amplitude);
     gl.uniform1f(this.warpUniforms['uFrequency'], this.frequency);

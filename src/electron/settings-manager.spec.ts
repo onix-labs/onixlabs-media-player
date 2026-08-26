@@ -263,7 +263,8 @@ describe('SettingsManager', () => {
     it('should accept all valid visualization types', () => {
       const validTypes: readonly string[] = [
         'bars', 'waveform', 'tunnel', 'neon', 'pulsar', 'water', 'infinity', 'onix', 'modern', 'spotlight', 'blackhole', 'particles',
-        'alchemy-standard', 'alchemy-linearshift', 'alchemy-stretchshift', 'alchemy-superstar', 'alchemy-wonderwave', 'alchemy-shiftoscope', 'alchemy-funktional', 'alchemy-blur', 'alchemy-switchblur', 'alchemy-shift', 'alchemy-bassbounce', 'battery-randomization',
+        'alchemy-standard', 'alchemy-linearshift', 'alchemy-stretchshift', 'alchemy-superstar', 'alchemy-wonderwave', 'alchemy-shiftoscope', 'alchemy-funktional', 'alchemy-blur', 'alchemy-switchblur', 'alchemy-shift', 'alchemy-bassbounce',
+        'battery-waveedge', 'battery-spectrumedge', 'battery-circlewaveform', 'battery-edgegradiant', 'battery-cosedgegradiant', 'battery-edgetrace', 'battery-dotplane', 'battery-jdar', 'battery-galaxy', 'battery-jiggyscribble',
         'ambience-swirl', 'ambience-zoom', 'ambience-starburst', 'ambience-ringspin', 'ambience-stretch', 'ambience-trig', 'ambience-trigstretch', 'ambience-shimmer', 'ambience-edgefalloff', 'ambience-thingus', 'ambience-tile', 'ambience-linear', 'blank', 'logo',
       ];
 
