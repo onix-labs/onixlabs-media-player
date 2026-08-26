@@ -812,6 +812,7 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'blackhole',
   'particles',
   'alchemy',
+  'ambience',
   'blank',
   'logo',
 ];

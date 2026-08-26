@@ -18,6 +18,7 @@
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
  * - blackhole: Black Hole - filled glowing accretion-disk waveform around a black core (waves category)
  * - alchemy: Alchemy - frame-feedback effect engine after the Windows Media Player visualization (retro category)
+ * - ambience: Ambience - per-pixel coordinate warp engine after the Windows Media Player visualization (retro category)
  *
  * @module app/components/audio/audio-outlet/visualizations
  */
@@ -39,6 +40,7 @@ export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
 export {ParticlesVisualization} from './particles-visualization';
 export {AlchemyVisualization} from './alchemy-visualization';
+export {AmbienceVisualization} from './ambience-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
@@ -56,6 +58,7 @@ import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
 import {ParticlesVisualization} from './particles-visualization';
 import {AlchemyVisualization} from './alchemy-visualization';
+import {AmbienceVisualization} from './ambience-visualization';
 
 /**
  * Map of visualization types to their constructor classes.
@@ -75,6 +78,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   blackhole: BlackHoleVisualization,
   particles: ParticlesVisualization,
   alchemy: AlchemyVisualization,
+  ambience: AmbienceVisualization,
   blank: BlankVisualization,
   logo: LogoVisualization,
 };
@@ -97,6 +101,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   blackhole: {name: 'Black Hole', category: 'Waves'},
   particles: {name: 'Particles', category: 'Waves'},
   alchemy: {name: 'Alchemy', category: 'Retro'},
+  ambience: {name: 'Ambience', category: 'Retro'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
@@ -136,7 +141,7 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  * - Bars: bars
  * - Waves: waveform, modern, tunnel, infinity, neon, onix, pulsar, blackhole
  * - Signature: spotlight, water (Reactor)
- * - Retro: alchemy
+ * - Retro: alchemy, ambience
  * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
@@ -147,7 +152,7 @@ export const VISUALIZATION_TYPES: string[] = [
   // Signature
   'spotlight', 'water',
   // Retro
-  'alchemy',
+  'alchemy', 'ambience',
   // Simple
   'blank', 'logo',
 ];

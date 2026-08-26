@@ -50,6 +50,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     category: 'Retro',
     items: [
       {id: 'alchemy', name: 'Alchemy'},
+      {id: 'ambience', name: 'Ambience'},
     ],
   },
   {

@@ -451,6 +451,7 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
   // Retro category
   {id: 'alchemy', name: 'Alchemy', category: 'Retro', applicableSettings: []},
+  {id: 'ambience', name: 'Ambience', category: 'Retro', applicableSettings: []},
   // Simple category
   {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
   {id: 'logo', name: 'Logo', category: 'Simple', applicableSettings: []},
@@ -546,6 +547,7 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
   // Retro category
   {value: 'alchemy', label: 'Retro : Alchemy', description: 'Frame-feedback smear engine cycling through warp presets'},
+  {value: 'ambience', label: 'Retro : Ambience', description: 'Per-pixel coordinate warp - swirl, zoom and starburst displacement fields'},
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},
   {value: 'logo', label: 'Simple : Logo', description: 'The ONIXPlayer logo, centred'},
