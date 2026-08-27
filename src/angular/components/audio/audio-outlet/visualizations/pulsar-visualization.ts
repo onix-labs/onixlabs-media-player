@@ -22,6 +22,7 @@
  */
 
 import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from './visualization';
+import {TWO_PI} from './visualization-constants';
 
 /**
  * Pulsar visualization with curved mirrored waveforms.
@@ -31,19 +32,148 @@ import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from '.
  */
 export class PulsarVisualization extends Canvas2DVisualization {
   /** Radians the trail rotates per frame. */
-  private static readonly ROTATION_SPEED: number = 0.005;
+  private static readonly ROTATION_SPEED: number = 0.003;
 
   /** Radians the waveforms rotate per frame. */
   private static readonly WAVEFORM_ROTATION_SPEED: number = 0.005;
 
   /** Per-frame trail fade rate. */
-  private static readonly FADE_RATE: number = 0.001;
+  private static readonly FADE_RATE: number = 0.002;
 
   /** Per-frame outward zoom applied to the trail. */
-  private static readonly ZOOM_SCALE: number = 1.02;
+  private static readonly ZOOM_SCALE: number = 1.03;
 
-  /** Degrees the hue advances per frame. */
+  /**
+   * Degrees the hue advances per frame.
+   *
+   * How much hue is on screen at once is set by how long content survives, and
+   * that is governed by the outward zoom rather than by the fade: at roughly
+   * two percent per frame, content injected near the middle reaches the edge
+   * in about a hundred frames, well before the fade has touched it. So this
+   * rate times a hundred is the spread of hue visible at any moment - around
+   * 25 degrees here, a coherent band that travels rather than a static wheel.
+   */
   private static readonly HUE_CYCLE_SPEED: number = 0.15;
+
+  /**
+   * Number of concentric rings the trail is redrawn in.
+   *
+   * Canvas2D can only transform a whole image at once, so a single rotate and
+   * scale moves every radius identically - a uniform smear that never forms
+   * structure. Rings give each radius its own transform.
+   *
+   * Most of the character comes from the per-ring *zoom* rather than the
+   * per-ring rotation, following Trig Stretch: that displacement rotates every
+   * radius by the same amount and puts all of its variation into the radius.
+   *
+   * Set to 1 to go back to a single uniform rotation.
+   */
+  private static readonly TRAIL_RING_COUNT: number = 50;
+
+  /**
+   * Extra rotation at the outermost ring versus the innermost, in radians per
+   * frame.
+   *
+   * This is the shear. Rings tile the trail exactly rather than overlapping:
+   * an overlap would composite the shared band twice and leave bright seams,
+   * where an exact edge only risks a faint one.
+   */
+  private static readonly RING_SHEAR: number = 0.01;
+
+  /**
+   * Amplitude of the cosine ripple applied to each ring's zoom.
+   *
+   * Large enough that the trough dips below 1, so bands genuinely contract
+   * rather than merely expanding more slowly. That is what makes content ride
+   * in and out as it orbits, which is the part of Trig Stretch worth having.
+   *
+   * This does not empty the frame the way the cubic did, and the difference is
+   * worth being precise about. The cubic contracts the rim *always* - it is
+   * monotonic in radius and fixed in time - so the outer region drains and
+   * never refills. The ripple contracts a given radius only while the crest is
+   * elsewhere, and the phase drifts, so every radius spends equal time
+   * expanding and contracting. Its time-average is zero, leaving the net flow
+   * at each radius outward and the frame filled.
+   */
+  private static readonly RING_RIPPLE: number = 0.0175;
+
+  /**
+   * How much slower the outermost ring zooms than the innermost.
+   *
+   * Trig Stretch pulls the rim inward outright, but that empties the outer
+   * region: content drains toward the centre with nothing drawn out there to
+   * replace it, and the field collapses into a circle with dark corners.
+   *
+   * So the cubic is kept as a *differential* rather than a reversal. Every
+   * ring still zooms outward - the base zoom minus ripple minus this stays
+   * above 1 - so the field fills the frame as it did before, but the rim
+   * expands more slowly than the middle and content bunches up as it travels
+   * out. That keeps the folding character without the collapse.
+   */
+  private static readonly RING_CUBIC_PULL: number = 0.001;
+
+  /**
+   * Number of ripple cycles spanning the radius.
+   *
+   * More than one, and this is why. At a single cycle there is one crest and
+   * one trough across the whole field, so as the phase drifts the crest sweeps
+   * everything: at one moment most of the visible area is expanding, half a
+   * cycle later most of it is contracting. That reads as the whole scene
+   * sucking in and exploding out rather than as bands travelling through it.
+   *
+   * Several cycles keep expanding and contracting bands on screen at the same
+   * time, so they cancel and only the local motion is left. The residual
+   * breathing falls roughly as one over this value, measured area-weighted
+   * since the outer rings cover most of the pixels:
+   *
+   *   cycles 1  swing 0.0194      cycles 3  swing 0.0067
+   *   cycles 2  swing 0.0099      cycles 4  swing 0.0051
+   *
+   * TRAIL_RING_COUNT has to keep up: below about five rings per cycle the
+   * rings cannot resolve the ripple.
+   */
+  private static readonly RIPPLE_CYCLES: number = 6;
+
+  /**
+   * Ring widths the ring boundaries slide per frame.
+   *
+   * The boundaries are where one ring's zoom meets the next one's, so any step
+   * in zoom lands there as a seam. Holding them at fixed radii lets those
+   * seams bake into the trail frame after frame until they read as hard
+   * concentric shells pushing past each other. Sliding them means a given
+   * radius falls in one ring on some frames and its neighbour on others, so
+   * the step is dithered over time and the trail averages it away.
+   *
+   * Deliberately not harmonic with RIPPLE_DRIFT, so the two do not lock.
+   */
+  private static readonly RING_BOUNDARY_DRIFT: number = 0.13;
+
+  /**
+   * Radians the ripple pattern drifts per frame.
+   *
+   * Signed so the bands travel outward with the flow rather than against it,
+   * and fast enough that no radius sits in the contracting half for long.
+   */
+  private static readonly RIPPLE_DRIFT: number = 0.15;
+
+  /**
+   * Minimum gap between transients acting, in milliseconds.
+   *
+   * The spin flip is dramatic, so without a refractory period a busy passage
+   * would reverse the field several times a second and read as a stutter.
+   */
+  private static readonly TRANSIENT_REFRACTORY_MS: number = 100;
+
+  /**
+   * Degrees the hue jumps on a transient.
+   *
+   * Has to stay small against the smooth cycle or it swamps it. At 55 degrees
+   * with a 400ms refractory the kick could contribute 138 degrees a second
+   * against the cycle's 15, so on anything with a beat the hue lurched about
+   * instead of cycling and the smooth drift was invisible underneath. This is
+   * an accent on the cycle, not a replacement for it.
+   */
+  private static readonly TRANSIENT_HUE_KICK: number = 18;
 
   /** Number of low-frequency bins averaged for bass transient detection. */
   private static readonly BASS_BINS: number = 16;
@@ -55,13 +185,66 @@ export class PulsarVisualization extends Canvas2DVisualization {
   private static readonly MIN_LEVEL: number = 50;
 
   /** Number of points sampled across each mirrored waveform half. */
-  private static readonly WAVEFORM_SAMPLES: number = 16;
+  private static readonly WAVEFORM_SAMPLES: number = 32;
 
   /** Number of points around the pulsating center circle. */
-  private static readonly CENTER_CIRCLE_POINTS: number = 64;
+  private static readonly CENTER_CIRCLE_POINTS: number = 128;
+
+  /**
+   * Uniform scale applied to everything drawn, as a zoom.
+   *
+   * Applied to the arc radius rather than to halfWidth, which doubles as the
+   * sweep length and the outermost radius: scaling that would run the sweep
+   * past the centre, collapsing the inner half of each waveform onto the
+   * minimum radius instead of enlarging it. Scaling the radius, the centre
+   * circle and the amplitudes together is a true zoom, and the outer ends of
+   * the waveforms crop at the sides as they should.
+   */
+  private static readonly CONTENT_SCALE: number = 0.75;
 
   /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 15;
+  private static readonly BASE_GLOW_BLUR: number = 18;
+
+  /** Alpha of the neon halo stroke, before the caller's own alpha. */
+  private static readonly NEON_HALO_ALPHA: number = 0.22;
+
+  /** Alpha of the halo's shadow, which is what actually spreads the colour. */
+  private static readonly NEON_HALO_SHADOW_ALPHA: number = 0.55;
+
+  /** Extra line width of the halo stroke, in pixels. */
+  private static readonly NEON_HALO_WIDTH: number = 5;
+
+  /** Blur on the core stroke, as a fraction of the halo blur. */
+  private static readonly NEON_CORE_BLUR_SCALE: number = 0.45;
+
+  /** How far the hot centre line is lifted toward white, per channel. */
+  private static readonly NEON_HOT_LIFT: number = 20;
+
+  /** Alpha of the hot centre line. */
+  private static readonly NEON_HOT_ALPHA: number = 0.55;
+
+  /** Width of the hot centre line, as a fraction of the core width. */
+  private static readonly NEON_HOT_WIDTH_FRACTION: number = 0.25;
+
+  /**
+   * Blur radius of the bloom pass, in pixels.
+   *
+   * Applied to the whole trail at composite time rather than per stroke. One
+   * full-canvas blur is cheaper than giving every stroke a wide shadow, and it
+   * is the only thing that makes the *trails* glow as well as the strokes -
+   * once content has been baked into the trail buffer there is no stroke left
+   * to attach a shadow to.
+   */
+  private static readonly BLOOM_BLUR: number = 16;
+
+  /**
+   * Strength of the additive bloom pass.
+   *
+   * Safe to raise, unlike additive strokes: the bloom is composited onto the
+   * main canvas, which is cleared every frame, so it brightens once rather
+   * than compounding.
+   */
+  private static readonly BLOOM_STRENGTH: number = 0.5;
 
   /** Saturation and lightness levels for the center-circle gradient. */
   private static readonly GRADIENT_LEVELS: ReadonlyArray<{s: number; l: number}> = [
@@ -73,7 +256,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
   ];
 
   public readonly name: string = 'Pulsar';
-  public readonly category: string = 'Waves';
+  public readonly category: string = 'Signature';
 
   /** Frequency buffer for bass transient detection. */
   private frequencyData: Uint8Array<ArrayBuffer>;
@@ -98,6 +281,18 @@ export class PulsarVisualization extends Canvas2DVisualization {
 
   /** Current waveform rotation angle. */
   private waveformAngle: number = 0;
+
+  /** Direction the trail currently rotates, +1 or -1. Flipped by transients. */
+  private spinDirection: number = 1;
+
+  /** Timestamp of the last transient that was acted on, in milliseconds. */
+  private lastTransientMs: number = 0;
+
+  /** Phase of the ring ripple, so the bands migrate rather than sitting still. */
+  private ripplePhase: number = 0;
+
+  /** Offset of the ring boundaries, in ring widths, so seams do not bake in. */
+  private ringPhase: number = 0;
 
   /** Pre-allocated point arrays to avoid GC pressure. */
   private readonly leftPoints: Array<{x: number; y: number}>;
@@ -160,10 +355,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
     const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
 
-    // Analyze bass frequencies to detect transients. A strong bass hit produces
-    // a transient that we still detect here (so the trigger remains available),
-    // but for now it is a no-op: it no longer flips the spin direction or fires
-    // a color switch.
+    // Analyze bass frequencies to detect transients: a frame-over-frame rise in
+    // low-band energy, above an absolute floor so quiet passages do not trigger
+    // on noise.
     this.analyser.getByteFrequencyData(this.frequencyData);
     let bassSum: number = 0;
     for (let i: number = 0; i < PulsarVisualization.BASS_BINS; i++) {
@@ -175,10 +369,15 @@ export class PulsarVisualization extends Canvas2DVisualization {
 
     const isTransient: boolean = bassIncrease > PulsarVisualization.TRANSIENT_THRESHOLD && bassAvg > PulsarVisualization.MIN_LEVEL;
 
-    // Trigger detected. Intentionally a no-op for now - the direction flip and
-    // color switch it used to drive have been removed.
-    if (isTransient) {
-      // no-op
+    // Act on the trigger: reverse the spin and kick the hue. Guarded by a
+    // refractory period so a busy passage cannot reverse the field several
+    // times a second, which reads as a stutter rather than as a beat.
+    const now: number = performance.now();
+    if (isTransient && now - this.lastTransientMs >= PulsarVisualization.TRANSIENT_REFRACTORY_MS) {
+      this.lastTransientMs = now;
+      this.spinDirection = -this.spinDirection;
+      this.hueOffset = (this.hueOffset + PulsarVisualization.TRANSIENT_HUE_KICK) % 360;
+      this.updateGradientColors();
     }
 
     // Copy current trails to temp canvas (reused, not recreated)
@@ -191,26 +390,15 @@ export class PulsarVisualization extends Canvas2DVisualization {
     // Draw back previous trails with rotation, zoom, and fade.
     // Apply trail intensity multiplier to fade rate.
     const effectiveFadeRate: number = PulsarVisualization.FADE_RATE * this.getFadeMultiplier();
-    trailCtx.save();
-    // Use high-quality image smoothing to reduce artifacts from repeated scaling
-    trailCtx.imageSmoothingEnabled = true;
-    trailCtx.imageSmoothingQuality = 'high';
-    trailCtx.globalAlpha = 1 - effectiveFadeRate;
-    // Use floor to avoid sub-pixel center point which causes quadrant artifacts
-    const floorCenterX: number = Math.floor(centerX);
-    const floorCenterY: number = Math.floor(centerY);
-    trailCtx.translate(floorCenterX, floorCenterY);
-    trailCtx.rotate(PulsarVisualization.ROTATION_SPEED);
-    trailCtx.scale(PulsarVisualization.ZOOM_SCALE, PulsarVisualization.ZOOM_SCALE);
-    trailCtx.translate(-floorCenterX, -floorCenterY);
-    trailCtx.drawImage(tempCanvas, 0, 0);
-    trailCtx.restore();
+    this.ripplePhase = (this.ripplePhase + PulsarVisualization.RIPPLE_DRIFT) % TWO_PI;
+    this.ringPhase = (this.ringPhase + PulsarVisualization.RING_BOUNDARY_DRIFT) % 1;
+    this.drawShearedTrail(trailCtx, tempCanvas, effectiveFadeRate);
 
     // Get waveform data
     this.analyser.getByteTimeDomainData(this.dataArray);
 
     // Update waveform rotation
-    this.waveformAngle -= PulsarVisualization.WAVEFORM_ROTATION_SPEED;
+    this.waveformAngle -= PulsarVisualization.WAVEFORM_ROTATION_SPEED * this.spinDirection;
 
     // Draw the mirrored waveforms with rotation
     trailCtx.save();
@@ -220,11 +408,101 @@ export class PulsarVisualization extends Canvas2DVisualization {
     this.drawMirroredWaveform(trailCtx);
     trailCtx.restore();
 
-    // Clear main canvas and composite the trail onto it.
+    // Clear main canvas and composite the trail onto it, then add a blurred
+    // copy on top. The bloom is what makes the trails themselves glow: once
+    // content is baked into the trail buffer there is no stroke left to hang a
+    // shadow on, so the halo has to come from the buffer itself.
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(trailCanvas, 0, 0);
 
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.filter = `blur(${PulsarVisualization.BLOOM_BLUR}px)`;
+    ctx.globalAlpha = PulsarVisualization.BLOOM_STRENGTH;
+    ctx.drawImage(trailCanvas, 0, 0);
+    ctx.restore();
+
     this.applyFadeOverlay();
+  }
+
+  /**
+   * Redraws the previous trail with rotation, zoom and fade, sheared by radius.
+   *
+   * The trail is clipped into concentric rings and each ring is turned by a
+   * slightly different amount, so the outer field rotates faster than the
+   * inner one. A single whole-image rotate turns every radius equally, which
+   * smears rather than structures; letting neighbouring radii move at
+   * different rates gives the feedback loop something to wind.
+   *
+   * Rings tile the trail exactly. Overlapping them would composite the shared
+   * band twice and leave bright seams, which is worse than the faint one an
+   * exact shared edge can leave.
+   *
+   * @param trailCtx - Destination trail context
+   * @param tempCanvas - Copy of the previous trail to read from
+   * @param fadeRate - Per-frame fade already scaled by trail intensity
+   */
+  private drawShearedTrail(
+    trailCtx: CanvasRenderingContext2D,
+    tempCanvas: HTMLCanvasElement,
+    fadeRate: number
+  ): void {
+    // Floored to avoid a sub-pixel centre, which causes quadrant artifacts.
+    const centerX: number = Math.floor(this.centerX);
+    const centerY: number = Math.floor(this.centerY);
+    const rings: number = Math.max(1, PulsarVisualization.TRAIL_RING_COUNT);
+
+    // Far enough to cover the corners from wherever the centre sits.
+    const maxRadius: number = Math.hypot(
+      Math.max(centerX, this.width - centerX),
+      Math.max(centerY, this.height - centerY)
+    );
+
+    // One extra band, because the sliding offset leaves a partial ring at each
+    // end: the innermost shrinks to nothing as the offset advances and a new
+    // one opens at the rim.
+    const offset: number = this.ringPhase;
+    for (let i: number = 0; i <= rings; i++) {
+      const inner: number = Math.max(0, ((i - 1 + offset) / rings) * maxRadius);
+      const outer: number = Math.min(maxRadius, ((i + offset) / rings) * maxRadius);
+      if (outer <= inner) continue;
+      const across: number = ((inner + outer) * 0.5) / maxRadius;
+      const spin: number =
+        (PulsarVisualization.ROTATION_SPEED + PulsarVisualization.RING_SHEAR * across)
+        * this.spinDirection;
+
+      // Trig Stretch in Canvas2D terms: a cosine of radius alternately expands
+      // and contracts bands, travelling outward, over a small monotonic cubic.
+      // Rotation is nearly uniform across rings, as it is there - the variation
+      // that matters is radial.
+      const ripple: number =
+        Math.cos(across * TWO_PI * PulsarVisualization.RIPPLE_CYCLES - this.ripplePhase) * PulsarVisualization.RING_RIPPLE;
+      const pull: number =
+        PulsarVisualization.RING_CUBIC_PULL * across * across * across;
+      const zoom: number = PulsarVisualization.ZOOM_SCALE + ripple - pull;
+
+      trailCtx.save();
+
+      // Clipped before the transform, so the ring is a region of the
+      // destination rather than of the source being read.
+      trailCtx.beginPath();
+      trailCtx.arc(centerX, centerY, outer, 0, TWO_PI);
+      if (inner > 0) {
+        trailCtx.arc(centerX, centerY, inner, 0, TWO_PI, true);
+      }
+      trailCtx.clip();
+
+      trailCtx.imageSmoothingEnabled = true;
+      trailCtx.imageSmoothingQuality = 'high';
+      trailCtx.globalAlpha = 1 - fadeRate;
+      trailCtx.translate(centerX, centerY);
+      trailCtx.rotate(spin);
+      trailCtx.scale(zoom, zoom);
+      trailCtx.translate(-centerX, -centerY);
+      trailCtx.drawImage(tempCanvas, 0, 0);
+
+      trailCtx.restore();
+    }
   }
 
   protected override onFftSizeChanged(): void {
@@ -245,7 +523,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     this.centerY = this.height * 0.5;
     this.halfWidth = this.width * 0.5;
     this.minArcRadius = this.halfWidth * 0.18;
-    this.baseCircleRadius = this.halfWidth * 0.18;
+    this.baseCircleRadius = this.halfWidth * 0.18 * PulsarVisualization.CONTENT_SCALE;
 
     // Create trail canvas if needed
     if (!this.trailCanvas) {
@@ -292,7 +570,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const halfWidth: number = this.halfWidth;
     const minArcRadius: number = this.minArcRadius;
     const sensitivityFactor: number = this.sensitivityFactor;
-    const amplitudeScale: number = height * 0.3;
+    const amplitudeScale: number = height * 0.3 * PulsarVisualization.CONTENT_SCALE;
     const bendStrength: number = 1.2;
     const numSamples: number = PulsarVisualization.WAVEFORM_SAMPLES;
 
@@ -308,7 +586,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
       const baseX: number = t * halfWidth;
 
       const distFromCenter: number = centerX - baseX;
-      const arcRadius: number = distFromCenter > minArcRadius ? distFromCenter : minArcRadius;
+      const arcRadius: number =
+        (distFromCenter > minArcRadius ? distFromCenter : minArcRadius)
+        * PulsarVisualization.CONTENT_SCALE;
       const arcAngle: number = (amplitude * bendStrength) / arcRadius;
       const newAngle: number = Math.PI - arcAngle;
 
@@ -326,7 +606,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
       const baseX: number = this.width - t * halfWidth;
 
       const distFromCenter: number = baseX - centerX;
-      const arcRadius: number = distFromCenter > minArcRadius ? distFromCenter : minArcRadius;
+      const arcRadius: number =
+        (distFromCenter > minArcRadius ? distFromCenter : minArcRadius)
+        * PulsarVisualization.CONTENT_SCALE;
       const arcAngle: number = (amplitude * bendStrength) / arcRadius;
 
       this.rightPoints[i].x = centerX + arcRadius * Math.cos(arcAngle);
@@ -353,7 +635,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const baseRadius: number = this.baseCircleRadius;
     const numPoints: number = PulsarVisualization.CENTER_CIRCLE_POINTS;
     const sensitivityFactor: number = this.sensitivityFactor;
-    const amplitudeScale: number = height * 0.08;
+    const amplitudeScale: number = height * 0.08 * PulsarVisualization.CONTENT_SCALE;
     const sampleStep: number = (dataLength * 0.25) / numPoints;
 
     // Calculate points (reuse pre-allocated array)
@@ -376,33 +658,70 @@ export class PulsarVisualization extends Canvas2DVisualization {
       ctx.closePath();
     };
 
-    const glowBlur: number = this.getScaledGlowBlur(PulsarVisualization.BASE_GLOW_BLUR);
+    this.strokeNeon(ctx, buildPath, color, 1);
+  }
 
-    // Draw glow layer
+  /**
+   * Strokes a path as a neon tube: saturated halo, coloured core, hot centre.
+   *
+   * All three passes composite additively, which is what makes it read as
+   * emitting rather than as a wide coloured line - where strokes overlap they
+   * reinforce toward white instead of flattening to a constant.
+   *
+   * The wide part of the halo comes from the shadow rather than the stroke
+   * width; the shadow alpha is therefore the dial for how far the colour
+   * spreads, and the stroke alpha for how solid the tube looks.
+   *
+   * @param ctx - Destination context
+   * @param buildPath - Rebuilds the path; called once per pass
+   * @param color - Core colour
+   * @param alpha - Overall opacity applied to every pass
+   */
+  private strokeNeon(
+    ctx: CanvasRenderingContext2D,
+    buildPath: () => void,
+    color: {r: number; g: number; b: number},
+    alpha: number
+  ): void {
+    const blur: number = this.getScaledGlowBlur(PulsarVisualization.BASE_GLOW_BLUR);
+    const r: number = color.r;
+    const g: number = color.g;
+    const b: number = color.b;
+
+    // Deliberately not additive. These strokes land in the trail buffer, which
+    // accumulates and fades at a fraction of a percent per frame, so anything
+    // drawn with 'lighter' compounds frame on frame and saturates to white
+    // within seconds. The neon look here comes from layering - wide soft halo,
+    // core, hot filament - not from blend mode.
     ctx.save();
-    ctx.shadowBlur = glowBlur;
-    ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`;
-    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.3)`;
-    ctx.lineWidth = this.lineWidth + 3;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+
+    // Halo.
+    ctx.shadowBlur = blur;
+    ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${PulsarVisualization.NEON_HALO_SHADOW_ALPHA * alpha})`;
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${PulsarVisualization.NEON_HALO_ALPHA * alpha})`;
+    ctx.lineWidth = this.lineWidth + PulsarVisualization.NEON_HALO_WIDTH;
     buildPath();
     ctx.stroke();
-    ctx.restore();
 
-    // Draw main circle
-    ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+    // Core.
+    ctx.shadowBlur = blur * PulsarVisualization.NEON_CORE_BLUR_SCALE;
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
     ctx.lineWidth = this.lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
     buildPath();
     ctx.stroke();
 
-    // Draw highlight
-    ctx.strokeStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, 0.5)`;
-    ctx.lineWidth = 1;
+    // Hot centre. No shadow: this pass is the filament, not the glow.
+    const lift: number = PulsarVisualization.NEON_HOT_LIFT;
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = `rgba(${Math.min(255, r + lift)}, ${Math.min(255, g + lift)}, `
+      + `${Math.min(255, b + lift)}, ${PulsarVisualization.NEON_HOT_ALPHA * alpha})`;
+    ctx.lineWidth = Math.max(1, this.lineWidth * PulsarVisualization.NEON_HOT_WIDTH_FRACTION);
     buildPath();
     ctx.stroke();
+
+    ctx.restore();
   }
 
   private drawWaveformSegment(
@@ -419,33 +738,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
       this.buildSmoothPath(ctx, points, count - 1);
     };
 
-    const glowBlur: number = this.getScaledGlowBlur(PulsarVisualization.BASE_GLOW_BLUR);
-
-    // Draw glow layer (restored for visual quality)
-    ctx.save();
-    ctx.shadowBlur = glowBlur;
-    ctx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${0.6 * alpha})`;
-    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${0.3 * alpha})`;
-    ctx.lineWidth = this.lineWidth + 3;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
-    ctx.stroke();
-    ctx.restore();
-
-    // Draw main waveform
-    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
-    ctx.lineWidth = this.lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
-    ctx.stroke();
-
-    // Draw highlight
-    ctx.strokeStyle = `rgba(${Math.min(255, color.r + 60)}, ${Math.min(255, color.g + 40)}, ${Math.min(255, color.b + 20)}, ${0.5 * alpha})`;
-    ctx.lineWidth = 1;
-    buildPath();
-    ctx.stroke();
+    this.strokeNeon(ctx, buildPath, color, alpha);
   }
 
   public override destroy(): void {

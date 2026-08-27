@@ -13,10 +13,12 @@
  * - waveform: Oscilloscope-style waveform with LCD ghosting effect
  * - tunnel: Hypnotic tunnel/vortex effect
  * - neon: Glowing neon ring visualization
- * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
+ * - pulsar: Pulsing concentric rings with curved waveforms (signature category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
- * - blackhole: Black Hole - filled glowing accretion-disk waveform around a black core (waves category)
+ * - hallucia: Hallucia - spectral differential rotation field winding bands into spirals (signature category)
+ * - battery-*: Battery - one visualization per source generator in the Battery bank
+ * - ambience-*: Ambience - one visualization per displacement in the Windows Media Player Ambience bank
  *
  * @module app/components/audio/audio-outlet/visualizations
  */
@@ -33,10 +35,14 @@ export {InfinityVisualization} from './infinity-visualization';
 export {OnixVisualization} from './onix-visualization';
 export {ModernVisualization} from './modern-visualization';
 export {SpotlightVisualization} from './spotlight-visualization';
-export {BlackHoleVisualization} from './black-hole-visualization';
+export {HalluciaVisualization} from './hallucia-visualization';
 export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
-export {ParticlesVisualization} from './particles-visualization';
+export {HawkingVisualization} from './hawking-visualization';
+export {
+  AmbienceTwirlVisualization,
+  AmbienceWarpVisualization,
+} from './ambience-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
@@ -49,10 +55,14 @@ import {InfinityVisualization} from './infinity-visualization';
 import {OnixVisualization} from './onix-visualization';
 import {ModernVisualization} from './modern-visualization';
 import {SpotlightVisualization} from './spotlight-visualization';
-import {BlackHoleVisualization} from './black-hole-visualization';
+import {HalluciaVisualization} from './hallucia-visualization';
 import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
-import {ParticlesVisualization} from './particles-visualization';
+import {HawkingVisualization} from './hawking-visualization';
+import {
+  AmbienceTwirlVisualization,
+  AmbienceWarpVisualization,
+} from './ambience-visualization';
 
 /**
  * Map of visualization types to their constructor classes.
@@ -69,8 +79,10 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   onix: OnixVisualization,
   modern: ModernVisualization,
   spotlight: SpotlightVisualization,
-  blackhole: BlackHoleVisualization,
-  particles: ParticlesVisualization,
+  hallucia: HalluciaVisualization,
+  hawking: HawkingVisualization,
+  'ambience-zoom': AmbienceTwirlVisualization,
+  'ambience-stretch': AmbienceWarpVisualization,
   blank: BlankVisualization,
   logo: LogoVisualization,
 };
@@ -80,18 +92,20 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
  * Used to display visualization info without creating an instance.
  */
 export const VISUALIZATION_METADATA: Record<string, {name: string; category: string}> = {
-  bars: {name: 'Analyzer', category: 'Bars'},
-  waveform: {name: 'Classic', category: 'Waves'},
-  tunnel: {name: 'Plasma', category: 'Waves'},
-  neon: {name: 'Neon', category: 'Waves'},
-  pulsar: {name: 'Pulsar', category: 'Waves'},
+  bars: {name: 'Analyzer', category: 'Bars & Waves'},
+  waveform: {name: 'Classic', category: 'Bars & Waves'},
+  tunnel: {name: 'Plasma', category: 'Bars & Waves'},
+  neon: {name: 'Neon', category: 'Bars & Waves'},
+  pulsar: {name: 'Pulsar', category: 'Signature'},
   water: {name: 'Reactor', category: 'Signature'},
-  infinity: {name: 'Infinity', category: 'Waves'},
-  onix: {name: 'Onix', category: 'Waves'},
-  modern: {name: 'Modern', category: 'Waves'},
+  infinity: {name: 'Infinity', category: 'Bars & Waves'},
+  onix: {name: 'Onix', category: 'Signature'},
+  modern: {name: 'Modern', category: 'Bars & Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
-  blackhole: {name: 'Black Hole', category: 'Waves'},
-  particles: {name: 'Particles', category: 'Waves'},
+  hallucia: {name: 'Hallucia', category: 'Signature'},
+  hawking: {name: 'Hawking', category: 'Bars & Waves'},
+  'ambience-zoom': {name: 'Twirl', category: 'Signature'},
+  'ambience-stretch': {name: 'Warp', category: 'Signature'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
@@ -128,19 +142,16 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  * Used for cycling through visualizations with next/previous.
  *
  * Categories (in order):
- * - Bars: bars
- * - Waves: waveform, modern, tunnel, infinity, neon, onix, pulsar, blackhole
- * - Signature: spotlight, water (Reactor)
+ * - Bars & Waves: bars, waveform, modern, tunnel, infinity, neon, onix, hawking, ambience-zoom, ambience-stretch
+ * - Signature: water (Reactor), spotlight, hallucia, pulsar, onix, twirl, warp
  * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
-  // Bars
-  'bars',
-  // Waves
-  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'particles', 'pulsar', 'blackhole',
+  // Bars & Waves
+  'bars', 'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'hawking',
   // Signature
-  'spotlight', 'water',
-  // Simple
+  'water', 'spotlight', 'hallucia', 'pulsar', 'onix', 'ambience-zoom', 'ambience-stretch',
+    // Simple
   'blank', 'logo',
 ];
 

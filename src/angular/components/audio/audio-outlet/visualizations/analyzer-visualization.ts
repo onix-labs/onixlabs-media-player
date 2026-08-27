@@ -45,7 +45,7 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
   private static readonly MAX_CORNER_RADIUS: number = 4;
 
   public readonly name: string = 'Analyzer';
-  public readonly category: string = 'Bars';
+  public readonly category: string = 'Bars & Waves';
 
   private barCount: number = AnalyzerVisualization.BAR_COUNTS.medium;
   private dataArray: Uint8Array<ArrayBuffer>;
