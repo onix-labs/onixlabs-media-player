@@ -99,13 +99,13 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   pulsar: {name: 'Pulsar', category: 'Signature'},
   water: {name: 'Reactor', category: 'Signature'},
   infinity: {name: 'Infinity', category: 'Bars & Waves'},
-  onix: {name: 'Onix', category: 'Bars & Waves'},
+  onix: {name: 'Onix', category: 'Signature'},
   modern: {name: 'Modern', category: 'Bars & Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
   hallucia: {name: 'Hallucia', category: 'Signature'},
   hawking: {name: 'Hawking', category: 'Bars & Waves'},
-  'ambience-zoom': {name: 'Twirl', category: 'Bars & Waves'},
-  'ambience-stretch': {name: 'Warp', category: 'Bars & Waves'},
+  'ambience-zoom': {name: 'Twirl', category: 'Signature'},
+  'ambience-stretch': {name: 'Warp', category: 'Signature'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
@@ -148,9 +148,9 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars & Waves
-  'bars',   'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'hawking', 'ambience-zoom', 'ambience-stretch',
+  'bars', 'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'hawking',
   // Signature
-  'spotlight', 'water', 'hallucia', 'pulsar',
+  'spotlight', 'water', 'hallucia', 'pulsar', 'onix', 'ambience-zoom', 'ambience-stretch',
     // Simple
   'blank', 'logo',
 ];

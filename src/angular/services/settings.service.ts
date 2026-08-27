@@ -446,11 +446,11 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
   {id: 'hallucia', name: 'Hallucia', category: 'Signature', applicableSettings: []},
   {id: 'pulsar', name: 'Pulsar', category: 'Signature', applicableSettings: []},
+  {id: 'onix', name: 'Onix', category: 'Signature', applicableSettings: []},
+  {id: 'ambience-zoom', name: 'Twirl', category: 'Signature', applicableSettings: []},
+  {id: 'ambience-stretch', name: 'Warp', category: 'Signature', applicableSettings: []},
   {id: 'infinity', name: 'Infinity', category: 'Bars & Waves', applicableSettings: []},
-  {id: 'onix', name: 'Onix', category: 'Bars & Waves', applicableSettings: []},
   // Ambience category
-  {id: 'ambience-zoom', name: 'Twirl', category: 'Bars & Waves', applicableSettings: []},
-  {id: 'ambience-stretch', name: 'Warp', category: 'Bars & Waves', applicableSettings: []},
   // Battery category
   // Simple category
   {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
@@ -538,16 +538,16 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'tunnel', label: 'Bars & Waves : Plasma', description: 'Dual waveforms with plasma zoom effect'},
   {value: 'infinity', label: 'Bars & Waves : Infinity', description: 'Dual orbiting circles with spectrum cycling'},
   {value: 'neon', label: 'Bars & Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
-  {value: 'onix', label: 'Bars & Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
   {value: 'hawking', label: 'Bars & Waves : Hawking', description: 'Spiked circular waveforms emitting particles outward'},
   // Signature category
   {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
   {value: 'hallucia', label: 'Signature : Hallucia', description: 'Spectral differential rotation winding bands into spiral filaments'},
   {value: 'pulsar', label: 'Signature : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
+  {value: 'onix', label: 'Signature : Onix', description: 'ONIXLabs logo with pulsating rings'},
+  {value: 'ambience-zoom', label: 'Signature : Twirl', description: 'Rotating zoom about the centre'},
+  {value: 'ambience-stretch', label: 'Signature : Warp', description: 'Cubic radial distortion'},
   // Ambience category
-  {value: 'ambience-zoom', label: 'Bars & Waves : Twirl', description: 'Rotating zoom about the centre'},
-  {value: 'ambience-stretch', label: 'Bars & Waves : Warp', description: 'Cubic radial distortion'},
   // Battery category
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},

@@ -35,25 +35,25 @@ import {ONIX_COLORS_FLAT, ONIX_COLOR_COUNT, TWO_PI} from './visualization-consta
  */
 export class OnixVisualization extends Canvas2DVisualization {
   /** Radians the trail rotates per frame. */
-  private static readonly ROTATION_SPEED: number = 0.0005;
+  private static readonly ROTATION_SPEED: number = 0.005;
 
   /** Radians the waveform circle rotates per frame. */
-  private static readonly WAVEFORM_ROTATION_SPEED: number = 0.001;
+  private static readonly WAVEFORM_ROTATION_SPEED: number = 0.0125;
 
   /** Per-frame trail fade rate. */
-  private static readonly FADE_RATE: number = 0.05;
+  private static readonly FADE_RATE: number = 0.025;
 
   /** Per-frame outward zoom applied to the trail. */
-  private static readonly ZOOM_SCALE: number = 1.005;
+  private static readonly ZOOM_SCALE: number = 1.01;
 
   /** Exponent applied to the fade multiplier for more aggressive low-intensity fading. */
-  private static readonly FADE_POWER: number = 0.5;
+  private static readonly FADE_POWER: number = 0.005;
 
   /** Number of points around the pulsating center circle. */
   private static readonly CENTER_CIRCLE_POINTS: number = 128;
 
   /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 18;
+  private static readonly BASE_GLOW_BLUR: number = 3;
 
   /**
    * Number of concentric rings the trail is redrawn in.
@@ -65,10 +65,10 @@ export class OnixVisualization extends Canvas2DVisualization {
    *
    * Set to 1 to go back to a single uniform transform.
    */
-  private static readonly TRAIL_RING_COUNT: number = 64;
+  private static readonly TRAIL_RING_COUNT: number = 32;
 
   /** Extra rotation at the outermost ring versus the innermost, per frame. */
-  private static readonly RING_SHEAR: number = 0.04;
+  private static readonly RING_SHEAR: number = 0.0125;
 
   /**
    * Amplitude of the cosine ripple applied to each ring's zoom.
@@ -80,10 +80,10 @@ export class OnixVisualization extends Canvas2DVisualization {
    * concentric shells. At the current values the ripple contributes 0.0059 and
    * the acceleration 0.0007, for 0.0066 together.
    */
-  private static readonly RING_RIPPLE: number = 0.005;
+  private static readonly RING_RIPPLE: number = 0.0075;
 
   /** Ripple cycles spanning the radius. Several, so bands do not sweep as one. */
-  private static readonly RIPPLE_CYCLES: number = 12;
+  private static readonly RIPPLE_CYCLES: number = 8;
 
   /**
    * How much faster the outermost ring zooms than the innermost.
@@ -158,7 +158,7 @@ export class OnixVisualization extends Canvas2DVisualization {
   private static readonly BLOOM_STRENGTH: number = 1;
 
   public readonly name: string = 'Onix';
-  public readonly category: string = 'Bars & Waves';
+  public readonly category: string = 'Signature';
 
   /** Audio data buffers. */
   private dataArray: Uint8Array<ArrayBuffer>;

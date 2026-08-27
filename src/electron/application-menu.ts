@@ -28,10 +28,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'tunnel', name: 'Plasma'},
       {id: 'infinity', name: 'Infinity'},
       {id: 'neon', name: 'Neon'},
-      {id: 'onix', name: 'Onix'},
       {id: 'hawking', name: 'Hawking'},
-      {id: 'ambience-zoom', name: 'Twirl'},
-      {id: 'ambience-stretch', name: 'Warp'},
     ],
   },
   {
@@ -41,6 +38,9 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'water', name: 'Reactor'},
       {id: 'hallucia', name: 'Hallucia'},
       {id: 'pulsar', name: 'Pulsar'},
+      {id: 'onix', name: 'Onix'},
+      {id: 'ambience-zoom', name: 'Twirl'},
+      {id: 'ambience-stretch', name: 'Warp'},
     ],
   },
   {
