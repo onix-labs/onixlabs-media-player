@@ -264,7 +264,7 @@ describe('SettingsManager', () => {
       const validTypes: readonly string[] = [
         'bars', 'waveform', 'tunnel', 'neon', 'pulsar', 'water', 'infinity', 'onix', 'modern', 'spotlight', 'hallucia', 'hawking',
         'ambience-zoom', 'ambience-stretch',
-        'ambience-vortex', 'ambience-undertow', 'ambience-counterspin', 'ambience-shear', 'ambience-water',
+        'ambience-vortex', 'ambience-undertow', 'ambience-counterspin', 'ambience-shear', 'ambience-ripple',
         'ambience-plunge', 'ambience-breath', 'ambience-slipstream', 'ambience-rush', 'ambience-petals',
         'ambience-weave', 'ambience-bloom', 'ambience-whirl', 'battery-cominatya', 'battery-dandelion-aid',
         'battery-drowning-flower', 'battery-eletri-arnation', 'battery-groove-swirl', 'battery-i-see-the-truth',
