@@ -120,7 +120,7 @@ const WAVE_EDGE_SAMPLES: number = 256;
  * interpolated curve through this many points rather than a faithful rendering
  * of the buffer, and the shape stays legible instead of dissolving into detail.
  */
-const WAVE_TEXTURE_WIDTH: number = 64;
+const WAVE_TEXTURE_WIDTH: number = 128;
 
 /**
  * Trace deflection at unit amplitude, as a fraction of the surface height.
