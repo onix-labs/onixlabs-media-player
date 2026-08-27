@@ -82,7 +82,10 @@ interface AmbienceField {
   /** Radial rate, in surface pixels per frame. Zero where unused. */
   readonly radial: number;
 
-  /** Third parameter, used only by the sectored field. */
+  /**
+   * Third parameter. The sectored field reads it as a sector count, the ripple
+   * as how much its bands widen with radius; every other field ignores it.
+   */
   readonly extra: number;
 }
 
@@ -145,6 +148,15 @@ const RADIAL_WIDTH_SMALL: number = 0.01;
 
 /** Band width of the ripple, as a fraction of the surface height. */
 const RADIAL_HEIGHT_BAND: number = 0.1;
+
+/**
+ * How much the ripple's bands widen with radius.
+ *
+ * Zero leaves them evenly spaced, which is how the displacement builder has
+ * them. At this value the outermost band is two and a half times the width of
+ * the innermost, so the rings thicken as they travel out.
+ */
+const RIPPLE_FLARE: number = 1.5;
 
 /** Sector count of the petal pair, as a fraction of the surface height. */
 const PETAL_SECTOR_SCALE: number = 0.1;
@@ -226,7 +238,7 @@ const AMBIENCE_PRESETS: readonly AmbiencePreset[] = [
       warp: 'AmbienceRipple',
       angle: RATE_RIPPLE,
       radial: NOMINAL_HEIGHT * RADIAL_HEIGHT_BAND,
-      extra: 0,
+      extra: RIPPLE_FLARE,
     }],
     styles: [1],
     mode: MODE_RING,

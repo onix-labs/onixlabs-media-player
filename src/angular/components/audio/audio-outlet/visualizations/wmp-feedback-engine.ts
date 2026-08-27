@@ -504,7 +504,14 @@ export const WARP_BODIES: Readonly<Record<string, string>> = {
    * is what gives this one its standing concentric rings.
    */
   AmbienceRipple: `
-    float band = max(abs(p2), EPSILON);
+    float maxR = max(length(size) * 0.5, EPSILON);
+    /*
+     * p3 flares the band width with the radius. At zero the bands are uniform,
+     * as the builder has them; above zero each ring is a fatter tube than the
+     * one inside it, so the set extrudes outward toward the corners instead of
+     * staying an evenly spaced stack.
+     */
+    float band = max(abs(p2), EPSILON) * (1.0 + p3 * r / maxR);
     float k = floor(r / band);
     float frac = r - k * band;
     r2 = r - (band - frac) * frac / band;
