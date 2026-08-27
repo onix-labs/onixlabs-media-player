@@ -107,6 +107,25 @@ const SPECTRUM_BARS: number = 128;
 /** Samples drawn by the wave edge generator. */
 const WAVE_EDGE_SAMPLES: number = 256;
 
+/** Width of the 1D waveform texture the trace generator reads. */
+const WAVE_TEXTURE_WIDTH: number = 512;
+
+/**
+ * Trace deflection at unit amplitude, as a fraction of the surface height.
+ *
+ * These four are Warp's, so the two read as the same kind of trace.
+ */
+const TRACE_AMPLITUDE: number = 0.34;
+
+/** Gaussian falloff width of the trace. Smaller is tighter. */
+const TRACE_SIGMA: number = 0.00025;
+
+/** Brightness of the trace where it is thickest. */
+const TRACE_GAIN: number = 0.85;
+
+/** Extra trace amplitude contributed by the bass envelope. */
+const TRACE_BASS_FLEX: number = 0.6;
+
 // ============================================================================
 // Audio
 // ============================================================================
@@ -342,6 +361,34 @@ void main() {
   colour = mix(colour, vec3(1.0), uBackground * low);
 
   gl_FragColor = vec4(colour * uAlpha, 1.0);
+}
+`;
+
+/**
+ * The horizontal trace.
+ *
+ * A soft band about the waveform rather than a stroke along it - the intensity
+ * at a pixel is a Gaussian of its distance from the curve, so the trace is
+ * thick and glowing at the centre and tails off. This is how Warp draws its
+ * trace, down to the falloff width, and drawing it as a polyline instead is
+ * what made the earlier attempt look faceted.
+ */
+const TRACE_FRAGMENT_SHADER: string = `
+precision highp float;
+
+uniform sampler2D uWaveform;
+uniform float uAmplitude;
+uniform float uCentre;
+uniform float uGain;
+
+varying vec2 vUv;
+
+void main() {
+  float level = texture2D(uWaveform, vec2(vUv.x, 0.5)).r;
+  float traceY = uCentre + (level - 0.5) * uAmplitude;
+  float delta = vUv.y - traceY;
+  float intensity = exp(-(delta * delta) / ${TRACE_SIGMA}) * uGain;
+  gl_FragColor = vec4(intensity, 0.0, 0.0, 1.0);
 }
 `;
 
@@ -776,6 +823,13 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   /** Vertex buffer the generators stream into. */
   private generatorBuffer: WebGLBuffer | null = null;
 
+  /** The trace pass, and the 1D waveform texture it reads. */
+  private traceProgram: WebGLProgram | null = null;
+  private readonly traceUniforms: Record<string, WebGLUniformLocation | null> = {};
+  private waveTexture: WebGLTexture | null = null;
+  private readonly waveTexels: Uint8Array<ArrayBuffer> =
+    new Uint8Array(WAVE_TEXTURE_WIDTH * RGBA_STRIDE) as Uint8Array<ArrayBuffer>;
+
   /** Ping-pong colour attachments holding the indexed surface. */
   private readonly surfaceTextures: (WebGLTexture | null)[] = [null, null];
   private readonly surfaceBuffers: (WebGLFramebuffer | null)[] = [null, null];
@@ -863,6 +917,21 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     this.generatorProgram = this.createProgram(
       GENERATOR_VERTEX_SHADER,
       GENERATOR_FRAGMENT_SHADER
+    );
+    this.traceProgram = this.createProgram(QUAD_VERTEX_SHADER, TRACE_FRAGMENT_SHADER);
+    for (const key of ['uWaveform', 'uAmplitude', 'uCentre', 'uGain']) {
+      this.traceUniforms[key] = gl.getUniformLocation(this.traceProgram, key);
+    }
+
+    this.waveTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.waveTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(
+      gl.TEXTURE_2D, 0, gl.RGBA, WAVE_TEXTURE_WIDTH, 1, 0,
+      gl.RGBA, gl.UNSIGNED_BYTE, this.waveTexels
     );
 
     for (const key of ['uSurface', 'uSize', 'uParams', 'uDecay', 'uPhase']) {
@@ -1048,12 +1117,59 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.sinceStep = 0;
       // The engine's frame order: pre-shift generators are laid down, warped in
       // the same frame, then post-shift generators go on top untouched.
+      this.uploadWaveform();
       this.runGenerators(this.spec.pre);
       this.runWarp();
       this.runGenerators(this.spec.post);
       this.updatePulse();
     }
     this.present();
+  }
+
+  /** Packs the time-domain samples into the texture the trace pass reads. */
+  private uploadWaveform(): void {
+    const gl: WebGLRenderingContext = this.gl;
+    const length: number = this.samples.length;
+    for (let i: number = 0; i < WAVE_TEXTURE_WIDTH; i++) {
+      const fraction: number = i / WAVE_TEXTURE_WIDTH;
+      const index: number = Math.min(length - 1, Math.floor(fraction * length));
+      this.waveTexels[i * RGBA_STRIDE] = length > 0 ? this.samples[index] : SAMPLE_CENTRE;
+    }
+    gl.bindTexture(gl.TEXTURE_2D, this.waveTexture);
+    gl.texSubImage2D(
+      gl.TEXTURE_2D, 0, 0, 0, WAVE_TEXTURE_WIDTH, 1,
+      gl.RGBA, gl.UNSIGNED_BYTE, this.waveTexels
+    );
+  }
+
+  /**
+   * Draws the horizontal trace across the surface.
+   *
+   * dbl1 scales the deflection, dbl2 offsets the trace vertically as a fraction
+   * of the surface.
+   *
+   * @param args - The stage's dbl1..dbl4
+   */
+  private runTrace(args: readonly number[]): void {
+    const gl: WebGLRenderingContext = this.gl;
+    if (!this.traceProgram) return;
+
+    gl.useProgram(this.traceProgram);
+    this.bindQuad(this.traceProgram);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.waveTexture);
+    gl.uniform1i(this.traceUniforms['uWaveform'], 0);
+    gl.uniform1f(
+      this.traceUniforms['uAmplitude'],
+      TRACE_AMPLITUDE * (args[0] ?? 1) * this.sensitivityFactor
+        * (1 + this.bass * TRACE_BASS_FLEX)
+    );
+    gl.uniform1f(this.traceUniforms['uCentre'], 0.5 + (args[1] ?? 0));
+    gl.uniform1f(this.traceUniforms['uGain'], TRACE_GAIN);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    // The geometry generators that may follow expect their own program bound.
+    gl.useProgram(this.generatorProgram);
   }
 
   /**
@@ -1188,6 +1304,12 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.uniform1f(this.generatorUniforms['uPointSize'], DOT_POINT_SIZE);
 
     for (const stage of stages) {
+      // The trace is a full-screen pass rather than geometry, so it does not go
+      // through the vertex staging path at all.
+      if (stage.kind === 'Trace') {
+        this.runTrace(stage.args);
+        continue;
+      }
       const mode: number | null = this.buildGenerator(stage);
       if (mode === null || this.vertexCount === 0) continue;
       this.flushGenerator(mode);
@@ -1517,6 +1639,8 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     if (this.warpProgram) gl.deleteProgram(this.warpProgram);
     if (this.presentProgram) gl.deleteProgram(this.presentProgram);
     if (this.generatorProgram) gl.deleteProgram(this.generatorProgram);
+    if (this.traceProgram) gl.deleteProgram(this.traceProgram);
+    if (this.waveTexture) gl.deleteTexture(this.waveTexture);
     super.destroy();
   }
 }

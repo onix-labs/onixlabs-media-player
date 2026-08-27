@@ -111,6 +111,9 @@ interface AmbiencePreset {
    * One draws a ring, zero draws along the edge.
    */
   readonly mode: number;
+
+  /** Generators drawn after the warp, overriding the mode's default. */
+  readonly post?: readonly string[];
 }
 
 /** Angular rate shared by the spiral and the flow presets. */
@@ -246,6 +249,9 @@ const AMBIENCE_PRESETS: readonly AmbiencePreset[] = [
     }],
     styles: [1],
     mode: MODE_RING,
+    // The horizontal trace, drawn the way Warp draws its own: a soft glowing
+    // band about the waveform rather than a stroke along it.
+    post: ['Trace 1 0 0 0'],
   },
   {
     id: 'ambience-plunge',
@@ -405,7 +411,9 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
     warp: field.warp,
     warpArgs: [field.angle, field.radial, field.extra, 0],
     pre: sources.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
-    post: OVERLAY_GENERATORS.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
+    post: (preset.post ?? OVERLAY_GENERATORS).map(
+      (entry: string): GeneratorStage => parseGeneratorStage(entry)
+    ),
     palette: parsePalette(paletteFor(preset.styles)),
     pulses: AMBIENCE_PULSES,
   };
