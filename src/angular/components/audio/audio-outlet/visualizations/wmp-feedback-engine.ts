@@ -395,8 +395,20 @@ uniform float uGain;
 varying vec2 vUv;
 
 void main() {
-  float level = texture2D(uWaveform, vec2(vUv.x, 0.5)).r;
-  float traceY = uCentre + (level - 0.5) * uAmplitude;
+  /*
+   * Rotationally symmetric about the centre of the frame. The left half holds
+   * the whole of the sample data, compressed into it; the right half is that
+   * same curve turned through 180 degrees, so a point one side has its opposite
+   * number reflected through the middle rather than mirrored across it.
+   */
+  float x = vUv.x;
+  float turn = 1.0;
+  if (x > 0.5) {
+    x = 1.0 - x;
+    turn = -1.0;
+  }
+  float level = texture2D(uWaveform, vec2(x * 2.0, 0.5)).r;
+  float traceY = uCentre + turn * (level - 0.5) * uAmplitude;
   float delta = vUv.y - traceY;
   float intensity = exp(-(delta * delta) / ${TRACE_SIGMA}) * uGain;
   gl_FragColor = vec4(intensity, 0.0, 0.0, 1.0);
