@@ -17,8 +17,11 @@
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
  * - hallucia: Hallucia - spectral differential rotation field winding bands into spirals (signature category)
- * - battery-*: Battery - one visualization per source generator in the Battery bank
- * - ambience-*: Ambience - one visualization per displacement in the Windows Media Player Ambience bank
+ * - battery-*: Battery - one visualization per preset in the Windows Media Player Battery bank
+ * - ambience-vortex .. ambience-whirl: Ambience - one per drawing preset in the
+ *   Windows Media Player Ambience bank
+ * - ambience-zoom, ambience-stretch: Twirl and Warp, the two feedback warps kept
+ *   from the earlier pass over wmp.dll; unrelated to the Ambience bank above
  *
  * @module app/components/audio/audio-outlet/visualizations
  */
@@ -43,6 +46,9 @@ export {
   AmbienceTwirlVisualization,
   AmbienceWarpVisualization,
 } from './ambience-visualization';
+export {FeedbackVisualization} from './wmp-feedback-engine';
+export {BATTERY_TYPES, BATTERY_METADATA} from './battery-visualization';
+export {AMBIENCE_BANK_TYPES, AMBIENCE_BANK_METADATA} from './ambience-bank-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
@@ -63,12 +69,23 @@ import {
   AmbienceTwirlVisualization,
   AmbienceWarpVisualization,
 } from './ambience-visualization';
+import {BATTERY_CONSTRUCTORS, BATTERY_METADATA, BATTERY_TYPES} from './battery-visualization';
+import {
+  AMBIENCE_BANK_CONSTRUCTORS,
+  AMBIENCE_BANK_METADATA,
+  AMBIENCE_BANK_TYPES,
+} from './ambience-bank-visualization';
 
 /**
  * Map of visualization types to their constructor classes.
  * Used by the factory function to instantiate visualizations.
+ *
+ * The two WMP banks contribute one entry per preset and are spread in rather
+ * than listed, so their tables stay the single source of truth.
  */
 const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfig) => Visualization> = {
+  ...AMBIENCE_BANK_CONSTRUCTORS,
+  ...BATTERY_CONSTRUCTORS,
   bars: AnalyzerVisualization,
   waveform: ClassicVisualization,
   tunnel: PlasmaVisualization,
@@ -92,6 +109,12 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
  * Used to display visualization info without creating an instance.
  */
 export const VISUALIZATION_METADATA: Record<string, {name: string; category: string}> = {
+  ...Object.fromEntries(
+    [...AMBIENCE_BANK_METADATA, ...BATTERY_METADATA].map(
+      (entry: {id: string; name: string; category: string}): [string, {name: string; category: string}] =>
+        [entry.id, {name: entry.name, category: entry.category}]
+    )
+  ),
   bars: {name: 'Analyzer', category: 'Bars & Waves'},
   waveform: {name: 'Classic', category: 'Bars & Waves'},
   tunnel: {name: 'Plasma', category: 'Bars & Waves'},
@@ -142,8 +165,10 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  * Used for cycling through visualizations with next/previous.
  *
  * Categories (in order):
- * - Bars & Waves: bars, waveform, modern, tunnel, infinity, neon, onix, hawking, ambience-zoom, ambience-stretch
+ * - Bars & Waves: bars, waveform, modern, tunnel, infinity, neon, hawking
  * - Signature: water (Reactor), spotlight, hallucia, pulsar, onix, twirl, warp
+ * - Ambience: the thirteen drawing presets of the WMP Ambience bank
+ * - Battery: the twenty-five presets of the WMP Battery bank
  * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
@@ -151,7 +176,11 @@ export const VISUALIZATION_TYPES: string[] = [
   'bars', 'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'hawking',
   // Signature
   'water', 'spotlight', 'hallucia', 'pulsar', 'onix', 'ambience-zoom', 'ambience-stretch',
-    // Simple
+  // Ambience
+  ...AMBIENCE_BANK_TYPES,
+  // Battery
+  ...BATTERY_TYPES,
+  // Simple
   'blank', 'logo',
 ];
 
