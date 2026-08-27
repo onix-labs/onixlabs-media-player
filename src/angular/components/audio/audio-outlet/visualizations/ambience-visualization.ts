@@ -1122,11 +1122,16 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
 // ============================================================================
 
 
-/** Ambience - Zoom. Angle advanced and radius scaled about the centre each frame. */
-export class AmbienceZoomVisualization extends AmbienceVisualization {
+/**
+ * Twirl. Angle advanced and radius scaled about the centre each frame.
+ *
+ * Named for what it looks like; ShiftMode.Zoom below is the displacement it
+ * selects, and keeps the name of the class it was recovered from.
+ */
+export class AmbienceTwirlVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
-      name: 'Zoom',
+      name: 'Twirl',
       category: 'Waves',
       shift: ShiftMode.Zoom,
       decay: DECAY_MID,
@@ -1140,11 +1145,16 @@ export class AmbienceZoomVisualization extends AmbienceVisualization {
 
 
 
-/** Ambience - Stretch. Cubic radial distortion in normalised radius. */
-export class AmbienceStretchVisualization extends AmbienceVisualization {
+/**
+ * Warp. Cubic radial distortion in normalised radius.
+ *
+ * Named for what it looks like; ShiftMode.Stretch below is the displacement it
+ * selects, and keeps the name of the class it was recovered from.
+ */
+export class AmbienceWarpVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
-      name: 'Stretch',
+      name: 'Warp',
       category: 'Waves',
       shift: ShiftMode.Stretch,
       decay: DECAY_MID,

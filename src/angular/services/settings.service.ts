@@ -450,8 +450,8 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: []},
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
   // Ambience category
-  {id: 'ambience-zoom', name: 'Zoom', category: 'Waves', applicableSettings: []},
-  {id: 'ambience-stretch', name: 'Stretch', category: 'Waves', applicableSettings: []},
+  {id: 'ambience-zoom', name: 'Twirl', category: 'Waves', applicableSettings: []},
+  {id: 'ambience-stretch', name: 'Warp', category: 'Waves', applicableSettings: []},
   // Battery category
   // Simple category
   {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
@@ -548,8 +548,8 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'hallucia', label: 'Signature : Hallucia', description: 'Spectral differential rotation winding bands into spiral filaments'},
   {value: 'pulsar', label: 'Signature : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
   // Ambience category
-  {value: 'ambience-zoom', label: 'Waves : Zoom', description: 'Rotating zoom about the centre'},
-  {value: 'ambience-stretch', label: 'Waves : Stretch', description: 'Cubic radial distortion'},
+  {value: 'ambience-zoom', label: 'Waves : Twirl', description: 'Rotating zoom about the centre'},
+  {value: 'ambience-stretch', label: 'Waves : Warp', description: 'Cubic radial distortion'},
   // Battery category
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},

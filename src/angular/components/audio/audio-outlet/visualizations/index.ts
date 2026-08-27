@@ -40,8 +40,8 @@ export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
 export {HawkingVisualization} from './hawking-visualization';
 export {
-  AmbienceZoomVisualization,
-  AmbienceStretchVisualization,
+  AmbienceTwirlVisualization,
+  AmbienceWarpVisualization,
 } from './ambience-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
@@ -60,8 +60,8 @@ import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
 import {HawkingVisualization} from './hawking-visualization';
 import {
-  AmbienceZoomVisualization,
-  AmbienceStretchVisualization,
+  AmbienceTwirlVisualization,
+  AmbienceWarpVisualization,
 } from './ambience-visualization';
 
 /**
@@ -81,8 +81,8 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   spotlight: SpotlightVisualization,
   hallucia: HalluciaVisualization,
   hawking: HawkingVisualization,
-  'ambience-zoom': AmbienceZoomVisualization,
-  'ambience-stretch': AmbienceStretchVisualization,
+  'ambience-zoom': AmbienceTwirlVisualization,
+  'ambience-stretch': AmbienceWarpVisualization,
   blank: BlankVisualization,
   logo: LogoVisualization,
 };
@@ -104,8 +104,8 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   spotlight: {name: 'Spotlight', category: 'Signature'},
   hallucia: {name: 'Hallucia', category: 'Signature'},
   hawking: {name: 'Hawking', category: 'Waves'},
-  'ambience-zoom': {name: 'Zoom', category: 'Waves'},
-  'ambience-stretch': {name: 'Stretch', category: 'Waves'},
+  'ambience-zoom': {name: 'Twirl', category: 'Waves'},
+  'ambience-stretch': {name: 'Warp', category: 'Waves'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
