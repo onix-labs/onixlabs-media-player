@@ -160,8 +160,13 @@ const PULSE_COOLDOWN_MS: number = 10000;
 /** Chance that a qualifying hit actually fires one. */
 const PULSE_PROBABILITY: number = 0.5;
 
-/** Steps a pulse takes to travel from the centre out past the rim. */
-const PULSE_STEPS: number = 90;
+/**
+ * Steps a pulse takes to travel from the centre out past the rim.
+ *
+ * At three frames a step this is about twelve seconds, which is long enough for
+ * the dark band to read as something crossing the scene rather than a blink.
+ */
+const PULSE_STEPS: number = 240;
 
 /** Palette entries above the background that the white flash reaches into. */
 const PULSE_BACKGROUND_SPAN: number = 32;
