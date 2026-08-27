@@ -608,7 +608,7 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'battery-i-see-the-truth', label: 'Battery : I See The Truth', description: 'Shiitake warp fed by JiggyScribble'},
   {value: 'battery-geeks-kick-ascii', label: 'Battery : Geeks Kick ASCII', description: 'Shiitake warp fed by CosEdgeGradiant and JDar'},
   {value: 'battery-nerds-are-cool', label: 'Battery : Nerds Are Cool', description: 'Shiitake warp fed by WaveEdge and JiggyScribble'},
-  {value: 'battery-spider-s-last-moment', label: 'Battery : Spider's Last Moment', description: 'Shiitake warp fed by JDar'},
+  {value: 'battery-spider-s-last-moment', label: "Battery : Spider's Last Moment", description: 'Shiitake warp fed by JDar'},
   {value: 'battery-illuminator', label: 'Battery : Illuminator', description: 'RingSpin warp fed by EdgeTrace and CircleWaveform'},
   {value: 'battery-kaleidoscope', label: 'Battery : Kaleidoscope', description: 'RingSpin warp fed by DotPlane and CircleWaveform'},
   {value: 'battery-what-is-an-egab', label: 'Battery : What Is An Egab', description: 'Swirl warp fed by JDar and DotPlane'},
