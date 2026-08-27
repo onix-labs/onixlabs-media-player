@@ -50,7 +50,62 @@ export class OnixVisualization extends Canvas2DVisualization {
   private static readonly CENTER_CIRCLE_POINTS: number = 64;
 
   /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 15;
+  private static readonly BASE_GLOW_BLUR: number = 18;
+
+  /**
+   * Number of concentric rings the trail is redrawn in.
+   *
+   * Canvas2D transforms a whole image at once, so a single rotate and scale
+   * moves every radius identically - a uniform smear that never forms
+   * structure. Rings give each radius its own transform so neighbouring radii
+   * shear against each other and the feedback loop winds them.
+   *
+   * Set to 1 to go back to a single uniform transform.
+   */
+  private static readonly TRAIL_RING_COUNT: number = 20;
+
+  /** Extra rotation at the outermost ring versus the innermost, per frame. */
+  private static readonly RING_SHEAR: number = 0.004;
+
+  /**
+   * Amplitude of the cosine ripple applied to each ring's zoom.
+   *
+   * Bounded by banding rather than by taste. The zoom step between adjacent
+   * rings is this times two pi times the cycle count over the ring count, and
+   * once that step grows the boundaries read as hard concentric shells. These
+   * values put it at 0.0075, which Pulsar settled on.
+   */
+  private static readonly RING_RIPPLE: number = 0.012;
+
+  /** Ripple cycles spanning the radius. Several, so bands do not sweep as one. */
+  private static readonly RIPPLE_CYCLES: number = 2;
+
+  /** How much slower the outermost ring zooms than the innermost. */
+  private static readonly RING_CUBIC_PULL: number = 0.006;
+
+  /** Radians the ripple pattern drifts per frame. */
+  private static readonly RIPPLE_DRIFT: number = 0.05;
+
+  /**
+   * Ring widths the boundaries slide per frame.
+   *
+   * Sliding them means a given radius falls in one ring on some frames and its
+   * neighbour on others, so the step between them is dithered over time rather
+   * than baking into the trail at a fixed radius.
+   */
+  private static readonly RING_BOUNDARY_DRIFT: number = 0.013;
+
+  /** Alpha of the near-white filament drawn over the gradient core. */
+  private static readonly FILAMENT_ALPHA: number = 0.5;
+
+  /** Width of the filament, as a fraction of the core stroke width. */
+  private static readonly FILAMENT_WIDTH_FRACTION: number = 0.5;
+
+  /** Blur radius of the bloom pass, in pixels. */
+  private static readonly BLOOM_BLUR: number = 12;
+
+  /** Strength of the additive bloom pass. */
+  private static readonly BLOOM_STRENGTH: number = 0.3;
 
   public readonly name: string = 'Onix';
   public readonly category: string = 'Bars & Waves';
@@ -66,6 +121,12 @@ export class OnixVisualization extends Canvas2DVisualization {
   /** Temp canvas for the zoom/rotate effect (reused, not recreated each frame). */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
+
+  /** Phase of the ring ripple, so the bands migrate rather than sitting still. */
+  private ripplePhase: number = 0;
+
+  /** Offset of the ring boundaries, in ring widths, so seams do not bake in. */
+  private ringPhase: number = 0;
 
   /** Current waveform rotation angle. */
   private waveformAngle: number = 0;
@@ -143,20 +204,9 @@ export class OnixVisualization extends Canvas2DVisualization {
     const baseMultiplier: number = this.getFadeMultiplier();
     const scaledMultiplier: number = Math.pow(baseMultiplier, OnixVisualization.FADE_POWER);
     const effectiveFadeRate: number = OnixVisualization.FADE_RATE * scaledMultiplier;
-    trailCtx.save();
-    // Use high-quality image smoothing to reduce artifacts from repeated scaling
-    trailCtx.imageSmoothingEnabled = true;
-    trailCtx.imageSmoothingQuality = 'high';
-    trailCtx.globalAlpha = 1 - effectiveFadeRate;
-    // Use floor to avoid sub-pixel center point which causes quadrant artifacts
-    const floorCenterX: number = Math.floor(centerX);
-    const floorCenterY: number = Math.floor(centerY);
-    trailCtx.translate(floorCenterX, floorCenterY);
-    trailCtx.rotate(OnixVisualization.ROTATION_SPEED);
-    trailCtx.scale(OnixVisualization.ZOOM_SCALE, OnixVisualization.ZOOM_SCALE);
-    trailCtx.translate(-floorCenterX, -floorCenterY);
-    trailCtx.drawImage(tempCanvas, 0, 0);
-    trailCtx.restore();
+    this.ripplePhase = (this.ripplePhase + OnixVisualization.RIPPLE_DRIFT) % TWO_PI;
+    this.ringPhase = (this.ringPhase + OnixVisualization.RING_BOUNDARY_DRIFT) % 1;
+    this.drawShearedTrail(trailCtx, tempCanvas, effectiveFadeRate);
 
     // Get waveform data
     this.analyser.getByteTimeDomainData(this.dataArray);
@@ -175,9 +225,18 @@ export class OnixVisualization extends Canvas2DVisualization {
     this.drawCenterCircle(trailCtx);
     trailCtx.restore();
 
-    // Clear main canvas and draw trails
+    // Clear main canvas and draw trails, then add a blurred copy on top. Once
+    // content is baked into the trail buffer there is no stroke left to hang a
+    // shadow on, so the glow on the trails has to come from the buffer itself.
     ctx.clearRect(0, 0, width, height);
     ctx.drawImage(trailCanvas, 0, 0);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.filter = `blur(${OnixVisualization.BLOOM_BLUR}px)`;
+    ctx.globalAlpha = OnixVisualization.BLOOM_STRENGTH;
+    ctx.drawImage(trailCanvas, 0, 0);
+    ctx.restore();
 
     // Draw the bass-reactive white circle on main canvas (no trail effect)
     this.drawBassCircle(ctx);
@@ -224,6 +283,80 @@ export class OnixVisualization extends Canvas2DVisualization {
     this.tempCanvas.height = this.height;
 
     this.ctx.clearRect(0, 0, this.width, this.height);
+  }
+
+  /**
+   * Redraws the previous trail with rotation, zoom and fade, sheared by radius.
+   *
+   * The trail is clipped into concentric rings, each turned and scaled by a
+   * slightly different amount, so the outer field moves differently from the
+   * inner one. A single whole-image transform moves every radius equally,
+   * which smears rather than structures.
+   *
+   * Every ring still zooms outward - the base zoom less the ripple and the
+   * cubic stays above 1 - so the field keeps filling the frame instead of
+   * draining toward the centre and leaving dark corners.
+   *
+   * @param trailCtx - Destination trail context
+   * @param tempCanvas - Copy of the previous trail to read from
+   * @param fadeRate - Per-frame fade already scaled by trail intensity
+   */
+  private drawShearedTrail(
+    trailCtx: CanvasRenderingContext2D,
+    tempCanvas: HTMLCanvasElement,
+    fadeRate: number
+  ): void {
+    // Floored to avoid a sub-pixel centre, which causes quadrant artifacts.
+    const centerX: number = Math.floor(this.centerX);
+    const centerY: number = Math.floor(this.centerY);
+    const rings: number = Math.max(1, OnixVisualization.TRAIL_RING_COUNT);
+
+    // Far enough to cover the corners from wherever the centre sits.
+    const maxRadius: number = Math.hypot(
+      Math.max(centerX, this.width - centerX),
+      Math.max(centerY, this.height - centerY)
+    );
+
+    // One extra band, because the sliding offset leaves a partial ring at each
+    // end: the innermost shrinks to nothing as the offset advances and a new
+    // one opens at the rim.
+    const offset: number = this.ringPhase;
+    for (let i: number = 0; i <= rings; i++) {
+      const inner: number = Math.max(0, ((i - 1 + offset) / rings) * maxRadius);
+      const outer: number = Math.min(maxRadius, ((i + offset) / rings) * maxRadius);
+      if (outer <= inner) continue;
+
+      const across: number = ((inner + outer) * 0.5) / maxRadius;
+      const spin: number =
+        OnixVisualization.ROTATION_SPEED + OnixVisualization.RING_SHEAR * across;
+      const ripple: number =
+        Math.cos(across * TWO_PI * OnixVisualization.RIPPLE_CYCLES - this.ripplePhase)
+        * OnixVisualization.RING_RIPPLE;
+      const pull: number = OnixVisualization.RING_CUBIC_PULL * across * across * across;
+      const zoom: number = OnixVisualization.ZOOM_SCALE + ripple - pull;
+
+      trailCtx.save();
+
+      // Clipped before the transform, so the ring is a region of the
+      // destination rather than of the source being read.
+      trailCtx.beginPath();
+      trailCtx.arc(centerX, centerY, outer, 0, TWO_PI);
+      if (inner > 0) {
+        trailCtx.arc(centerX, centerY, inner, 0, TWO_PI, true);
+      }
+      trailCtx.clip();
+
+      trailCtx.imageSmoothingEnabled = true;
+      trailCtx.imageSmoothingQuality = 'high';
+      trailCtx.globalAlpha = 1 - fadeRate;
+      trailCtx.translate(centerX, centerY);
+      trailCtx.rotate(spin);
+      trailCtx.scale(zoom, zoom);
+      trailCtx.translate(-centerX, -centerY);
+      trailCtx.drawImage(tempCanvas, 0, 0);
+
+      trailCtx.restore();
+    }
   }
 
   private drawCenterCircle(ctx: CanvasRenderingContext2D): void {
@@ -317,6 +450,17 @@ export class OnixVisualization extends Canvas2DVisualization {
     ctx.lineWidth = this.lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    buildPath();
+    ctx.stroke();
+
+    // Hot filament. White rather than a lift of the stroke colour, because the
+    // core is a brand gradient rather than one hue - lifting it per channel
+    // would shift the brand colours, where a thin white line over the top
+    // reads as the tube being lit from inside and leaves them alone. Drawn
+    // source-over: the trail buffer accumulates, so an additive pass here
+    // compounds frame on frame and saturates.
+    ctx.strokeStyle = `rgba(255, 255, 255, ${OnixVisualization.FILAMENT_ALPHA})`;
+    ctx.lineWidth = Math.max(1, this.lineWidth * OnixVisualization.FILAMENT_WIDTH_FRACTION);
     buildPath();
     ctx.stroke();
   }
