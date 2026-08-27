@@ -103,6 +103,15 @@ const SPECTRUM_BARS: number = 128;
 /** Samples drawn by the wave edge generator. */
 const WAVE_EDGE_SAMPLES: number = 256;
 
+/**
+ * Samples drawn by the horizontal wave generator.
+ *
+ * Deliberately coarse. Reactor, which was built against the real thing, uses
+ * the same count, and the smoothness that comes of undersampling is part of the
+ * shape rather than an artefact of it.
+ */
+const HORIZONTAL_SAMPLES: number = 32;
+
 // ============================================================================
 // Audio
 // ============================================================================
@@ -299,11 +308,12 @@ varying vec2 vUv;
 void main() {
   /*
    * Ambience::Render locks two surfaces. The warped one carries the rings; the
-   * overlay only ever fades, so what is drawn on it keeps its shape instead of
-   * being dragged through the displacement. The brighter of the two wins, which
-   * is what lets one show through the other where they cross.
+   * overlay is only ever aged, so what is drawn on it keeps its shape instead
+   * of being dragged through the displacement. The two are added and clamped,
+   * matching the 'lighter' composite Reactor lays its trails down with, so a
+   * crossing reads brighter than either layer alone.
    */
-  float index = max(texture2D(uSurface, vUv).r, texture2D(uOverlay, vUv).r);
+  float index = min(texture2D(uSurface, vUv).r + texture2D(uOverlay, vUv).r, 1.0);
   float slot = index * 255.0;
   /*
    * Rotate entries 1..255 and leave 0 pinned, so the background stays put while
@@ -319,17 +329,36 @@ void main() {
 `;
 
 /**
- * Fades the overlay toward black.
+ * Ages the unwarped overlay.
  *
- * Multiplicative rather than the warped surface's subtractive decay: the
- * overlay is meant to thin out like smoke, and an exponential falloff reads
- * that way where a linear one clips.
+ * Not a fade in place. The layer is resampled a fraction of a degree round the
+ * centre every step and multiplied down, so bilinear filtering smears it a
+ * little further each time - that repeated resampling is what turns a drawn
+ * line into smoke. Reactor arrives at the same result by redrawing its trail
+ * canvas under a small rotation with image smoothing on.
  */
-const FADE_FRAGMENT_SHADER: string = `
-precision mediump float;
+const OVERLAY_FRAGMENT_SHADER: string = `
+precision highp float;
+
+uniform sampler2D uOverlay;
+uniform vec2 uSize;
+uniform float uAngle;
 uniform float uFade;
+
+varying vec2 vUv;
+
 void main() {
-  gl_FragColor = vec4(0.0, 0.0, 0.0, uFade);
+  vec2 centre = uSize * 0.5;
+  vec2 delta = vUv * uSize - centre;
+  float s = sin(uAngle);
+  float c = cos(uAngle);
+  vec2 uv = (vec2(delta.x * c - delta.y * s, delta.x * s + delta.y * c) + centre) / uSize;
+
+  float value = 0.0;
+  if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
+    value = texture2D(uOverlay, uv).r;
+  }
+  gl_FragColor = vec4(value * (1.0 - uFade), 0.0, 0.0, 1.0);
 }
 `;
 
@@ -658,6 +687,9 @@ export interface FeedbackSpec {
   /** Fraction of the overlay lost per step. Zero holds it indefinitely. */
   readonly overlayFade: number;
 
+  /** Radians the overlay turns per step. Small; this is what smears it. */
+  readonly overlayAngle: number;
+
   /** 256 packed RGB triples, one byte per channel. */
   readonly palette: Uint8Array;
 
@@ -792,11 +824,12 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   /** The preset's palette, as a 256 by 1 texture. */
   private paletteTexture: WebGLTexture | null = null;
 
-  /** The unwarped second surface, and the program that fades it. */
-  private overlayTexture: WebGLTexture | null = null;
-  private overlayBuffer: WebGLFramebuffer | null = null;
-  private fadeProgram: WebGLProgram | null = null;
-  private fadeUniform: WebGLUniformLocation | null = null;
+  /** The unwarped second surface, ping-ponged because it resamples itself. */
+  private readonly overlayTextures: (WebGLTexture | null)[] = [null, null];
+  private readonly overlayBuffers: (WebGLFramebuffer | null)[] = [null, null];
+  private overlayFront: number = 0;
+  private overlayProgram: WebGLProgram | null = null;
+  private readonly overlayUniforms: Record<string, WebGLUniformLocation | null> = {};
 
   /** Cached uniform locations. */
   private readonly warpUniforms: Record<string, WebGLUniformLocation | null> = {};
@@ -869,8 +902,10 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       WARP_FRAGMENT_SHADER.replace('/*BODY*/', body)
     );
     this.presentProgram = this.createProgram(QUAD_VERTEX_SHADER, PRESENT_FRAGMENT_SHADER);
-    this.fadeProgram = this.createProgram(QUAD_VERTEX_SHADER, FADE_FRAGMENT_SHADER);
-    this.fadeUniform = this.gl.getUniformLocation(this.fadeProgram, 'uFade');
+    this.overlayProgram = this.createProgram(QUAD_VERTEX_SHADER, OVERLAY_FRAGMENT_SHADER);
+    for (const key of ['uOverlay', 'uSize', 'uAngle', 'uFade']) {
+      this.overlayUniforms[key] = gl.getUniformLocation(this.overlayProgram, key);
+    }
     this.generatorProgram = this.createProgram(
       GENERATOR_VERTEX_SHADER,
       GENERATOR_FRAGMENT_SHADER
@@ -1009,14 +1044,16 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.surfaceBuffers[i] = buffer;
     }
 
-    this.overlayTexture = this.createSurfaceTexture();
-    this.overlayBuffer = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.overlayBuffer);
-    gl.framebufferTexture2D(
-      gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.overlayTexture, 0
-    );
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    for (let i: number = 0; i < this.overlayTextures.length; i++) {
+      const texture: WebGLTexture | null = this.createSurfaceTexture();
+      const buffer: WebGLFramebuffer | null = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, buffer);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      this.overlayTextures[i] = texture;
+      this.overlayBuffers[i] = buffer;
+    }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
@@ -1052,10 +1089,12 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.surfaceTextures[i] = null;
       this.surfaceBuffers[i] = null;
     }
-    if (this.overlayTexture) gl.deleteTexture(this.overlayTexture);
-    if (this.overlayBuffer) gl.deleteFramebuffer(this.overlayBuffer);
-    this.overlayTexture = null;
-    this.overlayBuffer = null;
+    for (let i: number = 0; i < this.overlayTextures.length; i++) {
+      if (this.overlayTextures[i]) gl.deleteTexture(this.overlayTextures[i]);
+      if (this.overlayBuffers[i]) gl.deleteFramebuffer(this.overlayBuffers[i]);
+      this.overlayTextures[i] = null;
+      this.overlayBuffers[i] = null;
+    }
   }
 
   // ==========================================================================
@@ -1139,21 +1178,24 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
    */
   private stepOverlay(): void {
     const gl: WebGLRenderingContext = this.gl;
-    if (!this.overlayBuffer || !this.fadeProgram) return;
+    if (!this.overlayTextures[0] || !this.overlayProgram) return;
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.overlayBuffer);
+    const back: number = 1 - this.overlayFront;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.overlayBuffers[back]);
     gl.viewport(0, 0, this.surfaceWidth, this.surfaceHeight);
+    gl.disable(gl.BLEND);
+    gl.useProgram(this.overlayProgram);
+    this.bindQuad(this.overlayProgram);
 
-    if (this.spec.overlayFade > 0) {
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      gl.useProgram(this.fadeProgram);
-      this.bindQuad(this.fadeProgram);
-      gl.uniform1f(this.fadeUniform, this.spec.overlayFade);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-      gl.disable(gl.BLEND);
-    }
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.overlayTextures[this.overlayFront]);
+    gl.uniform1i(this.overlayUniforms['uOverlay'], 0);
+    gl.uniform2f(this.overlayUniforms['uSize'], this.surfaceWidth, this.surfaceHeight);
+    gl.uniform1f(this.overlayUniforms['uAngle'], this.spec.overlayAngle);
+    gl.uniform1f(this.overlayUniforms['uFade'], this.spec.overlayFade);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
 
+    this.overlayFront = back;
     this.drawGeneratorsInto(this.spec.overlay);
   }
 
@@ -1174,7 +1216,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
     gl.uniform1i(this.presentUniforms['uPalette'], 1);
     gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
+    gl.bindTexture(gl.TEXTURE_2D, this.overlayTextures[this.overlayFront]);
     gl.uniform1i(this.presentUniforms['uOverlay'], 2);
     gl.uniform1f(this.presentUniforms['uAlpha'], this.getFadeMultiplier());
     gl.uniform1f(this.presentUniforms['uPaletteShift'], this.paletteShift);
@@ -1545,8 +1587,8 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     const centre: number = height * (0.5 + (args[1] ?? 0));
 
     this.gl.lineWidth(1);
-    for (let i: number = 0; i < WAVE_EDGE_SAMPLES; i++) {
-      const u: number = i / (WAVE_EDGE_SAMPLES - 1);
+    for (let i: number = 0; i < HORIZONTAL_SAMPLES; i++) {
+      const u: number = i / (HORIZONTAL_SAMPLES - 1);
       this.vertex(u * width, centre + swing * this.sampleAt(u), STAMP_FULL);
     }
   }
@@ -1578,7 +1620,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   public override destroy(): void {
     const gl: WebGLRenderingContext = this.gl;
     this.deleteSurfaces();
-    if (this.fadeProgram) gl.deleteProgram(this.fadeProgram);
+    if (this.overlayProgram) gl.deleteProgram(this.overlayProgram);
     if (this.paletteTexture) gl.deleteTexture(this.paletteTexture);
     if (this.quadBuffer) gl.deleteBuffer(this.quadBuffer);
     if (this.generatorBuffer) gl.deleteBuffer(this.generatorBuffer);

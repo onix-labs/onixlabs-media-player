@@ -148,8 +148,18 @@ const AMBIENCE_DECAY: number = ONE_INDEX * 2;
  */
 const AMBIENCE_PALETTE_CYCLE: number = 0;
 
-/** Fraction of the unwarped overlay lost per step. */
-const AMBIENCE_OVERLAY_FADE: number = 0.06;
+/**
+ * Fraction of the unwarped overlay lost per step, and the angle it turns by.
+ *
+ * Both taken from Reactor, which was tuned against the real thing: it ages its
+ * horizontal trail at 0.02 a frame under a 0.005 radian rotation. The rotation
+ * is what does the work - resampling under it is what makes the waveform smoke
+ * rather than merely dim.
+ */
+const AMBIENCE_OVERLAY_FADE: number = 0.02;
+
+/** Radians the overlay turns per step. */
+const AMBIENCE_OVERLAY_ANGLE: number = 0.005;
 
 /** Angular rate shared by the spiral and the flow presets. */
 const RATE_SEVEN: number = 0.07;
@@ -449,6 +459,7 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
       (entry: string): GeneratorStage => parseGeneratorStage(entry)
     ),
     overlayFade: AMBIENCE_OVERLAY_FADE,
+    overlayAngle: AMBIENCE_OVERLAY_ANGLE,
   };
 }
 
