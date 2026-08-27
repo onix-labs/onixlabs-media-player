@@ -121,6 +121,9 @@ interface AmbiencePreset {
 
   /** Generators drawn after the warp, overriding the mode's default. */
   readonly post?: readonly string[];
+
+  /** Generators drawn on the unwarped surface, clear of the displacement. */
+  readonly overlay?: readonly string[];
 }
 
 /**
@@ -136,8 +139,17 @@ const AMBIENCE_FRAMES_PER_STEP: number = 3;
 /** Indices lost per step. See FeedbackSpec.decay - this one is tuned. */
 const AMBIENCE_DECAY: number = ONE_INDEX * 2;
 
-/** Palette entries rotated per step, which is what makes the colour travel. */
-const AMBIENCE_PALETTE_CYCLE: number = 1.5;
+/**
+ * Palette entries rotated per step.
+ *
+ * Zero. Ambience does not cycle its palette - Water stays blue for as long as
+ * it runs. The engine keeps the mechanism because Battery exposes a palette
+ * cycle on a hotkey, but nothing in this bank uses it.
+ */
+const AMBIENCE_PALETTE_CYCLE: number = 0;
+
+/** Fraction of the unwarped overlay lost per step. */
+const AMBIENCE_OVERLAY_FADE: number = 0.06;
 
 /** Angular rate shared by the spiral and the flow presets. */
 const RATE_SEVEN: number = 0.07;
@@ -264,7 +276,10 @@ const AMBIENCE_PRESETS: readonly AmbiencePreset[] = [
     styles: [1],
     mode: MODE_RING,
     pre: ['CircleWaveform 1 1 0.14 0'],
-    post: ['HorizontalWave 1 0 0 0'],
+    post: [],
+    // On the unwarped surface: the horizontal waveform holds its shape and only
+    // thins out, rather than being dragged outward with the rings.
+    overlay: ['HorizontalWave 1 0 0 0'],
   },
   {
     id: 'ambience-plunge',
@@ -430,6 +445,10 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
     framesPerStep: AMBIENCE_FRAMES_PER_STEP,
     paletteCycle: AMBIENCE_PALETTE_CYCLE,
     decay: AMBIENCE_DECAY,
+    overlay: (preset.overlay ?? []).map(
+      (entry: string): GeneratorStage => parseGeneratorStage(entry)
+    ),
+    overlayFade: AMBIENCE_OVERLAY_FADE,
   };
 }
 

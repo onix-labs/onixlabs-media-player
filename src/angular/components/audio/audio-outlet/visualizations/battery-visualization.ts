@@ -44,6 +44,9 @@ const BATTERY_DECAY: number = ONE_INDEX * 2;
 /** Battery holds its palette still unless the user cycles it by hand. */
 const BATTERY_PALETTE_CYCLE: number = 0;
 
+/** No Battery preset draws on the unwarped surface. */
+const BATTERY_OVERLAY: readonly GeneratorStage[] = [];
+
 /**
  * Turns one row of the preset table into a spec the engine can run.
  *
@@ -62,6 +65,8 @@ function toSpec(preset: BatteryPreset): FeedbackSpec {
     framesPerStep: BATTERY_FRAMES_PER_STEP,
     paletteCycle: BATTERY_PALETTE_CYCLE,
     decay: BATTERY_DECAY,
+    overlay: BATTERY_OVERLAY,
+    overlayFade: 0,
   };
 }
 
