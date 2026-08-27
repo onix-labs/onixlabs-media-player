@@ -122,6 +122,16 @@ const PHASE_BASS_RATE: number = 0.05;
 /** Two pi. */
 const TWO_PI: number = Math.PI * 2;
 
+/**
+ * Frames between warp steps.
+ *
+ * Ambience::Render at 0x174A07 decrements a counter at [this+0x158] and only
+ * advances the surface when it reaches zero, so the effect runs well below the
+ * display's frame rate. The divisor the DLL uses has not been read; this is
+ * chosen. The canvas is still drawn every frame, so the motion stays smooth.
+ */
+const FRAMES_PER_STEP: number = 3;
+
 // ============================================================================
 // Generator tuning
 // ============================================================================
@@ -743,6 +753,9 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   /** Smoothed bass level, 0 to 1. */
   private bass: number = 0;
 
+  /** Frames since the last warp step, against {@link FRAMES_PER_STEP}. */
+  private sinceStep: number = 0;
+
   /**
    * Accumulated phase, in radians.
    *
@@ -965,11 +978,16 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     this.analyser.getByteFrequencyData(this.bins);
     this.updateEnvelope();
 
-    // The engine's frame order: pre-shift generators are laid down, warped in
-    // the same frame, then post-shift generators go on top untouched.
-    this.runGenerators(this.spec.pre);
-    this.runWarp();
-    this.runGenerators(this.spec.post);
+    // The surface advances on a divider, but the canvas is drawn every frame.
+    this.sinceStep++;
+    if (this.sinceStep >= FRAMES_PER_STEP) {
+      this.sinceStep = 0;
+      // The engine's frame order: pre-shift generators are laid down, warped in
+      // the same frame, then post-shift generators go on top untouched.
+      this.runGenerators(this.spec.pre);
+      this.runWarp();
+      this.runGenerators(this.spec.post);
+    }
     this.present();
   }
 
