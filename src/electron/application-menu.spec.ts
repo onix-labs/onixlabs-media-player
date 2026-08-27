@@ -253,7 +253,7 @@ describe('application-menu', (): void => {
       expect(signatureCategory).toBeDefined();
 
       const signatureItems: Record<string, unknown>[] = getSubmenu(signatureCategory!);
-      const expectedNames: readonly string[] = ['Spotlight', 'Reactor', 'Hallucia', 'Pulsar', 'Onix', 'Twirl', 'Warp'];
+      const expectedNames: readonly string[] = ['Reactor', 'Spotlight', 'Hallucia', 'Pulsar', 'Onix', 'Twirl', 'Warp'];
 
       for (const name of expectedNames) {
         const item: Record<string, unknown> | undefined = findSubmenuItem(signatureItems, name);

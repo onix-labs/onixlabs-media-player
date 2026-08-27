@@ -34,8 +34,8 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
   {
     category: 'Signature',
     items: [
-      {id: 'spotlight', name: 'Spotlight'},
       {id: 'water', name: 'Reactor'},
+      {id: 'spotlight', name: 'Spotlight'},
       {id: 'hallucia', name: 'Hallucia'},
       {id: 'pulsar', name: 'Pulsar'},
       {id: 'onix', name: 'Onix'},

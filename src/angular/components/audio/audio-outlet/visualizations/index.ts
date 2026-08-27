@@ -143,14 +143,14 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  *
  * Categories (in order):
  * - Bars & Waves: bars, waveform, modern, tunnel, infinity, neon, onix, hawking, ambience-zoom, ambience-stretch
- * - Signature: spotlight, water (Reactor), hallucia, pulsar
+ * - Signature: water (Reactor), spotlight, hallucia, pulsar, onix, twirl, warp
  * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars & Waves
   'bars', 'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'hawking',
   // Signature
-  'spotlight', 'water', 'hallucia', 'pulsar', 'onix', 'ambience-zoom', 'ambience-stretch',
+  'water', 'spotlight', 'hallucia', 'pulsar', 'onix', 'ambience-zoom', 'ambience-stretch',
     // Simple
   'blank', 'logo',
 ];

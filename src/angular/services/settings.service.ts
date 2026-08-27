@@ -540,8 +540,8 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'neon', label: 'Bars & Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'hawking', label: 'Bars & Waves : Hawking', description: 'Spiked circular waveforms emitting particles outward'},
   // Signature category
-  {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
+  {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'hallucia', label: 'Signature : Hallucia', description: 'Spectral differential rotation winding bands into spiral filaments'},
   {value: 'pulsar', label: 'Signature : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
   {value: 'onix', label: 'Signature : Onix', description: 'ONIXLabs logo with pulsating rings'},
