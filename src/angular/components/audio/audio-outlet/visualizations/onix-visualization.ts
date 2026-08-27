@@ -12,7 +12,8 @@
  * - White inner circle responds to bass frequencies (kick drums, no trail
  *   effect), enveloped with a fast attack and slow release so kicks punch
  *   without the radius jittering between frames
- * - Rotating trails with zoom and fade effects on outer circle
+ * - Rotating trails with zoom and fade effects on outer circle, the zoom
+ *   accelerating with radius so data falls away toward the outer rings
  * - Optimized with canvas reuse and pre-allocated arrays
  *
  * Performance optimizations:
@@ -34,22 +35,22 @@ import {ONIX_COLORS_FLAT, ONIX_COLOR_COUNT, TWO_PI} from './visualization-consta
  */
 export class OnixVisualization extends Canvas2DVisualization {
   /** Radians the trail rotates per frame. */
-  private static readonly ROTATION_SPEED: number = 0.009;
+  private static readonly ROTATION_SPEED: number = 0.0005;
 
   /** Radians the waveform circle rotates per frame. */
-  private static readonly WAVEFORM_ROTATION_SPEED: number = 0.015;
+  private static readonly WAVEFORM_ROTATION_SPEED: number = 0.001;
 
   /** Per-frame trail fade rate. */
-  private static readonly FADE_RATE: number = 0.025;
+  private static readonly FADE_RATE: number = 0.05;
 
   /** Per-frame outward zoom applied to the trail. */
-  private static readonly ZOOM_SCALE: number = 1.02;
+  private static readonly ZOOM_SCALE: number = 1.005;
 
   /** Exponent applied to the fade multiplier for more aggressive low-intensity fading. */
-  private static readonly FADE_POWER: number = 1.5;
+  private static readonly FADE_POWER: number = 0.5;
 
   /** Number of points around the pulsating center circle. */
-  private static readonly CENTER_CIRCLE_POINTS: number = 64;
+  private static readonly CENTER_CIRCLE_POINTS: number = 128;
 
   /** Base glow blur radius in pixels. */
   private static readonly BASE_GLOW_BLUR: number = 18;
@@ -64,29 +65,48 @@ export class OnixVisualization extends Canvas2DVisualization {
    *
    * Set to 1 to go back to a single uniform transform.
    */
-  private static readonly TRAIL_RING_COUNT: number = 20;
+  private static readonly TRAIL_RING_COUNT: number = 64;
 
   /** Extra rotation at the outermost ring versus the innermost, per frame. */
-  private static readonly RING_SHEAR: number = 0.0004;
+  private static readonly RING_SHEAR: number = 0.04;
 
   /**
    * Amplitude of the cosine ripple applied to each ring's zoom.
    *
-   * Bounded by banding rather than by taste. The zoom step between adjacent
-   * rings is this times two pi times the cycle count over the ring count, and
-   * once that step grows the boundaries read as hard concentric shells. These
-   * values put it at 0.0075, which Pulsar settled on.
+   * Bounded by banding rather than by taste, and sharing that budget with the
+   * acceleration below. The step between adjacent rings is the sum of both
+   * gradients - this one contributes ripple times two pi times the cycle count
+   * over the ring count - and once the total grows the boundaries read as hard
+   * concentric shells. At the current values the ripple contributes 0.0059 and
+   * the acceleration 0.0007, for 0.0066 together.
    */
-  private static readonly RING_RIPPLE: number = 0.02;
+  private static readonly RING_RIPPLE: number = 0.005;
 
   /** Ripple cycles spanning the radius. Several, so bands do not sweep as one. */
-  private static readonly RIPPLE_CYCLES: number = 20;
+  private static readonly RIPPLE_CYCLES: number = 12;
 
-  /** How much slower the outermost ring zooms than the innermost. */
-  private static readonly RING_CUBIC_PULL: number = 0.006;
+  /**
+   * How much faster the outermost ring zooms than the innermost.
+   *
+   * Waveform data is born at the source circle and carried outward by the
+   * zoom. A uniform zoom carries it out at a constant rate; this makes the
+   * rate grow with radius, so data lingers near the source and then falls away
+   * faster the further out it gets.
+   *
+   * Cubic rather than linear on purpose: t cubed stays near zero across the
+   * inner half and climbs steeply beyond it, which is what makes it read as
+   * falling away rather than as everything simply moving quicker. Against the
+   * current base zoom the innermost rings travel at 0.5% a frame and the rim
+   * at 2.0%, four times faster.
+   *
+   * Opposite in sign to the cubic it replaces, which slowed the rim. Content
+   * still reaches the corners - every ring zooms outward - but crosses the
+   * outer region faster, so it thins out there. That thinning is the effect.
+   */
+  private static readonly RING_ACCELERATION: number = 0.015;
 
   /** Radians the ripple pattern drifts per frame. */
-  private static readonly RIPPLE_DRIFT: number = 0.05;
+  private static readonly RIPPLE_DRIFT: number = 0.025;
 
   /**
    * Ring widths the boundaries slide per frame.
@@ -95,7 +115,7 @@ export class OnixVisualization extends Canvas2DVisualization {
    * neighbour on others, so the step between them is dithered over time rather
    * than baking into the trail at a fixed radius.
    */
-  private static readonly RING_BOUNDARY_DRIFT: number = 0.013;
+  private static readonly RING_BOUNDARY_DRIFT: number = 0.03;
 
   /**
    * Attack coefficient for the bass envelope.
@@ -132,10 +152,10 @@ export class OnixVisualization extends Canvas2DVisualization {
   private static readonly FILAMENT_WIDTH_FRACTION: number = 0.5;
 
   /** Blur radius of the bloom pass, in pixels. */
-  private static readonly BLOOM_BLUR: number = 12;
+  private static readonly BLOOM_BLUR: number = 64;
 
   /** Strength of the additive bloom pass. */
-  private static readonly BLOOM_STRENGTH: number = 0.3;
+  private static readonly BLOOM_STRENGTH: number = 1;
 
   public readonly name: string = 'Onix';
   public readonly category: string = 'Bars & Waves';
@@ -326,9 +346,9 @@ export class OnixVisualization extends Canvas2DVisualization {
    * inner one. A single whole-image transform moves every radius equally,
    * which smears rather than structures.
    *
-   * Every ring still zooms outward - the base zoom less the ripple and the
-   * cubic stays above 1 - so the field keeps filling the frame instead of
-   * draining toward the centre and leaving dark corners.
+   * Every ring zooms outward, and increasingly so with radius, so waveform
+   * data born at the source circle accelerates away toward the outer rings
+   * rather than drifting out at a constant rate.
    *
    * @param trailCtx - Destination trail context
    * @param tempCanvas - Copy of the previous trail to read from
@@ -365,8 +385,9 @@ export class OnixVisualization extends Canvas2DVisualization {
       const ripple: number =
         Math.cos(across * TWO_PI * OnixVisualization.RIPPLE_CYCLES - this.ripplePhase)
         * OnixVisualization.RING_RIPPLE;
-      const pull: number = OnixVisualization.RING_CUBIC_PULL * across * across * across;
-      const zoom: number = OnixVisualization.ZOOM_SCALE + ripple - pull;
+      const acceleration: number =
+        OnixVisualization.RING_ACCELERATION * across * across * across;
+      const zoom: number = OnixVisualization.ZOOM_SCALE + ripple + acceleration;
 
       trailCtx.save();
 
