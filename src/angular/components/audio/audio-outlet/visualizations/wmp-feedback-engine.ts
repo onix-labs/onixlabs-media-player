@@ -113,8 +113,14 @@ const SPECTRUM_BARS: number = 128;
 /** Samples drawn by the wave edge generator. */
 const WAVE_EDGE_SAMPLES: number = 256;
 
-/** Width of the 1D waveform texture the trace generator reads. */
-const WAVE_TEXTURE_WIDTH: number = 512;
+/**
+ * Width of the 1D waveform texture the trace generator reads.
+ *
+ * Coarse on purpose. The texture samples linearly, so the trace is an
+ * interpolated curve through this many points rather than a faithful rendering
+ * of the buffer, and the shape stays legible instead of dissolving into detail.
+ */
+const WAVE_TEXTURE_WIDTH: number = 64;
 
 /**
  * Trace deflection at unit amplitude, as a fraction of the surface height.
