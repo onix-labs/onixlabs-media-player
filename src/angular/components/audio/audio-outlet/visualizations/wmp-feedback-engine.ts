@@ -23,10 +23,14 @@
  * port exactly; what is here reproduces their shape and their relationship to
  * the audio, driven by the same parameter values.
  *
- * Nothing in this engine is random. Where the original re-rolled a value - the
- * per-pixel jitter in Swirl, the palettes of the eight unlocked Battery presets
- * - a fixed substitute is used, so a given visualization looks the same in
- * every session.
+ * No visualization here changes what it is at random. Where the original
+ * re-rolled a value that decides character - the per-pixel jitter in Swirl, the
+ * palettes of the eight unlocked Battery presets - a fixed substitute is used,
+ * so a given entry always behaves the same way.
+ *
+ * The one exception is the pulse, which fires off a loud bass hit and then only
+ * some of the time. That is a response to the audio rather than a choice about
+ * what the visualization is, and it is how Reactor gates its own flash.
  *
  * @module app/components/audio/audio-outlet/visualizations/wmp-feedback-engine
  */
@@ -121,6 +125,21 @@ const PHASE_BASS_RATE: number = 0.05;
 
 /** Two pi. */
 const TWO_PI: number = Math.PI * 2;
+
+/** Bass level a hit has to clear before it can fire a pulse. */
+const PULSE_BASS_THRESHOLD: number = 0.5;
+
+/** Shortest gap between pulses, in milliseconds. */
+const PULSE_COOLDOWN_MS: number = 10000;
+
+/** Chance that a qualifying hit actually fires one. */
+const PULSE_PROBABILITY: number = 0.5;
+
+/** Steps a pulse takes to travel from the centre out past the rim. */
+const PULSE_STEPS: number = 90;
+
+/** Palette entries above the background that the white flash reaches into. */
+const PULSE_BACKGROUND_SPAN: number = 32;
 
 /**
  * Frames between warp steps.
@@ -287,10 +306,13 @@ void main() {
 const PRESENT_FRAGMENT_SHADER: string = `
 precision mediump float;
 
+const float BACKGROUND_SPAN = 32.0;
+
 uniform sampler2D uSurface;
 uniform sampler2D uPalette;
 uniform float uAlpha;
 uniform float uPaletteShift;
+uniform float uBackground;
 
 varying vec2 vUv;
 
@@ -303,15 +325,22 @@ void main() {
    * a seam through the index range. The surface is brightest where a generator
    * last drew and falls off from there, so the pixels holding the highest
    * indices reach the seam first: it surfaces in the middle and travels
-   * outward, once per full rotation. That radiating dark pulse is the point of
-   * doing this - the ramps are all one hue, so the colour does not cycle with
-   * it.
+   * outward. The ramps are all one hue, so what travels is darkness, not
+   * colour.
    */
   float slot = index * 255.0;
   if (slot >= 1.0) slot = 1.0 + mod(slot - 1.0 + uPaletteShift, 255.0);
   /* Sample the texel centre of a 256-wide palette rather than its edge. */
   float lookup = (slot + 0.5) / 256.0;
   vec3 colour = texture2D(uPalette, vec2(lookup, 0.5)).rgb;
+
+  /*
+   * The flash takes the background white, easing out over the entries just
+   * above it so the ramp does not step against it.
+   */
+  float low = 1.0 - clamp(slot / BACKGROUND_SPAN, 0.0, 1.0);
+  colour = mix(colour, vec3(1.0), uBackground * low);
+
   gl_FragColor = vec4(colour * uAlpha, 1.0);
 }
 `;
@@ -641,12 +670,12 @@ export interface FeedbackSpec {
   readonly palette: Uint8Array;
 
   /**
-   * Palette entries rotated per step. Zero holds the palette still.
+   * Whether a loud bass hit can fire a pulse.
    *
-   * See the present shader: this is what drives the dark pulse out from the
-   * centre, not a colour cycle.
+   * A pulse sweeps the palette through one full rotation, which sends a dark
+   * band out from the centre, and takes the background white while it runs.
    */
-  readonly paletteCycle: number;
+  readonly pulses: boolean;
 }
 
 /**
@@ -785,8 +814,11 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   /** Frames since the last warp step, against {@link FRAMES_PER_STEP}. */
   private sinceStep: number = 0;
 
-  /** Accumulated palette rotation, in entries. */
-  private paletteShift: number = 0;
+  /** Progress through a pulse, 0 to 1. Negative when none is running. */
+  private pulse: number = -1;
+
+  /** When the last bass hit was considered, for the cooldown. */
+  private lastPulseAttempt: number = Number.NEGATIVE_INFINITY;
 
   /**
    * Accumulated phase, in radians.
@@ -836,7 +868,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     for (const key of ['uSurface', 'uSize', 'uParams', 'uDecay', 'uPhase']) {
       this.warpUniforms[key] = gl.getUniformLocation(this.warpProgram, key);
     }
-    for (const key of ['uSurface', 'uPalette', 'uAlpha', 'uPaletteShift']) {
+    for (const key of ['uSurface', 'uPalette', 'uAlpha', 'uPaletteShift', 'uBackground']) {
       this.presentUniforms[key] = gl.getUniformLocation(this.presentProgram, key);
     }
     for (const key of ['uSize', 'uPointSize']) {
@@ -1019,9 +1051,34 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.runGenerators(this.spec.pre);
       this.runWarp();
       this.runGenerators(this.spec.post);
-      this.paletteShift = (this.paletteShift + this.spec.paletteCycle) % CHANNEL_MAX;
+      this.updatePulse();
     }
     this.present();
+  }
+
+  /**
+   * Advances a running pulse, or considers starting one.
+   *
+   * A hit has to clear the threshold, the cooldown has to have expired, and
+   * then it only fires half the time - so the flash stays an event rather than
+   * a rhythm. The cooldown restarts whether or not the roll succeeds, which is
+   * how Reactor spaces its own.
+   */
+  private updatePulse(): void {
+    if (!this.spec.pulses) return;
+
+    if (this.pulse >= 0) {
+      this.pulse += 1 / PULSE_STEPS;
+      if (this.pulse >= 1) this.pulse = -1;
+      return;
+    }
+
+    const now: number = performance.now();
+    if (this.bass < PULSE_BASS_THRESHOLD) return;
+    if (now - this.lastPulseAttempt < PULSE_COOLDOWN_MS) return;
+
+    this.lastPulseAttempt = now;
+    if (Math.random() < PULSE_PROBABILITY) this.pulse = 0;
   }
 
   /** Advances the bass envelope and the phase it drives. */
@@ -1080,7 +1137,15 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
     gl.uniform1i(this.presentUniforms['uPalette'], 1);
     gl.uniform1f(this.presentUniforms['uAlpha'], this.getFadeMultiplier());
-    gl.uniform1f(this.presentUniforms['uPaletteShift'], this.paletteShift);
+    // Idle sits at zero shift and no flash, so the palette is simply itself.
+    gl.uniform1f(
+      this.presentUniforms['uPaletteShift'],
+      this.pulse >= 0 ? this.pulse * CHANNEL_MAX : 0
+    );
+    gl.uniform1f(
+      this.presentUniforms['uBackground'],
+      this.pulse >= 0 ? 1 - this.pulse : 0
+    );
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.activeTexture(gl.TEXTURE0);

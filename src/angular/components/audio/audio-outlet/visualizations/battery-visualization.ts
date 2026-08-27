@@ -35,7 +35,7 @@ const BATTERY_CATEGORY: string = 'Battery';
  * default, and these palettes are Microsoft's own - rotating them would take
  * them somewhere they were never meant to sit.
  */
-const BATTERY_PALETTE_CYCLE: number = 0;
+const BATTERY_PULSES: boolean = false;
 
 /**
  * Turns one row of the preset table into a spec the engine can run.
@@ -52,7 +52,7 @@ function toSpec(preset: BatteryPreset): FeedbackSpec {
     pre: preset.pre.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
     post: preset.post.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
     palette: parsePalette(preset.palette),
-    paletteCycle: BATTERY_PALETTE_CYCLE,
+    pulses: BATTERY_PULSES,
   };
 }
 
