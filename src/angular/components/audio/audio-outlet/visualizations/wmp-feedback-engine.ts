@@ -380,10 +380,12 @@ void main() {
     float spin = length(fromCentre);
     vec2 dir = spin > 1.0 ? fromCentre / spin : vec2(1.0, 0.0);
     vec2 arc = vec2(-dir.y, dir.x) * (spin * uSmokeArc) / size;
-    vec2 out = dir / size;
+    /* Not "out": that is a GLSL keyword, and naming a local after one stops the
+       program linking, which takes the whole visualization down at construction. */
+    vec2 outward = dir / size;
 
     float neighbours = (
-      tap(uv + arc) + tap(uv - arc) + tap(uv + out) + tap(uv - out)
+      tap(uv + arc) + tap(uv - arc) + tap(uv + outward) + tap(uv - outward)
     ) * 0.25;
     value = mix(value, neighbours, uDiffuse);
   }
