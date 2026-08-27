@@ -123,8 +123,16 @@ const WAVE_TEXTURE_WIDTH: number = 512;
  */
 const TRACE_AMPLITUDE: number = 0.34;
 
-/** Gaussian falloff width of the trace. Smaller is tighter. */
-const TRACE_SIGMA: number = 0.00025;
+/**
+ * Gaussian falloff width of the trace. Smaller is tighter.
+ *
+ * Warp draws at 0.00025, but it is not the same picture: here the trace is
+ * added to the surface every step and the warp carries each copy off before the
+ * next lands, so the band thickens against its own trail in a way Warp's does
+ * not. Roughly a third of Warp's width lands the drawn trace about where its
+ * accumulated one sits.
+ */
+const TRACE_SIGMA: number = 0.00008;
 
 /** Brightness of the trace where it is thickest. */
 const TRACE_GAIN: number = 0.85;
