@@ -55,13 +55,13 @@ const AMBIENCE_CATEGORY: string = 'Ambience';
  * family, which is the grouping the DLL implies.
  */
 const STYLE_STOPS: Readonly<Record<number, readonly string[]>> = {
-  0: ['000000', '3A3A3A', '9A9A9A', 'FFFFFF'],
-  1: ['00040E', '0B3A6E', '2E9BC8', 'DFF6FF'],
-  2: ['0A0014', '46106E', 'A93FC8', 'F6DDFF'],
-  3: ['02100A', '15613A', '5FC486', 'E8FFEF'],
-  4: ['000A10', '064450', '1FA0A8', 'D6FBFF'],
-  5: ['140400', '6E2A06', 'D07A18', 'FFE6B4'],
-  8: ['120C00', '6E5406', 'D0A81E', 'FFF1C0'],
+  0: ['000000', '4A4A4A', 'B4B4B4', 'FFFFFF'],
+  1: ['041028', '0E5A9E', '3FB8E8', 'BFF0FF', 'FFFFFF'],
+  2: ['12042A', '5A1A96', 'C25FE8', 'F0D0FF', 'FFFFFF'],
+  3: ['04180E', '1C7A4A', '6FE0A0', 'D8FFE8', 'FFFFFF'],
+  4: ['02141E', '0A5E70', '2FC0CE', 'CFF8FF', 'FFFFFF'],
+  5: ['1E0800', '8E3808', 'E89428', 'FFDC9A', 'FFFFFF'],
+  8: ['1A1200', '8E6C08', 'E8C038', 'FFEEB0', 'FFFFFF'],
 };
 
 /** Stops used when a preset names a style with no entry above. */
