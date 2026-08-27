@@ -290,13 +290,27 @@ precision mediump float;
 uniform sampler2D uSurface;
 uniform sampler2D uPalette;
 uniform float uAlpha;
+uniform float uPaletteShift;
 
 varying vec2 vUv;
 
 void main() {
   float index = texture2D(uSurface, vUv).r;
+  /*
+   * Rotate entries 1..255 and leave 0 pinned as the background.
+   *
+   * The ramps run dark to light without wrapping round, so rotating them drags
+   * a seam through the index range. The surface is brightest where a generator
+   * last drew and falls off from there, so the pixels holding the highest
+   * indices reach the seam first: it surfaces in the middle and travels
+   * outward, once per full rotation. That radiating dark pulse is the point of
+   * doing this - the ramps are all one hue, so the colour does not cycle with
+   * it.
+   */
+  float slot = index * 255.0;
+  if (slot >= 1.0) slot = 1.0 + mod(slot - 1.0 + uPaletteShift, 255.0);
   /* Sample the texel centre of a 256-wide palette rather than its edge. */
-  float lookup = (index * 255.0 + 0.5) / 256.0;
+  float lookup = (slot + 0.5) / 256.0;
   vec3 colour = texture2D(uPalette, vec2(lookup, 0.5)).rgb;
   gl_FragColor = vec4(colour * uAlpha, 1.0);
 }
@@ -625,6 +639,14 @@ export interface FeedbackSpec {
 
   /** 256 packed RGB triples, one byte per channel. */
   readonly palette: Uint8Array;
+
+  /**
+   * Palette entries rotated per step. Zero holds the palette still.
+   *
+   * See the present shader: this is what drives the dark pulse out from the
+   * centre, not a colour cycle.
+   */
+  readonly paletteCycle: number;
 }
 
 /**
@@ -763,6 +785,9 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   /** Frames since the last warp step, against {@link FRAMES_PER_STEP}. */
   private sinceStep: number = 0;
 
+  /** Accumulated palette rotation, in entries. */
+  private paletteShift: number = 0;
+
   /**
    * Accumulated phase, in radians.
    *
@@ -811,7 +836,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     for (const key of ['uSurface', 'uSize', 'uParams', 'uDecay', 'uPhase']) {
       this.warpUniforms[key] = gl.getUniformLocation(this.warpProgram, key);
     }
-    for (const key of ['uSurface', 'uPalette', 'uAlpha']) {
+    for (const key of ['uSurface', 'uPalette', 'uAlpha', 'uPaletteShift']) {
       this.presentUniforms[key] = gl.getUniformLocation(this.presentProgram, key);
     }
     for (const key of ['uSize', 'uPointSize']) {
@@ -994,6 +1019,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.runGenerators(this.spec.pre);
       this.runWarp();
       this.runGenerators(this.spec.post);
+      this.paletteShift = (this.paletteShift + this.spec.paletteCycle) % CHANNEL_MAX;
     }
     this.present();
   }
@@ -1054,6 +1080,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
     gl.uniform1i(this.presentUniforms['uPalette'], 1);
     gl.uniform1f(this.presentUniforms['uAlpha'], this.getFadeMultiplier());
+    gl.uniform1f(this.presentUniforms['uPaletteShift'], this.paletteShift);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.activeTexture(gl.TEXTURE0);

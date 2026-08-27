@@ -159,6 +159,14 @@ const RADIAL_HEIGHT_BAND: number = 0.1;
  */
 const RIPPLE_FLARE: number = 0.25;
 
+/**
+ * Palette entries the Ambience bank rotates per step.
+ *
+ * At three frames a step this brings the seam round about every eight seconds,
+ * which is the interval the pulse was appearing at before.
+ */
+const AMBIENCE_PALETTE_CYCLE: number = 1.5;
+
 /** Sector count of the petal pair, as a fraction of the surface height. */
 const PETAL_SECTOR_SCALE: number = 0.1;
 
@@ -404,6 +412,7 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
     pre: sources.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
     post: OVERLAY_GENERATORS.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
     palette: parsePalette(paletteFor(preset.styles)),
+    paletteCycle: AMBIENCE_PALETTE_CYCLE,
   };
 }
 

@@ -29,6 +29,15 @@ import {
 const BATTERY_CATEGORY: string = 'Battery';
 
 /**
+ * Battery holds its palette still.
+ *
+ * The engine offered a palette cycle on a hotkey rather than running one by
+ * default, and these palettes are Microsoft's own - rotating them would take
+ * them somewhere they were never meant to sit.
+ */
+const BATTERY_PALETTE_CYCLE: number = 0;
+
+/**
  * Turns one row of the preset table into a spec the engine can run.
  *
  * @param preset - A row of {@link BATTERY_PRESETS}
@@ -43,6 +52,7 @@ function toSpec(preset: BatteryPreset): FeedbackSpec {
     pre: preset.pre.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
     post: preset.post.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
     palette: parsePalette(preset.palette),
+    paletteCycle: BATTERY_PALETTE_CYCLE,
   };
 }
 
