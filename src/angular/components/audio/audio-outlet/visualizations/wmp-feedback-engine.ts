@@ -72,12 +72,18 @@ const HEX_RADIX: number = 16;
 const CHANNEL_MAX: number = 255;
 
 /**
- * Intensity lost per frame.
+ * Multiplier applied to the surface each step.
  *
- * The engine decremented the palette index by one each frame, which on a
- * 256-entry palette is this much of the surface's full range.
+ * Subtracting a fixed amount - one palette index, as the engine's own frame
+ * counter suggests - cannot hold a surface that the generators keep adding to:
+ * every pixel a generator touches climbs to full and stays there, and the frame
+ * washes out. Decaying by proportion instead means the bright areas shed the
+ * most, which is what keeps the trace legible against its own trail.
+ *
+ * Warp handles a trace of the same energy this way, and this sits between its
+ * middle and fast rates.
  */
-const DECAY_PER_FRAME: number = 1 / CHANNEL_MAX;
+const SURFACE_DECAY: number = 0.94;
 
 // ============================================================================
 // Geometry budget
@@ -317,7 +323,7 @@ void main() {
     value = texture2D(uSurface, uv).r;
   }
 
-  gl_FragColor = vec4(max(value - uDecay, 0.0), 0.0, 0.0, 1.0);
+  gl_FragColor = vec4(value * uDecay, 0.0, 0.0, 1.0);
 }
 `;
 
@@ -1229,7 +1235,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.warpUniforms['uParams'],
       args[0] ?? 0, args[1] ?? 0, args[2] ?? 0, args[3] ?? 0
     );
-    gl.uniform1f(this.warpUniforms['uDecay'], DECAY_PER_FRAME);
+    gl.uniform1f(this.warpUniforms['uDecay'], SURFACE_DECAY);
     gl.uniform1f(this.warpUniforms['uPhase'], this.phase);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
