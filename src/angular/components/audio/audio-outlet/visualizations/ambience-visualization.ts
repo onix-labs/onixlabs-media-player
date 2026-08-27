@@ -149,9 +149,9 @@ export const ZOOM_RADIAL: number = 0.025;
  * sucked in. Negating it reads from nearer the centre, so content is pulled
  * out instead.
  *
- * Battery / Wave Edge pairs with the same displacement and keeps the inward
- * ZOOM_RADIAL above. Still inside the engine's u * 0.2 - 0.1 range, which
- * spans both directions.
+ * ZOOM_RADIAL above is the inward value, now unused: it was what Battery /
+ * Wave Edge paired with. Both stay inside the engine's u * 0.2 - 0.1 range,
+ * which spans either direction.
  */
 export const ZOOM_RADIAL_AMBIENCE: number = -0.025;
 
@@ -1127,6 +1127,7 @@ export class AmbienceZoomVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Zoom',
+      category: 'Waves',
       shift: ShiftMode.Zoom,
       decay: DECAY_MID,
       startHue: 300,
@@ -1144,6 +1145,7 @@ export class AmbienceStretchVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Stretch',
+      category: 'Waves',
       shift: ShiftMode.Stretch,
       decay: DECAY_MID,
       startHue: 260,
@@ -1155,21 +1157,6 @@ export class AmbienceStretchVisualization extends AmbienceVisualization {
 }
 
 
-/** Ambience - Trig Stretch. Trig composed with the cubic radial distortion. */
-export class AmbienceTrigStretchVisualization extends AmbienceVisualization {
-  public constructor(config: VisualizationConfig) {
-    super(config, {
-      name: 'Trig Stretch',
-      shift: ShiftMode.TrigStretch,
-      decay: DECAY_MID,
-      startHue: 340,
-      hueDrift: HUE_DRIFT_MED,
-      generator: GeneratorMode.WaveEdge,
-      params: {angleDelta: TRIGSTRETCH_ANGLE_DELTA, amplitude: TRIGSTRETCH_AMPLITUDE,
-        subMode: TRIGSTRETCH_SUB_MODE, frequency: TRIGSTRETCH_CUBIC},
-    });
-  }
-}
 
 
 

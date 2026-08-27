@@ -40,12 +40,8 @@ export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
 export {HawkingVisualization} from './hawking-visualization';
 export {
-  BatteryWaveEdgeVisualization,
-} from './battery-visualization';
-export {
   AmbienceZoomVisualization,
   AmbienceStretchVisualization,
-  AmbienceTrigStretchVisualization,
 } from './ambience-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
@@ -64,12 +60,8 @@ import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
 import {HawkingVisualization} from './hawking-visualization';
 import {
-  BatteryWaveEdgeVisualization,
-} from './battery-visualization';
-import {
   AmbienceZoomVisualization,
   AmbienceStretchVisualization,
-  AmbienceTrigStretchVisualization,
 } from './ambience-visualization';
 
 /**
@@ -89,10 +81,8 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   spotlight: SpotlightVisualization,
   hallucia: HalluciaVisualization,
   hawking: HawkingVisualization,
-  'battery-waveedge': BatteryWaveEdgeVisualization,
   'ambience-zoom': AmbienceZoomVisualization,
   'ambience-stretch': AmbienceStretchVisualization,
-  'ambience-trigstretch': AmbienceTrigStretchVisualization,
   blank: BlankVisualization,
   logo: LogoVisualization,
 };
@@ -114,10 +104,8 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   spotlight: {name: 'Spotlight', category: 'Signature'},
   hallucia: {name: 'Hallucia', category: 'Signature'},
   hawking: {name: 'Hawking', category: 'Waves'},
-  'battery-waveedge': {name: 'Wave Edge', category: 'Battery'},
-  'ambience-zoom': {name: 'Zoom', category: 'Ambience'},
-  'ambience-stretch': {name: 'Stretch', category: 'Ambience'},
-  'ambience-trigstretch': {name: 'Trig Stretch', category: 'Ambience'},
+  'ambience-zoom': {name: 'Zoom', category: 'Waves'},
+  'ambience-stretch': {name: 'Stretch', category: 'Waves'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
@@ -155,24 +143,18 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  *
  * Categories (in order):
  * - Bars: bars
- * - Waves: waveform, modern, tunnel, infinity, neon, onix, hawking
+ * - Waves: waveform, modern, tunnel, infinity, neon, onix, hawking, ambience-zoom, ambience-stretch
  * - Signature: spotlight, water (Reactor), hallucia, pulsar
- * - Ambience: one entry per displacement in the Ambience bank
- * - Battery: one entry per source generator, each rolling its displacement
  * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars
   'bars',
   // Waves
-  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'hawking',
+  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'hawking', 'ambience-zoom', 'ambience-stretch',
   // Signature
   'spotlight', 'water', 'hallucia', 'pulsar',
-    // Ambience
-  'ambience-zoom', 'ambience-stretch', 'ambience-trigstretch',
-  // Battery
-  'battery-waveedge',
-  // Simple
+    // Simple
   'blank', 'logo',
 ];
 

@@ -132,7 +132,7 @@ export type LocalSettingKey = keyof VisualizationLocalSettings;
 export interface VisualizationMetadata {
   readonly id: string;
   readonly name: string;
-  readonly category: 'Bars' | 'Waves' | 'Signature' | 'Ambience' | 'Battery' | 'Simple';
+  readonly category: 'Bars' | 'Waves' | 'Signature' | 'Simple';
   readonly applicableSettings: readonly LocalSettingKey[];
 }
 
@@ -450,11 +450,9 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: []},
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
   // Ambience category
-  {id: 'ambience-zoom', name: 'Zoom', category: 'Ambience', applicableSettings: []},
-  {id: 'ambience-stretch', name: 'Stretch', category: 'Ambience', applicableSettings: []},
-  {id: 'ambience-trigstretch', name: 'Trig Stretch', category: 'Ambience', applicableSettings: []},
+  {id: 'ambience-zoom', name: 'Zoom', category: 'Waves', applicableSettings: []},
+  {id: 'ambience-stretch', name: 'Stretch', category: 'Waves', applicableSettings: []},
   // Battery category
-  {id: 'battery-waveedge', name: 'Wave Edge', category: 'Battery', applicableSettings: []},
   // Simple category
   {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
   {id: 'logo', name: 'Logo', category: 'Simple', applicableSettings: []},
@@ -550,11 +548,9 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'hallucia', label: 'Signature : Hallucia', description: 'Spectral differential rotation winding bands into spiral filaments'},
   {value: 'pulsar', label: 'Signature : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
   // Ambience category
-  {value: 'ambience-zoom', label: 'Ambience : Zoom', description: 'Rotating zoom about the centre'},
-  {value: 'ambience-stretch', label: 'Ambience : Stretch', description: 'Cubic radial distortion'},
-  {value: 'ambience-trigstretch', label: 'Ambience : Trig Stretch', description: 'Trigonometric perturbation with cubic stretch'},
+  {value: 'ambience-zoom', label: 'Waves : Zoom', description: 'Rotating zoom about the centre'},
+  {value: 'ambience-stretch', label: 'Waves : Stretch', description: 'Cubic radial distortion'},
   // Battery category
-  {value: 'battery-waveedge', label: 'Battery : Wave Edge', description: 'Waveform trace across the surface'},
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},
   {value: 'logo', label: 'Simple : Logo', description: 'The ONIXPlayer logo, centred'},

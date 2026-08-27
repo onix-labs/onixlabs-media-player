@@ -35,6 +35,8 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'neon', name: 'Neon'},
       {id: 'onix', name: 'Onix'},
       {id: 'hawking', name: 'Hawking'},
+      {id: 'ambience-zoom', name: 'Zoom'},
+      {id: 'ambience-stretch', name: 'Stretch'},
     ],
   },
   {
@@ -44,20 +46,6 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'water', name: 'Reactor'},
       {id: 'hallucia', name: 'Hallucia'},
       {id: 'pulsar', name: 'Pulsar'},
-    ],
-  },
-  {
-    category: 'Ambience',
-    items: [
-      {id: 'ambience-zoom', name: 'Zoom'},
-      {id: 'ambience-stretch', name: 'Stretch'},
-      {id: 'ambience-trigstretch', name: 'Trig Stretch'},
-    ],
-  },
-  {
-    category: 'Battery',
-    items: [
-      {id: 'battery-waveedge', name: 'Wave Edge'},
     ],
   },
   {

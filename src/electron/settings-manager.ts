@@ -813,8 +813,6 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'hawking',
   'ambience-zoom',
   'ambience-stretch',
-  'ambience-trigstretch',
-  'battery-waveedge',
   'blank',
   'logo',
 ];
