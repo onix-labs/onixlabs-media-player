@@ -153,10 +153,11 @@ const RADIAL_HEIGHT_BAND: number = 0.1;
  * How much the ripple's bands widen with radius.
  *
  * Zero leaves them evenly spaced, which is how the displacement builder has
- * them. At this value the outermost band is two and a half times the width of
- * the innermost, so the rings thicken as they travel out.
+ * them. At this value the outermost band is a quarter wider than the innermost:
+ * enough that each ring reads as slightly fatter than the one inside it,
+ * without the outer ones swallowing the frame.
  */
-const RIPPLE_FLARE: number = 1.5;
+const RIPPLE_FLARE: number = 0.25;
 
 /** Sector count of the petal pair, as a fraction of the surface height. */
 const PETAL_SECTOR_SCALE: number = 0.1;
