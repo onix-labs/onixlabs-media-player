@@ -396,20 +396,34 @@ const TRACE_FRAGMENT_SHADER: string = `
 precision highp float;
 
 uniform sampler2D uWaveform;
+uniform vec2 uSize;
 uniform float uAmplitude;
 uniform float uCentre;
 uniform float uGain;
+uniform float uSpin;
 
 varying vec2 vUv;
 
 void main() {
+  /*
+   * Turn the frame under the trace before reading it. Rotating the sample
+   * coordinate one way carries the drawn result the other, so uSpin is the
+   * negative of where the trace should end up. Done in pixels rather than in uv
+   * so the rotation stays circular on a surface that is not square.
+   */
+  vec2 offset = vUv * uSize - uSize * 0.5;
+  float sn = sin(uSpin);
+  float cs = cos(uSpin);
+  vec2 turned = (vec2(offset.x * cs - offset.y * sn, offset.x * sn + offset.y * cs)
+    + uSize * 0.5) / uSize;
+
   /*
    * Rotationally symmetric about the centre of the frame. The left half holds
    * the whole of the sample data, compressed into it; the right half is that
    * same curve turned through 180 degrees, so a point one side has its opposite
    * number reflected through the middle rather than mirrored across it.
    */
-  float x = vUv.x;
+  float x = clamp(turned.x, 0.0, 1.0);
   float turn = 1.0;
   if (x > 0.5) {
     x = 1.0 - x;
@@ -417,7 +431,7 @@ void main() {
   }
   float level = texture2D(uWaveform, vec2(x * 2.0, 0.5)).r;
   float traceY = uCentre + turn * (level - 0.5) * uAmplitude;
-  float delta = vUv.y - traceY;
+  float delta = turned.y - traceY;
   float intensity = exp(-(delta * delta) / ${TRACE_SIGMA}) * uGain;
   gl_FragColor = vec4(intensity, 0.0, 0.0, 1.0);
 }
@@ -899,6 +913,14 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   /** Frames since the last warp step, against {@link FRAMES_PER_STEP}. */
   private sinceStep: number = 0;
 
+  /**
+   * Accumulated rotation of the trace, in radians.
+   *
+   * Advanced against the warp's own angle, so the trace turns opposite to
+   * whatever the displacement is doing to the rings, at the same rate.
+   */
+  private traceSpin: number = 0;
+
   /** Progress through a pulse, 0 to 1. Negative when none is running. */
   private pulse: number = -1;
 
@@ -950,7 +972,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       GENERATOR_FRAGMENT_SHADER
     );
     this.traceProgram = this.createProgram(QUAD_VERTEX_SHADER, TRACE_FRAGMENT_SHADER);
-    for (const key of ['uWaveform', 'uAmplitude', 'uCentre', 'uGain']) {
+    for (const key of ['uWaveform', 'uSize', 'uAmplitude', 'uCentre', 'uGain', 'uSpin']) {
       this.traceUniforms[key] = gl.getUniformLocation(this.traceProgram, key);
     }
 
@@ -1152,6 +1174,9 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.runGenerators(this.spec.pre);
       this.runWarp();
       this.runGenerators(this.spec.post);
+      // The warp is a gather, so its content turns against the angle it adds;
+      // subtracting that angle here sends the trace the other way.
+      this.traceSpin = (this.traceSpin - (this.spec.warpArgs[0] ?? 0)) % TWO_PI;
       this.updatePulse();
     }
     this.present();
@@ -1197,6 +1222,8 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     );
     gl.uniform1f(this.traceUniforms['uCentre'], 0.5 + (args[1] ?? 0));
     gl.uniform1f(this.traceUniforms['uGain'], TRACE_GAIN);
+    gl.uniform2f(this.traceUniforms['uSize'], this.surfaceWidth, this.surfaceHeight);
+    gl.uniform1f(this.traceUniforms['uSpin'], this.traceSpin);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     // The geometry generators that may follow expect their own program bound.
