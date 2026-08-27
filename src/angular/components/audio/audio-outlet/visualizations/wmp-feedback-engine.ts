@@ -106,11 +106,29 @@ const WAVE_EDGE_SAMPLES: number = 256;
 /**
  * Samples drawn by the horizontal wave generator.
  *
- * Deliberately coarse. Reactor, which was built against the real thing, uses
- * the same count, and the smoothness that comes of undersampling is part of the
- * shape rather than an artefact of it.
+ * Reactor draws this from 32 points, and copying that number was a mistake: it
+ * feeds them through a smoothing pass that turns them into a curve, where this
+ * generator stamps a polyline straight onto the surface. At 32 points that is
+ * visibly faceted, so it samples densely instead.
  */
-const HORIZONTAL_SAMPLES: number = 32;
+const HORIZONTAL_SAMPLES: number = 512;
+
+/** Ring outlines the concentric ring generator will draw at most. */
+const MAX_RINGS: number = 12;
+
+/** Segments per ring outline. */
+const RING_SEGMENTS: number = 96;
+
+/**
+ * Index the standing ring structure is drawn at.
+ *
+ * Below the stamp the generators use, so waveform data dispersing across the
+ * rings reads brighter than the rings it is crossing.
+ */
+const RING_STRUCTURE_INDEX: number = 0.42;
+
+/** How far the spectrum deflects a ring outline, as a fraction of its radius. */
+const RING_STRUCTURE_SWING: number = 0.06;
 
 // ============================================================================
 // Audio
@@ -344,12 +362,18 @@ uniform sampler2D uOverlay;
 uniform vec2 uSize;
 uniform float uAngle;
 uniform float uFade;
+uniform float uSpread;
 
 varying vec2 vUv;
 
 void main() {
   vec2 centre = uSize * 0.5;
-  vec2 delta = vUv * uSize - centre;
+  /*
+   * Pulling the sample in slightly as well as turning it makes the layer creep
+   * outward a fraction each step. Rotation alone smears along one axis; with the
+   * spread it thins in every direction, which is what reads as smoke.
+   */
+  vec2 delta = (vUv * uSize - centre) * (1.0 - uSpread);
   float s = sin(uAngle);
   float c = cos(uAngle);
   vec2 uv = (vec2(delta.x * c - delta.y * s, delta.x * s + delta.y * c) + centre) / uSize;
@@ -690,6 +714,9 @@ export interface FeedbackSpec {
   /** Radians the overlay turns per step. Small; this is what smears it. */
   readonly overlayAngle: number;
 
+  /** Fraction the overlay creeps outward per step, thinning it in every direction. */
+  readonly overlaySpread: number;
+
   /** 256 packed RGB triples, one byte per channel. */
   readonly palette: Uint8Array;
 
@@ -903,7 +930,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     );
     this.presentProgram = this.createProgram(QUAD_VERTEX_SHADER, PRESENT_FRAGMENT_SHADER);
     this.overlayProgram = this.createProgram(QUAD_VERTEX_SHADER, OVERLAY_FRAGMENT_SHADER);
-    for (const key of ['uOverlay', 'uSize', 'uAngle', 'uFade']) {
+    for (const key of ['uOverlay', 'uSize', 'uAngle', 'uFade', 'uSpread']) {
       this.overlayUniforms[key] = gl.getUniformLocation(this.overlayProgram, key);
     }
     this.generatorProgram = this.createProgram(
@@ -1193,6 +1220,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.uniform2f(this.overlayUniforms['uSize'], this.surfaceWidth, this.surfaceHeight);
     gl.uniform1f(this.overlayUniforms['uAngle'], this.spec.overlayAngle);
     gl.uniform1f(this.overlayUniforms['uFade'], this.spec.overlayFade);
+    gl.uniform1f(this.overlayUniforms['uSpread'], this.spec.overlaySpread);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     this.overlayFront = back;
@@ -1389,6 +1417,9 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       case 'HorizontalWave':
         this.buildHorizontalWave(stage.args);
         return gl.LINE_STRIP;
+      case 'ConcentricRings':
+        this.buildConcentricRings(stage.args);
+        return gl.LINES;
       default:
         return null;
     }
@@ -1567,6 +1598,53 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       const level: number = STAMP_FULL * falloff * shape;
       this.vertex(0, y, level);
       this.vertex(width, y, level);
+    }
+  }
+
+  /**
+   * The standing ring structure.
+   *
+   * Drawn crisp after the warp every step, so all of the rings are present from
+   * the first frame rather than appearing one at a time as content reaches
+   * them. The radii are multiples of the band width the displacement folds the
+   * radius into, so a ring sits exactly where content piles up.
+   *
+   * Emitted as line pairs rather than loops: one draw call covers every ring,
+   * and pairs keep the last segment of one ring from joining the first of the
+   * next.
+   *
+   * dbl1 is the band width in pixels, dbl2 the number of rings.
+   *
+   * @param args - The stage's dbl1..dbl4
+   */
+  private buildConcentricRings(args: readonly number[]): void {
+    const cx: number = this.surfaceWidth * 0.5;
+    const cy: number = this.surfaceHeight * 0.5;
+    const band: number = args[0] ?? 1;
+    const rings: number = Math.min(MAX_RINGS, Math.max(1, Math.round(args[1] ?? 1)));
+    if (band <= 0) return;
+
+    this.gl.lineWidth(1);
+    for (let ring: number = 1; ring <= rings; ring++) {
+      const radius: number = band * ring;
+      if (radius > Math.max(cx, cy)) break;
+      // The outlines carry a little spectrum, otherwise a perfect circle would
+      // make the rotation invisible.
+      let previousX: number = 0;
+      let previousY: number = 0;
+      for (let i: number = 0; i <= RING_SEGMENTS; i++) {
+        const u: number = i / RING_SEGMENTS;
+        const angle: number = u * TWO_PI + this.phase;
+        const wobble: number = 1 + RING_STRUCTURE_SWING * this.binAt(u);
+        const x: number = cx + radius * wobble * Math.cos(angle);
+        const y: number = cy + radius * wobble * Math.sin(angle);
+        if (i > 0) {
+          this.vertex(previousX, previousY, RING_STRUCTURE_INDEX);
+          this.vertex(x, y, RING_STRUCTURE_INDEX);
+        }
+        previousX = x;
+        previousY = y;
+      }
     }
   }
 

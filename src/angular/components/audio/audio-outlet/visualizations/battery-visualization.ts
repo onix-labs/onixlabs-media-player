@@ -68,6 +68,7 @@ function toSpec(preset: BatteryPreset): FeedbackSpec {
     overlay: BATTERY_OVERLAY,
     overlayFade: 0,
     overlayAngle: 0,
+    overlaySpread: 0,
   };
 }
 

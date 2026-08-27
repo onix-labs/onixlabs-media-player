@@ -161,6 +161,12 @@ const AMBIENCE_OVERLAY_FADE: number = 0.02;
 /** Radians the overlay turns per step. */
 const AMBIENCE_OVERLAY_ANGLE: number = 0.005;
 
+/** Fraction the overlay creeps outward per step, which thickens the smoke. */
+const AMBIENCE_OVERLAY_SPREAD: number = 0.004;
+
+/** Ring outlines Water stands up, one per band the displacement folds into. */
+const WATER_RING_COUNT: number = 8;
+
 /** Angular rate shared by the spiral and the flow presets. */
 const RATE_SEVEN: number = 0.07;
 
@@ -286,7 +292,10 @@ const AMBIENCE_PRESETS: readonly AmbiencePreset[] = [
     styles: [1],
     mode: MODE_RING,
     pre: ['CircleWaveform 1 1 0.14 0'],
-    post: [],
+    // The rings are a standing structure, redrawn crisp every step at the band
+    // radii, so they are all present from the first frame and the waveform
+    // disperses across them rather than revealing them one at a time.
+    post: [`ConcentricRings ${NOMINAL_HEIGHT * RADIAL_HEIGHT_BAND} ${WATER_RING_COUNT} 0 0`],
     // On the unwarped surface: the horizontal waveform holds its shape and only
     // thins out, rather than being dragged outward with the rings.
     overlay: ['HorizontalWave 1 0 0 0'],
@@ -460,6 +469,7 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
     ),
     overlayFade: AMBIENCE_OVERLAY_FADE,
     overlayAngle: AMBIENCE_OVERLAY_ANGLE,
+    overlaySpread: AMBIENCE_OVERLAY_SPREAD,
   };
 }
 
