@@ -339,6 +339,7 @@ precision mediump float;
 const float BACKGROUND_SPAN = 32.0;
 
 uniform sampler2D uSurface;
+uniform sampler2D uSmoke;
 uniform sampler2D uPalette;
 uniform float uAlpha;
 uniform float uPaletteShift;
@@ -347,7 +348,13 @@ uniform float uBackground;
 varying vec2 vUv;
 
 void main() {
-  float index = texture2D(uSurface, vUv).r;
+  /*
+   * The warped surface carries the rings; the smoke layer is only ever aged, so
+   * what is drawn on it holds its shape instead of being dragged through the
+   * displacement. Added and clamped, matching the 'lighter' composite Reactor
+   * lays its trails down with.
+   */
+  float index = min(texture2D(uSurface, vUv).r + texture2D(uSmoke, vUv).r, 1.0);
   /*
    * Rotate entries 1..255 and leave 0 pinned as the background.
    *
@@ -412,6 +419,42 @@ void main() {
   float delta = vUv.y - traceY;
   float intensity = exp(-(delta * delta) / ${TRACE_SIGMA}) * uGain;
   gl_FragColor = vec4(intensity, 0.0, 0.0, 1.0);
+}
+`;
+
+/**
+ * Ages the unwarped layer.
+ *
+ * Not a fade in place: the layer is resampled a fraction of a degree round the
+ * centre and drawn back a touch larger every step, then multiplied down.
+ * Bilinear filtering smears it a little further on each pass, and that repeated
+ * resampling is what turns a drawn trace into smoke rather than a line getting
+ * dimmer. Reactor reaches the same result by redrawing its trail canvas under a
+ * small rotation with image smoothing left on.
+ */
+const SMOKE_FRAGMENT_SHADER: string = `
+precision highp float;
+
+uniform sampler2D uLayer;
+uniform vec2 uSize;
+uniform float uAngle;
+uniform float uFade;
+uniform float uSpread;
+
+varying vec2 vUv;
+
+void main() {
+  vec2 centre = uSize * 0.5;
+  vec2 delta = (vUv * uSize - centre) * (1.0 - uSpread);
+  float s = sin(uAngle);
+  float c = cos(uAngle);
+  vec2 uv = (vec2(delta.x * c - delta.y * s, delta.x * s + delta.y * c) + centre) / uSize;
+
+  float value = 0.0;
+  if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
+    value = texture2D(uLayer, uv).r;
+  }
+  gl_FragColor = vec4(value * uFade, 0.0, 0.0, 1.0);
 }
 `;
 
@@ -740,6 +783,23 @@ export interface FeedbackSpec {
   readonly palette: Uint8Array;
 
   /**
+   * Generators drawn onto the unwarped smoke layer.
+   *
+   * Content here holds its shape and only ages, so it overlaps the warped
+   * surface without being pulled through the displacement.
+   */
+  readonly smoke: readonly GeneratorStage[];
+
+  /** Multiplier applied to the smoke layer each step. */
+  readonly smokeFade: number;
+
+  /** Radians the smoke layer turns per step. */
+  readonly smokeAngle: number;
+
+  /** Fraction the smoke layer creeps outward per step. */
+  readonly smokeSpread: number;
+
+  /**
    * Whether a loud bass hit can fire a pulse.
    *
    * A pulse sweeps the palette through one full rotation, which sends a dark
@@ -846,6 +906,13 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   /** Vertex buffer the generators stream into. */
   private generatorBuffer: WebGLBuffer | null = null;
 
+  /** The unwarped smoke layer, ping-ponged because it resamples itself. */
+  private readonly smokeTextures: (WebGLTexture | null)[] = [null, null];
+  private readonly smokeBuffers: (WebGLFramebuffer | null)[] = [null, null];
+  private smokeFront: number = 0;
+  private smokeProgram: WebGLProgram | null = null;
+  private readonly smokeUniforms: Record<string, WebGLUniformLocation | null> = {};
+
   /** The trace pass, and the 1D waveform texture it reads. */
   private traceProgram: WebGLProgram | null = null;
   private readonly traceUniforms: Record<string, WebGLUniformLocation | null> = {};
@@ -941,6 +1008,11 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       GENERATOR_VERTEX_SHADER,
       GENERATOR_FRAGMENT_SHADER
     );
+    this.smokeProgram = this.createProgram(QUAD_VERTEX_SHADER, SMOKE_FRAGMENT_SHADER);
+    for (const key of ['uLayer', 'uSize', 'uAngle', 'uFade', 'uSpread']) {
+      this.smokeUniforms[key] = gl.getUniformLocation(this.smokeProgram, key);
+    }
+
     this.traceProgram = this.createProgram(QUAD_VERTEX_SHADER, TRACE_FRAGMENT_SHADER);
     for (const key of ['uWaveform', 'uAmplitude', 'uCentre', 'uGain']) {
       this.traceUniforms[key] = gl.getUniformLocation(this.traceProgram, key);
@@ -960,7 +1032,9 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     for (const key of ['uSurface', 'uSize', 'uParams', 'uDecay', 'uPhase']) {
       this.warpUniforms[key] = gl.getUniformLocation(this.warpProgram, key);
     }
-    for (const key of ['uSurface', 'uPalette', 'uAlpha', 'uPaletteShift', 'uBackground']) {
+    for (const key of [
+      'uSurface', 'uSmoke', 'uPalette', 'uAlpha', 'uPaletteShift', 'uBackground',
+    ]) {
       this.presentUniforms[key] = gl.getUniformLocation(this.presentProgram, key);
     }
     for (const key of ['uSize', 'uPointSize']) {
@@ -1079,19 +1153,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     this.deleteSurfaces();
 
     for (let i: number = 0; i < this.surfaceTextures.length; i++) {
-      const texture: WebGLTexture | null = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texImage2D(
-        gl.TEXTURE_2D, 0, gl.RGBA, this.surfaceWidth, this.surfaceHeight, 0,
-        gl.RGBA, gl.UNSIGNED_BYTE, null
-      );
-      // Linear sampling is what keeps the warp smooth instead of blocky; the
-      // bounds test in the shader is then the only edge rule that applies.
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
+      const texture: WebGLTexture | null = this.createSurfaceTexture();
       const buffer: WebGLFramebuffer | null = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, buffer);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
@@ -1102,7 +1164,42 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.surfaceBuffers[i] = buffer;
     }
 
+    for (let i: number = 0; i < this.smokeTextures.length; i++) {
+      const texture: WebGLTexture | null = this.createSurfaceTexture();
+      const buffer: WebGLFramebuffer | null = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, buffer);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      this.smokeTextures[i] = texture;
+      this.smokeBuffers[i] = buffer;
+    }
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  /**
+   * Allocates one surface-sized texture with the engine's sampling rules.
+   *
+   * Linear sampling is what keeps the warp smooth instead of blocky, and is
+   * also what smears the smoke layer as it resamples itself; the bounds test in
+   * each shader is then the only edge rule that applies.
+   *
+   * @returns The new texture
+   */
+  private createSurfaceTexture(): WebGLTexture | null {
+    const gl: WebGLRenderingContext = this.gl;
+    const texture: WebGLTexture | null = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(
+      gl.TEXTURE_2D, 0, gl.RGBA, this.surfaceWidth, this.surfaceHeight, 0,
+      gl.RGBA, gl.UNSIGNED_BYTE, null
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return texture;
   }
 
   /** Releases the ping-pong attachments. */
@@ -1113,6 +1210,12 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       if (this.surfaceBuffers[i]) gl.deleteFramebuffer(this.surfaceBuffers[i]);
       this.surfaceTextures[i] = null;
       this.surfaceBuffers[i] = null;
+    }
+    for (let i: number = 0; i < this.smokeTextures.length; i++) {
+      if (this.smokeTextures[i]) gl.deleteTexture(this.smokeTextures[i]);
+      if (this.smokeBuffers[i]) gl.deleteFramebuffer(this.smokeBuffers[i]);
+      this.smokeTextures[i] = null;
+      this.smokeBuffers[i] = null;
     }
   }
 
@@ -1144,6 +1247,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.runGenerators(this.spec.pre);
       this.runWarp();
       this.runGenerators(this.spec.post);
+      this.stepSmoke();
       this.updatePulse();
     }
     this.present();
@@ -1259,6 +1363,36 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     this.front = back;
   }
 
+  /**
+   * Ages the smoke layer, then redraws its generators onto it.
+   *
+   * Nothing here passes through the displacement, so a trace drawn on it keeps
+   * its shape and simply thins out.
+   */
+  private stepSmoke(): void {
+    const gl: WebGLRenderingContext = this.gl;
+    if (!this.smokeTextures[0] || !this.smokeProgram) return;
+
+    const back: number = 1 - this.smokeFront;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.smokeBuffers[back]);
+    gl.viewport(0, 0, this.surfaceWidth, this.surfaceHeight);
+    gl.disable(gl.BLEND);
+    gl.useProgram(this.smokeProgram);
+    this.bindQuad(this.smokeProgram);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.smokeTextures[this.smokeFront]);
+    gl.uniform1i(this.smokeUniforms['uLayer'], 0);
+    gl.uniform2f(this.smokeUniforms['uSize'], this.surfaceWidth, this.surfaceHeight);
+    gl.uniform1f(this.smokeUniforms['uAngle'], this.spec.smokeAngle);
+    gl.uniform1f(this.smokeUniforms['uFade'], this.spec.smokeFade);
+    gl.uniform1f(this.smokeUniforms['uSpread'], this.spec.smokeSpread);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    this.smokeFront = back;
+    this.drawGeneratorsInto(this.spec.smoke);
+  }
+
   /** Draws the canvas from the current attachment through the palette. */
   private present(): void {
     const gl: WebGLRenderingContext = this.gl;
@@ -1275,6 +1409,9 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
     gl.uniform1i(this.presentUniforms['uPalette'], 1);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.smokeTextures[this.smokeFront]);
+    gl.uniform1i(this.presentUniforms['uSmoke'], 2);
     gl.uniform1f(this.presentUniforms['uAlpha'], this.getFadeMultiplier());
     // Idle sits at zero shift and no flash, so the palette is simply itself.
     gl.uniform1f(
@@ -1318,6 +1455,18 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     const gl: WebGLRenderingContext = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.surfaceBuffers[this.front]);
     gl.viewport(0, 0, this.surfaceWidth, this.surfaceHeight);
+    this.drawGeneratorsInto(stages);
+  }
+
+  /**
+   * Draws a stage list into whichever framebuffer is currently bound.
+   *
+   * @param stages - The generators to draw
+   */
+  private drawGeneratorsInto(stages: readonly GeneratorStage[]): void {
+    if (stages.length === 0) return;
+
+    const gl: WebGLRenderingContext = this.gl;
     gl.enable(gl.BLEND);
     // The engine wrote generator output straight over the surface additively,
     // letting indices pile up where strokes cross.
@@ -1663,6 +1812,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     if (this.presentProgram) gl.deleteProgram(this.presentProgram);
     if (this.generatorProgram) gl.deleteProgram(this.generatorProgram);
     if (this.traceProgram) gl.deleteProgram(this.traceProgram);
+    if (this.smokeProgram) gl.deleteProgram(this.smokeProgram);
     if (this.waveTexture) gl.deleteTexture(this.waveTexture);
     super.destroy();
   }
