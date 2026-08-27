@@ -50,7 +50,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'ambience-undertow', name: 'Undertow'},
       {id: 'ambience-counterspin', name: 'Counterspin'},
       {id: 'ambience-shear', name: 'Shear'},
-      {id: 'ambience-ripple', name: 'Ripple'},
+      {id: 'ambience-water', name: 'Water'},
       {id: 'ambience-plunge', name: 'Plunge'},
       {id: 'ambience-breath', name: 'Breath'},
       {id: 'ambience-slipstream', name: 'Slipstream'},

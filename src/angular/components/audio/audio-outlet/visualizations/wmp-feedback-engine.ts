@@ -68,12 +68,12 @@ const HEX_RADIX: number = 16;
 const CHANNEL_MAX: number = 255;
 
 /**
- * Intensity lost per frame.
+ * One palette index, as a fraction of the surface's full range.
  *
- * The engine decremented the palette index by one each frame, which on a
- * 256-entry palette is this much of the surface's full range.
+ * The banks express their decay in multiples of this, so a decay of one index
+ * per step reads as such rather than as 0.0039.
  */
-const DECAY_PER_FRAME: number = 1 / CHANNEL_MAX;
+export const ONE_INDEX: number = 1 / CHANNEL_MAX;
 
 // ============================================================================
 // Geometry budget
@@ -126,11 +126,22 @@ const TWO_PI: number = Math.PI * 2;
 // Generator tuning
 // ============================================================================
 
-/** Intensity a generator writes at its brightest. */
-const GENERATOR_GAIN: number = 0.45;
+/**
+ * Index a generator stamps for a full-brightness pixel.
+ *
+ * The engine's generators do not accumulate - they poke absolute palette
+ * indices into the surface. CEdgeTrace::Render at 0x316EF6 writes the literal
+ * bytes F5 FF FF F5 for a four-pixel dash, so a stroke is hard-edged and always
+ * at the top of the ramp regardless of how loud the audio is. The audio moves
+ * the stroke; it does not dim it.
+ */
+const STAMP_FULL: number = 1;
 
-/** Intensity floor so a silent passage still leaves a trace to warp. */
-const GENERATOR_FLOOR: number = 0.12;
+/** The palette index the engine writes at the soft ends of a stroke: 0xF5. */
+const STAMP_SOFT_INDEX: number = 0xf5;
+
+/** That index as a surface value. */
+const STAMP_SOFT: number = STAMP_SOFT_INDEX / CHANNEL_MAX;
 
 /** Size, in pixels, of a dot-plane point. */
 const DOT_POINT_SIZE: number = 2;
@@ -280,13 +291,21 @@ precision mediump float;
 uniform sampler2D uSurface;
 uniform sampler2D uPalette;
 uniform float uAlpha;
+uniform float uPaletteShift;
 
 varying vec2 vUv;
 
 void main() {
   float index = texture2D(uSurface, vUv).r;
+  float slot = index * 255.0;
+  /*
+   * Rotate entries 1..255 and leave 0 pinned, so the background stays put while
+   * colour travels outward through the bands. Palettes meant to be cycled are
+   * built symmetrically, so the wrap has no seam.
+   */
+  if (slot >= 1.0) slot = 1.0 + mod(slot - 1.0 + uPaletteShift, 255.0);
   /* Sample the texel centre of a 256-wide palette rather than its edge. */
-  float lookup = (index * 255.0 + 0.5) / 256.0;
+  float lookup = (slot + 0.5) / 256.0;
   vec3 colour = texture2D(uPalette, vec2(lookup, 0.5)).rgb;
   gl_FragColor = vec4(colour * uAlpha, 1.0);
 }
@@ -608,6 +627,28 @@ export interface FeedbackSpec {
 
   /** 256 packed RGB triples, one byte per channel. */
   readonly palette: Uint8Array;
+
+  /**
+   * Frames between warp steps.
+   *
+   * Ambience::Render at 0x174A07 decrements a counter at [this+0x158] and only
+   * advances the surface when it reaches zero, so the effect runs well below
+   * the display's frame rate. One means step every frame.
+   */
+  readonly framesPerStep: number;
+
+  /** Palette entries rotated per step. Zero holds the palette still. */
+  readonly paletteCycle: number;
+
+  /**
+   * Index lost per step.
+   *
+   * Not yet located in the DLL. The surface step at 0x310197 is a pure byte
+   * copy through the displacement table with no decay in it, so whatever makes
+   * the trails fade lives in a frame driver that has not been read. This is a
+   * stand-in, and it is the one number here that is tuned rather than found.
+   */
+  readonly decay: number;
 }
 
 /**
@@ -743,6 +784,12 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   /** Smoothed bass level, 0 to 1. */
   private bass: number = 0;
 
+  /** Frames since the last warp step, against the spec's divider. */
+  private sinceStep: number = 0;
+
+  /** Accumulated palette rotation, in entries. */
+  private paletteShift: number = 0;
+
   /**
    * Accumulated phase, in radians.
    *
@@ -791,7 +838,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     for (const key of ['uSurface', 'uSize', 'uParams', 'uDecay', 'uPhase']) {
       this.warpUniforms[key] = gl.getUniformLocation(this.warpProgram, key);
     }
-    for (const key of ['uSurface', 'uPalette', 'uAlpha']) {
+    for (const key of ['uSurface', 'uPalette', 'uAlpha', 'uPaletteShift']) {
       this.presentUniforms[key] = gl.getUniformLocation(this.presentProgram, key);
     }
     for (const key of ['uSize', 'uPointSize']) {
@@ -965,11 +1012,18 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     this.analyser.getByteFrequencyData(this.bins);
     this.updateEnvelope();
 
-    // The engine's frame order: pre-shift generators are laid down, warped in
-    // the same frame, then post-shift generators go on top untouched.
-    this.runGenerators(this.spec.pre);
-    this.runWarp();
-    this.runGenerators(this.spec.post);
+    // The surface advances on the spec's divider, but the canvas is drawn every
+    // frame, so a slow effect still fades and cycles smoothly.
+    this.sinceStep++;
+    if (this.sinceStep >= this.spec.framesPerStep) {
+      this.sinceStep = 0;
+      // The engine's frame order: pre-shift generators are laid down, warped in
+      // the same frame, then post-shift generators go on top untouched.
+      this.runGenerators(this.spec.pre);
+      this.runWarp();
+      this.runGenerators(this.spec.post);
+      this.paletteShift = (this.paletteShift + this.spec.paletteCycle) % CHANNEL_MAX;
+    }
     this.present();
   }
 
@@ -1005,7 +1059,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.warpUniforms['uParams'],
       args[0] ?? 0, args[1] ?? 0, args[2] ?? 0, args[3] ?? 0
     );
-    gl.uniform1f(this.warpUniforms['uDecay'], DECAY_PER_FRAME);
+    gl.uniform1f(this.warpUniforms['uDecay'], this.spec.decay);
     gl.uniform1f(this.warpUniforms['uPhase'], this.phase);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -1029,6 +1083,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
     gl.uniform1i(this.presentUniforms['uPalette'], 1);
     gl.uniform1f(this.presentUniforms['uAlpha'], this.getFadeMultiplier());
+    gl.uniform1f(this.presentUniforms['uPaletteShift'], this.paletteShift);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.activeTexture(gl.TEXTURE0);
@@ -1062,10 +1117,9 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     const gl: WebGLRenderingContext = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.surfaceBuffers[this.front]);
     gl.viewport(0, 0, this.surfaceWidth, this.surfaceHeight);
-    gl.enable(gl.BLEND);
-    // The engine wrote generator output straight over the surface additively,
-    // letting indices pile up where strokes cross.
-    gl.blendFunc(gl.ONE, gl.ONE);
+    // The engine wrote generator output straight over the surface - a plain
+    // byte store, not a blend - so a stroke replaces whatever it crosses.
+    gl.disable(gl.BLEND);
     gl.useProgram(this.generatorProgram);
     gl.uniform2f(this.generatorUniforms['uSize'], this.surfaceWidth, this.surfaceHeight);
     gl.uniform1f(this.generatorUniforms['uPointSize'], DOT_POINT_SIZE);
@@ -1075,8 +1129,6 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       if (mode === null || this.vertexCount === 0) continue;
       this.flushGenerator(mode);
     }
-
-    gl.disable(gl.BLEND);
   }
 
   /**
@@ -1186,6 +1238,9 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       case 'EdgeTrace':
         this.buildEdgeTrace(stage.args);
         return gl.POINTS;
+      case 'HorizontalWave':
+        this.buildHorizontalWave(stage.args);
+        return gl.LINE_STRIP;
       default:
         return null;
     }
@@ -1207,7 +1262,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     const lobesA: number = Math.max(1, Math.round((args[0] ?? 1) / SCRIBBLE_LOBE_DIVISOR));
     const lobesB: number = Math.max(1, Math.round((args[1] ?? 1) / SCRIBBLE_LOBE_DIVISOR));
     const radial: number = Math.max(1, Math.round((args[2] ?? 1) / SCRIBBLE_RADIAL_DIVISOR));
-    const level: number = GENERATOR_FLOOR + this.bass * GENERATOR_GAIN;
+    const level: number = STAMP_FULL;
 
     this.gl.lineWidth(1);
     for (let i: number = 0; i <= SCRIBBLE_POINTS; i++) {
@@ -1236,7 +1291,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     const arms: number = Math.max(JDAR_MIN_ARMS, Math.round(args[3] ?? JDAR_MIN_ARMS));
     const rate: number = args[4] ?? 1;
     const spin: number = this.phase * rate;
-    const level: number = GENERATOR_FLOOR + this.bass * GENERATOR_GAIN;
+    const level: number = STAMP_FULL;
     const points: number = arms * 2;
 
     this.gl.lineWidth(1);
@@ -1260,7 +1315,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     const cy: number = this.surfaceHeight * 0.5;
     const focal: number = args[3] && args[3] > 1 ? args[3] : DOT_FOCAL_DEFAULT;
     const spread: number = Math.max(1, args[0] ?? 1);
-    const level: number = GENERATOR_FLOOR + this.bass * GENERATOR_GAIN;
+    const level: number = STAMP_FULL;
     const travel: number = (this.phase / TWO_PI) * DOT_SPEED * focal * DOT_ROWS;
 
     for (let row: number = 0; row < DOT_ROWS; row++) {
@@ -1274,7 +1329,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
 
       for (let column: number = 0; column < DOT_COLUMNS; column++) {
         const x: number = (column / (DOT_COLUMNS - 1) - 0.5) * spread * DOT_COLUMNS;
-        this.vertex(cx + x * scale, cy + (spread - lift * spread) * scale, level * scale);
+        this.vertex(cx + x * scale, cy + (spread - lift * spread) * scale, level);
       }
     }
   }
@@ -1290,7 +1345,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     const cy: number = this.surfaceHeight * 0.5;
     const unit: number = Math.min(cx, cy);
     const base: number = unit * (args[2] && args[2] > 0 ? args[2] : CIRCLE_FALLBACK_RADIUS);
-    const level: number = GENERATOR_FLOOR + GENERATOR_GAIN;
+    const level: number = STAMP_FULL;
 
     this.gl.lineWidth(1);
     for (let i: number = 0; i < RING_POINTS; i++) {
@@ -1309,7 +1364,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   private buildSpectrumEdge(args: readonly number[]): void {
     const width: number = this.surfaceWidth;
     const height: number = this.surfaceHeight;
-    const level: number = GENERATOR_FLOOR + GENERATOR_GAIN;
+    const level: number = STAMP_FULL;
     // dbl1 spans two orders of magnitude across the presets that use it, so it
     // reads as a gain on the bar height rather than a count.
     const gain: number = Math.max(1, (args[0] ?? 1)) / SCRIBBLE_RADIAL_DIVISOR;
@@ -1331,7 +1386,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   private buildWaveEdge(args: readonly number[]): void {
     const width: number = this.surfaceWidth;
     const height: number = this.surfaceHeight;
-    const level: number = GENERATOR_FLOOR + GENERATOR_GAIN;
+    const level: number = STAMP_FULL;
     const depth: number = height * WAVE_EDGE_DEPTH * Math.max(1, args[0] ?? 1);
 
     this.gl.lineWidth(1);
@@ -1360,10 +1415,33 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       const shape: number = cosine
         ? 0.5 + 0.5 * Math.cos(frequency * u + this.phase)
         : 1;
-      const level: number =
-        (GENERATOR_FLOOR + this.bass * GENERATOR_GAIN) * falloff * shape;
+      // A gradient generator is the one kind that varies its index by design.
+      const level: number = STAMP_FULL * falloff * shape;
       this.vertex(0, y, level);
       this.vertex(width, y, level);
+    }
+  }
+
+  /**
+   * The waveform drawn straight across the middle of the surface.
+   *
+   * Ambience lays this over its rings; once stamped it is left to the warp and
+   * the decay, which is what makes it drift apart like smoke rather than sit
+   * there as a line. dbl1 scales its deflection, dbl2 offsets it vertically as
+   * a fraction of the surface.
+   *
+   * @param args - The stage's dbl1..dbl4
+   */
+  private buildHorizontalWave(args: readonly number[]): void {
+    const width: number = this.surfaceWidth;
+    const height: number = this.surfaceHeight;
+    const swing: number = height * WAVE_EDGE_DEPTH * (args[0] ?? 1);
+    const centre: number = height * (0.5 + (args[1] ?? 0));
+
+    this.gl.lineWidth(1);
+    for (let i: number = 0; i < WAVE_EDGE_SAMPLES; i++) {
+      const u: number = i / (WAVE_EDGE_SAMPLES - 1);
+      this.vertex(u * width, centre + swing * this.sampleAt(u), STAMP_FULL);
     }
   }
 
@@ -1382,7 +1460,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     for (let i: number = 0; i < EDGE_TRACE_POINTS; i++) {
       const along: number = i / EDGE_TRACE_POINTS;
       const at: number = (head + along * EDGE_TRACE_HEAD * perimeter) % perimeter;
-      const level: number = (GENERATOR_FLOOR + GENERATOR_GAIN) * along;
+      const level: number = along < 1 ? STAMP_SOFT : STAMP_FULL;
 
       if (at < width) this.vertex(at, 0, level);
       else if (at < width + height) this.vertex(width, at - width, level);

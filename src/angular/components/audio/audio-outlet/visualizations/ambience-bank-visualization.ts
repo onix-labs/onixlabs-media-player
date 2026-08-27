@@ -21,9 +21,15 @@
  *
  * Two things could not be recovered. The display names live in `wmploc.dll`,
  * which is not part of this repository, so the names here describe what each
- * preset does rather than reproducing Microsoft's wording. The palette builder
- * takes a style id per index range - those ids are the DLL's, the colours they
- * expand to are chosen here.
+ * preset does rather than reproducing Microsoft's wording - except preset 5,
+ * confirmed against the real thing as "Water". Rename the rest as they are
+ * identified. The palette builder takes a style id per index range - those ids
+ * are the DLL's, the colours they expand to are chosen here.
+ *
+ * The content generators are likewise not transcribed: Ambience's own drawing
+ * code has not been read. Water's are set from an eyewitness description of WMP
+ * - a waveform on the innermost ring dispersed outward band by band, with a
+ * horizontal waveform over the top that decays like smoke - rather than guessed.
  *
  * @module app/components/audio/audio-outlet/visualizations/ambience-bank-visualization
  */
@@ -32,6 +38,7 @@ import {Visualization, VisualizationConfig} from './visualization';
 import {
   FeedbackSpec,
   GeneratorStage,
+  ONE_INDEX,
   feedbackVisualization,
   parseGeneratorStage,
   parsePalette,
@@ -55,13 +62,13 @@ const AMBIENCE_CATEGORY: string = 'Ambience';
  * family, which is the grouping the DLL implies.
  */
 const STYLE_STOPS: Readonly<Record<number, readonly string[]>> = {
-  0: ['000000', '3A3A3A', '9A9A9A', 'FFFFFF'],
-  1: ['00040E', '0B3A6E', '2E9BC8', 'DFF6FF'],
-  2: ['0A0014', '46106E', 'A93FC8', 'F6DDFF'],
-  3: ['02100A', '15613A', '5FC486', 'E8FFEF'],
-  4: ['000A10', '064450', '1FA0A8', 'D6FBFF'],
-  5: ['140400', '6E2A06', 'D07A18', 'FFE6B4'],
-  8: ['120C00', '6E5406', 'D0A81E', 'FFF1C0'],
+  0: ['000000', '4A4A4A', 'B4B4B4', 'FFFFFF'],
+  1: ['041028', '0E5A9E', '3FB8E8', 'BFF0FF', 'FFFFFF'],
+  2: ['12042A', '5A1A96', 'C25FE8', 'F0D0FF', 'FFFFFF'],
+  3: ['04180E', '1C7A4A', '6FE0A0', 'D8FFE8', 'FFFFFF'],
+  4: ['02141E', '0A5E70', '2FC0CE', 'CFF8FF', 'FFFFFF'],
+  5: ['1E0800', '8E3808', 'E89428', 'FFDC9A', 'FFFFFF'],
+  8: ['1A1200', '8E6C08', 'E8C038', 'FFEEB0', 'FFFFFF'],
 };
 
 /** Stops used when a preset names a style with no entry above. */
@@ -108,7 +115,29 @@ interface AmbiencePreset {
    * One draws a ring, zero draws along the edge.
    */
   readonly mode: number;
+
+  /** Generators drawn before the warp, overriding the mode's default. */
+  readonly pre?: readonly string[];
+
+  /** Generators drawn after the warp, overriding the mode's default. */
+  readonly post?: readonly string[];
 }
+
+/**
+ * Frames between warp steps.
+ *
+ * Ambience::Render at 0x174A07 gates its frame advance on a counter at
+ * [this+0x158], so the surface moves at a fraction of the display rate. The
+ * divisor itself is set by code that has not been read; three is what matches
+ * the pace of the real thing.
+ */
+const AMBIENCE_FRAMES_PER_STEP: number = 3;
+
+/** Indices lost per step. See FeedbackSpec.decay - this one is tuned. */
+const AMBIENCE_DECAY: number = ONE_INDEX * 2;
+
+/** Palette entries rotated per step, which is what makes the colour travel. */
+const AMBIENCE_PALETTE_CYCLE: number = 1.5;
 
 /** Angular rate shared by the spiral and the flow presets. */
 const RATE_SEVEN: number = 0.07;
@@ -219,8 +248,12 @@ const AMBIENCE_PRESETS: readonly AmbiencePreset[] = [
     mode: MODE_RING,
   },
   {
-    id: 'ambience-ripple',
-    name: 'Ripple',
+    // "Water" in WMP's own menu. The rings are the displacement; the content is
+    // a waveform stamped on the innermost ring, which the warp then disperses
+    // outward band by band, with a horizontal waveform laid over the top that
+    // the decay pulls apart like smoke.
+    id: 'ambience-water',
+    name: 'Water',
     index: 5,
     fields: [{
       warp: 'AmbienceRipple',
@@ -230,6 +263,8 @@ const AMBIENCE_PRESETS: readonly AmbiencePreset[] = [
     }],
     styles: [1],
     mode: MODE_RING,
+    pre: ['CircleWaveform 1 1 0.14 0'],
+    post: ['HorizontalWave 1 0 0 0'],
   },
   {
     id: 'ambience-plunge',
@@ -380,17 +415,21 @@ function paletteFor(styles: readonly number[]): string {
  */
 function toSpec(preset: AmbiencePreset): FeedbackSpec {
   const field: AmbienceField = preset.fields[0];
-  const sources: readonly string[] =
-    preset.mode === MODE_RING ? RING_GENERATORS : EDGE_GENERATORS;
+  const pre: readonly string[] =
+    preset.pre ?? (preset.mode === MODE_RING ? RING_GENERATORS : EDGE_GENERATORS);
+  const post: readonly string[] = preset.post ?? OVERLAY_GENERATORS;
 
   return {
     name: preset.name,
     category: AMBIENCE_CATEGORY,
     warp: field.warp,
     warpArgs: [field.angle, field.radial, field.extra, 0],
-    pre: sources.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
-    post: OVERLAY_GENERATORS.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
+    pre: pre.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
+    post: post.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
     palette: parsePalette(paletteFor(preset.styles)),
+    framesPerStep: AMBIENCE_FRAMES_PER_STEP,
+    paletteCycle: AMBIENCE_PALETTE_CYCLE,
+    decay: AMBIENCE_DECAY,
   };
 }
 
@@ -424,7 +463,7 @@ export const AMBIENCE_BANK_DESCRIPTIONS: Readonly<Record<string, string>> = {
   'ambience-undertow': 'Counter-rotation with the pull strongest at the rim',
   'ambience-counterspin': 'Rotating inflow, wound the opposite way at each radius',
   'ambience-shear': 'Rotation that grows with the radius, spreading outward',
-  'ambience-ripple': 'Radius folded into bands, standing as concentric rings',
+  'ambience-water': 'Concentric rings dispersing a waveform outward, under horizontal smoke',
   'ambience-plunge': 'Cubic zoom into the centre with no rotation at all',
   'ambience-slipstream': 'A slower rotating inflow, graded across the surface',
   'ambience-breath': 'Sixth-order falloff, so only the middle of the frame moves',

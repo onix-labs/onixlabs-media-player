@@ -19,6 +19,7 @@ import {BATTERY_PRESETS, BatteryPreset} from './battery-presets';
 import {
   FeedbackSpec,
   GeneratorStage,
+  ONE_INDEX,
   feedbackVisualization,
   parseArgs,
   parseGeneratorStage,
@@ -27,6 +28,21 @@ import {
 
 /** The category all Battery presets are filed under. */
 const BATTERY_CATEGORY: string = 'Battery';
+
+/**
+ * Frames between warp steps.
+ *
+ * Battery's frame driver has not been read yet, so unlike Ambience there is no
+ * measured divider to copy. Two halves the rate against a 60Hz display, which
+ * is closer to the machines this ran on than stepping every frame.
+ */
+const BATTERY_FRAMES_PER_STEP: number = 2;
+
+/** Indices lost per step. See FeedbackSpec.decay - this one is tuned. */
+const BATTERY_DECAY: number = ONE_INDEX * 2;
+
+/** Battery holds its palette still unless the user cycles it by hand. */
+const BATTERY_PALETTE_CYCLE: number = 0;
 
 /**
  * Turns one row of the preset table into a spec the engine can run.
@@ -43,6 +59,9 @@ function toSpec(preset: BatteryPreset): FeedbackSpec {
     pre: preset.pre.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
     post: preset.post.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
     palette: parsePalette(preset.palette),
+    framesPerStep: BATTERY_FRAMES_PER_STEP,
+    paletteCycle: BATTERY_PALETTE_CYCLE,
+    decay: BATTERY_DECAY,
   };
 }
 

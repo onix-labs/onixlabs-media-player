@@ -817,7 +817,7 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'ambience-undertow',
   'ambience-counterspin',
   'ambience-shear',
-  'ambience-ripple',
+  'ambience-water',
   'ambience-plunge',
   'ambience-breath',
   'ambience-slipstream',
