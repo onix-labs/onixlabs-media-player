@@ -9,7 +9,9 @@
  * Technical details:
  * - Central circle uses ONIXLabs brand color gradient stroke
  * - Circle pulses with audio waveform data
- * - White inner circle responds to bass frequencies (kick drums, no trail effect)
+ * - White inner circle responds to bass frequencies (kick drums, no trail
+ *   effect), enveloped with a fast attack and slow release so kicks punch
+ *   without the radius jittering between frames
  * - Rotating trails with zoom and fade effects on outer circle
  * - Optimized with canvas reuse and pre-allocated arrays
  *
@@ -65,7 +67,7 @@ export class OnixVisualization extends Canvas2DVisualization {
   private static readonly TRAIL_RING_COUNT: number = 20;
 
   /** Extra rotation at the outermost ring versus the innermost, per frame. */
-  private static readonly RING_SHEAR: number = 0.004;
+  private static readonly RING_SHEAR: number = 0.0004;
 
   /**
    * Amplitude of the cosine ripple applied to each ring's zoom.
@@ -75,10 +77,10 @@ export class OnixVisualization extends Canvas2DVisualization {
    * once that step grows the boundaries read as hard concentric shells. These
    * values put it at 0.0075, which Pulsar settled on.
    */
-  private static readonly RING_RIPPLE: number = 0.012;
+  private static readonly RING_RIPPLE: number = 0.02;
 
   /** Ripple cycles spanning the radius. Several, so bands do not sweep as one. */
-  private static readonly RIPPLE_CYCLES: number = 2;
+  private static readonly RIPPLE_CYCLES: number = 20;
 
   /** How much slower the outermost ring zooms than the innermost. */
   private static readonly RING_CUBIC_PULL: number = 0.006;
@@ -94,6 +96,34 @@ export class OnixVisualization extends Canvas2DVisualization {
    * than baking into the trail at a fixed radius.
    */
   private static readonly RING_BOUNDARY_DRIFT: number = 0.013;
+
+  /**
+   * Attack coefficient for the bass envelope.
+   *
+   * High, so a kick still arrives with its edge intact. The circle was reading
+   * raw instantaneous bass, which jitters frame to frame rather than pulsing;
+   * smoothing both directions equally would fix the jitter by blunting the
+   * transient, which is the one thing this element exists to show.
+   */
+  private static readonly BASS_ATTACK: number = 0.55;
+
+  /** Release coefficient. Low, so the circle decays rather than flickering out. */
+  private static readonly BASS_RELEASE: number = 0.07;
+
+  /** Radius, in pixels, over which the circle fades in instead of popping on. */
+  private static readonly BASS_FADE_IN_RADIUS: number = 6;
+
+  /** Glow blur at full bass, in pixels. */
+  private static readonly BASS_GLOW_BLUR: number = 45;
+
+  /** Alpha of the glow around the circle, before the fade-in. */
+  private static readonly BASS_GLOW_ALPHA: number = 0.8;
+
+  /** Fraction of the radius held at full white before the falloff starts. */
+  private static readonly BASS_CORE_STOP: number = 0.55;
+
+  /** Alpha the fill falls off to at the circle's edge. */
+  private static readonly BASS_EDGE_ALPHA: number = 0.3;
 
   /** Alpha of the near-white filament drawn over the gradient core. */
   private static readonly FILAMENT_ALPHA: number = 0.5;
@@ -121,6 +151,9 @@ export class OnixVisualization extends Canvas2DVisualization {
   /** Temp canvas for the zoom/rotate effect (reused, not recreated each frame). */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
+
+  /** Smoothed bass envelope driving the centre circle. */
+  private bassLevel: number = 0;
 
   /** Phase of the ring ripple, so the bands migrate rather than sitting still. */
   private ripplePhase: number = 0;
@@ -486,25 +519,59 @@ export class OnixVisualization extends Canvas2DVisualization {
     // Normalize bass intensity (0-1 range)
     const bassIntensity: number = bassSum / ((bassEndBin - 1) * 255);
 
+    // Envelope the level rather than using it raw: fast on the way up so a kick
+    // keeps its edge, slow on the way down so the circle decays instead of
+    // flickering with every frame's bin noise.
+    const coefficient: number = bassIntensity > this.bassLevel
+      ? OnixVisualization.BASS_ATTACK
+      : OnixVisualization.BASS_RELEASE;
+    this.bassLevel += (bassIntensity - this.bassLevel) * coefficient;
+
     // Apply sensitivity and calculate radius
     // Max radius is 1/3 of the colored waveform radius
     const maxBassRadius: number = this.baseCircleRadius / 3;
-    const bassRadius: number = bassIntensity * maxBassRadius * (this.sensitivity * 3);
+    const bassRadius: number = this.bassLevel * maxBassRadius * (this.sensitivity * 3);
 
-    // Only draw if there's some bass
-    if (bassRadius > 0.5) {
-      const centerX: number = this.centerX;
-      const centerY: number = this.centerY;
+    if (bassRadius <= 0.5) return;
 
-      // Draw solid white circle with black stroke
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, bassRadius, 0, TWO_PI);
-      ctx.fillStyle = 'white';
-      ctx.fill();
-      ctx.strokeStyle = 'black';
-      ctx.lineWidth = this.lineWidth;
-      ctx.stroke();
-    }
+    const centerX: number = this.centerX;
+    const centerY: number = this.centerY;
+
+    // Fade in over the first few pixels rather than appearing at full strength
+    // the instant the radius clears the threshold.
+    const alpha: number = Math.min(1, bassRadius / OnixVisualization.BASS_FADE_IN_RADIUS);
+
+    ctx.save();
+
+    // Glow scaled by the envelope, so hard kicks flare and quiet ones do not.
+    ctx.shadowBlur = this.getScaledGlowBlur(OnixVisualization.BASS_GLOW_BLUR) * this.bassLevel;
+    ctx.shadowColor = `rgba(255, 255, 255, ${OnixVisualization.BASS_GLOW_ALPHA * alpha})`;
+
+    // Radial fill: solid to the core stop, then falling off. A flat disc reads
+    // as a sticker in a scene where everything else emits; the falloff makes it
+    // a light source instead. The black outline it used to carry is gone with
+    // it - it was the one element in the scene absorbing light rather than
+    // giving any.
+    const fill: CanvasGradient = ctx.createRadialGradient(
+      centerX, centerY, 0, centerX, centerY, bassRadius
+    );
+    fill.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+    fill.addColorStop(OnixVisualization.BASS_CORE_STOP, `rgba(255, 255, 255, ${alpha})`);
+    fill.addColorStop(1, `rgba(255, 255, 255, ${OnixVisualization.BASS_EDGE_ALPHA * alpha})`);
+
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, bassRadius, 0, TWO_PI);
+    ctx.fillStyle = fill;
+    ctx.fill();
+
+    // Crisp rim over the falloff, so it still reads as a ring rather than a
+    // soft blob. No shadow on this pass: it is the edge, not the glow.
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+    ctx.lineWidth = Math.max(1, this.lineWidth);
+    ctx.stroke();
+
+    ctx.restore();
   }
 
   public override destroy(): void {
