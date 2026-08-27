@@ -98,9 +98,11 @@ const MAX_VERTICES: number = 4096;
 /**
  * Gaussian falloff width of the radial waveform, across the surface height.
  *
- * Matches the horizontal trace, so the two read as the same kind of mark.
+ * Tighter than the horizontal trace. The ring is a closed curve read radially,
+ * so the falloff piles up all the way round rather than spreading along a line,
+ * and matching the trace's width left it soft.
  */
-const RING_SIGMA: number = 0.00008;
+const RING_SIGMA: number = 0.00003;
 
 /** Brightness of the radial waveform where it is thickest. */
 const RING_GAIN: number = 0.85;
