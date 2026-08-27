@@ -95,8 +95,15 @@ const VERTEX_STRIDE: number = 3;
 /** Vertices a single generator may emit in one frame. */
 const MAX_VERTICES: number = 4096;
 
-/** Points around a closed waveform ring. */
-const RING_POINTS: number = 256;
+/**
+ * Gaussian falloff width of the radial waveform, across the surface height.
+ *
+ * Matches the horizontal trace, so the two read as the same kind of mark.
+ */
+const RING_SIGMA: number = 0.00008;
+
+/** Brightness of the radial waveform where it is thickest. */
+const RING_GAIN: number = 0.85;
 
 /** Points along a scribble curve. */
 const SCRIBBLE_POINTS: number = 512;
@@ -439,6 +446,45 @@ void main() {
   float traceY = uCentre + turn * (level - 0.5) * uAmplitude;
   float delta = turned.y - traceY;
   float intensity = exp(-(delta * delta) / ${TRACE_SIGMA}) * uGain;
+  gl_FragColor = vec4(intensity, 0.0, 0.0, 1.0);
+}
+`;
+
+/**
+ * The radial waveform.
+ *
+ * The polar counterpart of the trace: intensity at a pixel is a Gaussian of how
+ * far its radius sits from the ring, with the ring's radius at that pixel's
+ * angle read from the waveform. Drawing it as a line loop meant hard, unsmoothed
+ * segments - GL lines carry no coverage - and at any useful point count the
+ * facets showed. This has no edges to alias.
+ *
+ * Warp draws its own radial waveform the same way.
+ */
+const RADIAL_FRAGMENT_SHADER: string = `
+precision highp float;
+
+uniform sampler2D uWaveform;
+uniform vec2 uSize;
+uniform float uBase;
+uniform float uSwing;
+uniform float uGain;
+
+varying vec2 vUv;
+
+const float TAU = 6.28318530718;
+
+void main() {
+  vec2 offset = vUv * uSize - uSize * 0.5;
+  float radius = length(offset);
+  float angle = atan(offset.y, offset.x);
+
+  float level = texture2D(uWaveform, vec2(angle / TAU + 0.5, 0.5)).r;
+  float target = uBase + (level - 0.5) * 2.0 * uSwing;
+
+  /* Normalised against the height so the falloff means the same as the trace's. */
+  float delta = (radius - target) / uSize.y;
+  float intensity = exp(-(delta * delta) / ${RING_SIGMA}) * uGain;
   gl_FragColor = vec4(intensity, 0.0, 0.0, 1.0);
 }
 `;
@@ -877,6 +923,10 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   /** The trace pass, and the 1D waveform texture it reads. */
   private traceProgram: WebGLProgram | null = null;
   private readonly traceUniforms: Record<string, WebGLUniformLocation | null> = {};
+
+  /** The radial waveform pass. */
+  private radialProgram: WebGLProgram | null = null;
+  private readonly radialUniforms: Record<string, WebGLUniformLocation | null> = {};
   private waveTexture: WebGLTexture | null = null;
   private readonly waveTexels: Uint8Array<ArrayBuffer> =
     new Uint8Array(WAVE_TEXTURE_WIDTH * RGBA_STRIDE) as Uint8Array<ArrayBuffer>;
@@ -980,6 +1030,11 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     this.traceProgram = this.createProgram(QUAD_VERTEX_SHADER, TRACE_FRAGMENT_SHADER);
     for (const key of ['uWaveform', 'uSize', 'uAmplitude', 'uCentre', 'uGain', 'uSpin']) {
       this.traceUniforms[key] = gl.getUniformLocation(this.traceProgram, key);
+    }
+
+    this.radialProgram = this.createProgram(QUAD_VERTEX_SHADER, RADIAL_FRAGMENT_SHADER);
+    for (const key of ['uWaveform', 'uSize', 'uBase', 'uSwing', 'uGain']) {
+      this.radialUniforms[key] = gl.getUniformLocation(this.radialProgram, key);
     }
 
     this.waveTexture = gl.createTexture();
@@ -1237,6 +1292,38 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   }
 
   /**
+   * Draws the radial waveform as a ring about the centre.
+   *
+   * dbl3 is the resting radius as a fraction of the shorter half-axis, matching
+   * what the presets pass.
+   *
+   * @param args - The stage's dbl1..dbl4
+   */
+  private runRadial(args: readonly number[]): void {
+    const gl: WebGLRenderingContext = this.gl;
+    if (!this.radialProgram) return;
+
+    const unit: number = Math.min(this.surfaceWidth, this.surfaceHeight) * 0.5;
+    const fraction: number = args[2] && args[2] > 0 ? args[2] : CIRCLE_FALLBACK_RADIUS;
+
+    gl.useProgram(this.radialProgram);
+    this.bindQuad(this.radialProgram);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.waveTexture);
+    gl.uniform1i(this.radialUniforms['uWaveform'], 0);
+    gl.uniform2f(this.radialUniforms['uSize'], this.surfaceWidth, this.surfaceHeight);
+    gl.uniform1f(this.radialUniforms['uBase'], unit * fraction);
+    gl.uniform1f(
+      this.radialUniforms['uSwing'],
+      unit * CIRCLE_SWING * this.sensitivityFactor
+    );
+    gl.uniform1f(this.radialUniforms['uGain'], RING_GAIN);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    gl.useProgram(this.generatorProgram);
+  }
+
+  /**
    * Advances a running pulse, or considers starting one.
    *
    * A hit has to clear the threshold, the cooldown has to have expired, and
@@ -1374,6 +1461,10 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
         this.runTrace(stage.args);
         continue;
       }
+      if (stage.kind === 'CircleWaveform') {
+        this.runRadial(stage.args);
+        continue;
+      }
       const mode: number | null = this.buildGenerator(stage);
       if (mode === null || this.vertexCount === 0) continue;
       this.flushGenerator(mode);
@@ -1471,9 +1562,6 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       case 'DotPlane':
         this.buildDotPlane(stage.args);
         return gl.POINTS;
-      case 'CircleWaveform':
-        this.buildCircleWaveform(stage.args);
-        return gl.LINE_LOOP;
       case 'SpectrumEdge':
         this.buildSpectrumEdge(stage.args);
         return gl.LINES;
@@ -1583,28 +1671,6 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   }
 
   /**
-   * The waveform wrapped around a circle. dbl3 is the radius as a fraction of
-   * the surface in every preset that uses it.
-   *
-   * @param args - The stage's dbl1..dbl4
-   */
-  private buildCircleWaveform(args: readonly number[]): void {
-    const cx: number = this.surfaceWidth * 0.5;
-    const cy: number = this.surfaceHeight * 0.5;
-    const unit: number = Math.min(cx, cy);
-    const base: number = unit * (args[2] && args[2] > 0 ? args[2] : CIRCLE_FALLBACK_RADIUS);
-    const level: number = GENERATOR_FLOOR + GENERATOR_GAIN;
-
-    this.gl.lineWidth(1);
-    for (let i: number = 0; i < RING_POINTS; i++) {
-      const u: number = i / RING_POINTS;
-      const angle: number = u * TWO_PI;
-      const radius: number = base + unit * CIRCLE_SWING * this.sampleAt(u);
-      this.vertex(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle), level);
-    }
-  }
-
-  /**
    * The spectrum standing along the bottom edge.
    *
    * @param args - The stage's dbl1..dbl4
@@ -1704,6 +1770,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     if (this.presentProgram) gl.deleteProgram(this.presentProgram);
     if (this.generatorProgram) gl.deleteProgram(this.generatorProgram);
     if (this.traceProgram) gl.deleteProgram(this.traceProgram);
+    if (this.radialProgram) gl.deleteProgram(this.radialProgram);
     if (this.waveTexture) gl.deleteTexture(this.waveTexture);
     super.destroy();
   }
