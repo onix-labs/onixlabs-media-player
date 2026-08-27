@@ -7,7 +7,8 @@
  * Technical details:
  * - One cross rotates clockwise, the other counter-clockwise
  * - Colors (cyan/magenta) randomly swap on intersection (every 45°)
- * - All waveforms are equal length (8/9 of shorter screen dimension)
+ * - All waveforms are equal length, exceeding the screen diagonal so they
+ *   overhang the view at every rotation
  * - Trails fade outward from center with zoom effect
  * - Each waveform has glow, main, and highlight layers
  *
@@ -34,7 +35,15 @@ export class NeonVisualization extends Canvas2DVisualization {
   private static readonly BASE_GLOW_BLUR: number = 15;
 
   /** Number of points sampled across each waveform. */
-  private static readonly WAVEFORM_POINTS: number = 32;
+  private static readonly WAVEFORM_POINTS: number = 72;
+
+  /**
+   * How far the waveforms extend past the diagonal.
+   *
+   * Above 1 so the ends clear the corners outright rather than landing on
+   * them, with enough margin that the stroke and its glow are outside too.
+   */
+  private static readonly LENGTH_OVERSCAN: number = 1.05;
 
   /** Radians each cross rotates per frame. */
   private static readonly ROTATION_SPEED: number = 0.005;
@@ -233,12 +242,21 @@ export class NeonVisualization extends Canvas2DVisualization {
     this.screenCenterX = width / 2;
     this.screenCenterY = height / 2;
 
-    // Both waveforms use 8/9 of the shorter axis so they stay visible when rotating
-    this.waveformLength = Math.min(width, height) * 8 / 9;
-    this.waveformAmplitude = this.waveformLength * 0.15;
+    // Long enough to overhang the view at any rotation. The crosses rotate
+    // about the centre, so an end sits at half the length from it, while the
+    // boundary sits anywhere from half the shorter axis (mid-edge) to half the
+    // diagonal (corner). Exceeding the diagonal is therefore the condition for
+    // running past the edge in every direction, diagonals included.
+    this.waveformLength = Math.hypot(width, height) * NeonVisualization.LENGTH_OVERSCAN;
+
+    // Amplitude stays tied to the shorter axis rather than to the new length.
+    // Deriving it from the length would have more than doubled the wave height
+    // along with it, which is not what lengthening them was for.
+    this.waveformAmplitude = Math.min(width, height) * 8 / 9 * 0.15;
     this.sliceSize = this.waveformLength / NeonVisualization.WAVEFORM_POINTS;
 
-    // Center the waveforms on screen
+    // Still centred; both start values are now negative, which is the point -
+    // each waveform begins off one edge and ends off the other.
     this.horizontalStartX = (width - this.waveformLength) / 2;
     this.verticalStartY = (height - this.waveformLength) / 2;
 

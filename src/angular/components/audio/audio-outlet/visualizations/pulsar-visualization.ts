@@ -32,7 +32,7 @@ import {TWO_PI} from './visualization-constants';
  */
 export class PulsarVisualization extends Canvas2DVisualization {
   /** Radians the trail rotates per frame. */
-  private static readonly ROTATION_SPEED: number = 0.001;
+  private static readonly ROTATION_SPEED: number = 0.003;
 
   /** Radians the waveforms rotate per frame. */
   private static readonly WAVEFORM_ROTATION_SPEED: number = 0.005;
@@ -53,7 +53,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * rate times a hundred is the spread of hue visible at any moment - around
    * 25 degrees here, a coherent band that travels rather than a static wheel.
    */
-  private static readonly HUE_CYCLE_SPEED: number = 0.25;
+  private static readonly HUE_CYCLE_SPEED: number = 0.15;
 
   /**
    * Number of concentric rings the trail is redrawn in.
@@ -68,7 +68,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    *
    * Set to 1 to go back to a single uniform rotation.
    */
-  private static readonly TRAIL_RING_COUNT: number = 20;
+  private static readonly TRAIL_RING_COUNT: number = 50;
 
   /**
    * Extra rotation at the outermost ring versus the innermost, in radians per
@@ -95,7 +95,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * expanding and contracting. Its time-average is zero, leaving the net flow
    * at each radius outward and the frame filled.
    */
-  private static readonly RING_RIPPLE: number = 0.0125;
+  private static readonly RING_RIPPLE: number = 0.0175;
 
   /**
    * How much slower the outermost ring zooms than the innermost.
