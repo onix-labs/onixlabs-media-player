@@ -53,7 +53,7 @@ export class OnixVisualization extends Canvas2DVisualization {
   private static readonly BASE_GLOW_BLUR: number = 15;
 
   public readonly name: string = 'Onix';
-  public readonly category: string = 'Waves';
+  public readonly category: string = 'Bars & Waves';
 
   /** Audio data buffers. */
   private dataArray: Uint8Array<ArrayBuffer>;

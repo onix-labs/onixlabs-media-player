@@ -32,7 +32,7 @@ import {TWO_PI} from './visualization-constants';
  */
 export class PulsarVisualization extends Canvas2DVisualization {
   /** Radians the trail rotates per frame. */
-  private static readonly ROTATION_SPEED: number = 0.0011;
+  private static readonly ROTATION_SPEED: number = 0.001;
 
   /** Radians the waveforms rotate per frame. */
   private static readonly WAVEFORM_ROTATION_SPEED: number = 0.005;

@@ -58,7 +58,7 @@ export class NeonVisualization extends Canvas2DVisualization {
   private static readonly COLOR_HIGHLIGHT: string = 'rgba(255, 255, 255, 0.5)';
 
   public readonly name: string = 'Neon';
-  public readonly category: string = 'Waves';
+  public readonly category: string = 'Bars & Waves';
 
   /** Current rotation angle in radians. */
   private rotationAngle: number = 0;

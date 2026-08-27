@@ -47,7 +47,7 @@ export class PlasmaVisualization extends Canvas2DVisualization {
   private static readonly COLOR_HIGHLIGHT: string = 'rgba(255, 255, 255, 0.5)';
 
   public readonly name: string = 'Plasma';
-  public readonly category: string = 'Waves';
+  public readonly category: string = 'Bars & Waves';
 
   /** Current hue values for each waveform (0-360). */
   private hue1: number = PlasmaVisualization.START_HUE_TOP;

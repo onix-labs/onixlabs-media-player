@@ -92,20 +92,20 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
  * Used to display visualization info without creating an instance.
  */
 export const VISUALIZATION_METADATA: Record<string, {name: string; category: string}> = {
-  bars: {name: 'Analyzer', category: 'Bars'},
-  waveform: {name: 'Classic', category: 'Waves'},
-  tunnel: {name: 'Plasma', category: 'Waves'},
-  neon: {name: 'Neon', category: 'Waves'},
+  bars: {name: 'Analyzer', category: 'Bars & Waves'},
+  waveform: {name: 'Classic', category: 'Bars & Waves'},
+  tunnel: {name: 'Plasma', category: 'Bars & Waves'},
+  neon: {name: 'Neon', category: 'Bars & Waves'},
   pulsar: {name: 'Pulsar', category: 'Signature'},
   water: {name: 'Reactor', category: 'Signature'},
-  infinity: {name: 'Infinity', category: 'Waves'},
-  onix: {name: 'Onix', category: 'Waves'},
-  modern: {name: 'Modern', category: 'Waves'},
+  infinity: {name: 'Infinity', category: 'Bars & Waves'},
+  onix: {name: 'Onix', category: 'Bars & Waves'},
+  modern: {name: 'Modern', category: 'Bars & Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
   hallucia: {name: 'Hallucia', category: 'Signature'},
-  hawking: {name: 'Hawking', category: 'Waves'},
-  'ambience-zoom': {name: 'Twirl', category: 'Waves'},
-  'ambience-stretch': {name: 'Warp', category: 'Waves'},
+  hawking: {name: 'Hawking', category: 'Bars & Waves'},
+  'ambience-zoom': {name: 'Twirl', category: 'Bars & Waves'},
+  'ambience-stretch': {name: 'Warp', category: 'Bars & Waves'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
@@ -142,16 +142,13 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  * Used for cycling through visualizations with next/previous.
  *
  * Categories (in order):
- * - Bars: bars
- * - Waves: waveform, modern, tunnel, infinity, neon, onix, hawking, ambience-zoom, ambience-stretch
+ * - Bars & Waves: bars, waveform, modern, tunnel, infinity, neon, onix, hawking, ambience-zoom, ambience-stretch
  * - Signature: spotlight, water (Reactor), hallucia, pulsar
  * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
-  // Bars
-  'bars',
-  // Waves
-  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'hawking', 'ambience-zoom', 'ambience-stretch',
+  // Bars & Waves
+  'bars',   'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'hawking', 'ambience-zoom', 'ambience-stretch',
   // Signature
   'spotlight', 'water', 'hallucia', 'pulsar',
     // Simple

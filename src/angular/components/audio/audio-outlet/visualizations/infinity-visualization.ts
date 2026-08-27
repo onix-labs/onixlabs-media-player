@@ -52,7 +52,7 @@ export class InfinityVisualization extends Canvas2DVisualization {
   private static readonly COLOR_HIGHLIGHT: string = 'rgba(255, 255, 255, 0.5)';
 
   public readonly name: string = 'Infinity';
-  public readonly category: string = 'Waves';
+  public readonly category: string = 'Bars & Waves';
 
   /** Current hue values for each circle (0-360). */
   private hue1: number = InfinityVisualization.START_HUE_1;

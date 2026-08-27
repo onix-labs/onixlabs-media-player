@@ -132,7 +132,7 @@ export type LocalSettingKey = keyof VisualizationLocalSettings;
 export interface VisualizationMetadata {
   readonly id: string;
   readonly name: string;
-  readonly category: 'Bars' | 'Waves' | 'Signature' | 'Simple';
+  readonly category: 'Bars & Waves' | 'Signature' | 'Simple';
   readonly applicableSettings: readonly LocalSettingKey[];
 }
 
@@ -434,24 +434,23 @@ export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> 
  * Metadata for all visualizations including which settings apply to each.
  */
 export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
-  // Bars category
-  {id: 'bars', name: 'Analyzer', category: 'Bars', applicableSettings: ['barDensity', 'barColorBottom', 'barColorMiddle', 'barColorTop']},
-  // Waves category
-  {id: 'waveform', name: 'Classic', category: 'Waves', applicableSettings: []},
-  {id: 'modern', name: 'Modern', category: 'Waves', applicableSettings: []},
-  {id: 'tunnel', name: 'Plasma', category: 'Waves', applicableSettings: []},
-  {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: []},
-  {id: 'hawking', name: 'Hawking', category: 'Waves', applicableSettings: []},
+  // Bars & Waves category
+  {id: 'bars', name: 'Analyzer', category: 'Bars & Waves', applicableSettings: ['barDensity', 'barColorBottom', 'barColorMiddle', 'barColorTop']},
+  {id: 'waveform', name: 'Classic', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'modern', name: 'Modern', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'tunnel', name: 'Plasma', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'neon', name: 'Neon', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'hawking', name: 'Hawking', category: 'Bars & Waves', applicableSettings: []},
   // Signature category
   {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
   {id: 'hallucia', name: 'Hallucia', category: 'Signature', applicableSettings: []},
   {id: 'pulsar', name: 'Pulsar', category: 'Signature', applicableSettings: []},
-  {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: []},
-  {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
+  {id: 'infinity', name: 'Infinity', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'onix', name: 'Onix', category: 'Bars & Waves', applicableSettings: []},
   // Ambience category
-  {id: 'ambience-zoom', name: 'Twirl', category: 'Waves', applicableSettings: []},
-  {id: 'ambience-stretch', name: 'Warp', category: 'Waves', applicableSettings: []},
+  {id: 'ambience-zoom', name: 'Twirl', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'ambience-stretch', name: 'Warp', category: 'Bars & Waves', applicableSettings: []},
   // Battery category
   // Simple category
   {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
@@ -532,24 +531,23 @@ const DEFAULT_SETTINGS: AppSettings = {
  * Available visualization options for the settings UI.
  */
 export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
-  // Bars category
-  {value: 'bars', label: 'Bars : Analyzer', description: 'Configurable frequency bars with gradient'},
-  // Waves category
-  {value: 'waveform', label: 'Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
-  {value: 'modern', label: 'Waves : Modern', description: 'Frequency spectrum with gradient glow'},
-  {value: 'tunnel', label: 'Waves : Plasma', description: 'Dual waveforms with plasma zoom effect'},
-  {value: 'infinity', label: 'Waves : Infinity', description: 'Dual orbiting circles with spectrum cycling'},
-  {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
-  {value: 'onix', label: 'Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
-  {value: 'hawking', label: 'Waves : Hawking', description: 'Spiked circular waveforms emitting particles outward'},
+  // Bars & Waves category
+  {value: 'bars', label: 'Bars & Waves : Analyzer', description: 'Configurable frequency bars with gradient'},
+  {value: 'waveform', label: 'Bars & Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
+  {value: 'modern', label: 'Bars & Waves : Modern', description: 'Frequency spectrum with gradient glow'},
+  {value: 'tunnel', label: 'Bars & Waves : Plasma', description: 'Dual waveforms with plasma zoom effect'},
+  {value: 'infinity', label: 'Bars & Waves : Infinity', description: 'Dual orbiting circles with spectrum cycling'},
+  {value: 'neon', label: 'Bars & Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
+  {value: 'onix', label: 'Bars & Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
+  {value: 'hawking', label: 'Bars & Waves : Hawking', description: 'Spiked circular waveforms emitting particles outward'},
   // Signature category
   {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
   {value: 'hallucia', label: 'Signature : Hallucia', description: 'Spectral differential rotation winding bands into spiral filaments'},
   {value: 'pulsar', label: 'Signature : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
   // Ambience category
-  {value: 'ambience-zoom', label: 'Waves : Twirl', description: 'Rotating zoom about the centre'},
-  {value: 'ambience-stretch', label: 'Waves : Warp', description: 'Cubic radial distortion'},
+  {value: 'ambience-zoom', label: 'Bars & Waves : Twirl', description: 'Rotating zoom about the centre'},
+  {value: 'ambience-stretch', label: 'Bars & Waves : Warp', description: 'Cubic radial distortion'},
   // Battery category
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},

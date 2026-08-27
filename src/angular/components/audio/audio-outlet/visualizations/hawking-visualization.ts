@@ -142,7 +142,7 @@ export class HawkingVisualization extends Canvas2DVisualization {
   private static readonly PARTICLE_OUTLINE_FRACTION: number = 0.3;
 
   public readonly name: string = 'Hawking';
-  public readonly category: string = 'Waves';
+  public readonly category: string = 'Bars & Waves';
 
   private dataArray: Uint8Array<ArrayBuffer>;
 

@@ -187,7 +187,7 @@ describe('application-menu', (): void => {
       expect(vizItem!['submenu']).toBeDefined();
     });
 
-    it('Visualizations submenu contains Bars and Waves categories', (): void => {
+    it('Visualizations submenu contains the Bars & Waves category', (): void => {
       const viewMenu: Record<string, unknown> | undefined = findMenu(template, 'View');
       expect(viewMenu).toBeDefined();
       const submenu: Record<string, unknown>[] = getSubmenu(viewMenu!);
@@ -195,14 +195,14 @@ describe('application-menu', (): void => {
       expect(vizItem).toBeDefined();
 
       const vizSubmenu: Record<string, unknown>[] = getSubmenu(vizItem!);
-      const barsCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Bars');
-      const wavesCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Waves');
+      // Doubled: the builder escapes the ampersand so Windows renders it
+      // literally rather than treating it as a mnemonic marker.
+      const wavesCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Bars && Waves');
 
-      expect(barsCategory).toBeDefined();
       expect(wavesCategory).toBeDefined();
     });
 
-    it('Bars category contains Analyzer', (): void => {
+    it('Bars & Waves category contains Analyzer', (): void => {
       const viewMenu: Record<string, unknown> | undefined = findMenu(template, 'View');
       expect(viewMenu).toBeDefined();
       const submenu: Record<string, unknown>[] = getSubmenu(viewMenu!);
@@ -210,7 +210,7 @@ describe('application-menu', (): void => {
       expect(vizItem).toBeDefined();
 
       const vizSubmenu: Record<string, unknown>[] = getSubmenu(vizItem!);
-      const barsCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Bars');
+      const barsCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Bars && Waves');
       expect(barsCategory).toBeDefined();
 
       const barsItems: Record<string, unknown>[] = getSubmenu(barsCategory!);
@@ -219,7 +219,7 @@ describe('application-menu', (): void => {
       expect(analyzerItem).toBeDefined();
     });
 
-    it('Waves category contains all wave visualizations', (): void => {
+    it('Bars & Waves category contains every entry', (): void => {
       const viewMenu: Record<string, unknown> | undefined = findMenu(template, 'View');
       expect(viewMenu).toBeDefined();
       const submenu: Record<string, unknown>[] = getSubmenu(viewMenu!);
@@ -227,11 +227,11 @@ describe('application-menu', (): void => {
       expect(vizItem).toBeDefined();
 
       const vizSubmenu: Record<string, unknown>[] = getSubmenu(vizItem!);
-      const wavesCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Waves');
+      const wavesCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Bars && Waves');
       expect(wavesCategory).toBeDefined();
 
       const wavesItems: Record<string, unknown>[] = getSubmenu(wavesCategory!);
-      const expectedNames: readonly string[] = ['Classic', 'Modern', 'Plasma', 'Infinity', 'Neon', 'Onix', 'Hawking', 'Twirl', 'Warp'];
+      const expectedNames: readonly string[] = ['Analyzer', 'Classic', 'Modern', 'Plasma', 'Infinity', 'Neon', 'Onix', 'Hawking', 'Twirl', 'Warp'];
 
       for (const name of expectedNames) {
         const item: Record<string, unknown> | undefined = findSubmenuItem(wavesItems, name);
@@ -481,7 +481,7 @@ describe('application-menu', (): void => {
       expect(callbacks.onSelectVisualization).toHaveBeenCalledWith('bars');
 
       // Test a Waves category item: Neon -> id 'neon'
-      const wavesCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Waves');
+      const wavesCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Bars && Waves');
       expect(wavesCategory).toBeDefined();
       const wavesItems: Record<string, unknown>[] = getSubmenu(wavesCategory!);
       const neonItem: Record<string, unknown> | undefined = findSubmenuItem(wavesItems, 'Neon');

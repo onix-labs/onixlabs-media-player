@@ -20,14 +20,9 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
   items: ReadonlyArray<{id: string; name: string}>;
 }> = [
   {
-    category: 'Bars',
+    category: 'Bars & Waves',
     items: [
       {id: 'bars', name: 'Analyzer'},
-    ],
-  },
-  {
-    category: 'Waves',
-    items: [
       {id: 'waveform', name: 'Classic'},
       {id: 'modern', name: 'Modern'},
       {id: 'tunnel', name: 'Plasma'},
@@ -325,7 +320,11 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
       {
         label: 'Visualizations',
         submenu: VISUALIZATION_CATEGORIES.map((cat: {category: string; items: ReadonlyArray<{id: string; name: string}>}): MenuItemConstructorOptions => ({
-          label: cat.category,
+          // Electron treats & in a menu label as a mnemonic prefix on Windows,
+          // where "Bars & Waves" would render as "Bars Waves" with W
+          // underlined. Doubling it escapes to a literal ampersand; macOS and
+          // Linux ignore the marker either way.
+          label: cat.category.replace(/&/g, '&&'),
           submenu: cat.items.map((viz: {id: string; name: string}): MenuItemConstructorOptions => ({
             label: viz.name,
             click: (): void => callbacks.onSelectVisualization(viz.id)

@@ -46,7 +46,7 @@ export class ClassicVisualization extends Canvas2DVisualization {
   private static readonly COLOR_HIGHLIGHT: string = 'rgba(150, 255, 180, 0.6)';
 
   public readonly name: string = 'Classic';
-  public readonly category: string = 'Waves';
+  public readonly category: string = 'Bars & Waves';
 
   private dataArray: Uint8Array<ArrayBuffer>;
 

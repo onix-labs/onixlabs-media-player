@@ -42,7 +42,7 @@ export class ModernVisualization extends Canvas2DVisualization {
   private static readonly GLOW_PASSES: number = 3;
 
   public readonly name: string = 'Modern';
-  public readonly category: string = 'Waves';
+  public readonly category: string = 'Bars & Waves';
 
   private dataArray: Uint8Array<ArrayBuffer>;
 
