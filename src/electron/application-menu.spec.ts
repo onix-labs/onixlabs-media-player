@@ -469,8 +469,8 @@ describe('application-menu', (): void => {
 
       const vizSubmenu: Record<string, unknown>[] = getSubmenu(vizItem!);
 
-      // Test a Bars category item: Analyzer -> id 'bars'
-      const barsCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Bars');
+      // Test a Bars & Waves category item: Analyzer -> id 'bars'
+      const barsCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Bars && Waves');
       expect(barsCategory).toBeDefined();
       const barsItems: Record<string, unknown>[] = getSubmenu(barsCategory!);
       const analyzerItem: Record<string, unknown> | undefined = findSubmenuItem(barsItems, 'Analyzer');
