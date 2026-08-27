@@ -165,6 +165,15 @@ const RIPPLE_FLARE: number = 0.25;
 /** How much each pixel takes from its neighbours per step: the smoke. */
 const AMBIENCE_DIFFUSE: number = 0.35;
 
+/**
+ * Angle the smoke's tangential taps sit away, in radians.
+ *
+ * A mark survives a few dozen steps against the decay, and the spread compounds
+ * as a walk over those, so this lands the fan around 40 degrees either side of
+ * where it was drawn.
+ */
+const AMBIENCE_SMOKE_ARC: number = 0.08;
+
 /** Ambience takes a bass hit as a cue to pulse. */
 const AMBIENCE_PULSES: boolean = true;
 
@@ -419,6 +428,7 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
     ),
     palette: parsePalette(paletteFor(preset.styles)),
     diffuse: AMBIENCE_DIFFUSE,
+    smokeArc: AMBIENCE_SMOKE_ARC,
     pulses: AMBIENCE_PULSES,
   };
 }

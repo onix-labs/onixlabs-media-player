@@ -309,6 +309,7 @@ uniform vec4 uParams;
 uniform float uDecay;
 uniform float uPhase;
 uniform float uDiffuse;
+uniform float uSmokeArc;
 
 varying vec2 vUv;
 
@@ -363,10 +364,26 @@ void main() {
    * its way out.
    */
   if (uDiffuse > 0.0) {
-    vec2 step = 1.0 / size;
+    /*
+     * Spread around the circumference rather than evenly.
+     *
+     * The tangential taps sit a fixed angle away, so their distance in pixels
+     * grows with the radius and the smoke covers the same arc wherever it is on
+     * the surface. Spreading evenly only ever pushed a mark a pixel at a time
+     * in any direction, which reaches nowhere round a circle; along the arc it
+     * compounds step over step into a fan.
+     *
+     * The radial pair stays at a pixel, so the smoke fans sideways rather than
+     * bleeding across the bands.
+     */
+    vec2 fromCentre = pos - centre;
+    float spin = length(fromCentre);
+    vec2 dir = spin > 1.0 ? fromCentre / spin : vec2(1.0, 0.0);
+    vec2 arc = vec2(-dir.y, dir.x) * (spin * uSmokeArc) / size;
+    vec2 out = dir / size;
+
     float neighbours = (
-      tap(uv + vec2(step.x, 0.0)) + tap(uv - vec2(step.x, 0.0)) +
-      tap(uv + vec2(0.0, step.y)) + tap(uv - vec2(0.0, step.y))
+      tap(uv + arc) + tap(uv - arc) + tap(uv + out) + tap(uv - out)
     ) * 0.25;
     value = mix(value, neighbours, uDiffuse);
   }
@@ -836,6 +853,15 @@ export interface FeedbackSpec {
   readonly diffuse: number;
 
   /**
+   * Angle, in radians, the smoke's tangential taps sit away from the pixel.
+   *
+   * Sets how far round the circumference the smoke reaches: each step moves a
+   * mark this far, and the spreading compounds over the several dozen steps a
+   * mark survives.
+   */
+  readonly smokeArc: number;
+
+  /**
    * Whether a loud bass hit can fire a pulse.
    *
    * A pulse sweeps the palette through one full rotation, which sends a dark
@@ -1062,7 +1088,9 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       gl.RGBA, gl.UNSIGNED_BYTE, this.waveTexels
     );
 
-    for (const key of ['uSurface', 'uSize', 'uParams', 'uDecay', 'uPhase', 'uDiffuse']) {
+    for (const key of [
+      'uSurface', 'uSize', 'uParams', 'uDecay', 'uPhase', 'uDiffuse', 'uSmokeArc',
+    ]) {
       this.warpUniforms[key] = gl.getUniformLocation(this.warpProgram, key);
     }
     for (const key of ['uSurface', 'uPalette', 'uAlpha', 'uPaletteShift', 'uBackground']) {
@@ -1391,6 +1419,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     );
     gl.uniform1f(this.warpUniforms['uDecay'], SURFACE_DECAY);
     gl.uniform1f(this.warpUniforms['uDiffuse'], this.spec.diffuse);
+    gl.uniform1f(this.warpUniforms['uSmokeArc'], this.spec.smokeArc);
     gl.uniform1f(this.warpUniforms['uPhase'], this.phase);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
