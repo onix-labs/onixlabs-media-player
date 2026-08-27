@@ -479,8 +479,14 @@ void main() {
   float radius = length(offset);
   float angle = atan(offset.y, offset.x);
 
+  /*
+   * Rectified, so the ring only ever pushes outward from its resting radius.
+   * Taking the sample signed sent half of every cycle inward, which read as a
+   * waveform facing into the centre with only the loudest peaks big enough to
+   * clear the ring and show on the outside.
+   */
   float level = texture2D(uWaveform, vec2(angle / TAU + 0.5, 0.5)).r;
-  float target = uBase + (level - 0.5) * 2.0 * uSwing;
+  float target = uBase + abs(level - 0.5) * 2.0 * uSwing;
 
   /* Normalised against the height so the falloff means the same as the trace's. */
   float delta = (radius - target) / uSize.y;
