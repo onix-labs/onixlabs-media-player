@@ -35,7 +35,6 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'neon', name: 'Neon'},
       {id: 'onix', name: 'Onix'},
       {id: 'hawking', name: 'Hawking'},
-      {id: 'pulsar', name: 'Pulsar'},
     ],
   },
   {
@@ -44,6 +43,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'spotlight', name: 'Spotlight'},
       {id: 'water', name: 'Reactor'},
       {id: 'hallucia', name: 'Hallucia'},
+      {id: 'pulsar', name: 'Pulsar'},
     ],
   },
   {

@@ -13,7 +13,7 @@
  * - waveform: Oscilloscope-style waveform with LCD ghosting effect
  * - tunnel: Hypnotic tunnel/vortex effect
  * - neon: Glowing neon ring visualization
- * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
+ * - pulsar: Pulsing concentric rings with curved waveforms (signature category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
  * - hallucia: Hallucia - spectral differential rotation field winding bands into spirals (signature category)
@@ -106,7 +106,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   waveform: {name: 'Classic', category: 'Waves'},
   tunnel: {name: 'Plasma', category: 'Waves'},
   neon: {name: 'Neon', category: 'Waves'},
-  pulsar: {name: 'Pulsar', category: 'Waves'},
+  pulsar: {name: 'Pulsar', category: 'Signature'},
   water: {name: 'Reactor', category: 'Signature'},
   infinity: {name: 'Infinity', category: 'Waves'},
   onix: {name: 'Onix', category: 'Waves'},
@@ -155,8 +155,8 @@ export function createVisualization(type: string, config: VisualizationConfig): 
  *
  * Categories (in order):
  * - Bars: bars
- * - Waves: waveform, modern, tunnel, infinity, neon, onix, hawking, pulsar
- * - Signature: spotlight, water (Reactor), hallucia
+ * - Waves: waveform, modern, tunnel, infinity, neon, onix, hawking
+ * - Signature: spotlight, water (Reactor), hallucia, pulsar
  * - Ambience: one entry per displacement in the Ambience bank
  * - Battery: one entry per source generator, each rolling its displacement
  * - Simple: blank, logo
@@ -165,9 +165,9 @@ export const VISUALIZATION_TYPES: string[] = [
   // Bars
   'bars',
   // Waves
-  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'hawking', 'pulsar',
+  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'hawking',
   // Signature
-  'spotlight', 'water', 'hallucia',
+  'spotlight', 'water', 'hallucia', 'pulsar',
     // Ambience
   'ambience-zoom', 'ambience-stretch', 'ambience-trigstretch',
   // Battery

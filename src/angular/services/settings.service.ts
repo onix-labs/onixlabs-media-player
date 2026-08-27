@@ -32,7 +32,7 @@ import {VIDEO_ADJUSTMENT_PRESETS, VIDEO_ADJ_CUSTOM_PRESET, NEUTRAL_VIDEO_ADJUSTM
  * - waveform: Oscilloscope-style waveform
  * - tunnel: Dual red/blue waveforms with zoom
  * - neon: Rotating cyan/magenta waveforms
- * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
+ * - pulsar: Pulsing concentric rings with curved waveforms (signature category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Concentric tower wrapped in counter-spinning rings (signature category)
  * - infinity: Dual orbiting circles with spectrum cycling
@@ -441,12 +441,12 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'modern', name: 'Modern', category: 'Waves', applicableSettings: []},
   {id: 'tunnel', name: 'Plasma', category: 'Waves', applicableSettings: []},
   {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: []},
-  {id: 'pulsar', name: 'Pulsar', category: 'Waves', applicableSettings: []},
   {id: 'hawking', name: 'Hawking', category: 'Waves', applicableSettings: []},
   // Signature category
   {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
   {id: 'hallucia', name: 'Hallucia', category: 'Signature', applicableSettings: []},
+  {id: 'pulsar', name: 'Pulsar', category: 'Signature', applicableSettings: []},
   {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: []},
   {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
   // Ambience category
@@ -544,11 +544,11 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'onix', label: 'Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
   {value: 'hawking', label: 'Waves : Hawking', description: 'Spiked circular waveforms emitting particles outward'},
-  {value: 'pulsar', label: 'Waves : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
   // Signature category
   {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
   {value: 'hallucia', label: 'Signature : Hallucia', description: 'Spectral differential rotation winding bands into spiral filaments'},
+  {value: 'pulsar', label: 'Signature : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
   // Ambience category
   {value: 'ambience-zoom', label: 'Ambience : Zoom', description: 'Rotating zoom about the centre'},
   {value: 'ambience-stretch', label: 'Ambience : Stretch', description: 'Cubic radial distortion'},

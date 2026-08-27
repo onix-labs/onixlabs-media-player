@@ -32,16 +32,16 @@ import {TWO_PI} from './visualization-constants';
  */
 export class PulsarVisualization extends Canvas2DVisualization {
   /** Radians the trail rotates per frame. */
-  private static readonly ROTATION_SPEED: number = 0.011;
+  private static readonly ROTATION_SPEED: number = 0.0011;
 
   /** Radians the waveforms rotate per frame. */
   private static readonly WAVEFORM_ROTATION_SPEED: number = 0.005;
 
   /** Per-frame trail fade rate. */
-  private static readonly FADE_RATE: number = 0.001;
+  private static readonly FADE_RATE: number = 0.002;
 
   /** Per-frame outward zoom applied to the trail. */
-  private static readonly ZOOM_SCALE: number = 1.02;
+  private static readonly ZOOM_SCALE: number = 1.03;
 
   /**
    * Degrees the hue advances per frame.
@@ -78,7 +78,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * an overlap would composite the shared band twice and leave bright seams,
    * where an exact edge only risks a faint one.
    */
-  private static readonly RING_SHEAR: number = 0.002;
+  private static readonly RING_SHEAR: number = 0.01;
 
   /**
    * Amplitude of the cosine ripple applied to each ring's zoom.
@@ -95,7 +95,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * expanding and contracting. Its time-average is zero, leaving the net flow
    * at each radius outward and the frame filled.
    */
-  private static readonly RING_RIPPLE: number = 0.012;
+  private static readonly RING_RIPPLE: number = 0.0125;
 
   /**
    * How much slower the outermost ring zooms than the innermost.
@@ -110,7 +110,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * expands more slowly than the middle and content bunches up as it travels
    * out. That keeps the folding character without the collapse.
    */
-  private static readonly RING_CUBIC_PULL: number = 0.008;
+  private static readonly RING_CUBIC_PULL: number = 0.001;
 
   /**
    * Number of ripple cycles spanning the radius.
@@ -132,7 +132,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * TRAIL_RING_COUNT has to keep up: below about five rings per cycle the
    * rings cannot resolve the ripple.
    */
-  private static readonly RIPPLE_CYCLES: number = 2;
+  private static readonly RIPPLE_CYCLES: number = 6;
 
   /**
    * Ring widths the ring boundaries slide per frame.
@@ -146,7 +146,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    *
    * Deliberately not harmonic with RIPPLE_DRIFT, so the two do not lock.
    */
-  private static readonly RING_BOUNDARY_DRIFT: number = 0.013;
+  private static readonly RING_BOUNDARY_DRIFT: number = 0.13;
 
   /**
    * Radians the ripple pattern drifts per frame.
@@ -154,7 +154,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * Signed so the bands travel outward with the flow rather than against it,
    * and fast enough that no radius sits in the contracting half for long.
    */
-  private static readonly RIPPLE_DRIFT: number = 0.055;
+  private static readonly RIPPLE_DRIFT: number = 0.15;
 
   /**
    * Minimum gap between transients acting, in milliseconds.
@@ -162,7 +162,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * The spin flip is dramatic, so without a refractory period a busy passage
    * would reverse the field several times a second and read as a stutter.
    */
-  private static readonly TRANSIENT_REFRACTORY_MS: number = 400;
+  private static readonly TRANSIENT_REFRACTORY_MS: number = 100;
 
   /**
    * Degrees the hue jumps on a transient.
@@ -185,10 +185,10 @@ export class PulsarVisualization extends Canvas2DVisualization {
   private static readonly MIN_LEVEL: number = 50;
 
   /** Number of points sampled across each mirrored waveform half. */
-  private static readonly WAVEFORM_SAMPLES: number = 16;
+  private static readonly WAVEFORM_SAMPLES: number = 32;
 
   /** Number of points around the pulsating center circle. */
-  private static readonly CENTER_CIRCLE_POINTS: number = 64;
+  private static readonly CENTER_CIRCLE_POINTS: number = 128;
 
   /**
    * Uniform scale applied to everything drawn, as a zoom.
@@ -200,7 +200,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * circle and the amplitudes together is a true zoom, and the outer ends of
    * the waveforms crop at the sides as they should.
    */
-  private static readonly CONTENT_SCALE: number = 1.5;
+  private static readonly CONTENT_SCALE: number = 0.75;
 
   /** Base glow blur radius in pixels. */
   private static readonly BASE_GLOW_BLUR: number = 18;
@@ -218,13 +218,13 @@ export class PulsarVisualization extends Canvas2DVisualization {
   private static readonly NEON_CORE_BLUR_SCALE: number = 0.45;
 
   /** How far the hot centre line is lifted toward white, per channel. */
-  private static readonly NEON_HOT_LIFT: number = 70;
+  private static readonly NEON_HOT_LIFT: number = 20;
 
   /** Alpha of the hot centre line. */
   private static readonly NEON_HOT_ALPHA: number = 0.55;
 
   /** Width of the hot centre line, as a fraction of the core width. */
-  private static readonly NEON_HOT_WIDTH_FRACTION: number = 0.5;
+  private static readonly NEON_HOT_WIDTH_FRACTION: number = 0.25;
 
   /**
    * Blur radius of the bloom pass, in pixels.
@@ -235,7 +235,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * once content has been baked into the trail buffer there is no stroke left
    * to attach a shadow to.
    */
-  private static readonly BLOOM_BLUR: number = 12;
+  private static readonly BLOOM_BLUR: number = 16;
 
   /**
    * Strength of the additive bloom pass.
@@ -244,7 +244,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * main canvas, which is cleared every frame, so it brightens once rather
    * than compounding.
    */
-  private static readonly BLOOM_STRENGTH: number = 0.3;
+  private static readonly BLOOM_STRENGTH: number = 0.5;
 
   /** Saturation and lightness levels for the center-circle gradient. */
   private static readonly GRADIENT_LEVELS: ReadonlyArray<{s: number; l: number}> = [
@@ -256,7 +256,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
   ];
 
   public readonly name: string = 'Pulsar';
-  public readonly category: string = 'Waves';
+  public readonly category: string = 'Signature';
 
   /** Frequency buffer for bass transient detection. */
   private frequencyData: Uint8Array<ArrayBuffer>;

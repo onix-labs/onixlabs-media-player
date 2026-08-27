@@ -30,7 +30,7 @@ import { settingsLogger } from './logger.js';
  * - waveform: ClassicVisualization (oscilloscope)
  * - tunnel: TunnelVisualization (dual waveforms with zoom)
  * - neon: NeonVisualization (rotating cyan/magenta waveforms)
- * - pulsar: PulsarVisualization (pulsing concentric rings, waves category)
+ * - pulsar: PulsarVisualization (pulsing concentric rings, signature category)
  * - water: ReactorVisualization (concentric tower with frequency rings, signature category)
  * - infinity: InfinityVisualization (dual orbiting circles with spectrum cycling)
  */
