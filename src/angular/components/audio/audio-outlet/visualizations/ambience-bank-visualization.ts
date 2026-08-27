@@ -162,6 +162,9 @@ const RADIAL_HEIGHT_BAND: number = 0.1;
  */
 const RIPPLE_FLARE: number = 0.25;
 
+/** How much each pixel takes from its neighbours per step: the smoke. */
+const AMBIENCE_DIFFUSE: number = 0.35;
+
 /** Ambience takes a bass hit as a cue to pulse. */
 const AMBIENCE_PULSES: boolean = true;
 
@@ -415,6 +418,7 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
       (entry: string): GeneratorStage => parseGeneratorStage(entry)
     ),
     palette: parsePalette(paletteFor(preset.styles)),
+    diffuse: AMBIENCE_DIFFUSE,
     pulses: AMBIENCE_PULSES,
   };
 }

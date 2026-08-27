@@ -308,8 +308,15 @@ uniform vec2 uSize;
 uniform vec4 uParams;
 uniform float uDecay;
 uniform float uPhase;
+uniform float uDiffuse;
 
 varying vec2 vUv;
+
+/* Zero outside the surface, so the bounds rule is the same for every tap. */
+float tap(vec2 uv) {
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
+  return texture2D(uSurface, uv).r;
+}
 
 /*
  * The engine's own approximation of a turn. It is not 2*pi, and Starburst and
@@ -346,9 +353,22 @@ void main() {
   if (polar) src = centre - vec2(cos(th2), sin(th2)) * r2;
 
   vec2 uv = src / size;
-  float value = 0.0;
-  if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
-    value = texture2D(uSurface, uv).r;
+  float value = tap(uv);
+
+  /*
+   * Smoke. Blending in the four neighbours spreads every mark a little further
+   * each step, and because the surface feeds itself the spreading compounds -
+   * what is drawn crisp one step is a haze several steps later. Applied here
+   * rather than on a layer of its own so the trace still drives the rings on
+   * its way out.
+   */
+  if (uDiffuse > 0.0) {
+    vec2 step = 1.0 / size;
+    float neighbours = (
+      tap(uv + vec2(step.x, 0.0)) + tap(uv - vec2(step.x, 0.0)) +
+      tap(uv + vec2(0.0, step.y)) + tap(uv - vec2(0.0, step.y))
+    ) * 0.25;
+    value = mix(value, neighbours, uDiffuse);
   }
 
   gl_FragColor = vec4(value * uDecay, 0.0, 0.0, 1.0);
@@ -808,6 +828,14 @@ export interface FeedbackSpec {
   readonly palette: Uint8Array;
 
   /**
+   * How much of each pixel is taken from its neighbours per step, 0 to 1.
+   *
+   * The smoke. Because the surface feeds itself, a little spreading per step
+   * compounds into a haze over several.
+   */
+  readonly diffuse: number;
+
+  /**
    * Whether a loud bass hit can fire a pulse.
    *
    * A pulse sweeps the palette through one full rotation, which sends a dark
@@ -1034,7 +1062,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       gl.RGBA, gl.UNSIGNED_BYTE, this.waveTexels
     );
 
-    for (const key of ['uSurface', 'uSize', 'uParams', 'uDecay', 'uPhase']) {
+    for (const key of ['uSurface', 'uSize', 'uParams', 'uDecay', 'uPhase', 'uDiffuse']) {
       this.warpUniforms[key] = gl.getUniformLocation(this.warpProgram, key);
     }
     for (const key of ['uSurface', 'uPalette', 'uAlpha', 'uPaletteShift', 'uBackground']) {
@@ -1362,6 +1390,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       args[0] ?? 0, args[1] ?? 0, args[2] ?? 0, args[3] ?? 0
     );
     gl.uniform1f(this.warpUniforms['uDecay'], SURFACE_DECAY);
+    gl.uniform1f(this.warpUniforms['uDiffuse'], this.spec.diffuse);
     gl.uniform1f(this.warpUniforms['uPhase'], this.phase);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
