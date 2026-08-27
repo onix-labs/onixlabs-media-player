@@ -114,9 +114,6 @@ interface AmbiencePreset {
 
   /** Generators drawn after the warp, overriding the mode's default. */
   readonly post?: readonly string[];
-
-  /** Generators drawn on the unwarped smoke layer. */
-  readonly smoke?: readonly string[];
 }
 
 /** Angular rate shared by the spiral and the flow presets. */
@@ -164,15 +161,6 @@ const RADIAL_HEIGHT_BAND: number = 0.1;
  * without the outer ones swallowing the frame.
  */
 const RIPPLE_FLARE: number = 0.25;
-
-/**
- * How the smoke layer ages: turned, crept outward, and multiplied down each
- * step. The fade and angle follow Reactor, which ages its horizontal trail at
- * 0.02 a frame under a 0.005 radian rotation.
- */
-const AMBIENCE_SMOKE_FADE: number = 0.98;
-const AMBIENCE_SMOKE_ANGLE: number = 0.005;
-const AMBIENCE_SMOKE_SPREAD: number = 0.004;
 
 /** Ambience takes a bass hit as a cue to pulse. */
 const AMBIENCE_PULSES: boolean = true;
@@ -263,8 +251,7 @@ const AMBIENCE_PRESETS: readonly AmbiencePreset[] = [
     mode: MODE_RING,
     // The horizontal trace, drawn the way Warp draws its own: a soft glowing
     // band about the waveform rather than a stroke along it.
-    post: [],
-    smoke: ['Trace 1 0 0 0'],
+    post: ['Trace 1 0 0 0'],
   },
   {
     id: 'ambience-plunge',
@@ -428,12 +415,6 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
       (entry: string): GeneratorStage => parseGeneratorStage(entry)
     ),
     palette: parsePalette(paletteFor(preset.styles)),
-    smoke: (preset.smoke ?? []).map(
-      (entry: string): GeneratorStage => parseGeneratorStage(entry)
-    ),
-    smokeFade: AMBIENCE_SMOKE_FADE,
-    smokeAngle: AMBIENCE_SMOKE_ANGLE,
-    smokeSpread: AMBIENCE_SMOKE_SPREAD,
     pulses: AMBIENCE_PULSES,
   };
 }
