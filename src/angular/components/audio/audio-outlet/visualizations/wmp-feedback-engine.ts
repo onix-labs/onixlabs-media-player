@@ -949,6 +949,18 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   /** The radial waveform pass. */
   private radialProgram: WebGLProgram | null = null;
   private readonly radialUniforms: Record<string, WebGLUniformLocation | null> = {};
+
+  /**
+   * MAX blending, if the driver offers it.
+   *
+   * The ring is drawn every step onto a surface that already holds where it was
+   * drawn before. Added, those pile up: the warp stalls content at each band
+   * boundary, so a stalled copy is topped up every step until it is as bright as
+   * the fresh one and the ring reads as several nested waveforms. Taking the
+   * maximum instead lets a copy decay from the brightness it was drawn at and
+   * never be topped up, so only the ring being drawn now is at full strength.
+   */
+  private blendMinMax: EXT_blend_minmax | null = null;
   private waveTexture: WebGLTexture | null = null;
   private readonly waveTexels: Uint8Array<ArrayBuffer> =
     new Uint8Array(WAVE_TEXTURE_WIDTH * RGBA_STRIDE) as Uint8Array<ArrayBuffer>;
@@ -1045,6 +1057,8 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     for (const key of ['uWaveform', 'uAmplitude', 'uCentre', 'uGain']) {
       this.traceUniforms[key] = gl.getUniformLocation(this.traceProgram, key);
     }
+
+    this.blendMinMax = gl.getExtension('EXT_blend_minmax');
 
     this.radialProgram = this.createProgram(QUAD_VERTEX_SHADER, RADIAL_FRAGMENT_SHADER);
     for (const key of ['uWaveform', 'uSize', 'uBase', 'uSwing', 'uGain']) {
@@ -1327,7 +1341,11 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       unit * CIRCLE_SWING * this.sensitivityFactor
     );
     gl.uniform1f(this.radialUniforms['uGain'], RING_GAIN);
+
+    // Without the extension this falls back to adding, and the ring nests again.
+    if (this.blendMinMax) gl.blendEquation(this.blendMinMax.MAX_EXT);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+    if (this.blendMinMax) gl.blendEquation(gl.FUNC_ADD);
 
     gl.useProgram(this.generatorProgram);
   }
