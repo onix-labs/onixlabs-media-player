@@ -114,6 +114,14 @@ interface AmbiencePreset {
 
   /** Generators drawn after the warp, overriding the mode's default. */
   readonly post?: readonly string[];
+
+  /**
+   * Generators drawn on the foreground, which keeps nothing between steps.
+   *
+   * Setting this takes the preset's content off the warped surface entirely, so
+   * it appears once as drawn rather than leaving a copy behind every step.
+   */
+  readonly foreground?: readonly string[];
 }
 
 /** Angular rate shared by the spiral and the flow presets. */
@@ -255,6 +263,11 @@ const AMBIENCE_PRESETS: readonly AmbiencePreset[] = [
     // The horizontal trace, drawn the way Warp draws its own: a soft glowing
     // band about the waveform rather than a stroke along it.
     post: ['Trace 1 0 0 0'],
+    // The ring goes on the foreground so it reads as one line. On the warped
+    // surface every step left another copy behind it, and with the decay as slow
+    // as it is those copies were still bright enough to look like rings of their
+    // own several steps later.
+    foreground: ['CircleWaveform 1 1 0.5 0'],
   },
   {
     id: 'ambience-plunge',
@@ -413,12 +426,19 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
     category: AMBIENCE_CATEGORY,
     warp: field.warp,
     warpArgs: [field.angle, field.radial, field.extra, 0],
-    pre: sources.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
+    // A preset that puts its content on the foreground wants it there only; the
+    // mode's default would otherwise draw the same generator twice.
+    pre: (preset.foreground ? [] : sources).map(
+      (entry: string): GeneratorStage => parseGeneratorStage(entry)
+    ),
     post: (preset.post ?? OVERLAY_GENERATORS).map(
       (entry: string): GeneratorStage => parseGeneratorStage(entry)
     ),
     palette: parsePalette(paletteFor(preset.styles)),
     diffuse: AMBIENCE_DIFFUSE,
+    foreground: (preset.foreground ?? []).map(
+      (entry: string): GeneratorStage => parseGeneratorStage(entry)
+    ),
     pulses: AMBIENCE_PULSES,
   };
 }
