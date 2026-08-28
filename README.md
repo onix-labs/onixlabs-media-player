@@ -16,17 +16,15 @@ A beautiful, feature-rich media player for macOS, Windows, and Linux.
 
 Play your music with stunning real-time visualizations. ONIXPlayer supports MP3, FLAC, WAV, OGG, M4A, AAC, and WMA formats out of the box, with a built-in equalizer (Flat, Rock, Pop, Jazz, Bass Boost, Vocal, Treble Boost presets).
 
-**13 Real-Time Visualizations:**
+**17 Real-Time Visualizations**, grouped as they appear in the menu:
 
-**Bars:**
+**Bars & Waves:**
 
-* **Analyzer** — Vertical frequency-spectrum bars with a green-yellow-red intensity gradient
+* **Analyzer** — Vertical frequency-spectrum bars with a configurable gradient
 
-**Waves:**
+* **Classic** — Oscilloscope-style waveform with a glow and LCD ghosting
 
-* **Classic** — Oscilloscope-style waveform with a green glow and LCD ghosting
-
-* **Modern** — The Classic waveform rendered in the ONIXLabs brand gradient (orange to green)
+* **Modern** — Frequency spectrum rendered in the ONIXLabs brand gradient
 
 * **Plasma** — Dual horizontal waveforms cycling through the spectrum with expanding zoom trails
 
@@ -34,19 +32,27 @@ Play your music with stunning real-time visualizations. ONIXPlayer supports MP3,
 
 * **Neon** — Two counter-rotating crosses whose cyan/magenta colours swap on intersection
 
+* **Hawking** — Spiked circular waveforms shedding particles outward from the ring
+
 * **Onix** — A pulsating ONIXLabs-gradient circle with a bass-reactive white core
-
-* **Particles** — Dual spiked circular waveforms (red and blue) shedding particles outward from the ring
-
-* **Pulsar** — Mirrored curved waveforms wrapping a pulsing central circle
-
-* **Black Hole** — A gravitationally lensed accretion disk, infalling matter, and panning starfield around a black core
 
 **Signature:**
 
-* **Reactor** — A concentric colour tower wrapped in frequency rings and bending horizontal waveforms; bass hits flip the swirl direction and jump the palette
+* **Reactor** — A concentric colour tower wrapped in spiralling frequency rings and bending horizontal waveforms; bass hits flip the swirl direction and jump the palette
 
 * **Spotlight** — The Reactor tower and frequency rings arranged as a counter-spinning ambient scene
+
+**Nostalgia:**
+
+* **Twirl** — A rotating zoom about the centre, drawing the surface into itself
+
+* **Warp** — Cubic radial distortion, holding the middle still while the rim shears away
+
+* **Ripple** — The radius folded into bands that stand as concentric rings while content drifts out through them
+
+* **Pulsar** — Mirrored curved waveforms wrapping a pulsing central circle; bass hits either reverse the spin or jump the palette and invert the waveforms
+
+* **Hallucia** — Spectral differential rotation, winding bands into spiral filaments
 
 **Simple:**
 
