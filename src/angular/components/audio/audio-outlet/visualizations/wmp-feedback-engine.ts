@@ -152,6 +152,20 @@ const TRACE_SIGMA: number = 0.00008;
 /** Brightness of the trace where it is thickest. */
 const TRACE_GAIN: number = 0.85;
 
+/**
+ * Falloff width of the halo drawn around the trace.
+ *
+ * Reactor puts its horizontal waveform through a glow layer at a shadow blur of
+ * 128 before stroking the line itself, which against its canvas is somewhere
+ * near a sixth of the height. That halo is the smoke - not the trail, which
+ * only carries it - and it is why widening the trail's diffusion never looked
+ * like anything. Squared here, as the trace's own falloff is.
+ */
+const TRACE_GLOW_SIGMA: number = 0.026;
+
+/** Brightness of that halo. Faint: it is a glow, not a second line. */
+const TRACE_GLOW_GAIN: number = 0.3;
+
 /** Extra trace amplitude contributed by the bass envelope. */
 const TRACE_BASS_FLEX: number = 0.6;
 
@@ -465,9 +479,16 @@ void main() {
   }
   float level = texture2D(uWaveform, vec2(x * 2.0, 0.5)).r;
   float traceY = uCentre + turn * (level - 0.5) * uAmplitude;
+  /*
+   * Two lobes, the way Reactor lays down a glow pass and then the stroke: a wide
+   * faint halo for the smoke and a tight bright core for the line itself. One
+   * narrow Gaussian gave a line with nothing around it, and no amount of
+   * blurring the trail afterwards put the halo back.
+   */
   float delta = vUv.y - traceY;
-  float intensity = exp(-(delta * delta) / ${TRACE_SIGMA}) * uGain;
-  gl_FragColor = vec4(intensity, 0.0, 0.0, 1.0);
+  float core = exp(-(delta * delta) / ${TRACE_SIGMA}) * uGain;
+  float halo = exp(-(delta * delta) / ${TRACE_GLOW_SIGMA}) * ${TRACE_GLOW_GAIN};
+  gl_FragColor = vec4(min(core + halo, 1.0), 0.0, 0.0, 1.0);
 }
 `;
 
