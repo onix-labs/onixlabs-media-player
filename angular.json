@@ -21,6 +21,10 @@
           "builder": "@angular/build:application",
           "options": {
             "browser": "src/main.ts",
+            "outputPath": {
+              "base": "dist/onixlabs-media-player",
+              "media": "static"
+            },
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
             "assets": [
@@ -34,7 +38,9 @@
               "src/styles.scss"
             ],
             "stylePreprocessorOptions": {
-              "includePaths": ["src/styles"]
+              "includePaths": [
+                "src/styles"
+              ]
             }
           },
           "configurations": {
@@ -79,8 +85,12 @@
           "options": {
             "tsConfig": "tsconfig.spec.json",
             "runnerConfig": "vitest-base.config.ts",
-            "include": ["src/angular/**/*.spec.ts"],
-            "coverageInclude": ["src/angular/**/*.ts"],
+            "include": [
+              "src/angular/**/*.spec.ts"
+            ],
+            "coverageInclude": [
+              "src/angular/**/*.ts"
+            ],
             "coverageExclude": [
               "src/angular/**/*.spec.ts",
               "src/angular/**/*.d.ts",
@@ -88,7 +98,10 @@
               "src/angular/app.config.ts",
               "src/angular/app.routes.ts"
             ],
-            "coverageReporters": ["text-summary", "lcov"]
+            "coverageReporters": [
+              "text-summary",
+              "lcov"
+            ]
           },
           "configurations": {
             "coverage": {

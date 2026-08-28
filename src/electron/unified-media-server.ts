@@ -171,6 +171,20 @@ export class UnifiedMediaServer {
    * IMPORTANT: adding a new API route under a new prefix requires adding the
    * prefix here, otherwise it will be served without authentication.
    */
+  /**
+   * GET prefixes that require the session token.
+   *
+   * These share a URL space with the Angular bundle this server also serves,
+   * and a prefix listed here shadows any static asset beneath it: the asset
+   * request carries no token, so it is answered with 401 rather than the file.
+   * A browser fetching a font or an image from a stylesheet cannot attach a
+   * header, so such an asset fails silently and only in packaged builds.
+   *
+   * That is why the build emits CSS-referenced resources to `static/` rather
+   * than Angular's default `media/`, which `/media` here would otherwise
+   * swallow. Anything added to this list needs the same check against the
+   * bundle's own paths.
+   */
   private static readonly API_ROUTE_PREFIXES: readonly string[] = [
     '/events',
     '/media',

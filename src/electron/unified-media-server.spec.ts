@@ -315,6 +315,28 @@ describe('UnifiedMediaServer', () => {
       expect(other.getAuthToken()).not.toBe(server.getAuthToken());
       expect(other.getAuthToken().length).toBeGreaterThanOrEqual(32);
     });
+
+    // A protected prefix shadows any static asset beneath it: the asset request
+    // carries no token and is answered with 401 instead of the file. A browser
+    // fetching a font from a stylesheet cannot attach a header, so this fails
+    // silently, and only once the bundle is served from here - which is to say
+    // only in a packaged build. Assert the build does not put assets anywhere
+    // an API prefix would swallow them.
+    it('does not emit build assets under a protected route prefix', () => {
+      const angularConfig: {projects: Record<string, {architect: {build: {options: {outputPath?: {media?: string}}}}}>} =
+        JSON.parse(fs.readFileSync(path.join(process.cwd(), 'angular.json'), 'utf-8'));
+      const mediaDir: string | undefined =
+        angularConfig.projects['onixlabs-media-player'].architect.build.options.outputPath?.media;
+
+      // Angular's default is 'media', which collides with the /media API.
+      expect(mediaDir).toBeDefined();
+      expect(mediaDir).not.toBe('media');
+
+      const assetPath: string = `/${mediaDir}/some-icon-font.woff2`;
+      for (const prefix of ['/events', '/media', '/player', '/playlist', '/settings', '/dependencies']) {
+        expect(assetPath === prefix || assetPath.startsWith(`${prefix}/`)).toBe(false);
+      }
+    });
   });
 
   // ==========================================================================
