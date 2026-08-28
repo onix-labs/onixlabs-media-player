@@ -163,7 +163,16 @@ const RADIAL_HEIGHT_BAND: number = 0.1;
 const RIPPLE_FLARE: number = 0.25;
 
 /** How much each pixel takes from its neighbours per step: the smoke. */
-const AMBIENCE_DIFFUSE: number = 0.35;
+const AMBIENCE_DIFFUSE: number = 0.4;
+
+/**
+ * How far those neighbours sit, in pixels.
+ *
+ * At one pixel the smoke could only creep, however much of the neighbour was
+ * taken. Reaching further is what gives it depth, and it compounds: three
+ * pixels a step over the few dozen steps a mark survives is a wide haze.
+ */
+const AMBIENCE_DIFFUSE_REACH: number = 3;
 
 /** Ambience takes a bass hit as a cue to pulse. */
 const AMBIENCE_PULSES: boolean = true;
@@ -419,6 +428,7 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
     ),
     palette: parsePalette(paletteFor(preset.styles)),
     diffuse: AMBIENCE_DIFFUSE,
+    diffuseReach: AMBIENCE_DIFFUSE_REACH,
     pulses: AMBIENCE_PULSES,
   };
 }

@@ -309,6 +309,7 @@ uniform vec4 uParams;
 uniform float uDecay;
 uniform float uPhase;
 uniform float uDiffuse;
+uniform float uDiffuseReach;
 
 varying vec2 vUv;
 
@@ -363,11 +364,23 @@ void main() {
    * its way out.
    */
   if (uDiffuse > 0.0) {
-    vec2 step = 1.0 / size;
+    /*
+     * Eight taps rather than four, and reaching further than a pixel.
+     *
+     * How much of a neighbour is taken sets how quickly a mark loses its edge;
+     * how far away that neighbour is sets how far the mark travels while doing
+     * it. Four taps at one pixel could only ever creep, and the cross shape
+     * showed once the reach grew, so the diagonals are in at the radius that
+     * puts them the same distance out.
+     */
+    vec2 reach = uDiffuseReach / size;
+    vec2 corner = reach * 0.70710678;
     float neighbours = (
-      tap(uv + vec2(step.x, 0.0)) + tap(uv - vec2(step.x, 0.0)) +
-      tap(uv + vec2(0.0, step.y)) + tap(uv - vec2(0.0, step.y))
-    ) * 0.25;
+      tap(uv + vec2(reach.x, 0.0)) + tap(uv - vec2(reach.x, 0.0)) +
+      tap(uv + vec2(0.0, reach.y)) + tap(uv - vec2(0.0, reach.y)) +
+      tap(uv + corner) + tap(uv - corner) +
+      tap(uv + vec2(corner.x, -corner.y)) + tap(uv - vec2(corner.x, -corner.y))
+    ) * 0.125;
     value = mix(value, neighbours, uDiffuse);
   }
 
@@ -836,6 +849,15 @@ export interface FeedbackSpec {
   readonly diffuse: number;
 
   /**
+   * How far the smoke's taps reach, in pixels.
+   *
+   * The other half of the smoke. The mix sets how fast a mark softens, this sets
+   * how far it gets while softening, and because the surface feeds itself both
+   * compound over the steps a mark survives.
+   */
+  readonly diffuseReach: number;
+
+  /**
    * Whether a loud bass hit can fire a pulse.
    *
    * A pulse sweeps the palette through one full rotation, which sends a dark
@@ -1062,7 +1084,9 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       gl.RGBA, gl.UNSIGNED_BYTE, this.waveTexels
     );
 
-    for (const key of ['uSurface', 'uSize', 'uParams', 'uDecay', 'uPhase', 'uDiffuse']) {
+    for (const key of [
+      'uSurface', 'uSize', 'uParams', 'uDecay', 'uPhase', 'uDiffuse', 'uDiffuseReach',
+    ]) {
       this.warpUniforms[key] = gl.getUniformLocation(this.warpProgram, key);
     }
     for (const key of ['uSurface', 'uPalette', 'uAlpha', 'uPaletteShift', 'uBackground']) {
@@ -1391,6 +1415,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     );
     gl.uniform1f(this.warpUniforms['uDecay'], SURFACE_DECAY);
     gl.uniform1f(this.warpUniforms['uDiffuse'], this.spec.diffuse);
+    gl.uniform1f(this.warpUniforms['uDiffuseReach'], this.spec.diffuseReach);
     gl.uniform1f(this.warpUniforms['uPhase'], this.phase);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
