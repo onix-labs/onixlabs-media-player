@@ -40,8 +40,6 @@ interface Particle {
   intensity: number;
   /** Hue (0-360) the particle was born with (its circle's hue at spawn) */
   hue: number;
-  /** Whether the particle is a square (true) or a circle (false) */
-  square: boolean;
   /** Whether the particle is filled (true) or an outline (false) */
   filled: boolean;
 }
@@ -190,7 +188,7 @@ export class HawkingVisualization extends Canvas2DVisualization {
     // Pre-allocate the particle pool
     this.particles = [];
     for (let i: number = 0; i < HawkingVisualization.MAX_PARTICLES; i++) {
-      this.particles.push({x: 0, y: 0, vx: 0, vy: 0, size: 0, life: 0, decay: 0, intensity: 0, hue: 0, square: false, filled: true});
+      this.particles.push({x: 0, y: 0, vx: 0, vy: 0, size: 0, life: 0, decay: 0, intensity: 0, hue: 0, filled: true});
     }
     // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
     this.sensitivity = 0.5;       // 50%
@@ -314,8 +312,8 @@ export class HawkingVisualization extends Canvas2DVisualization {
       particle.decay = HawkingVisualization.PARTICLE_DECAY_MIN + Math.random() * HawkingVisualization.PARTICLE_DECAY_RANGE;
       particle.intensity = (0.35 + amplitude * 0.65) * (0.6 + Math.random() * 0.4);
       particle.hue = Math.round(hue) % 360;
-      // Random mix of shapes and render styles
-      particle.square = Math.random() < 0.5;
+      // Circles only. Squares read as debris rather than as radiation, and the
+      // corners gave away that the emission is drawn rather than emitted.
       particle.filled = Math.random() < 0.5;
     }
   }
@@ -340,25 +338,15 @@ export class HawkingVisualization extends Canvas2DVisualization {
       const color: string = `hsla(${particle.hue}, 100%, ${HawkingVisualization.PARTICLE_LIGHTNESS}%, ${alpha})`;
       const size: number = particle.size;
 
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, size, 0, Math.PI * 2);
       if (particle.filled) {
         ctx.fillStyle = color;
-        if (particle.square) {
-          ctx.fillRect(particle.x - size, particle.y - size, size * 2, size * 2);
-        } else {
-          ctx.beginPath();
-          ctx.arc(particle.x, particle.y, size, 0, Math.PI * 2);
-          ctx.fill();
-        }
+        ctx.fill();
       } else {
         ctx.strokeStyle = color;
         ctx.lineWidth = Math.max(1, size * HawkingVisualization.PARTICLE_OUTLINE_FRACTION);
-        if (particle.square) {
-          ctx.strokeRect(particle.x - size, particle.y - size, size * 2, size * 2);
-        } else {
-          ctx.beginPath();
-          ctx.arc(particle.x, particle.y, size, 0, Math.PI * 2);
-          ctx.stroke();
-        }
+        ctx.stroke();
       }
     }
   }
