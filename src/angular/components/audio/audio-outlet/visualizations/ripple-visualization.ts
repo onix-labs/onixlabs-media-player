@@ -42,7 +42,7 @@ const RIPPLE_CATEGORY: string = 'Nostalgia';
 const RIPPLE_STOPS: readonly string[] = ['041028', '0E5A9E', '3FB8E8', 'BFF0FF', 'FFFFFF'];
 
 /** Angular rate, in radians per frame. The slowest turn in the suite. */
-const RATE_RIPPLE: number = -0.005;
+const RATE_RIPPLE: number = -0.015;
 
 /** Nominal surface height, matching the engine's own internal surface. */
 const NOMINAL_HEIGHT: number = 256;
@@ -61,7 +61,7 @@ const RADIAL_HEIGHT_BAND: number = 0.1;
 const RIPPLE_FLARE: number = 0.25;
 
 /** How much each pixel takes from its neighbours per step: the smoke. */
-const RIPPLE_DIFFUSE: number = 0.4;
+const RIPPLE_DIFFUSE: number = 0.5;
 
 /**
  * How far those neighbours sit, in pixels.
@@ -73,13 +73,13 @@ const RIPPLE_DIFFUSE: number = 0.4;
 const RIPPLE_DIFFUSE_REACH: number = 1;
 
 /** Ripple takes a bass hit as a cue to pulse. */
-const RIPPLE_PULSES: boolean = true;
+const RIPPLE_PULSES: boolean = false;
 
 /** Drawn before the warp, so the trace is folded outward with the surface. */
-const RIPPLE_PRE: readonly string[] = ['CircleWaveform 1 1 0.5 0'];
+const RIPPLE_PRE: readonly string[] = ['CircleWaveform 0 0 0.5 0'];
 
 /** Drawn after the warp: a soft glowing band about the waveform, not a stroke. */
-const RIPPLE_POST: readonly string[] = ['Trace 1 0 0 0'];
+const RIPPLE_POST: readonly string[] = ['Trace 0.3 0 0 0'];
 
 /** The spec the engine runs. */
 const RIPPLE_SPEC: FeedbackSpec = {
