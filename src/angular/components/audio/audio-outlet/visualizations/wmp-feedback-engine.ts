@@ -1352,7 +1352,8 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
    * Draws the radial waveform as a ring about the centre.
    *
    * dbl3 is the resting radius as a fraction of the shorter half-axis, matching
-   * what the presets pass.
+   * what the presets pass. dbl4 scales the brightness, so the same ring can be
+   * drawn bright on the foreground and faint into the surface.
    *
    * @param args - The stage's dbl1..dbl4
    */
@@ -1362,6 +1363,8 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
 
     const unit: number = Math.min(this.surfaceWidth, this.surfaceHeight) * 0.5;
     const fraction: number = args[2] && args[2] > 0 ? args[2] : CIRCLE_FALLBACK_RADIUS;
+    const base: number = this.snapToBand(unit * fraction);
+    const gain: number = args[3] && args[3] > 0 ? args[3] : 1;
 
     gl.useProgram(this.radialProgram);
     this.bindQuad(this.radialProgram);
@@ -1369,15 +1372,46 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.bindTexture(gl.TEXTURE_2D, this.waveTexture);
     gl.uniform1i(this.radialUniforms['uWaveform'], 0);
     gl.uniform2f(this.radialUniforms['uSize'], this.surfaceWidth, this.surfaceHeight);
-    gl.uniform1f(this.radialUniforms['uBase'], unit * fraction);
+    gl.uniform1f(this.radialUniforms['uBase'], base);
     gl.uniform1f(
       this.radialUniforms['uSwing'],
       unit * CIRCLE_SWING * this.sensitivityFactor
     );
-    gl.uniform1f(this.radialUniforms['uGain'], RING_GAIN);
+    gl.uniform1f(this.radialUniforms['uGain'], RING_GAIN * gain);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     gl.useProgram(this.generatorProgram);
+  }
+
+  /**
+   * Moves a radius onto the nearest band edge of a banded warp.
+   *
+   * The ripple folds the radius into bands and brings content outward at a rate
+   * that falls to zero at each edge, so an edge is where content collects and a
+   * ring appears. Drawn between two of them the waveform sits in the gap,
+   * looking like it belongs to neither.
+   *
+   * Solving r = n * band(r) with band widening as band * (1 + flare * r / maxR)
+   * gives r = n * band / (1 - n * band * flare / maxR). The edges are not evenly
+   * spaced once the flare is on, and they move with the aspect ratio, so this is
+   * worked out rather than written down.
+   *
+   * @param radius - Where the generator would otherwise sit, in pixels
+   * @returns The nearest band edge, or the radius unchanged for other warps
+   */
+  private snapToBand(radius: number): number {
+    if (this.spec.warp !== 'AmbienceRipple') return radius;
+
+    const band: number = this.spec.warpArgs[1] ?? 0;
+    if (band <= 0) return radius;
+
+    const flare: number = this.spec.warpArgs[2] ?? 0;
+    const maxR: number = Math.hypot(this.surfaceWidth, this.surfaceHeight) * 0.5;
+    const index: number = Math.max(1, Math.round(radius / band));
+    const denominator: number = 1 - (index * band * flare) / maxR;
+    if (denominator <= 0) return radius;
+
+    return (index * band) / denominator;
   }
 
   /**

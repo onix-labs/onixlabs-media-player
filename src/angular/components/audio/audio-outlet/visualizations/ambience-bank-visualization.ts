@@ -112,6 +112,9 @@ interface AmbiencePreset {
    */
   readonly mode: number;
 
+  /** Generators drawn before the warp, overriding the mode's default. */
+  readonly pre?: readonly string[];
+
   /** Generators drawn after the warp, overriding the mode's default. */
   readonly post?: readonly string[];
 
@@ -263,11 +266,13 @@ const AMBIENCE_PRESETS: readonly AmbiencePreset[] = [
     // The horizontal trace, drawn the way Warp draws its own: a soft glowing
     // band about the waveform rather than a stroke along it.
     post: ['Trace 1 0 0 0'],
-    // The ring goes on the foreground so it reads as one line. On the warped
-    // surface every step left another copy behind it, and with the decay as slow
-    // as it is those copies were still bright enough to look like rings of their
-    // own several steps later.
-    foreground: ['CircleWaveform 1 1 0.5 0'],
+    // The ring is drawn twice. Bright on the foreground, which keeps nothing, so
+    // it reads as one line; and faintly into the warped surface, so it still
+    // feeds the bands and disperses outward. On the foreground alone it was a
+    // clean line that drove nothing; on the surface alone it left a bright copy
+    // behind every step and read as several rings.
+    pre: ['CircleWaveform 1 1 0.5 0.3'],
+    foreground: ['CircleWaveform 1 1 0.5 1'],
   },
   {
     id: 'ambience-plunge',
@@ -428,7 +433,7 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
     warpArgs: [field.angle, field.radial, field.extra, 0],
     // A preset that puts its content on the foreground wants it there only; the
     // mode's default would otherwise draw the same generator twice.
-    pre: (preset.foreground ? [] : sources).map(
+    pre: (preset.pre ?? (preset.foreground ? [] : sources)).map(
       (entry: string): GeneratorStage => parseGeneratorStage(entry)
     ),
     post: (preset.post ?? OVERLAY_GENERATORS).map(
