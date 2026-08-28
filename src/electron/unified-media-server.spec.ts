@@ -337,6 +337,22 @@ describe('UnifiedMediaServer', () => {
         expect(assetPath === prefix || assetPath.startsWith(`${prefix}/`)).toBe(false);
       }
     });
+
+    // Critical-CSS inlining defers the real stylesheet with
+    // `<link media="print" onload="this.media='all'">`. That onload is an inline
+    // event handler, which the packaged build's `script-src 'self'` blocks, so
+    // the link stays on the print media type and the stylesheet - every
+    // @font-face and icon rule in it - never applies to the screen. Inlining
+    // buys nothing here anyway: the bundle is served from localhost.
+    it('does not defer the stylesheet behind an inline event handler', () => {
+      const angularConfig: {projects: Record<string, {architect: {build: {configurations: {production: {optimization?: {styles?: {inlineCritical?: boolean}}}}}}}>} =
+        JSON.parse(fs.readFileSync(path.join(process.cwd(), 'angular.json'), 'utf-8'));
+      const optimization: {styles?: {inlineCritical?: boolean}} | undefined =
+        angularConfig.projects['onixlabs-media-player'].architect.build.configurations.production.optimization;
+
+      // Angular's default is true, which emits the onload attribute.
+      expect(optimization?.styles?.inlineCritical).toBe(false);
+    });
   });
 
   // ==========================================================================

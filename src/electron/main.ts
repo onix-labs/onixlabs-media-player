@@ -478,6 +478,11 @@ class Program {
    * `img-src` allows https because Open URL renders remote thumbnails, and
    * `style-src` allows inline styles because Angular injects component styles
    * as inline <style> elements.
+   *
+   * `script-src 'self'` admits no inline handler, which the build has to
+   * respect: critical-CSS inlining is off in angular.json precisely because it
+   * defers the stylesheet with `onload="this.media='all'"`, and a blocked
+   * onload leaves that stylesheet on the print media type forever.
    */
   private registerContentSecurityPolicy(): void {
     if (!app.isPackaged) {
