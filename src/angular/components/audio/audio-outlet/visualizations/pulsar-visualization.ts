@@ -187,18 +187,31 @@ export class PulsarVisualization extends Canvas2DVisualization {
   /** Number of points sampled across each mirrored waveform half. */
   private static readonly WAVEFORM_SAMPLES: number = 32;
 
+  /**
+   * How far an arm reaches outward, as a multiple of the half-width.
+   *
+   * The sweep runs from its far outer end in to the centre, so this only moves
+   * the outer end: at one the arm starts level with the side of the frame, and
+   * above that it starts beyond it and its outer end crops, the way the outer
+   * ends already crop under {@link CONTENT_SCALE}. The inner end stays on
+   * `minArcRadius` either way, which is what keeps the arms meeting the centre
+   * circle where they always did.
+   */
+  private static readonly WAVEFORM_LENGTH_SCALE: number = 2;
+
   /** Number of points around the pulsating center circle. */
   private static readonly CENTER_CIRCLE_POINTS: number = 128;
 
   /**
    * Uniform scale applied to everything drawn, as a zoom.
    *
-   * Applied to the arc radius rather than to halfWidth, which doubles as the
-   * sweep length and the outermost radius: scaling that would run the sweep
-   * past the centre, collapsing the inner half of each waveform onto the
-   * minimum radius instead of enlarging it. Scaling the radius, the centre
-   * circle and the amplitudes together is a true zoom, and the outer ends of
-   * the waveforms crop at the sides as they should.
+   * Applied to the arc radius, along with the centre circle and the
+   * amplitudes, which together make a true zoom; the outer ends of the
+   * waveforms crop at the sides as they should.
+   *
+   * It is not the knob for how far the arms reach - that is
+   * {@link WAVEFORM_LENGTH_SCALE}, which moves their outer end without
+   * touching the size of anything else.
    */
   private static readonly CONTENT_SCALE: number = 0.75;
 
@@ -574,18 +587,23 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const bendStrength: number = 1.2;
     const numSamples: number = PulsarVisualization.WAVEFORM_SAMPLES;
 
+    // How far out an arm begins. Both halves sweep from here in to the centre,
+    // so `t` reads directly as a distance from it and no x coordinate is needed
+    // in between - which is just as well, since past a scale of one that x
+    // would sit outside the frame.
+    const sweep: number = halfWidth * PulsarVisualization.WAVEFORM_LENGTH_SCALE;
+
     // Calculate downsampling step
     const sampleStep: number = (dataLength * 0.5) / numSamples;
 
-    // Left half points (from left edge to center) - reuse pre-allocated array
+    // Left half points (from the outer end in to center) - reuse pre-allocated array
     for (let i: number = 0; i < numSamples; i++) {
       const dataIndex: number = (i * sampleStep) | 0;
       const sample: number = ((dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
       const amplitude: number = sample * amplitudeScale;
       const t: number = i / (numSamples - 1);
-      const baseX: number = t * halfWidth;
 
-      const distFromCenter: number = centerX - baseX;
+      const distFromCenter: number = sweep * (1 - t);
       const arcRadius: number =
         (distFromCenter > minArcRadius ? distFromCenter : minArcRadius)
         * PulsarVisualization.CONTENT_SCALE;
@@ -603,9 +621,8 @@ export class PulsarVisualization extends Canvas2DVisualization {
       const sample: number = ((dataArray[dataIndex] - 128) / 128) * sensitivityFactor;
       const amplitude: number = sample * amplitudeScale;
       const t: number = srcIdx / (numSamples - 1);
-      const baseX: number = this.width - t * halfWidth;
 
-      const distFromCenter: number = baseX - centerX;
+      const distFromCenter: number = sweep * (1 - t);
       const arcRadius: number =
         (distFromCenter > minArcRadius ? distFromCenter : minArcRadius)
         * PulsarVisualization.CONTENT_SCALE;
