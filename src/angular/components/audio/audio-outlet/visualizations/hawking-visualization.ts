@@ -8,7 +8,8 @@
  * The circles counter-rotate slowly, and their trails zoom outward like
  * sparks shedding from the ring.
  *
- * Colouring: both circles use a vertical gradient — vibrant at the bottom
+ * Colouring: both circles use a gradient that turns slowly, red one way and
+ * blue the other, so the vivid end walks round the shape — vibrant at one end
  * of the screen, fading out toward the top. The two hues start at red and
  * blue and cycle slowly through the palette (as in Reactor), keeping their
  * separation; particles keep the hue they were born with. Overlapping
@@ -65,6 +66,13 @@ export class HawkingVisualization extends Canvas2DVisualization {
 
   /** How many times the waveform data repeats around each circle. */
   private static readonly DATA_REPEATS: number = 2;
+
+  /**
+   * Radians the colour gradient turns per frame, red one way and blue the
+   * other. A fraction of the geometry's rate: the colour is meant to drift
+   * across the shape rather than travel with it.
+   */
+  private static readonly COLOR_ROTATION_SPEED: number = 0.003;
 
   /** Radians the red circle rotates per frame (blue rotates opposite). */
   private static readonly ROTATION_SPEED: number = 0.012;
@@ -175,6 +183,9 @@ export class HawkingVisualization extends Canvas2DVisualization {
   private screenCenterY: number = 0;
   private baseRadius: number = 0;
 
+  /** Current angle of the red gradient (blue is its negation). */
+  private colorAngle: number = 0;
+
   /** Current rotation angle of the red circle (blue is its negation). */
   private rotationAngle: number = 0;
 
@@ -217,6 +228,7 @@ export class HawkingVisualization extends Canvas2DVisualization {
 
     // Counter-rotate the circles
     this.rotationAngle += HawkingVisualization.ROTATION_SPEED;
+    this.colorAngle += HawkingVisualization.COLOR_ROTATION_SPEED;
 
     // Cycle both hues through the palette (they keep their 220° separation)
     this.hue1 = (this.hue1 + HawkingVisualization.HUE_CYCLE_SPEED) % 360;
@@ -414,30 +426,47 @@ export class HawkingVisualization extends Canvas2DVisualization {
     const intHue1: number = Math.round(this.hue1) % 360;
     if (intHue1 !== this.cachedStyleHue1) {
       this.cachedStyleHue1 = intHue1;
-      this.gradient1 = this.buildVerticalGradient(intHue1);
       this.glow1 = `hsla(${intHue1}, 100%, ${HawkingVisualization.GLOW_LIGHTNESS}%, 1)`;
     }
 
     const intHue2: number = Math.round(this.hue2) % 360;
     if (intHue2 !== this.cachedStyleHue2) {
       this.cachedStyleHue2 = intHue2;
-      this.gradient2 = this.buildVerticalGradient(intHue2);
       this.glow2 = `hsla(${intHue2}, 100%, ${HawkingVisualization.GLOW_LIGHTNESS}%, 1)`;
     }
+
+    // The gradients turn every frame, so unlike the glows they cannot be cached
+    // against the hue. Two per frame is nothing next to what the trails cost.
+    this.gradient1 = this.buildAngledGradient(intHue1, this.colorAngle);
+    this.gradient2 = this.buildAngledGradient(intHue2, -this.colorAngle);
   }
 
   /**
-   * Builds the vertical stroke gradient for a hue: fully vivid at the bottom
-   * of the screen, fading toward the top.
+   * Builds the stroke gradient for a hue along an axis through the centre.
+   *
+   * At an angle of zero the axis runs bottom to top, which is where this
+   * started as a fixed vertical gradient. Turning it walks the vivid end round
+   * the shape instead of pinning it to the bottom of the screen, and the two
+   * circles turn opposite ways so their colour crosses rather than tracks.
+   *
+   * The axis spans the screen diagonal from the centre, so the gradient covers
+   * the corners at every angle rather than running out partway round.
    *
    * @param hue - Integer hue (0-360)
+   * @param angle - Angle of the gradient axis (rad)
    * @returns The gradient, or null if the trail context isn't ready yet
    */
-  private buildVerticalGradient(hue: number): CanvasGradient | null {
+  private buildAngledGradient(hue: number, angle: number): CanvasGradient | null {
     const ctx: CanvasRenderingContext2D | null = this.redTrailCtx ?? this.blueTrailCtx;
     if (!ctx) return null;
 
-    const gradient: CanvasGradient = ctx.createLinearGradient(0, this.height, 0, 0);
+    const reach: number = Math.hypot(this.width, this.height) * 0.5;
+    const dx: number = Math.sin(angle) * reach;
+    const dy: number = -Math.cos(angle) * reach;
+    const gradient: CanvasGradient = ctx.createLinearGradient(
+      this.screenCenterX - dx, this.screenCenterY - dy,
+      this.screenCenterX + dx, this.screenCenterY + dy
+    );
     gradient.addColorStop(0, `hsla(${hue}, 100%, ${HawkingVisualization.GRADIENT_LIGHTNESS_BOTTOM}%, 1)`);
     gradient.addColorStop(1, `hsla(${hue}, 100%, ${HawkingVisualization.GRADIENT_LIGHTNESS_TOP}%, ${HawkingVisualization.GRADIENT_TOP_ALPHA})`);
     return gradient;
