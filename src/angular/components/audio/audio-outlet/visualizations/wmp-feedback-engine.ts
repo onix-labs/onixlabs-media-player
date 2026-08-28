@@ -382,7 +382,6 @@ precision mediump float;
 const float BACKGROUND_SPAN = 32.0;
 
 uniform sampler2D uSurface;
-uniform sampler2D uForeground;
 uniform sampler2D uPalette;
 uniform float uAlpha;
 uniform float uPaletteShift;
@@ -391,13 +390,7 @@ uniform float uBackground;
 varying vec2 vUv;
 
 void main() {
-  /*
-   * The foreground is cleared and redrawn every step, so what is on it is only
-   * ever what was drawn this step - no trail, no copies. Taken as a maximum
-   * against the surface so it reads at the brightness it was drawn at rather
-   * than adding to whatever it happens to be crossing.
-   */
-  float index = max(texture2D(uSurface, vUv).r, texture2D(uForeground, vUv).r);
+  float index = texture2D(uSurface, vUv).r;
   /*
    * Rotate entries 1..255 and leave 0 pinned as the background.
    *
@@ -843,16 +836,6 @@ export interface FeedbackSpec {
   readonly diffuse: number;
 
   /**
-   * Generators drawn onto the foreground, which is cleared every step.
-   *
-   * Anything here appears exactly once, as drawn. A generator on the warped
-   * surface cannot: the surface keeps what it drew last step and the warp moves
-   * it along, so every step leaves another copy and the mark reads as several
-   * nested ones fading outward. The foreground has no memory to leave them in.
-   */
-  readonly foreground: readonly GeneratorStage[];
-
-  /**
    * Whether a loud bass hit can fire a pulse.
    *
    * A pulse sweeps the palette through one full rotation, which sends a dark
@@ -962,10 +945,6 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   /** The trace pass, and the 1D waveform texture it reads. */
   private traceProgram: WebGLProgram | null = null;
   private readonly traceUniforms: Record<string, WebGLUniformLocation | null> = {};
-
-  /** The foreground layer, cleared and redrawn each step. */
-  private foregroundTexture: WebGLTexture | null = null;
-  private foregroundBuffer: WebGLFramebuffer | null = null;
 
   /** The radial waveform pass. */
   private radialProgram: WebGLProgram | null = null;
@@ -1086,9 +1065,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     for (const key of ['uSurface', 'uSize', 'uParams', 'uDecay', 'uPhase', 'uDiffuse']) {
       this.warpUniforms[key] = gl.getUniformLocation(this.warpProgram, key);
     }
-    for (const key of [
-      'uSurface', 'uForeground', 'uPalette', 'uAlpha', 'uPaletteShift', 'uBackground',
-    ]) {
+    for (const key of ['uSurface', 'uPalette', 'uAlpha', 'uPaletteShift', 'uBackground']) {
       this.presentUniforms[key] = gl.getUniformLocation(this.presentProgram, key);
     }
     for (const key of ['uSize', 'uPointSize']) {
@@ -1207,7 +1184,19 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     this.deleteSurfaces();
 
     for (let i: number = 0; i < this.surfaceTextures.length; i++) {
-      const texture: WebGLTexture | null = this.createSurfaceTexture();
+      const texture: WebGLTexture | null = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(
+        gl.TEXTURE_2D, 0, gl.RGBA, this.surfaceWidth, this.surfaceHeight, 0,
+        gl.RGBA, gl.UNSIGNED_BYTE, null
+      );
+      // Linear sampling is what keeps the warp smooth instead of blocky; the
+      // bounds test in the shader is then the only edge rule that applies.
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
       const buffer: WebGLFramebuffer | null = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, buffer);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
@@ -1218,39 +1207,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.surfaceBuffers[i] = buffer;
     }
 
-    this.foregroundTexture = this.createSurfaceTexture();
-    this.foregroundBuffer = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.foregroundBuffer);
-    gl.framebufferTexture2D(
-      gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.foregroundTexture, 0
-    );
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  }
-
-  /**
-   * Allocates one surface-sized texture with the engine's sampling rules.
-   *
-   * Linear sampling is what keeps the warp smooth instead of blocky; the bounds
-   * test in each shader is then the only edge rule that applies.
-   *
-   * @returns The new texture
-   */
-  private createSurfaceTexture(): WebGLTexture | null {
-    const gl: WebGLRenderingContext = this.gl;
-    const texture: WebGLTexture | null = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(
-      gl.TEXTURE_2D, 0, gl.RGBA, this.surfaceWidth, this.surfaceHeight, 0,
-      gl.RGBA, gl.UNSIGNED_BYTE, null
-    );
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    return texture;
   }
 
   /** Releases the ping-pong attachments. */
@@ -1262,10 +1219,6 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.surfaceTextures[i] = null;
       this.surfaceBuffers[i] = null;
     }
-    if (this.foregroundTexture) gl.deleteTexture(this.foregroundTexture);
-    if (this.foregroundBuffer) gl.deleteFramebuffer(this.foregroundBuffer);
-    this.foregroundTexture = null;
-    this.foregroundBuffer = null;
   }
 
   // ==========================================================================
@@ -1296,7 +1249,6 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
       this.runGenerators(this.spec.pre);
       this.runWarp();
       this.runGenerators(this.spec.post);
-      this.stepForeground();
       this.updatePulse();
     }
     this.present();
@@ -1352,8 +1304,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
    * Draws the radial waveform as a ring about the centre.
    *
    * dbl3 is the resting radius as a fraction of the shorter half-axis, matching
-   * what the presets pass. dbl4 scales the brightness, so the same ring can be
-   * drawn bright on the foreground and faint into the surface.
+   * what the presets pass.
    *
    * @param args - The stage's dbl1..dbl4
    */
@@ -1363,8 +1314,6 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
 
     const unit: number = Math.min(this.surfaceWidth, this.surfaceHeight) * 0.5;
     const fraction: number = args[2] && args[2] > 0 ? args[2] : CIRCLE_FALLBACK_RADIUS;
-    const base: number = this.snapToBand(unit * fraction);
-    const gain: number = args[3] && args[3] > 0 ? args[3] : 1;
 
     gl.useProgram(this.radialProgram);
     this.bindQuad(this.radialProgram);
@@ -1372,46 +1321,15 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.bindTexture(gl.TEXTURE_2D, this.waveTexture);
     gl.uniform1i(this.radialUniforms['uWaveform'], 0);
     gl.uniform2f(this.radialUniforms['uSize'], this.surfaceWidth, this.surfaceHeight);
-    gl.uniform1f(this.radialUniforms['uBase'], base);
+    gl.uniform1f(this.radialUniforms['uBase'], unit * fraction);
     gl.uniform1f(
       this.radialUniforms['uSwing'],
       unit * CIRCLE_SWING * this.sensitivityFactor
     );
-    gl.uniform1f(this.radialUniforms['uGain'], RING_GAIN * gain);
+    gl.uniform1f(this.radialUniforms['uGain'], RING_GAIN);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     gl.useProgram(this.generatorProgram);
-  }
-
-  /**
-   * Moves a radius onto the nearest band edge of a banded warp.
-   *
-   * The ripple folds the radius into bands and brings content outward at a rate
-   * that falls to zero at each edge, so an edge is where content collects and a
-   * ring appears. Drawn between two of them the waveform sits in the gap,
-   * looking like it belongs to neither.
-   *
-   * Solving r = n * band(r) with band widening as band * (1 + flare * r / maxR)
-   * gives r = n * band / (1 - n * band * flare / maxR). The edges are not evenly
-   * spaced once the flare is on, and they move with the aspect ratio, so this is
-   * worked out rather than written down.
-   *
-   * @param radius - Where the generator would otherwise sit, in pixels
-   * @returns The nearest band edge, or the radius unchanged for other warps
-   */
-  private snapToBand(radius: number): number {
-    if (this.spec.warp !== 'AmbienceRipple') return radius;
-
-    const band: number = this.spec.warpArgs[1] ?? 0;
-    if (band <= 0) return radius;
-
-    const flare: number = this.spec.warpArgs[2] ?? 0;
-    const maxR: number = Math.hypot(this.surfaceWidth, this.surfaceHeight) * 0.5;
-    const index: number = Math.max(1, Math.round(radius / band));
-    const denominator: number = 1 - (index * band * flare) / maxR;
-    if (denominator <= 0) return radius;
-
-    return (index * band) / denominator;
   }
 
   /**
@@ -1495,9 +1413,6 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
     gl.uniform1i(this.presentUniforms['uPalette'], 1);
-    gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, this.foregroundTexture);
-    gl.uniform1i(this.presentUniforms['uForeground'], 2);
     gl.uniform1f(this.presentUniforms['uAlpha'], this.getFadeMultiplier());
     // Idle sits at zero shift and no flash, so the palette is simply itself.
     gl.uniform1f(
@@ -1541,35 +1456,6 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     const gl: WebGLRenderingContext = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.surfaceBuffers[this.front]);
     gl.viewport(0, 0, this.surfaceWidth, this.surfaceHeight);
-    this.drawGeneratorsInto(stages);
-  }
-
-  /**
-   * Wipes the foreground and redraws it.
-   *
-   * The wipe is the whole point: nothing here survives a step, so nothing can
-   * leave a copy behind.
-   */
-  private stepForeground(): void {
-    const gl: WebGLRenderingContext = this.gl;
-    if (!this.foregroundBuffer) return;
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.foregroundBuffer);
-    gl.viewport(0, 0, this.surfaceWidth, this.surfaceHeight);
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    this.drawGeneratorsInto(this.spec.foreground);
-  }
-
-  /**
-   * Draws a stage list into whichever framebuffer is currently bound.
-   *
-   * @param stages - The generators to draw
-   */
-  private drawGeneratorsInto(stages: readonly GeneratorStage[]): void {
-    if (stages.length === 0) return;
-
-    const gl: WebGLRenderingContext = this.gl;
     gl.enable(gl.BLEND);
     // The engine wrote generator output straight over the surface additively,
     // letting indices pile up where strokes cross.

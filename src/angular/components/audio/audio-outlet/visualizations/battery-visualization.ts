@@ -53,7 +53,6 @@ function toSpec(preset: BatteryPreset): FeedbackSpec {
     post: preset.post.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
     palette: parsePalette(preset.palette),
     diffuse: 0,
-    foreground: [],
     pulses: BATTERY_PULSES,
   };
 }

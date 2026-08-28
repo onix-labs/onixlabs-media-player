@@ -112,19 +112,8 @@ interface AmbiencePreset {
    */
   readonly mode: number;
 
-  /** Generators drawn before the warp, overriding the mode's default. */
-  readonly pre?: readonly string[];
-
   /** Generators drawn after the warp, overriding the mode's default. */
   readonly post?: readonly string[];
-
-  /**
-   * Generators drawn on the foreground, which keeps nothing between steps.
-   *
-   * Setting this takes the preset's content off the warped surface entirely, so
-   * it appears once as drawn rather than leaving a copy behind every step.
-   */
-  readonly foreground?: readonly string[];
 }
 
 /** Angular rate shared by the spiral and the flow presets. */
@@ -266,13 +255,6 @@ const AMBIENCE_PRESETS: readonly AmbiencePreset[] = [
     // The horizontal trace, drawn the way Warp draws its own: a soft glowing
     // band about the waveform rather than a stroke along it.
     post: ['Trace 1 0 0 0'],
-    // The ring is drawn twice. Bright on the foreground, which keeps nothing, so
-    // it reads as one line; and faintly into the warped surface, so it still
-    // feeds the bands and disperses outward. On the foreground alone it was a
-    // clean line that drove nothing; on the surface alone it left a bright copy
-    // behind every step and read as several rings.
-    pre: ['CircleWaveform 1 1 0.5 0.3'],
-    foreground: ['CircleWaveform 1 1 0.5 1'],
   },
   {
     id: 'ambience-plunge',
@@ -431,19 +413,12 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
     category: AMBIENCE_CATEGORY,
     warp: field.warp,
     warpArgs: [field.angle, field.radial, field.extra, 0],
-    // A preset that puts its content on the foreground wants it there only; the
-    // mode's default would otherwise draw the same generator twice.
-    pre: (preset.pre ?? (preset.foreground ? [] : sources)).map(
-      (entry: string): GeneratorStage => parseGeneratorStage(entry)
-    ),
+    pre: sources.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
     post: (preset.post ?? OVERLAY_GENERATORS).map(
       (entry: string): GeneratorStage => parseGeneratorStage(entry)
     ),
     palette: parsePalette(paletteFor(preset.styles)),
     diffuse: AMBIENCE_DIFFUSE,
-    foreground: (preset.foreground ?? []).map(
-      (entry: string): GeneratorStage => parseGeneratorStage(entry)
-    ),
     pulses: AMBIENCE_PULSES,
   };
 }
