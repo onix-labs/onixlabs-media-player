@@ -62,6 +62,26 @@ export class HawkingVisualization extends Canvas2DVisualization {
   /** Base glow blur radius in pixels. */
   private static readonly BASE_GLOW_BLUR: number = 12;
 
+  /**
+   * Glow blur on the pass that lights the roots of the bars.
+   *
+   * Well above the blur the bars themselves carry: this pass is the bloom, and
+   * it wants to read as light coming off the orb rather than as a thicker bar.
+   */
+  private static readonly ROOT_GLOW_BLUR: number = 34;
+
+  /** How much wider the root pass strokes than the bars it sits under. */
+  private static readonly ROOT_GLOW_WIDTH_SCALE: number = 2.4;
+
+  /** Lightness of the root glow. Above the bars', so the base burns out. */
+  private static readonly ROOT_GLOW_LIGHTNESS: number = 66;
+
+  /** Where along a bar the root glow is half gone. */
+  private static readonly ROOT_GLOW_MIDPOINT: number = 0.3;
+
+  /** Opacity of the root glow at that midpoint. */
+  private static readonly ROOT_GLOW_MID_ALPHA: number = 0.35;
+
   /** Number of spikes around each circle. */
   private static readonly SPIKE_COUNT: number = 128;
 
@@ -181,6 +201,10 @@ export class HawkingVisualization extends Canvas2DVisualization {
   private cachedStyleHue2: number = -1;
 
   /** Cached vertical gradients (rebuilt on hue change or resize). */
+  /** Radial gradients lighting the roots of each circle's bars. */
+  private rootGradient1: CanvasGradient | null = null;
+  private rootGradient2: CanvasGradient | null = null;
+
   private gradient1: CanvasGradient | null = null;
   private gradient2: CanvasGradient | null = null;
 
@@ -451,6 +475,40 @@ export class HawkingVisualization extends Canvas2DVisualization {
     // against the hue. Two per frame is nothing next to what the trails cost.
     this.gradient1 = this.buildAngledGradient(intHue1, this.colorAngle);
     this.gradient2 = this.buildAngledGradient(intHue2, -this.colorAngle);
+    this.rootGradient1 = this.buildRootGradient(intHue1);
+    this.rootGradient2 = this.buildRootGradient(intHue2);
+  }
+
+  /**
+   * Builds the radial gradient that lights the roots of the bars.
+   *
+   * Runs from the base ring outward across the longest a bar can be: opaque
+   * where a bar meets the orb, mostly gone a third of the way up, transparent
+   * by the tip. Because it is centred on the orb rather than on any one bar,
+   * one gradient does every bar at once, and each is lit at its own base
+   * regardless of which way it points.
+   *
+   * @param hue - Integer hue (0-360)
+   * @returns The gradient, or null if the trail context isn't ready yet
+   */
+  private buildRootGradient(hue: number): CanvasGradient | null {
+    const ctx: CanvasRenderingContext2D | null = this.redTrailCtx ?? this.blueTrailCtx;
+    if (!ctx) return null;
+
+    const reach: number = this.baseRadius
+      + this.baseRadius * HawkingVisualization.SPIKE_LENGTH_FRACTION;
+    const gradient: CanvasGradient = ctx.createRadialGradient(
+      this.screenCenterX, this.screenCenterY, this.baseRadius,
+      this.screenCenterX, this.screenCenterY, reach
+    );
+    const lightness: number = HawkingVisualization.ROOT_GLOW_LIGHTNESS;
+    gradient.addColorStop(0, `hsla(${hue}, 100%, ${lightness}%, 1)`);
+    gradient.addColorStop(
+      HawkingVisualization.ROOT_GLOW_MIDPOINT,
+      `hsla(${hue}, 100%, ${lightness}%, ${HawkingVisualization.ROOT_GLOW_MID_ALPHA})`
+    );
+    gradient.addColorStop(1, `hsla(${hue}, 100%, ${lightness}%, 0)`);
+    return gradient;
   }
 
   /**
@@ -497,7 +555,8 @@ export class HawkingVisualization extends Canvas2DVisualization {
    * @param dataOffset - Spike-index offset into the data mapping (varies the
    *   pattern between the two circles)
    * @param spikeScale - Maximum spike length in pixels
-   * @param gradient - Stroke gradient (vibrant bottom, faded top)
+   * @param gradient - Stroke gradient for the bars, turning with the colour angle
+   * @param rootGradient - Radial gradient lighting the bars where they meet the orb
    * @param glowColor - Shadow colour for the glow pass
    */
   private drawSpikeCircle(
