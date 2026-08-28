@@ -13,7 +13,7 @@
  * - waveform: Oscilloscope-style waveform with LCD ghosting effect
  * - tunnel: Hypnotic tunnel/vortex effect
  * - neon: Glowing neon ring visualization
- * - pulsar: Pulsing concentric rings with curved waveforms (signature category)
+ * - pulsar: Pulsing concentric rings with curved waveforms (nostalgia category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
  * - hallucia: Hallucia - spectral differential rotation field winding bands into spirals (signature category)
@@ -21,7 +21,8 @@
  * - ambience-vortex .. ambience-whirl: Ambience - one per drawing preset in the
  *   Windows Media Player Ambience bank
  * - ambience-zoom, ambience-stretch: Twirl and Warp, the two feedback warps kept
- *   from the earlier pass over wmp.dll; unrelated to the Ambience bank above
+ *   from the earlier pass over wmp.dll; unrelated to the Ambience bank above.
+ *   Filed under Nostalgia with ambience-ripple, which the bank contributes
  *
  * @module app/components/audio/audio-outlet/visualizations
  */
@@ -119,16 +120,16 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   waveform: {name: 'Classic', category: 'Bars & Waves'},
   tunnel: {name: 'Plasma', category: 'Bars & Waves'},
   neon: {name: 'Neon', category: 'Bars & Waves'},
-  pulsar: {name: 'Pulsar', category: 'Signature'},
+  pulsar: {name: 'Pulsar', category: 'Nostalgia'},
   water: {name: 'Reactor', category: 'Signature'},
   infinity: {name: 'Infinity', category: 'Bars & Waves'},
-  onix: {name: 'Onix', category: 'Signature'},
+  onix: {name: 'Onix', category: 'Bars & Waves'},
   modern: {name: 'Modern', category: 'Bars & Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
   hallucia: {name: 'Hallucia', category: 'Signature'},
   hawking: {name: 'Hawking', category: 'Bars & Waves'},
-  'ambience-zoom': {name: 'Twirl', category: 'Signature'},
-  'ambience-stretch': {name: 'Warp', category: 'Signature'},
+  'ambience-zoom': {name: 'Twirl', category: 'Nostalgia'},
+  'ambience-stretch': {name: 'Warp', category: 'Nostalgia'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
@@ -161,23 +162,37 @@ export function createVisualization(type: string, config: VisualizationConfig): 
 }
 
 /**
+ * The entries filed under Nostalgia, in the order they are listed.
+ *
+ * Three of them - Twirl, Warp and Pulsar - are their own classes; Ripple is a
+ * preset of the Ambience bank and so arrives inside {@link AMBIENCE_BANK_TYPES}.
+ * Naming them all here keeps the group in one place and lets the Ambience
+ * spread below skip the one that has moved out of it.
+ */
+const NOSTALGIA_TYPES: readonly string[] =
+  ['ambience-zoom', 'ambience-stretch', 'ambience-ripple', 'pulsar'];
+
+/**
  * Array of all available visualization types, sorted by category.
  * Used for cycling through visualizations with next/previous.
  *
  * Categories (in order):
- * - Bars & Waves: bars, waveform, modern, tunnel, infinity, neon, hawking
- * - Signature: water (Reactor), spotlight, hallucia, pulsar, onix, twirl, warp
- * - Ambience: the thirteen drawing presets of the WMP Ambience bank
+ * - Bars & Waves: bars, waveform, modern, tunnel, infinity, neon, hawking, onix
+ * - Signature: water (Reactor), spotlight, hallucia
+ * - Nostalgia: twirl, warp, ripple, pulsar
+ * - Ambience: the remaining twelve drawing presets of the WMP Ambience bank
  * - Battery: the twenty-five presets of the WMP Battery bank
  * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars & Waves
-  'bars', 'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'hawking',
+  'bars', 'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'hawking', 'onix',
   // Signature
-  'water', 'spotlight', 'hallucia', 'pulsar', 'onix', 'ambience-zoom', 'ambience-stretch',
-  // Ambience
-  ...AMBIENCE_BANK_TYPES,
+  'water', 'spotlight', 'hallucia',
+  // Nostalgia
+  ...NOSTALGIA_TYPES,
+  // Ambience, less the preset that now sits in Nostalgia
+  ...AMBIENCE_BANK_TYPES.filter((type: string): boolean => !NOSTALGIA_TYPES.includes(type)),
   // Battery
   ...BATTERY_TYPES,
   // Simple

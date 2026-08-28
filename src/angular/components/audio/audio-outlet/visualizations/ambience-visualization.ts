@@ -1132,7 +1132,7 @@ export class AmbienceTwirlVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Twirl',
-      category: 'Signature',
+      category: 'Nostalgia',
       shift: ShiftMode.Zoom,
       decay: DECAY_MID,
       startHue: 300,
@@ -1155,7 +1155,7 @@ export class AmbienceWarpVisualization extends AmbienceVisualization {
   public constructor(config: VisualizationConfig) {
     super(config, {
       name: 'Warp',
-      category: 'Signature',
+      category: 'Nostalgia',
       shift: ShiftMode.Stretch,
       decay: DECAY_MID,
       startHue: 260,

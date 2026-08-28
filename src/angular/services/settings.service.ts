@@ -32,7 +32,7 @@ import {VIDEO_ADJUSTMENT_PRESETS, VIDEO_ADJ_CUSTOM_PRESET, NEUTRAL_VIDEO_ADJUSTM
  * - waveform: Oscilloscope-style waveform
  * - tunnel: Dual red/blue waveforms with zoom
  * - neon: Rotating cyan/magenta waveforms
- * - pulsar: Pulsing concentric rings with curved waveforms (signature category)
+ * - pulsar: Pulsing concentric rings with curved waveforms (nostalgia category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Concentric tower wrapped in counter-spinning rings (signature category)
  * - infinity: Dual orbiting circles with spectrum cycling
@@ -132,7 +132,7 @@ export type LocalSettingKey = keyof VisualizationLocalSettings;
 export interface VisualizationMetadata {
   readonly id: string;
   readonly name: string;
-  readonly category: 'Bars & Waves' | 'Signature' | 'Ambience' | 'Battery' | 'Simple';
+  readonly category: 'Bars & Waves' | 'Signature' | 'Nostalgia' | 'Ambience' | 'Battery' | 'Simple';
   readonly applicableSettings: readonly LocalSettingKey[];
 }
 
@@ -441,21 +441,22 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   {id: 'tunnel', name: 'Plasma', category: 'Bars & Waves', applicableSettings: []},
   {id: 'neon', name: 'Neon', category: 'Bars & Waves', applicableSettings: []},
   {id: 'hawking', name: 'Hawking', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'onix', name: 'Onix', category: 'Bars & Waves', applicableSettings: []},
   // Signature category
   {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
   {id: 'hallucia', name: 'Hallucia', category: 'Signature', applicableSettings: []},
-  {id: 'pulsar', name: 'Pulsar', category: 'Signature', applicableSettings: []},
-  {id: 'onix', name: 'Onix', category: 'Signature', applicableSettings: []},
-  {id: 'ambience-zoom', name: 'Twirl', category: 'Signature', applicableSettings: []},
-  {id: 'ambience-stretch', name: 'Warp', category: 'Signature', applicableSettings: []},
   {id: 'infinity', name: 'Infinity', category: 'Bars & Waves', applicableSettings: []},
+  // Nostalgia category
+  {id: 'ambience-zoom', name: 'Twirl', category: 'Nostalgia', applicableSettings: []},
+  {id: 'ambience-stretch', name: 'Warp', category: 'Nostalgia', applicableSettings: []},
+  {id: 'ambience-ripple', name: 'Ripple', category: 'Nostalgia', applicableSettings: []},
+  {id: 'pulsar', name: 'Pulsar', category: 'Nostalgia', applicableSettings: []},
   // Ambience category
   {id: 'ambience-vortex', name: 'Vortex', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-undertow', name: 'Undertow', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-counterspin', name: 'Counterspin', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-shear', name: 'Shear', category: 'Ambience', applicableSettings: []},
-  {id: 'ambience-ripple', name: 'Ripple', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-plunge', name: 'Plunge', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-breath', name: 'Breath', category: 'Ambience', applicableSettings: []},
   {id: 'ambience-slipstream', name: 'Slipstream', category: 'Ambience', applicableSettings: []},
@@ -577,20 +578,21 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   {value: 'infinity', label: 'Bars & Waves : Infinity', description: 'Dual orbiting circles with spectrum cycling'},
   {value: 'neon', label: 'Bars & Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
   {value: 'hawking', label: 'Bars & Waves : Hawking', description: 'Spiked circular waveforms emitting particles outward'},
+  {value: 'onix', label: 'Bars & Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
   // Signature category
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
   {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'hallucia', label: 'Signature : Hallucia', description: 'Spectral differential rotation winding bands into spiral filaments'},
-  {value: 'pulsar', label: 'Signature : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
-  {value: 'onix', label: 'Signature : Onix', description: 'ONIXLabs logo with pulsating rings'},
-  {value: 'ambience-zoom', label: 'Signature : Twirl', description: 'Rotating zoom about the centre'},
-  {value: 'ambience-stretch', label: 'Signature : Warp', description: 'Cubic radial distortion'},
+  // Nostalgia category
+  {value: 'ambience-zoom', label: 'Nostalgia : Twirl', description: 'Rotating zoom about the centre'},
+  {value: 'ambience-stretch', label: 'Nostalgia : Warp', description: 'Cubic radial distortion'},
+  {value: 'ambience-ripple', label: 'Nostalgia : Ripple', description: 'Radius folded into bands, standing as concentric rings'},
+  {value: 'pulsar', label: 'Nostalgia : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
   // Ambience category
   {value: 'ambience-vortex', label: 'Ambience : Vortex', description: 'Steady rotation drawing the surface into the centre'},
   {value: 'ambience-undertow', label: 'Ambience : Undertow', description: 'Counter-rotation with the pull strongest at the rim'},
   {value: 'ambience-counterspin', label: 'Ambience : Counterspin', description: 'Rotating inflow, wound the opposite way at each radius'},
   {value: 'ambience-shear', label: 'Ambience : Shear', description: 'Rotation that grows with the radius, spreading outward'},
-  {value: 'ambience-ripple', label: 'Ambience : Ripple', description: 'Radius folded into bands, standing as concentric rings'},
   {value: 'ambience-plunge', label: 'Ambience : Plunge', description: 'Cubic zoom into the centre with no rotation at all'},
   {value: 'ambience-breath', label: 'Ambience : Breath', description: 'Sixth-order falloff, so only the middle of the frame moves'},
   {value: 'ambience-slipstream', label: 'Ambience : Slipstream', description: 'A slower rotating inflow, graded across the surface'},

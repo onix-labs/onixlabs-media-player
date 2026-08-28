@@ -231,7 +231,7 @@ describe('application-menu', (): void => {
       expect(wavesCategory).toBeDefined();
 
       const wavesItems: Record<string, unknown>[] = getSubmenu(wavesCategory!);
-      const expectedNames: readonly string[] = ['Analyzer', 'Classic', 'Modern', 'Plasma', 'Infinity', 'Neon', 'Hawking'];
+      const expectedNames: readonly string[] = ['Analyzer', 'Classic', 'Modern', 'Plasma', 'Infinity', 'Neon', 'Hawking', 'Onix'];
 
       for (const name of expectedNames) {
         const item: Record<string, unknown> | undefined = findSubmenuItem(wavesItems, name);
@@ -253,7 +253,7 @@ describe('application-menu', (): void => {
       expect(signatureCategory).toBeDefined();
 
       const signatureItems: Record<string, unknown>[] = getSubmenu(signatureCategory!);
-      const expectedNames: readonly string[] = ['Reactor', 'Spotlight', 'Hallucia', 'Pulsar', 'Onix', 'Twirl', 'Warp'];
+      const expectedNames: readonly string[] = ['Reactor', 'Spotlight', 'Hallucia'];
 
       for (const name of expectedNames) {
         const item: Record<string, unknown> | undefined = findSubmenuItem(signatureItems, name);
@@ -261,6 +261,28 @@ describe('application-menu', (): void => {
       }
 
       expect(signatureItems.length).toBe(expectedNames.length);
+    });
+
+    it('Nostalgia category contains the entries moved out of Signature and Ambience', (): void => {
+      const viewMenu: Record<string, unknown> | undefined = findMenu(template, 'View');
+      expect(viewMenu).toBeDefined();
+      const submenu: Record<string, unknown>[] = getSubmenu(viewMenu!);
+      const vizItem: Record<string, unknown> | undefined = findSubmenuItem(submenu, 'Visualizations');
+      expect(vizItem).toBeDefined();
+
+      const vizSubmenu: Record<string, unknown>[] = getSubmenu(vizItem!);
+      const nostalgiaCategory: Record<string, unknown> | undefined = findSubmenuItem(vizSubmenu, 'Nostalgia');
+      expect(nostalgiaCategory).toBeDefined();
+
+      const nostalgiaItems: Record<string, unknown>[] = getSubmenu(nostalgiaCategory!);
+      const expectedNames: readonly string[] = ['Twirl', 'Warp', 'Ripple', 'Pulsar'];
+
+      for (const name of expectedNames) {
+        const item: Record<string, unknown> | undefined = findSubmenuItem(nostalgiaItems, name);
+        expect(item).toBeDefined();
+      }
+
+      expect(nostalgiaItems.length).toBe(expectedNames.length);
     });
 
     it('Playback menu shows Play when not playing', (): void => {

@@ -256,7 +256,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
   ];
 
   public readonly name: string = 'Pulsar';
-  public readonly category: string = 'Signature';
+  public readonly category: string = 'Nostalgia';
 
   /** Frequency buffer for bass transient detection. */
   private frequencyData: Uint8Array<ArrayBuffer>;

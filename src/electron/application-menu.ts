@@ -29,6 +29,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'infinity', name: 'Infinity'},
       {id: 'neon', name: 'Neon'},
       {id: 'hawking', name: 'Hawking'},
+      {id: 'onix', name: 'Onix'},
     ],
   },
   {
@@ -37,10 +38,15 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'water', name: 'Reactor'},
       {id: 'spotlight', name: 'Spotlight'},
       {id: 'hallucia', name: 'Hallucia'},
-      {id: 'pulsar', name: 'Pulsar'},
-      {id: 'onix', name: 'Onix'},
+    ],
+  },
+  {
+    category: 'Nostalgia',
+    items: [
       {id: 'ambience-zoom', name: 'Twirl'},
       {id: 'ambience-stretch', name: 'Warp'},
+      {id: 'ambience-ripple', name: 'Ripple'},
+      {id: 'pulsar', name: 'Pulsar'},
     ],
   },
   {
@@ -50,7 +56,6 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
       {id: 'ambience-undertow', name: 'Undertow'},
       {id: 'ambience-counterspin', name: 'Counterspin'},
       {id: 'ambience-shear', name: 'Shear'},
-      {id: 'ambience-ripple', name: 'Ripple'},
       {id: 'ambience-plunge', name: 'Plunge'},
       {id: 'ambience-breath', name: 'Breath'},
       {id: 'ambience-slipstream', name: 'Slipstream'},

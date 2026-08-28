@@ -38,8 +38,16 @@ import {
   rampPalette,
 } from './wmp-feedback-engine';
 
-/** The category all Ambience presets are filed under. */
+/** The category Ambience presets are filed under unless they say otherwise. */
 const AMBIENCE_CATEGORY: string = 'Ambience';
+
+/**
+ * Where the presets that read as the old player rather than as the bank go.
+ *
+ * Shared with Twirl and Warp in `ambience-visualization.ts`, which are filed
+ * the same way.
+ */
+const NOSTALGIA_CATEGORY: string = 'Nostalgia';
 
 // ============================================================================
 // Palettes
@@ -114,6 +122,16 @@ interface AmbiencePreset {
 
   /** Generators drawn after the warp, overriding the mode's default. */
   readonly post?: readonly string[];
+
+  /**
+   * The category the preset is listed under, overriding
+   * {@link AMBIENCE_CATEGORY}.
+   *
+   * Where the bank came from is not always where an entry belongs in the menu.
+   * A preset that reads as something other than Ambience is filed where it
+   * reads, and stays here beside the rest of the bank it was recovered from.
+   */
+  readonly category?: string;
 }
 
 /** Angular rate shared by the spiral and the flow presets. */
@@ -264,6 +282,7 @@ const AMBIENCE_PRESETS: readonly AmbiencePreset[] = [
     // The horizontal trace, drawn the way Warp draws its own: a soft glowing
     // band about the waveform rather than a stroke along it.
     post: ['Trace 1 0 0 0'],
+    category: NOSTALGIA_CATEGORY,
   },
   {
     id: 'ambience-plunge',
@@ -419,7 +438,7 @@ function toSpec(preset: AmbiencePreset): FeedbackSpec {
 
   return {
     name: preset.name,
-    category: AMBIENCE_CATEGORY,
+    category: preset.category ?? AMBIENCE_CATEGORY,
     warp: field.warp,
     warpArgs: [field.angle, field.radial, field.extra, 0],
     pre: sources.map((entry: string): GeneratorStage => parseGeneratorStage(entry)),
@@ -454,7 +473,7 @@ export const AMBIENCE_BANK_METADATA: readonly {
   readonly category: string;
 }[] = AMBIENCE_PRESETS.map(
   (preset: AmbiencePreset): {id: string; name: string; category: string} =>
-    ({id: preset.id, name: preset.name, category: AMBIENCE_CATEGORY})
+    ({id: preset.id, name: preset.name, category: preset.category ?? AMBIENCE_CATEGORY})
 );
 
 /** One-line descriptions for the settings dropdown. */

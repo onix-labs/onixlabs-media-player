@@ -158,7 +158,7 @@ export class OnixVisualization extends Canvas2DVisualization {
   private static readonly BLOOM_STRENGTH: number = 1;
 
   public readonly name: string = 'Onix';
-  public readonly category: string = 'Signature';
+  public readonly category: string = 'Bars & Waves';
 
   /** Audio data buffers. */
   private dataArray: Uint8Array<ArrayBuffer>;
