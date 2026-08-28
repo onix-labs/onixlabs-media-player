@@ -46,12 +46,7 @@ Thumbs.db
 src/electron/dist/*.js
 .studio/*.user.json
 
-# Reverse-engineering spike reference material - NEVER commit (proprietary Microsoft binaries).
-# Covers the reference DLLs, the Windows Media Player archive and anything extracted from it.
+# Third-party binaries and archives - never commit.
 *.dll
 *.exe
 *.zip
-*.wmz
-mpvis.dll
-Windows Media Player.zip
-Windows Media Player/
