@@ -5,7 +5,8 @@
  * red and one blue, each rendered as radial spikes (rather than a smooth
  * wave) whose lengths follow the audio. The time-domain waveform data is
  * repeated twice around each circle, giving the shapes two-fold symmetry.
- * The circles counter-rotate slowly, and their trails zoom outward like
+ * The circles counter-rotate slowly, and their trails turn with them as they
+ * fade, so the smoke spirals rather than only spreading. Trails zoom outward like
  * sparks shedding from the ring.
  *
  * Colouring: both circles use a gradient that turns slowly, red one way and
@@ -66,6 +67,15 @@ export class HawkingVisualization extends Canvas2DVisualization {
 
   /** How many times the waveform data repeats around each circle. */
   private static readonly DATA_REPEATS: number = 2;
+
+  /**
+   * Radians each trail turns per frame, red one way and blue the other.
+   *
+   * Slower again than the colour: this is the smoke itself turning, and it
+   * accumulates - every frame redraws the trail from its own last state, so the
+   * turn compounds into a spiral rather than settling at an angle.
+   */
+  private static readonly TRAIL_ROTATION_SPEED: number = 0.002;
 
   /**
    * Radians the colour gradient turns per frame, red one way and blue the
@@ -243,7 +253,8 @@ export class HawkingVisualization extends Canvas2DVisualization {
       this.redTrailCanvas!, this.redTrailCtx!,
       this.tempCanvas!, this.tempCtx!,
       this.screenCenterX, this.screenCenterY,
-      HawkingVisualization.FADE_RATE, HawkingVisualization.ZOOM_SCALE
+      HawkingVisualization.FADE_RATE, HawkingVisualization.ZOOM_SCALE,
+      HawkingVisualization.TRAIL_ROTATION_SPEED
     );
     this.drawSpikeCircle(this.redTrailCtx!, this.rotationAngle, 0, spikeScale, this.gradient1!, this.glow1);
 
@@ -252,7 +263,8 @@ export class HawkingVisualization extends Canvas2DVisualization {
       this.blueTrailCanvas!, this.blueTrailCtx!,
       this.tempCanvas!, this.tempCtx!,
       this.screenCenterX, this.screenCenterY,
-      HawkingVisualization.FADE_RATE, HawkingVisualization.ZOOM_SCALE
+      HawkingVisualization.FADE_RATE, HawkingVisualization.ZOOM_SCALE,
+      -HawkingVisualization.TRAIL_ROTATION_SPEED
     );
     this.drawSpikeCircle(this.blueTrailCtx!, -this.rotationAngle, blueDataOffset, spikeScale, this.gradient2!, this.glow2);
 
