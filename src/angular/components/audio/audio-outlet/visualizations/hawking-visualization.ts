@@ -92,19 +92,19 @@ export class HawkingVisualization extends Canvas2DVisualization {
   private static readonly HUE_CYCLE_SPEED: number = 0.5;
 
   /** Gradient lightness (%) at the vivid bottom stop. */
-  private static readonly GRADIENT_LIGHTNESS_BOTTOM: number = 55;
+  private static readonly GRADIENT_LIGHTNESS_BOTTOM: number = 50;
 
   /** Gradient lightness (%) at the faded top stop. */
-  private static readonly GRADIENT_LIGHTNESS_TOP: number = 65;
+  private static readonly GRADIENT_LIGHTNESS_TOP: number = 52;
 
   /** Gradient alpha at the faded top stop. */
-  private static readonly GRADIENT_TOP_ALPHA: number = 0.2;
+  private static readonly GRADIENT_TOP_ALPHA: number = 0.45;
 
   /** Glow colour lightness (%). */
-  private static readonly GLOW_LIGHTNESS: number = 60;
+  private static readonly GLOW_LIGHTNESS: number = 55;
 
   /** Particle colour lightness (%). */
-  private static readonly PARTICLE_LIGHTNESS: number = 62;
+  private static readonly PARTICLE_LIGHTNESS: number = 56;
 
   /** Maximum live particles (shared pool for both circles). */
   private static readonly MAX_PARTICLES: number = 320;
