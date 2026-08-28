@@ -263,16 +263,7 @@ describe('SettingsManager', () => {
     it('should accept all valid visualization types', () => {
       const validTypes: readonly string[] = [
         'bars', 'waveform', 'tunnel', 'neon', 'pulsar', 'water', 'infinity', 'onix', 'modern', 'spotlight', 'hallucia', 'hawking',
-        'ambience-zoom', 'ambience-stretch',
-        'ambience-vortex', 'ambience-undertow', 'ambience-counterspin', 'ambience-shear', 'ambience-ripple',
-        'ambience-plunge', 'ambience-breath', 'ambience-slipstream', 'ambience-rush', 'ambience-petals',
-        'ambience-weave', 'ambience-bloom', 'ambience-whirl', 'battery-cominatya', 'battery-dandelion-aid',
-        'battery-drowning-flower', 'battery-eletri-arnation', 'battery-groove-swirl', 'battery-i-see-the-truth',
-        'battery-geeks-kick-ascii', 'battery-nerds-are-cool', 'battery-spider-s-last-moment', 'battery-illuminator',
-        'battery-kaleidoscope', 'battery-what-is-an-egab', 'battery-tornado', 'battery-gemstone-matrix',
-        'battery-lotus', 'battery-khemical-nova', 'battery-smoke-or-water', 'battery-bright-sphere',
-        'battery-cotton-star', 'battery-sleepy-spray', 'battery-circle-dance', 'battery-event-horizon',
-        'battery-relatively-calm', 'battery-strawberry-aid', 'battery-the-world',
+        'ambience-zoom', 'ambience-stretch', 'ambience-ripple',
         'blank', 'logo',
       ];
 

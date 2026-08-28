@@ -253,7 +253,7 @@ describe('application-menu', (): void => {
       expect(signatureCategory).toBeDefined();
 
       const signatureItems: Record<string, unknown>[] = getSubmenu(signatureCategory!);
-      const expectedNames: readonly string[] = ['Reactor', 'Spotlight', 'Hallucia'];
+      const expectedNames: readonly string[] = ['Reactor', 'Spotlight'];
 
       for (const name of expectedNames) {
         const item: Record<string, unknown> | undefined = findSubmenuItem(signatureItems, name);
@@ -275,7 +275,7 @@ describe('application-menu', (): void => {
       expect(nostalgiaCategory).toBeDefined();
 
       const nostalgiaItems: Record<string, unknown>[] = getSubmenu(nostalgiaCategory!);
-      const expectedNames: readonly string[] = ['Twirl', 'Warp', 'Ripple', 'Pulsar'];
+      const expectedNames: readonly string[] = ['Twirl', 'Warp', 'Ripple', 'Pulsar', 'Hallucia'];
 
       for (const name of expectedNames) {
         const item: Record<string, unknown> | undefined = findSubmenuItem(nostalgiaItems, name);

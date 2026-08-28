@@ -159,10 +159,16 @@ export class PulsarVisualization extends Canvas2DVisualization {
   /**
    * Minimum gap between transients acting, in milliseconds.
    *
-   * The spin flip is dramatic, so without a refractory period a busy passage
-   * would reverse the field several times a second and read as a stutter.
+   * Both responses are dramatic - one reverses the field, the other throws the
+   * palette across the wheel and inverts the frame - so a hit gets ten seconds
+   * to itself. That is long enough for what it did to settle and be read as an
+   * event, where at the fraction of a second a beat allows the two branches
+   * would trade back and forth and the whole thing would read as a flicker.
+   *
+   * It is a rolling gap rather than a fixed window, so the ten seconds are
+   * measured from whichever hit last acted.
    */
-  private static readonly TRANSIENT_REFRACTORY_MS: number = 100;
+  private static readonly TRANSIENT_REFRACTORY_MS: number = 10000;
 
   /**
    * Degrees the hue jumps on a transient.
@@ -172,8 +178,63 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * against the cycle's 15, so on anything with a beat the hue lurched about
    * instead of cycling and the smooth drift was invisible underneath. This is
    * an accent on the cycle, not a replacement for it.
+   *
+   * That was measured against a much shorter refractory than the one
+   * {@link TRANSIENT_REFRACTORY_MS} now holds, so the kick sits further under
+   * the cycle than these numbers suggest rather than closer to it.
    */
   private static readonly TRANSIENT_HUE_KICK: number = 18;
+
+  /**
+   * How often a transient jumps the palette instead of reversing the spin.
+   *
+   * The two responses are exclusive: a hit does one or the other, chosen fresh
+   * each time. Doing both on the same hit would read as one louder event rather
+   * than as two things the visualization can do, and an even split is what
+   * makes it clear that which one fires is not tied to anything in the audio.
+   */
+  private static readonly TRANSIENT_PALETTE_JUMP_CHANCE: number = 0.5;
+
+  /**
+   * Degrees the hue jumps when a transient takes the palette branch.
+   *
+   * The golden angle, which is what Reactor jumps by. Successive jumps never
+   * revisit a hue they have already landed on and never land near the one
+   * before, so the palette reads as arriving somewhere arbitrary each time
+   * without the risk a true random draw carries of landing on the colour it
+   * just left and showing nothing.
+   */
+  private static readonly TRANSIENT_HUE_JUMP: number = 137.5;
+
+  /**
+   * The colour the mirrored waveforms take while darkened.
+   *
+   * These strokes are not additive - they land in the trail buffer as they are
+   * - so black does not mean absent. It carves the arms out of the glow they
+   * have been building, which is why the darkened state reads as a shape
+   * rather than as the waveforms having stopped.
+   */
+  private static readonly WAVEFORM_DARK: {r: number; g: number; b: number} = {r: 0, g: 0, b: 0};
+
+  /**
+   * The colour the mirrored waveforms take while lit.
+   *
+   * Pure white rather than the pale tint of the current hue. The arms are read
+   * against the ring field they cross, not against the background, and the
+   * rings are themselves lit tints of that same hue - so a tinted arm sat in
+   * the middle of the range it had to stand out from and washed into it. White
+   * and black are the two ends nothing in the field occupies.
+   */
+  private static readonly WAVEFORM_LIT: {r: number; g: number; b: number} = {r: 255, g: 255, b: 255};
+
+  /**
+   * Opacity of the arms.
+   *
+   * Full. At the six tenths this ran at, the core landed as a wash over the
+   * rings rather than as a line on top of them, which is the whole of what the
+   * arms are for; the halo cannot carry them on its own.
+   */
+  private static readonly WAVEFORM_ALPHA: number = 1;
 
   /** Number of low-frequency bins averaged for bass transient detection. */
   private static readonly BASS_BINS: number = 16;
@@ -290,13 +351,19 @@ export class PulsarVisualization extends Canvas2DVisualization {
   private hueOffset: number = 210;
   private cachedHue: number = -1;
   private cachedGradientColors: Array<{r: number; g: number; b: number}> = [];
-  private cachedLighterColor: {r: number; g: number; b: number} = {r: 0, g: 0, b: 0};
-
   /** Current waveform rotation angle. */
   private waveformAngle: number = 0;
 
   /** Direction the trail currently rotates, +1 or -1. Flipped by transients. */
   private spinDirection: number = 1;
+
+  /**
+   * Whether the mirrored waveforms are currently drawn black rather than lit.
+   *
+   * Latched, not momentary: the transient that darkens them leaves them dark,
+   * and the next transient to take the same branch lights them again.
+   */
+  private waveformDarkened: boolean = false;
 
   /** Timestamp of the last transient that was acted on, in milliseconds. */
   private lastTransientMs: number = 0;
@@ -382,14 +449,23 @@ export class PulsarVisualization extends Canvas2DVisualization {
 
     const isTransient: boolean = bassIncrease > PulsarVisualization.TRANSIENT_THRESHOLD && bassAvg > PulsarVisualization.MIN_LEVEL;
 
-    // Act on the trigger: reverse the spin and kick the hue. Guarded by a
-    // refractory period so a busy passage cannot reverse the field several
-    // times a second, which reads as a stutter rather than as a beat.
+    // Act on the trigger, one of two ways chosen fresh on each hit. Guarded by
+    // a refractory period so a busy passage cannot act several times a second,
+    // which reads as a stutter rather than as a beat.
     const now: number = performance.now();
     if (isTransient && now - this.lastTransientMs >= PulsarVisualization.TRANSIENT_REFRACTORY_MS) {
       this.lastTransientMs = now;
-      this.spinDirection = -this.spinDirection;
-      this.hueOffset = (this.hueOffset + PulsarVisualization.TRANSIENT_HUE_KICK) % 360;
+      if (Math.random() < PulsarVisualization.TRANSIENT_PALETTE_JUMP_CHANCE) {
+        // Throw the palette somewhere else entirely and flip the arms between
+        // black and lit. The hue jump is large enough to be a change of colour
+        // rather than an accent, so it needs no help from the spin to register.
+        this.hueOffset = (this.hueOffset + PulsarVisualization.TRANSIENT_HUE_JUMP) % 360;
+        this.waveformDarkened = !this.waveformDarkened;
+      } else {
+        // Reverse the spin and accent the hue, as it always did.
+        this.spinDirection = -this.spinDirection;
+        this.hueOffset = (this.hueOffset + PulsarVisualization.TRANSIENT_HUE_KICK) % 360;
+      }
       this.updateGradientColors();
     }
 
@@ -433,6 +509,21 @@ export class PulsarVisualization extends Canvas2DVisualization {
     ctx.filter = `blur(${PulsarVisualization.BLOOM_BLUR}px)`;
     ctx.globalAlpha = PulsarVisualization.BLOOM_STRENGTH;
     ctx.drawImage(trailCanvas, 0, 0);
+    ctx.restore();
+
+    // The background carries the same colour as the arms, so they read as
+    // negative space in the field rather than as strokes over it.
+    //
+    // Slid underneath with destination-over rather than filled first: the
+    // bloom above is a 'lighter' pass, and over an already-filled surface it
+    // would wash the whole frame to that colour instead of haloing the trails.
+    // This has to come before the fade overlay, which punches alpha out of the
+    // finished frame and has to take the background with it.
+    const background: {r: number; g: number; b: number} = this.waveformColor();
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-over';
+    ctx.fillStyle = `rgb(${background.r}, ${background.g}, ${background.b})`;
+    ctx.fillRect(0, 0, width, height);
     ctx.restore();
 
     this.applyFadeOverlay();
@@ -571,7 +662,21 @@ export class PulsarVisualization extends Canvas2DVisualization {
       (level: {s: number; l: number}): {r: number; g: number; b: number} =>
         this.hslToRgb(this.hueOffset, level.s, level.l)
     );
-    this.cachedLighterColor = this.hslToRgb(this.hueOffset, 60, 75);
+  }
+
+  /**
+   * The colour the mirrored waveforms are drawn in.
+   *
+   * The background is filled with this too, so whichever state a transient has
+   * left the arms in, they are the same colour as what sits behind them.
+   *
+   * @returns Black while a transient has them darkened, the lighter cycling
+   *   colour otherwise
+   */
+  private waveformColor(): {r: number; g: number; b: number} {
+    return this.waveformDarkened
+      ? PulsarVisualization.WAVEFORM_DARK
+      : PulsarVisualization.WAVEFORM_LIT;
   }
 
   private drawMirroredWaveform(ctx: CanvasRenderingContext2D): void {
@@ -632,12 +737,12 @@ export class PulsarVisualization extends Canvas2DVisualization {
       this.rightPoints[i].y = centerY + arcRadius * Math.sin(arcAngle);
     }
 
-    // The spinning waveforms use the lighter cycling color.
-    const color: {r: number; g: number; b: number} = this.cachedLighterColor;
+    const color: {r: number; g: number; b: number} = this.waveformColor();
 
     // Draw left and right waveforms with glow
-    this.drawWaveformSegment(ctx, this.leftPoints, numSamples, color, 0.6);
-    this.drawWaveformSegment(ctx, this.rightPoints, numSamples, color, 0.6);
+    const alpha: number = PulsarVisualization.WAVEFORM_ALPHA;
+    this.drawWaveformSegment(ctx, this.leftPoints, numSamples, color, alpha);
+    this.drawWaveformSegment(ctx, this.rightPoints, numSamples, color, alpha);
 
     // Draw center circle
     this.drawCenterCircle(ctx);
@@ -691,7 +796,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    *
    * @param ctx - Destination context
    * @param buildPath - Rebuilds the path; called once per pass
-   * @param color - Core colour
+   * @param color - Colour of every pass, halo included
    * @param alpha - Overall opacity applied to every pass
    */
   private strokeNeon(
@@ -722,7 +827,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     buildPath();
     ctx.stroke();
 
-    // Core.
+    // Core. Keeps the halo's shadow colour, tightened.
     ctx.shadowBlur = blur * PulsarVisualization.NEON_CORE_BLUR_SCALE;
     ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
     ctx.lineWidth = this.lineWidth;

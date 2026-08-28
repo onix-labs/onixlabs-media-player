@@ -1,9 +1,7 @@
 /**
  * @fileoverview Hallucia visualization - a spectral differential rotation field.
  *
- * An original visualization, not a port of anything, though it grew out of the
- * feedback engine written for the Windows Media Player reimplementations and
- * is best understood against them.
+ * It grew out of the feedback engine, and is best understood against it.
  *
  * Every displacement in that engine is *globally uniform*: one rotation, one
  * zoom, one shear, applied identically to every pixel on the surface. The
@@ -480,7 +478,7 @@ void main() {
  */
 export class HalluciaVisualization extends WebGLVisualization {
   public readonly name: string = 'Hallucia';
-  public readonly category: string = 'Signature';
+  public readonly category: string = 'Nostalgia';
 
   /** Time-domain samples, used for the angular envelope. */
   private dataArray: Uint8Array<ArrayBuffer>;

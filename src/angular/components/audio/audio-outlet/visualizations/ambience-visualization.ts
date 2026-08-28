@@ -1,12 +1,7 @@
 /**
- * @fileoverview Ambience visualization - a per-pixel coordinate warp engine.
+ * @fileoverview Twirl and Warp - a per-pixel coordinate warp engine.
  *
- * A re-implementation, from behavioural analysis, of the effect engine behind
- * the Windows Media Player "Ambience" visualization. Nothing here is derived
- * from Microsoft source or object code; only the observable structure of the
- * engine informed the design, and every line below is original.
- *
- * Ambience is not a drawing effect - it is a *coordinate* effect. The engine
+ * Neither is a drawing effect - both are *coordinate* effects. The engine
  * carries a bank of displacement classes, each of which answers one question:
  * given a destination pixel, where in the previous frame should it be sampled
  * from? Each class overrides exactly two methods - one to randomise its
@@ -52,11 +47,9 @@
  * fractions of the surface dimensions. Working in pixels lets them transfer
  * without rescaling, at the cost of two extra multiplies per fragment.
  *
- * The original ships fourteen named presets over these twelve classes, and
- * several classes carry sub-modes of their own, so presets parameterise
- * displacements rather than mapping one-to-one. Only three shipping names tie
- * to a class with certainty (Swirl, Falloff, Thingus), so presets here are
- * named for the displacement they exercise rather than guessing.
+ * Several classes carry sub-modes of their own, so a visualization
+ * parameterises a displacement rather than mapping one-to-one onto it. The two
+ * built here are named for what they look like, not for the class they run.
  *
  * Technical details:
  * - Ping-pong framebuffer pair at a fixed internal resolution, upscaled to the
@@ -149,9 +142,8 @@ export const ZOOM_RADIAL: number = 0.025;
  * sucked in. Negating it reads from nearer the centre, so content is pulled
  * out instead.
  *
- * ZOOM_RADIAL above is the inward value, now unused: it was what Battery /
- * Wave Edge paired with. Both stay inside the engine's u * 0.2 - 0.1 range,
- * which spans either direction.
+ * ZOOM_RADIAL above is the inward value, now unused. Both stay inside the
+ * engine's u * 0.2 - 0.1 range, which spans either direction.
  */
 export const ZOOM_RADIAL_AMBIENCE: number = -0.025;
 
@@ -314,14 +306,9 @@ export enum ShiftMode {
 /**
  * The source generators - what gets drawn into the surface before the warp.
  *
- * The original carries a second bank of classes alongside the displacements
- * (CWaveEdge, CSpectrumEdge, CCircleWaveform, CEdgeGradiant, CCosEdgeGradiant,
- * CEdgeTrace, CDotPlane, CGalaxy, CJDar, CJiggyScribble), each an independently
- * creatable COM object. Pairing one generator with one displacement is what
- * lets Battery "always show a unique visualization".
- *
- * The class names are recovered; their internals are not. What each generator
- * draws below is an original reading of its name, not a decode of its code.
+ * These sit alongside the displacements rather than inside them: pairing one
+ * generator with one displacement is what makes a visualization, and it is why
+ * a small bank of each covers a lot of ground.
  */
 export enum GeneratorMode {
   /** Waveform trace across the surface. */

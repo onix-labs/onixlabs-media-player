@@ -16,13 +16,10 @@
  * - pulsar: Pulsing concentric rings with curved waveforms (nostalgia category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
- * - hallucia: Hallucia - spectral differential rotation field winding bands into spirals (signature category)
- * - battery-*: Battery - one visualization per preset in the Windows Media Player Battery bank
- * - ambience-vortex .. ambience-whirl: Ambience - one per drawing preset in the
- *   Windows Media Player Ambience bank
- * - ambience-zoom, ambience-stretch: Twirl and Warp, the two feedback warps kept
- *   from the earlier pass over wmp.dll; unrelated to the Ambience bank above.
- *   Filed under Nostalgia with ambience-ripple, which the bank contributes
+ * - hallucia: Hallucia - spectral differential rotation field winding bands into spirals (nostalgia category)
+ * - ambience-zoom, ambience-stretch, ambience-ripple: Twirl, Warp and Ripple,
+ *   the three feedback warps, filed under Nostalgia. Their ids are older than
+ *   the category and are kept so saved settings still resolve
  *
  * @module app/components/audio/audio-outlet/visualizations
  */
@@ -47,9 +44,8 @@ export {
   AmbienceTwirlVisualization,
   AmbienceWarpVisualization,
 } from './ambience-visualization';
-export {FeedbackVisualization} from './wmp-feedback-engine';
-export {BATTERY_TYPES, BATTERY_METADATA} from './battery-visualization';
-export {AMBIENCE_BANK_TYPES, AMBIENCE_BANK_METADATA} from './ambience-bank-visualization';
+export {FeedbackVisualization} from './feedback-engine';
+export {RippleVisualization, RIPPLE_TYPE, RIPPLE_METADATA} from './ripple-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
@@ -70,23 +66,14 @@ import {
   AmbienceTwirlVisualization,
   AmbienceWarpVisualization,
 } from './ambience-visualization';
-import {BATTERY_CONSTRUCTORS, BATTERY_METADATA, BATTERY_TYPES} from './battery-visualization';
-import {
-  AMBIENCE_BANK_CONSTRUCTORS,
-  AMBIENCE_BANK_METADATA,
-  AMBIENCE_BANK_TYPES,
-} from './ambience-bank-visualization';
+import {RippleVisualization, RIPPLE_TYPE, RIPPLE_METADATA} from './ripple-visualization';
 
 /**
  * Map of visualization types to their constructor classes.
  * Used by the factory function to instantiate visualizations.
- *
- * The two WMP banks contribute one entry per preset and are spread in rather
- * than listed, so their tables stay the single source of truth.
  */
 const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfig) => Visualization> = {
-  ...AMBIENCE_BANK_CONSTRUCTORS,
-  ...BATTERY_CONSTRUCTORS,
+  [RIPPLE_TYPE]: RippleVisualization,
   bars: AnalyzerVisualization,
   waveform: ClassicVisualization,
   tunnel: PlasmaVisualization,
@@ -110,12 +97,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
  * Used to display visualization info without creating an instance.
  */
 export const VISUALIZATION_METADATA: Record<string, {name: string; category: string}> = {
-  ...Object.fromEntries(
-    [...AMBIENCE_BANK_METADATA, ...BATTERY_METADATA].map(
-      (entry: {id: string; name: string; category: string}): [string, {name: string; category: string}] =>
-        [entry.id, {name: entry.name, category: entry.category}]
-    )
-  ),
+  [RIPPLE_METADATA.id]: {name: RIPPLE_METADATA.name, category: RIPPLE_METADATA.category},
   bars: {name: 'Analyzer', category: 'Bars & Waves'},
   waveform: {name: 'Classic', category: 'Bars & Waves'},
   tunnel: {name: 'Plasma', category: 'Bars & Waves'},
@@ -126,7 +108,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   onix: {name: 'Onix', category: 'Bars & Waves'},
   modern: {name: 'Modern', category: 'Bars & Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
-  hallucia: {name: 'Hallucia', category: 'Signature'},
+  hallucia: {name: 'Hallucia', category: 'Nostalgia'},
   hawking: {name: 'Hawking', category: 'Bars & Waves'},
   'ambience-zoom': {name: 'Twirl', category: 'Nostalgia'},
   'ambience-stretch': {name: 'Warp', category: 'Nostalgia'},
@@ -161,16 +143,9 @@ export function createVisualization(type: string, config: VisualizationConfig): 
   return new Constructor(config);
 }
 
-/**
- * The entries filed under Nostalgia, in the order they are listed.
- *
- * Three of them - Twirl, Warp and Pulsar - are their own classes; Ripple is a
- * preset of the Ambience bank and so arrives inside {@link AMBIENCE_BANK_TYPES}.
- * Naming them all here keeps the group in one place and lets the Ambience
- * spread below skip the one that has moved out of it.
- */
+/** The entries filed under Nostalgia, in the order they are listed. */
 const NOSTALGIA_TYPES: readonly string[] =
-  ['ambience-zoom', 'ambience-stretch', 'ambience-ripple', 'pulsar'];
+  ['ambience-zoom', 'ambience-stretch', RIPPLE_TYPE, 'pulsar', 'hallucia'];
 
 /**
  * Array of all available visualization types, sorted by category.
@@ -178,23 +153,17 @@ const NOSTALGIA_TYPES: readonly string[] =
  *
  * Categories (in order):
  * - Bars & Waves: bars, waveform, modern, tunnel, infinity, neon, hawking, onix
- * - Signature: water (Reactor), spotlight, hallucia
- * - Nostalgia: twirl, warp, ripple, pulsar
- * - Ambience: the remaining twelve drawing presets of the WMP Ambience bank
- * - Battery: the twenty-five presets of the WMP Battery bank
+ * - Signature: water (Reactor), spotlight
+ * - Nostalgia: twirl, warp, ripple, pulsar, hallucia
  * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars & Waves
   'bars', 'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'hawking', 'onix',
   // Signature
-  'water', 'spotlight', 'hallucia',
+  'water', 'spotlight',
   // Nostalgia
   ...NOSTALGIA_TYPES,
-  // Ambience, less the preset that now sits in Nostalgia
-  ...AMBIENCE_BANK_TYPES.filter((type: string): boolean => !NOSTALGIA_TYPES.includes(type)),
-  // Battery
-  ...BATTERY_TYPES,
   // Simple
   'blank', 'logo',
 ];
