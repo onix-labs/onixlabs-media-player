@@ -933,7 +933,8 @@ export abstract class Canvas2DVisualization extends Visualization {
     zoomCenterX: number,
     zoomCenterY: number,
     fadeRate: number,
-    zoomScale: number
+    zoomScale: number,
+    rotation: number = 0
   ): void {
     const width: number = this.width;
     const height: number = this.height;
@@ -956,6 +957,10 @@ export abstract class Canvas2DVisualization extends Visualization {
     const centerY: number = Math.floor(zoomCenterY);
     trailCtx.translate(centerX, centerY);
     trailCtx.scale(zoomScale, zoomScale);
+    // Applied per frame rather than as an absolute angle: the trail is redrawn
+    // from itself, so a small turn each time accumulates into a slow spiral and
+    // the resampling smears it a little further on every pass.
+    if (rotation !== 0) trailCtx.rotate(rotation);
     trailCtx.translate(-centerX, -centerY);
     trailCtx.drawImage(tempCanvas, 0, 0);
     trailCtx.restore();

@@ -32,7 +32,7 @@ import {VIDEO_ADJUSTMENT_PRESETS, VIDEO_ADJ_CUSTOM_PRESET, NEUTRAL_VIDEO_ADJUSTM
  * - waveform: Oscilloscope-style waveform
  * - tunnel: Dual red/blue waveforms with zoom
  * - neon: Rotating cyan/magenta waveforms
- * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
+ * - pulsar: Pulsing concentric rings with curved waveforms (nostalgia category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Concentric tower wrapped in counter-spinning rings (signature category)
  * - infinity: Dual orbiting circles with spectrum cycling
@@ -132,7 +132,7 @@ export type LocalSettingKey = keyof VisualizationLocalSettings;
 export interface VisualizationMetadata {
   readonly id: string;
   readonly name: string;
-  readonly category: 'Bars' | 'Waves' | 'Signature' | 'Simple';
+  readonly category: 'Bars & Waves' | 'Signature' | 'Nostalgia' | 'Simple';
   readonly applicableSettings: readonly LocalSettingKey[];
 }
 
@@ -434,21 +434,24 @@ export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> 
  * Metadata for all visualizations including which settings apply to each.
  */
 export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
-  // Bars category
-  {id: 'bars', name: 'Analyzer', category: 'Bars', applicableSettings: ['barDensity', 'barColorBottom', 'barColorMiddle', 'barColorTop']},
-  // Waves category
-  {id: 'waveform', name: 'Classic', category: 'Waves', applicableSettings: []},
-  {id: 'modern', name: 'Modern', category: 'Waves', applicableSettings: []},
-  {id: 'tunnel', name: 'Plasma', category: 'Waves', applicableSettings: []},
-  {id: 'neon', name: 'Neon', category: 'Waves', applicableSettings: []},
-  {id: 'pulsar', name: 'Pulsar', category: 'Waves', applicableSettings: []},
-  {id: 'blackhole', name: 'Black Hole', category: 'Waves', applicableSettings: []},
-  {id: 'particles', name: 'Particles', category: 'Waves', applicableSettings: []},
+  // Bars & Waves category
+  {id: 'bars', name: 'Analyzer', category: 'Bars & Waves', applicableSettings: ['barDensity', 'barColorBottom', 'barColorMiddle', 'barColorTop']},
+  {id: 'waveform', name: 'Classic', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'modern', name: 'Modern', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'tunnel', name: 'Plasma', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'neon', name: 'Neon', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'hawking', name: 'Hawking', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'onix', name: 'Onix', category: 'Bars & Waves', applicableSettings: []},
   // Signature category
   {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
   {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
-  {id: 'infinity', name: 'Infinity', category: 'Waves', applicableSettings: []},
-  {id: 'onix', name: 'Onix', category: 'Waves', applicableSettings: []},
+  {id: 'infinity', name: 'Infinity', category: 'Bars & Waves', applicableSettings: []},
+  // Nostalgia category
+  {id: 'ambience-zoom', name: 'Twirl', category: 'Nostalgia', applicableSettings: []},
+  {id: 'ambience-stretch', name: 'Warp', category: 'Nostalgia', applicableSettings: []},
+  {id: 'ambience-ripple', name: 'Ripple', category: 'Nostalgia', applicableSettings: []},
+  {id: 'pulsar', name: 'Pulsar', category: 'Nostalgia', applicableSettings: []},
+  {id: 'hallucia', name: 'Hallucia', category: 'Nostalgia', applicableSettings: []},
   // Simple category
   {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
   {id: 'logo', name: 'Logo', category: 'Simple', applicableSettings: []},
@@ -528,20 +531,24 @@ const DEFAULT_SETTINGS: AppSettings = {
  * Available visualization options for the settings UI.
  */
 export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
-  // Bars category
-  {value: 'bars', label: 'Bars : Analyzer', description: 'Configurable frequency bars with gradient'},
-  // Waves category
-  {value: 'waveform', label: 'Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
-  {value: 'modern', label: 'Waves : Modern', description: 'Frequency spectrum with gradient glow'},
-  {value: 'tunnel', label: 'Waves : Plasma', description: 'Dual waveforms with plasma zoom effect'},
-  {value: 'infinity', label: 'Waves : Infinity', description: 'Dual orbiting circles with spectrum cycling'},
-  {value: 'neon', label: 'Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
-  {value: 'onix', label: 'Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
-  {value: 'pulsar', label: 'Waves : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
-  {value: 'blackhole', label: 'Waves : Black Hole', description: 'Glowing accretion-disk waveform around a black core'},
+  // Bars & Waves category
+  {value: 'bars', label: 'Bars & Waves : Analyzer', description: 'Configurable frequency bars with gradient'},
+  {value: 'waveform', label: 'Bars & Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
+  {value: 'modern', label: 'Bars & Waves : Modern', description: 'Frequency spectrum with gradient glow'},
+  {value: 'tunnel', label: 'Bars & Waves : Plasma', description: 'Dual waveforms with plasma zoom effect'},
+  {value: 'infinity', label: 'Bars & Waves : Infinity', description: 'Dual orbiting circles with spectrum cycling'},
+  {value: 'neon', label: 'Bars & Waves : Neon', description: 'Rotating cyan/magenta waveforms'},
+  {value: 'hawking', label: 'Bars & Waves : Hawking', description: 'Spiked circular waveforms emitting particles outward'},
+  {value: 'onix', label: 'Bars & Waves : Onix', description: 'ONIXLabs logo with pulsating rings'},
   // Signature category
-  {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
+  {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
+  // Nostalgia category
+  {value: 'ambience-zoom', label: 'Nostalgia : Twirl', description: 'Rotating zoom about the centre'},
+  {value: 'ambience-stretch', label: 'Nostalgia : Warp', description: 'Cubic radial distortion'},
+  {value: 'ambience-ripple', label: 'Nostalgia : Ripple', description: 'Radius folded into bands, standing as concentric rings'},
+  {value: 'pulsar', label: 'Nostalgia : Pulsar', description: 'Pulsing concentric rings with curved waveforms'},
+  {value: 'hallucia', label: 'Nostalgia : Hallucia', description: 'Spectral differential rotation winding bands into spiral filaments'},
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},
   {value: 'logo', label: 'Simple : Logo', description: 'The ONIXPlayer logo, centred'},

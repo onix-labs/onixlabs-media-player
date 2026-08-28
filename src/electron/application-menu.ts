@@ -20,30 +20,33 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
   items: ReadonlyArray<{id: string; name: string}>;
 }> = [
   {
-    category: 'Bars',
+    category: 'Bars & Waves',
     items: [
       {id: 'bars', name: 'Analyzer'},
-    ],
-  },
-  {
-    category: 'Waves',
-    items: [
       {id: 'waveform', name: 'Classic'},
       {id: 'modern', name: 'Modern'},
       {id: 'tunnel', name: 'Plasma'},
       {id: 'infinity', name: 'Infinity'},
       {id: 'neon', name: 'Neon'},
+      {id: 'hawking', name: 'Hawking'},
       {id: 'onix', name: 'Onix'},
-      {id: 'particles', name: 'Particles'},
-      {id: 'pulsar', name: 'Pulsar'},
-      {id: 'blackhole', name: 'Black Hole'},
     ],
   },
   {
     category: 'Signature',
     items: [
-      {id: 'spotlight', name: 'Spotlight'},
       {id: 'water', name: 'Reactor'},
+      {id: 'spotlight', name: 'Spotlight'},
+    ],
+  },
+  {
+    category: 'Nostalgia',
+    items: [
+      {id: 'ambience-zoom', name: 'Twirl'},
+      {id: 'ambience-stretch', name: 'Warp'},
+      {id: 'ambience-ripple', name: 'Ripple'},
+      {id: 'pulsar', name: 'Pulsar'},
+      {id: 'hallucia', name: 'Hallucia'},
     ],
   },
   {
@@ -323,7 +326,11 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
       {
         label: 'Visualizations',
         submenu: VISUALIZATION_CATEGORIES.map((cat: {category: string; items: ReadonlyArray<{id: string; name: string}>}): MenuItemConstructorOptions => ({
-          label: cat.category,
+          // Electron treats & in a menu label as a mnemonic prefix on Windows,
+          // where "Bars & Waves" would render as "Bars Waves" with W
+          // underlined. Doubling it escapes to a literal ampersand; macOS and
+          // Linux ignore the marker either way.
+          label: cat.category.replace(/&/g, '&&'),
           submenu: cat.items.map((viz: {id: string; name: string}): MenuItemConstructorOptions => ({
             label: viz.name,
             click: (): void => callbacks.onSelectVisualization(viz.id)

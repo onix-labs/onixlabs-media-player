@@ -13,10 +13,13 @@
  * - waveform: Oscilloscope-style waveform with LCD ghosting effect
  * - tunnel: Hypnotic tunnel/vortex effect
  * - neon: Glowing neon ring visualization
- * - pulsar: Pulsing concentric rings with curved waveforms (waves category)
+ * - pulsar: Pulsing concentric rings with curved waveforms (nostalgia category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
- * - blackhole: Black Hole - filled glowing accretion-disk waveform around a black core (waves category)
+ * - hallucia: Hallucia - spectral differential rotation field winding bands into spirals (nostalgia category)
+ * - ambience-zoom, ambience-stretch, ambience-ripple: Twirl, Warp and Ripple,
+ *   the three feedback warps, filed under Nostalgia. Their ids are older than
+ *   the category and are kept so saved settings still resolve
  *
  * @module app/components/audio/audio-outlet/visualizations
  */
@@ -33,10 +36,16 @@ export {InfinityVisualization} from './infinity-visualization';
 export {OnixVisualization} from './onix-visualization';
 export {ModernVisualization} from './modern-visualization';
 export {SpotlightVisualization} from './spotlight-visualization';
-export {BlackHoleVisualization} from './black-hole-visualization';
+export {HalluciaVisualization} from './hallucia-visualization';
 export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
-export {ParticlesVisualization} from './particles-visualization';
+export {HawkingVisualization} from './hawking-visualization';
+export {
+  AmbienceTwirlVisualization,
+  AmbienceWarpVisualization,
+} from './ambience-visualization';
+export {FeedbackVisualization} from './feedback-engine';
+export {RippleVisualization, RIPPLE_TYPE, RIPPLE_METADATA} from './ripple-visualization';
 
 import {Visualization, VisualizationConfig} from './visualization';
 import {AnalyzerVisualization} from './analyzer-visualization';
@@ -49,16 +58,22 @@ import {InfinityVisualization} from './infinity-visualization';
 import {OnixVisualization} from './onix-visualization';
 import {ModernVisualization} from './modern-visualization';
 import {SpotlightVisualization} from './spotlight-visualization';
-import {BlackHoleVisualization} from './black-hole-visualization';
+import {HalluciaVisualization} from './hallucia-visualization';
 import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
-import {ParticlesVisualization} from './particles-visualization';
+import {HawkingVisualization} from './hawking-visualization';
+import {
+  AmbienceTwirlVisualization,
+  AmbienceWarpVisualization,
+} from './ambience-visualization';
+import {RippleVisualization, RIPPLE_TYPE, RIPPLE_METADATA} from './ripple-visualization';
 
 /**
  * Map of visualization types to their constructor classes.
  * Used by the factory function to instantiate visualizations.
  */
 const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfig) => Visualization> = {
+  [RIPPLE_TYPE]: RippleVisualization,
   bars: AnalyzerVisualization,
   waveform: ClassicVisualization,
   tunnel: PlasmaVisualization,
@@ -69,8 +84,10 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   onix: OnixVisualization,
   modern: ModernVisualization,
   spotlight: SpotlightVisualization,
-  blackhole: BlackHoleVisualization,
-  particles: ParticlesVisualization,
+  hallucia: HalluciaVisualization,
+  hawking: HawkingVisualization,
+  'ambience-zoom': AmbienceTwirlVisualization,
+  'ambience-stretch': AmbienceWarpVisualization,
   blank: BlankVisualization,
   logo: LogoVisualization,
 };
@@ -80,18 +97,21 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
  * Used to display visualization info without creating an instance.
  */
 export const VISUALIZATION_METADATA: Record<string, {name: string; category: string}> = {
-  bars: {name: 'Analyzer', category: 'Bars'},
-  waveform: {name: 'Classic', category: 'Waves'},
-  tunnel: {name: 'Plasma', category: 'Waves'},
-  neon: {name: 'Neon', category: 'Waves'},
-  pulsar: {name: 'Pulsar', category: 'Waves'},
+  [RIPPLE_METADATA.id]: {name: RIPPLE_METADATA.name, category: RIPPLE_METADATA.category},
+  bars: {name: 'Analyzer', category: 'Bars & Waves'},
+  waveform: {name: 'Classic', category: 'Bars & Waves'},
+  tunnel: {name: 'Plasma', category: 'Bars & Waves'},
+  neon: {name: 'Neon', category: 'Bars & Waves'},
+  pulsar: {name: 'Pulsar', category: 'Nostalgia'},
   water: {name: 'Reactor', category: 'Signature'},
-  infinity: {name: 'Infinity', category: 'Waves'},
-  onix: {name: 'Onix', category: 'Waves'},
-  modern: {name: 'Modern', category: 'Waves'},
+  infinity: {name: 'Infinity', category: 'Bars & Waves'},
+  onix: {name: 'Onix', category: 'Bars & Waves'},
+  modern: {name: 'Modern', category: 'Bars & Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
-  blackhole: {name: 'Black Hole', category: 'Waves'},
-  particles: {name: 'Particles', category: 'Waves'},
+  hallucia: {name: 'Hallucia', category: 'Nostalgia'},
+  hawking: {name: 'Hawking', category: 'Bars & Waves'},
+  'ambience-zoom': {name: 'Twirl', category: 'Nostalgia'},
+  'ambience-stretch': {name: 'Warp', category: 'Nostalgia'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
 };
@@ -123,23 +143,27 @@ export function createVisualization(type: string, config: VisualizationConfig): 
   return new Constructor(config);
 }
 
+/** The entries filed under Nostalgia, in the order they are listed. */
+const NOSTALGIA_TYPES: readonly string[] =
+  ['ambience-zoom', 'ambience-stretch', RIPPLE_TYPE, 'pulsar', 'hallucia'];
+
 /**
  * Array of all available visualization types, sorted by category.
  * Used for cycling through visualizations with next/previous.
  *
  * Categories (in order):
- * - Bars: bars
- * - Waves: waveform, modern, tunnel, infinity, neon, onix, pulsar, blackhole
- * - Signature: spotlight, water (Reactor)
+ * - Bars & Waves: bars, waveform, modern, tunnel, infinity, neon, hawking, onix
+ * - Signature: water (Reactor), spotlight
+ * - Nostalgia: twirl, warp, ripple, pulsar, hallucia
  * - Simple: blank, logo
  */
 export const VISUALIZATION_TYPES: string[] = [
-  // Bars
-  'bars',
-  // Waves
-  'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'onix', 'particles', 'pulsar', 'blackhole',
+  // Bars & Waves
+  'bars', 'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'hawking', 'onix',
   // Signature
-  'spotlight', 'water',
+  'water', 'spotlight',
+  // Nostalgia
+  ...NOSTALGIA_TYPES,
   // Simple
   'blank', 'logo',
 ];

@@ -453,7 +453,7 @@ describe('SettingsService', (): void => {
       expect(result).toBeDefined();
       expect(result!.id).toBe('bars');
       expect(result!.name).toBe('Analyzer');
-      expect(result!.category).toBe('Bars');
+      expect(result!.category).toBe('Bars & Waves');
       expect(result!.applicableSettings).toContain('barDensity');
       // Sensitivity is hard-coded for the Analyzer, so it is not a panel control.
       expect(result!.applicableSettings).not.toContain('sensitivity');

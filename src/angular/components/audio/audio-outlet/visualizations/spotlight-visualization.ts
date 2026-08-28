@@ -74,10 +74,10 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   private static readonly CIRCLE_MIN_BLUR: number = 0;
 
   /** Width of the soft drop-shadow border drawn at each circle's circumference (pixels). */
-  private static readonly CIRCLE_BORDER_WIDTH: number = 1.5;
+  private static readonly CIRCLE_BORDER_WIDTH: number = 1;
 
   /** Opacity of that border (0-1). */
-  private static readonly CIRCLE_BORDER_ALPHA: number = 0.15;
+  private static readonly CIRCLE_BORDER_ALPHA: number = 0.25;
 
   // --- Frequency rings ------------------------------------------------------
 
@@ -85,7 +85,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   private static readonly CIRCULAR_SAMPLES: number = 512;
 
   /** Number of frequency-bucket rings (one per inner circle). */
-  private static readonly RING_COUNT: number = 14;
+  private static readonly RING_COUNT: number = 16;
 
   /** Times each ring's waveform repeats around the circle (rotational symmetry). */
   private static readonly RING_REPEAT: number = 2;
@@ -105,13 +105,13 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   // --- Trails (spiral / blur / fade) ----------------------------------------
 
   /** Per-frame rotation of the trail surfaces (radians). */
-  private static readonly TRAIL_ROTATION: number = 0.004;
+  private static readonly TRAIL_ROTATION: number = 0.006;
 
   /** Per-frame fade of the rings trail (high, so layered peaks clear, not pile up). */
   private static readonly RING_FADE: number = 0.03;
 
   /** Extra trail-canvas margin beyond the outer circle, for glow (pixels). */
-  private static readonly TRAIL_MARGIN: number = 20;
+  private static readonly TRAIL_MARGIN: number = 15;
 
   // --- Colour cycling -------------------------------------------------------
 
@@ -139,7 +139,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   private static readonly HUE_TRANSITION_FADE: number = 0.005;
 
   /** Probability used for each random spin re-roll on a bass trigger. */
-  private static readonly SPIN_REROLL_CHANCE: number = 0.5;
+  private static readonly SPIN_REROLL_CHANCE: number = 0.25;
 
   public readonly name: string = 'Spotlight';
   public readonly category: string = 'Signature';

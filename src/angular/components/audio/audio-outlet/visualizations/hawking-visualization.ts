@@ -1,20 +1,22 @@
 /**
- * @fileoverview Particles visualization with dual spiked circular waveforms.
+ * @fileoverview Hawking visualization with dual spiked circular waveforms.
  *
  * Two overlapping circular waveforms sit in the middle of the screen, one
  * red and one blue, each rendered as radial spikes (rather than a smooth
  * wave) whose lengths follow the audio. The time-domain waveform data is
  * repeated twice around each circle, giving the shapes two-fold symmetry.
- * The circles counter-rotate slowly, and their trails zoom outward like
+ * The circles counter-rotate slowly, and their trails turn with them as they
+ * fade, so the smoke spirals rather than only spreading. Trails zoom outward like
  * sparks shedding from the ring.
  *
- * Colouring: both circles use a vertical gradient — vibrant at the bottom
+ * Colouring: both circles use a gradient that turns slowly, red one way and
+ * blue the other, so the vivid end walks round the shape — vibrant at one end
  * of the screen, fading out toward the top. The two hues start at red and
  * blue and cycle slowly through the palette (as in Reactor), keeping their
  * separation; particles keep the hue they were born with. Overlapping
  * trails blend additively.
  *
- * @module app/components/audio/audio-outlet/visualizations/particles-visualization
+ * @module app/components/audio/audio-outlet/visualizations/hawking-visualization
  */
 
 import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from './visualization';
@@ -40,19 +42,17 @@ interface Particle {
   intensity: number;
   /** Hue (0-360) the particle was born with (its circle's hue at spawn) */
   hue: number;
-  /** Whether the particle is a square (true) or a circle (false) */
-  square: boolean;
   /** Whether the particle is filled (true) or an outline (false) */
   filled: boolean;
 }
 
 /**
- * Particles visualization with two overlapping spiked circular waveforms.
+ * Hawking visualization with two overlapping spiked circular waveforms.
  *
  * Renders red and blue spike rings at the screen centre, counter-rotating,
  * with outward-drifting additive trails.
  */
-export class ParticlesVisualization extends Canvas2DVisualization {
+export class HawkingVisualization extends Canvas2DVisualization {
   /** Per-frame trail fade rate. */
   private static readonly FADE_RATE: number = 0.035;
 
@@ -62,11 +62,47 @@ export class ParticlesVisualization extends Canvas2DVisualization {
   /** Base glow blur radius in pixels. */
   private static readonly BASE_GLOW_BLUR: number = 12;
 
+  /**
+   * Glow blur on the pass that lights the roots of the bars.
+   *
+   * Well above the blur the bars themselves carry: this pass is the bloom, and
+   * it wants to read as light coming off the orb rather than as a thicker bar.
+   */
+  private static readonly ROOT_GLOW_BLUR: number = 34;
+
+  /** How much wider the root pass strokes than the bars it sits under. */
+  private static readonly ROOT_GLOW_WIDTH_SCALE: number = 2.4;
+
+  /** Lightness of the root glow. Above the bars', so the base burns out. */
+  private static readonly ROOT_GLOW_LIGHTNESS: number = 66;
+
+  /** Where along a bar the root glow is half gone. */
+  private static readonly ROOT_GLOW_MIDPOINT: number = 0.3;
+
+  /** Opacity of the root glow at that midpoint. */
+  private static readonly ROOT_GLOW_MID_ALPHA: number = 0.35;
+
   /** Number of spikes around each circle. */
   private static readonly SPIKE_COUNT: number = 128;
 
   /** How many times the waveform data repeats around each circle. */
   private static readonly DATA_REPEATS: number = 2;
+
+  /**
+   * Radians each trail turns per frame, red one way and blue the other.
+   *
+   * Slower again than the colour: this is the smoke itself turning, and it
+   * accumulates - every frame redraws the trail from its own last state, so the
+   * turn compounds into a spiral rather than settling at an angle.
+   */
+  private static readonly TRAIL_ROTATION_SPEED: number = 0.002;
+
+  /**
+   * Radians the colour gradient turns per frame, red one way and blue the
+   * other. A fraction of the geometry's rate: the colour is meant to drift
+   * across the shape rather than travel with it.
+   */
+  private static readonly COLOR_ROTATION_SPEED: number = 0.003;
 
   /** Radians the red circle rotates per frame (blue rotates opposite). */
   private static readonly ROTATION_SPEED: number = 0.012;
@@ -94,19 +130,19 @@ export class ParticlesVisualization extends Canvas2DVisualization {
   private static readonly HUE_CYCLE_SPEED: number = 0.5;
 
   /** Gradient lightness (%) at the vivid bottom stop. */
-  private static readonly GRADIENT_LIGHTNESS_BOTTOM: number = 55;
+  private static readonly GRADIENT_LIGHTNESS_BOTTOM: number = 50;
 
   /** Gradient lightness (%) at the faded top stop. */
-  private static readonly GRADIENT_LIGHTNESS_TOP: number = 65;
+  private static readonly GRADIENT_LIGHTNESS_TOP: number = 52;
 
   /** Gradient alpha at the faded top stop. */
-  private static readonly GRADIENT_TOP_ALPHA: number = 0.2;
+  private static readonly GRADIENT_TOP_ALPHA: number = 0.45;
 
   /** Glow colour lightness (%). */
-  private static readonly GLOW_LIGHTNESS: number = 60;
+  private static readonly GLOW_LIGHTNESS: number = 55;
 
   /** Particle colour lightness (%). */
-  private static readonly PARTICLE_LIGHTNESS: number = 62;
+  private static readonly PARTICLE_LIGHTNESS: number = 56;
 
   /** Maximum live particles (shared pool for both circles). */
   private static readonly MAX_PARTICLES: number = 320;
@@ -141,8 +177,8 @@ export class ParticlesVisualization extends Canvas2DVisualization {
   /** Outline stroke width as a fraction of the particle size (min 1px). */
   private static readonly PARTICLE_OUTLINE_FRACTION: number = 0.3;
 
-  public readonly name: string = 'Particles';
-  public readonly category: string = 'Waves';
+  public readonly name: string = 'Hawking';
+  public readonly category: string = 'Bars & Waves';
 
   private dataArray: Uint8Array<ArrayBuffer>;
 
@@ -157,14 +193,18 @@ export class ParticlesVisualization extends Canvas2DVisualization {
   private tempCtx: CanvasRenderingContext2D | null = null;
 
   /** Current hue of each circle (0-360; circle 1 starts red, 2 starts blue). */
-  private hue1: number = ParticlesVisualization.START_HUE_1;
-  private hue2: number = ParticlesVisualization.START_HUE_2;
+  private hue1: number = HawkingVisualization.START_HUE_1;
+  private hue2: number = HawkingVisualization.START_HUE_2;
 
   /** Integer hues the cached styles were built for (-1 = uncached). */
   private cachedStyleHue1: number = -1;
   private cachedStyleHue2: number = -1;
 
   /** Cached vertical gradients (rebuilt on hue change or resize). */
+  /** Radial gradients lighting the roots of each circle's bars. */
+  private rootGradient1: CanvasGradient | null = null;
+  private rootGradient2: CanvasGradient | null = null;
+
   private gradient1: CanvasGradient | null = null;
   private gradient2: CanvasGradient | null = null;
 
@@ -176,6 +216,9 @@ export class ParticlesVisualization extends Canvas2DVisualization {
   private screenCenterX: number = 0;
   private screenCenterY: number = 0;
   private baseRadius: number = 0;
+
+  /** Current angle of the red gradient (blue is its negation). */
+  private colorAngle: number = 0;
 
   /** Current rotation angle of the red circle (blue is its negation). */
   private rotationAngle: number = 0;
@@ -189,8 +232,8 @@ export class ParticlesVisualization extends Canvas2DVisualization {
 
     // Pre-allocate the particle pool
     this.particles = [];
-    for (let i: number = 0; i < ParticlesVisualization.MAX_PARTICLES; i++) {
-      this.particles.push({x: 0, y: 0, vx: 0, vy: 0, size: 0, life: 0, decay: 0, intensity: 0, hue: 0, square: false, filled: true});
+    for (let i: number = 0; i < HawkingVisualization.MAX_PARTICLES; i++) {
+      this.particles.push({x: 0, y: 0, vx: 0, vy: 0, size: 0, life: 0, decay: 0, intensity: 0, hue: 0, filled: true});
     }
     // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
     this.sensitivity = 0.5;       // 50%
@@ -218,22 +261,24 @@ export class ParticlesVisualization extends Canvas2DVisualization {
     this.analyser.getByteTimeDomainData(this.dataArray);
 
     // Counter-rotate the circles
-    this.rotationAngle += ParticlesVisualization.ROTATION_SPEED;
+    this.rotationAngle += HawkingVisualization.ROTATION_SPEED;
+    this.colorAngle += HawkingVisualization.COLOR_ROTATION_SPEED;
 
     // Cycle both hues through the palette (they keep their 220° separation)
-    this.hue1 = (this.hue1 + ParticlesVisualization.HUE_CYCLE_SPEED) % 360;
-    this.hue2 = (this.hue2 + ParticlesVisualization.HUE_CYCLE_SPEED) % 360;
+    this.hue1 = (this.hue1 + HawkingVisualization.HUE_CYCLE_SPEED) % 360;
+    this.hue2 = (this.hue2 + HawkingVisualization.HUE_CYCLE_SPEED) % 360;
     this.refreshCircleStyles();
 
-    const spikeScale: number = this.baseRadius * ParticlesVisualization.SPIKE_LENGTH_FRACTION;
-    const blueDataOffset: number = Math.floor(ParticlesVisualization.SPIKE_COUNT * ParticlesVisualization.BLUE_DATA_OFFSET_FRACTION);
+    const spikeScale: number = this.baseRadius * HawkingVisualization.SPIKE_LENGTH_FRACTION;
+    const blueDataOffset: number = Math.floor(HawkingVisualization.SPIKE_COUNT * HawkingVisualization.BLUE_DATA_OFFSET_FRACTION);
 
     // Red circle (rotates clockwise; trails drift outward)
     this.applyDirectionalZoom(
       this.redTrailCanvas!, this.redTrailCtx!,
       this.tempCanvas!, this.tempCtx!,
       this.screenCenterX, this.screenCenterY,
-      ParticlesVisualization.FADE_RATE, ParticlesVisualization.ZOOM_SCALE
+      HawkingVisualization.FADE_RATE, HawkingVisualization.ZOOM_SCALE,
+      HawkingVisualization.TRAIL_ROTATION_SPEED
     );
     this.drawSpikeCircle(this.redTrailCtx!, this.rotationAngle, 0, spikeScale, this.gradient1!, this.glow1);
 
@@ -242,7 +287,8 @@ export class ParticlesVisualization extends Canvas2DVisualization {
       this.blueTrailCanvas!, this.blueTrailCtx!,
       this.tempCanvas!, this.tempCtx!,
       this.screenCenterX, this.screenCenterY,
-      ParticlesVisualization.FADE_RATE, ParticlesVisualization.ZOOM_SCALE
+      HawkingVisualization.FADE_RATE, HawkingVisualization.ZOOM_SCALE,
+      -HawkingVisualization.TRAIL_ROTATION_SPEED
     );
     this.drawSpikeCircle(this.blueTrailCtx!, -this.rotationAngle, blueDataOffset, spikeScale, this.gradient2!, this.glow2);
 
@@ -280,18 +326,18 @@ export class ParticlesVisualization extends Canvas2DVisualization {
    * @param rotationSign - Rotation direction (+1 or -1) for sideways drift
    */
   private spawnParticles(rotation: number, dataOffset: number, hue: number, rotationSign: number): void {
-    const spikeCount: number = ParticlesVisualization.SPIKE_COUNT;
+    const spikeCount: number = HawkingVisualization.SPIKE_COUNT;
     const dataLength: number = this.dataArray.length;
 
-    for (let attempt: number = 0; attempt < ParticlesVisualization.SPAWN_ATTEMPTS; attempt++) {
+    for (let attempt: number = 0; attempt < HawkingVisualization.SPAWN_ATTEMPTS; attempt++) {
       const spike: number = Math.floor(Math.random() * spikeCount);
 
       // Same data mapping as the spikes (repeated around the circle)
-      const repeatPosition: number = ((spike + dataOffset) * ParticlesVisualization.DATA_REPEATS) % spikeCount;
+      const repeatPosition: number = ((spike + dataOffset) * HawkingVisualization.DATA_REPEATS) % spikeCount;
       const dataIndex: number = Math.floor((repeatPosition / spikeCount) * dataLength);
       const amplitude: number = Math.min(1, Math.abs((this.dataArray[dataIndex] - 128) / 128) * this.sensitivityFactor);
 
-      if (Math.random() >= amplitude * ParticlesVisualization.SPAWN_PROBABILITY) continue;
+      if (Math.random() >= amplitude * HawkingVisualization.SPAWN_PROBABILITY) continue;
 
       const particle: Particle | undefined = this.particles.find((p: Particle): boolean => p.life <= 0);
       if (!particle) return;
@@ -299,23 +345,23 @@ export class ParticlesVisualization extends Canvas2DVisualization {
       const angle: number = rotation + (spike / spikeCount) * Math.PI * 2 - Math.PI / 2;
       const cos: number = Math.cos(angle);
       const sin: number = Math.sin(angle);
-      const outwardSpeed: number = ParticlesVisualization.PARTICLE_BASE_SPEED
-        + amplitude * ParticlesVisualization.PARTICLE_AMP_SPEED
-        + Math.random() * ParticlesVisualization.PARTICLE_BASE_SPEED;
-      const sidewaysSpeed: number = rotationSign * Math.random() * ParticlesVisualization.PARTICLE_SIDEWAYS_SPEED;
+      const outwardSpeed: number = HawkingVisualization.PARTICLE_BASE_SPEED
+        + amplitude * HawkingVisualization.PARTICLE_AMP_SPEED
+        + Math.random() * HawkingVisualization.PARTICLE_BASE_SPEED;
+      const sidewaysSpeed: number = rotationSign * Math.random() * HawkingVisualization.PARTICLE_SIDEWAYS_SPEED;
 
       particle.x = this.screenCenterX + cos * this.baseRadius;
       particle.y = this.screenCenterY + sin * this.baseRadius;
       particle.vx = cos * outwardSpeed - sin * sidewaysSpeed;
       particle.vy = sin * outwardSpeed + cos * sidewaysSpeed;
-      particle.size = ParticlesVisualization.PARTICLE_MIN_SIZE
-        + Math.random() * ParticlesVisualization.PARTICLE_SIZE_RANGE * (0.35 + amplitude * 0.65);
+      particle.size = HawkingVisualization.PARTICLE_MIN_SIZE
+        + Math.random() * HawkingVisualization.PARTICLE_SIZE_RANGE * (0.35 + amplitude * 0.65);
       particle.life = 1;
-      particle.decay = ParticlesVisualization.PARTICLE_DECAY_MIN + Math.random() * ParticlesVisualization.PARTICLE_DECAY_RANGE;
+      particle.decay = HawkingVisualization.PARTICLE_DECAY_MIN + Math.random() * HawkingVisualization.PARTICLE_DECAY_RANGE;
       particle.intensity = (0.35 + amplitude * 0.65) * (0.6 + Math.random() * 0.4);
       particle.hue = Math.round(hue) % 360;
-      // Random mix of shapes and render styles
-      particle.square = Math.random() < 0.5;
+      // Circles only. Squares read as debris rather than as radiation, and the
+      // corners gave away that the emission is drawn rather than emitted.
       particle.filled = Math.random() < 0.5;
     }
   }
@@ -337,28 +383,18 @@ export class ParticlesVisualization extends Canvas2DVisualization {
       particle.y += particle.vy;
 
       const alpha: number = particle.life * particle.intensity;
-      const color: string = `hsla(${particle.hue}, 100%, ${ParticlesVisualization.PARTICLE_LIGHTNESS}%, ${alpha})`;
+      const color: string = `hsla(${particle.hue}, 100%, ${HawkingVisualization.PARTICLE_LIGHTNESS}%, ${alpha})`;
       const size: number = particle.size;
 
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, size, 0, Math.PI * 2);
       if (particle.filled) {
         ctx.fillStyle = color;
-        if (particle.square) {
-          ctx.fillRect(particle.x - size, particle.y - size, size * 2, size * 2);
-        } else {
-          ctx.beginPath();
-          ctx.arc(particle.x, particle.y, size, 0, Math.PI * 2);
-          ctx.fill();
-        }
+        ctx.fill();
       } else {
         ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(1, size * ParticlesVisualization.PARTICLE_OUTLINE_FRACTION);
-        if (particle.square) {
-          ctx.strokeRect(particle.x - size, particle.y - size, size * 2, size * 2);
-        } else {
-          ctx.beginPath();
-          ctx.arc(particle.x, particle.y, size, 0, Math.PI * 2);
-          ctx.stroke();
-        }
+        ctx.lineWidth = Math.max(1, size * HawkingVisualization.PARTICLE_OUTLINE_FRACTION);
+        ctx.stroke();
       }
     }
   }
@@ -380,7 +416,7 @@ export class ParticlesVisualization extends Canvas2DVisualization {
 
     this.screenCenterX = width / 2;
     this.screenCenterY = height / 2;
-    this.baseRadius = Math.min(width, height) * ParticlesVisualization.BASE_RADIUS_FRACTION;
+    this.baseRadius = Math.min(width, height) * HawkingVisualization.BASE_RADIUS_FRACTION;
 
     // Create trail canvases if needed
     if (!this.redTrailCanvas) {
@@ -426,32 +462,83 @@ export class ParticlesVisualization extends Canvas2DVisualization {
     const intHue1: number = Math.round(this.hue1) % 360;
     if (intHue1 !== this.cachedStyleHue1) {
       this.cachedStyleHue1 = intHue1;
-      this.gradient1 = this.buildVerticalGradient(intHue1);
-      this.glow1 = `hsla(${intHue1}, 100%, ${ParticlesVisualization.GLOW_LIGHTNESS}%, 1)`;
+      this.glow1 = `hsla(${intHue1}, 100%, ${HawkingVisualization.GLOW_LIGHTNESS}%, 1)`;
     }
 
     const intHue2: number = Math.round(this.hue2) % 360;
     if (intHue2 !== this.cachedStyleHue2) {
       this.cachedStyleHue2 = intHue2;
-      this.gradient2 = this.buildVerticalGradient(intHue2);
-      this.glow2 = `hsla(${intHue2}, 100%, ${ParticlesVisualization.GLOW_LIGHTNESS}%, 1)`;
+      this.glow2 = `hsla(${intHue2}, 100%, ${HawkingVisualization.GLOW_LIGHTNESS}%, 1)`;
     }
+
+    // The gradients turn every frame, so unlike the glows they cannot be cached
+    // against the hue. Two per frame is nothing next to what the trails cost.
+    this.gradient1 = this.buildAngledGradient(intHue1, this.colorAngle);
+    this.gradient2 = this.buildAngledGradient(intHue2, -this.colorAngle);
+    this.rootGradient1 = this.buildRootGradient(intHue1);
+    this.rootGradient2 = this.buildRootGradient(intHue2);
   }
 
   /**
-   * Builds the vertical stroke gradient for a hue: fully vivid at the bottom
-   * of the screen, fading toward the top.
+   * Builds the radial gradient that lights the roots of the bars.
+   *
+   * Runs from the base ring outward across the longest a bar can be: opaque
+   * where a bar meets the orb, mostly gone a third of the way up, transparent
+   * by the tip. Because it is centred on the orb rather than on any one bar,
+   * one gradient does every bar at once, and each is lit at its own base
+   * regardless of which way it points.
    *
    * @param hue - Integer hue (0-360)
    * @returns The gradient, or null if the trail context isn't ready yet
    */
-  private buildVerticalGradient(hue: number): CanvasGradient | null {
+  private buildRootGradient(hue: number): CanvasGradient | null {
     const ctx: CanvasRenderingContext2D | null = this.redTrailCtx ?? this.blueTrailCtx;
     if (!ctx) return null;
 
-    const gradient: CanvasGradient = ctx.createLinearGradient(0, this.height, 0, 0);
-    gradient.addColorStop(0, `hsla(${hue}, 100%, ${ParticlesVisualization.GRADIENT_LIGHTNESS_BOTTOM}%, 1)`);
-    gradient.addColorStop(1, `hsla(${hue}, 100%, ${ParticlesVisualization.GRADIENT_LIGHTNESS_TOP}%, ${ParticlesVisualization.GRADIENT_TOP_ALPHA})`);
+    const reach: number = this.baseRadius
+      + this.baseRadius * HawkingVisualization.SPIKE_LENGTH_FRACTION;
+    const gradient: CanvasGradient = ctx.createRadialGradient(
+      this.screenCenterX, this.screenCenterY, this.baseRadius,
+      this.screenCenterX, this.screenCenterY, reach
+    );
+    const lightness: number = HawkingVisualization.ROOT_GLOW_LIGHTNESS;
+    gradient.addColorStop(0, `hsla(${hue}, 100%, ${lightness}%, 1)`);
+    gradient.addColorStop(
+      HawkingVisualization.ROOT_GLOW_MIDPOINT,
+      `hsla(${hue}, 100%, ${lightness}%, ${HawkingVisualization.ROOT_GLOW_MID_ALPHA})`
+    );
+    gradient.addColorStop(1, `hsla(${hue}, 100%, ${lightness}%, 0)`);
+    return gradient;
+  }
+
+  /**
+   * Builds the stroke gradient for a hue along an axis through the centre.
+   *
+   * At an angle of zero the axis runs bottom to top, which is where this
+   * started as a fixed vertical gradient. Turning it walks the vivid end round
+   * the shape instead of pinning it to the bottom of the screen, and the two
+   * circles turn opposite ways so their colour crosses rather than tracks.
+   *
+   * The axis spans the screen diagonal from the centre, so the gradient covers
+   * the corners at every angle rather than running out partway round.
+   *
+   * @param hue - Integer hue (0-360)
+   * @param angle - Angle of the gradient axis (rad)
+   * @returns The gradient, or null if the trail context isn't ready yet
+   */
+  private buildAngledGradient(hue: number, angle: number): CanvasGradient | null {
+    const ctx: CanvasRenderingContext2D | null = this.redTrailCtx ?? this.blueTrailCtx;
+    if (!ctx) return null;
+
+    const reach: number = Math.hypot(this.width, this.height) * 0.5;
+    const dx: number = Math.sin(angle) * reach;
+    const dy: number = -Math.cos(angle) * reach;
+    const gradient: CanvasGradient = ctx.createLinearGradient(
+      this.screenCenterX - dx, this.screenCenterY - dy,
+      this.screenCenterX + dx, this.screenCenterY + dy
+    );
+    gradient.addColorStop(0, `hsla(${hue}, 100%, ${HawkingVisualization.GRADIENT_LIGHTNESS_BOTTOM}%, 1)`);
+    gradient.addColorStop(1, `hsla(${hue}, 100%, ${HawkingVisualization.GRADIENT_LIGHTNESS_TOP}%, ${HawkingVisualization.GRADIENT_TOP_ALPHA})`);
     return gradient;
   }
 
@@ -468,7 +555,8 @@ export class ParticlesVisualization extends Canvas2DVisualization {
    * @param dataOffset - Spike-index offset into the data mapping (varies the
    *   pattern between the two circles)
    * @param spikeScale - Maximum spike length in pixels
-   * @param gradient - Stroke gradient (vibrant bottom, faded top)
+   * @param gradient - Stroke gradient for the bars, turning with the colour angle
+   * @param rootGradient - Radial gradient lighting the bars where they meet the orb
    * @param glowColor - Shadow colour for the glow pass
    */
   private drawSpikeCircle(
@@ -479,7 +567,7 @@ export class ParticlesVisualization extends Canvas2DVisualization {
     gradient: CanvasGradient,
     glowColor: string
   ): void {
-    const spikeCount: number = ParticlesVisualization.SPIKE_COUNT;
+    const spikeCount: number = HawkingVisualization.SPIKE_COUNT;
     const dataLength: number = this.dataArray.length;
     const centerX: number = this.screenCenterX;
     const centerY: number = this.screenCenterY;
@@ -489,7 +577,7 @@ export class ParticlesVisualization extends Canvas2DVisualization {
     trailCtx.strokeStyle = gradient;
     trailCtx.lineCap = 'round';
     trailCtx.shadowColor = glowColor;
-    trailCtx.shadowBlur = this.getScaledGlowBlur(ParticlesVisualization.BASE_GLOW_BLUR);
+    trailCtx.shadowBlur = this.getScaledGlowBlur(HawkingVisualization.BASE_GLOW_BLUR);
 
     // Spikes: radial lines whose length follows the waveform amplitude.
     // The data maps onto 1/DATA_REPEATS of the circle and repeats around it.
@@ -499,7 +587,7 @@ export class ParticlesVisualization extends Canvas2DVisualization {
       const angle: number = rotation + (i / spikeCount) * Math.PI * 2 - Math.PI / 2;
 
       // Repeat the waveform data around the circle
-      const repeatPosition: number = ((i + dataOffset) * ParticlesVisualization.DATA_REPEATS) % spikeCount;
+      const repeatPosition: number = ((i + dataOffset) * HawkingVisualization.DATA_REPEATS) % spikeCount;
       const dataIndex: number = Math.floor((repeatPosition / spikeCount) * dataLength);
       const amplitude: number = Math.abs((this.dataArray[dataIndex] - 128) / 128) * this.sensitivityFactor;
 
@@ -513,7 +601,7 @@ export class ParticlesVisualization extends Canvas2DVisualization {
     trailCtx.stroke();
 
     // Thin base ring anchoring the spikes
-    trailCtx.lineWidth = ParticlesVisualization.RING_LINE_WIDTH;
+    trailCtx.lineWidth = HawkingVisualization.RING_LINE_WIDTH;
     trailCtx.beginPath();
     trailCtx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
     trailCtx.stroke();
