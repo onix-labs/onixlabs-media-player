@@ -32,13 +32,13 @@ import {TWO_PI} from './visualization-constants';
  */
 export class PulsarVisualization extends Canvas2DVisualization {
   /** Radians the trail rotates per frame. */
-  private static readonly ROTATION_SPEED: number = 0.003;
+  private static readonly ROTATION_SPEED: number = 0.005;
 
   /** Radians the waveforms rotate per frame. */
   private static readonly WAVEFORM_ROTATION_SPEED: number = 0.005;
 
   /** Per-frame trail fade rate. */
-  private static readonly FADE_RATE: number = 0.002;
+  private static readonly FADE_RATE: number = 0.75;
 
   /** Per-frame outward zoom applied to the trail. */
   private static readonly ZOOM_SCALE: number = 1.03;
@@ -68,7 +68,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    *
    * Set to 1 to go back to a single uniform rotation.
    */
-  private static readonly TRAIL_RING_COUNT: number = 50;
+  private static readonly TRAIL_RING_COUNT: number = 60;
 
   /**
    * Extra rotation at the outermost ring versus the innermost, in radians per
@@ -95,7 +95,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * expanding and contracting. Its time-average is zero, leaving the net flow
    * at each radius outward and the frame filled.
    */
-  private static readonly RING_RIPPLE: number = 0.0175;
+  private static readonly RING_RIPPLE: number = 0.02;
 
   /**
    * How much slower the outermost ring zooms than the innermost.
@@ -110,7 +110,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * expands more slowly than the middle and content bunches up as it travels
    * out. That keeps the folding character without the collapse.
    */
-  private static readonly RING_CUBIC_PULL: number = 0.001;
+  private static readonly RING_CUBIC_PULL: number = 0.01;
 
   /**
    * Number of ripple cycles spanning the radius.
