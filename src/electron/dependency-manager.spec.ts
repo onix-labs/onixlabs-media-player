@@ -796,6 +796,131 @@ describe('DependencyManager', (): void => {
   });
 
   // ==========================================================================
+  // macOS Homebrew resolution
+  // ==========================================================================
+
+  describe('macOS Homebrew resolution', (): void => {
+    const BREW_ARM: string = '/opt/homebrew/bin/brew';
+    const BREW_INTEL: string = '/usr/local/bin/brew';
+
+    /**
+     * Mocks spawn with a child process that closes with the given exit code.
+     */
+    async function mockSpawnExiting(code: number): Promise<ReturnType<typeof vi.fn>> {
+      const { spawn } = await import('child_process');
+      const mockedSpawn: ReturnType<typeof vi.fn> = vi.mocked(spawn);
+      const mockProcess: {
+        stdout: { on: ReturnType<typeof vi.fn> };
+        stderr: { on: ReturnType<typeof vi.fn> };
+        on: ReturnType<typeof vi.fn>;
+      } = {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event: string, callback: (exitCode: number) => void): void => {
+          if (event === 'close') {
+            setTimeout((): void => callback(code), 0);
+          }
+        }),
+      };
+      mockedSpawn.mockReturnValue(mockProcess as ReturnType<typeof spawn>);
+      return mockedSpawn;
+    }
+
+    it('spawns brew by absolute path for install, not by bare name', async (): Promise<void> => {
+      setExistingPaths([BREW_INTEL]);
+      const mockedSpawn: ReturnType<typeof vi.fn> = await mockSpawnExiting(0);
+
+      const manager: DependencyManager = createManager('darwin');
+      await manager.installDependency('yt-dlp', vi.fn());
+
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        BREW_INTEL,
+        ['install', 'yt-dlp'],
+        expect.any(Object)
+      );
+    });
+
+    it('spawns brew by absolute path for uninstall', async (): Promise<void> => {
+      setExistingPaths([BREW_INTEL]);
+      const mockedSpawn: ReturnType<typeof vi.fn> = await mockSpawnExiting(0);
+
+      const manager: DependencyManager = createManager('darwin');
+      await manager.uninstallDependency('yt-dlp', vi.fn());
+
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        BREW_INTEL,
+        ['uninstall', 'yt-dlp'],
+        expect.any(Object)
+      );
+    });
+
+    it('spawns brew by absolute path for update', async (): Promise<void> => {
+      setExistingPaths([BREW_INTEL]);
+      const mockedSpawn: ReturnType<typeof vi.fn> = await mockSpawnExiting(0);
+
+      const manager: DependencyManager = createManager('darwin');
+      await manager.updateDependency('yt-dlp', vi.fn());
+
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        BREW_INTEL,
+        ['upgrade', 'yt-dlp'],
+        expect.any(Object)
+      );
+    });
+
+    it('prefers the Apple Silicon prefix over the Intel one', async (): Promise<void> => {
+      setExistingPaths([BREW_ARM, BREW_INTEL]);
+      const mockedSpawn: ReturnType<typeof vi.fn> = await mockSpawnExiting(0);
+
+      const manager: DependencyManager = createManager('darwin');
+      await manager.updateDependency('yt-dlp', vi.fn());
+
+      expect(mockedSpawn).toHaveBeenCalledWith(BREW_ARM, ['upgrade', 'yt-dlp'], expect.any(Object));
+    });
+
+    it('puts the Homebrew prefix on PATH for the spawned command', async (): Promise<void> => {
+      setExistingPaths([BREW_INTEL]);
+      const mockedSpawn: ReturnType<typeof vi.fn> = await mockSpawnExiting(0);
+
+      const manager: DependencyManager = createManager('darwin');
+      await manager.updateDependency('yt-dlp', vi.fn());
+
+      const options: { env: NodeJS.ProcessEnv } = mockedSpawn.mock.calls[0][2] as { env: NodeJS.ProcessEnv };
+      expect(options.env['PATH']?.split(path.delimiter)).toContain('/usr/local/bin');
+    });
+
+    it('reports a Homebrew install hint when brew is not found', async (): Promise<void> => {
+      mockedExistsSync.mockReturnValue(false);
+      const progressCalls: Array<{status: string; message: string}> = [];
+
+      const manager: DependencyManager = createManager('darwin');
+      const result: boolean = await manager.updateDependency('yt-dlp', (progress): void => {
+        progressCalls.push({status: progress.status, message: progress.message});
+      });
+
+      expect(result).toBe(false);
+      expect(progressCalls).toHaveLength(1);
+      expect(progressCalls[0].status).toBe('error');
+      expect(progressCalls[0].message).toContain('Homebrew');
+      expect(progressCalls[0].message).toContain('https://brew.sh');
+    });
+
+    it('reports a Homebrew install hint when uninstalling without brew', async (): Promise<void> => {
+      mockedExistsSync.mockReturnValue(false);
+      const progressCalls: Array<{status: string; message: string}> = [];
+
+      const manager: DependencyManager = createManager('darwin');
+      const result: boolean = await manager.uninstallDependency('yt-dlp', (progress): void => {
+        progressCalls.push({status: progress.status, message: progress.message});
+      });
+
+      expect(result).toBe(false);
+      expect(progressCalls[0].message).toContain('Cannot uninstall yt-dlp');
+      expect(progressCalls[0].message).toContain('Homebrew');
+    });
+  });
+
+  // ==========================================================================
   // Linux pkexec privilege elevation
   // ==========================================================================
 

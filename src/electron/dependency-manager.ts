@@ -142,6 +142,21 @@ const SYSTEM_SOUNDFONT_PATHS: readonly string[] = [
 ];
 
 /**
+ * Absolute paths to the Homebrew binary, in preference order (Apple Silicon
+ * prefix first, then Intel).
+ *
+ * Homebrew cannot be spawned as a bare `brew`. A macOS app launched from Finder
+ * inherits launchd's PATH — `/usr/bin:/bin:/usr/sbin:/sbin` — which contains
+ * neither prefix, so the spawn fails with ENOENT before the package manager
+ * ever runs. Only a run started from a terminal, inheriting the shell's PATH,
+ * ever found it.
+ */
+const HOMEBREW_PATHS: readonly string[] = [
+  '/opt/homebrew/bin/brew',  // Apple Silicon
+  '/usr/local/bin/brew',     // Intel
+];
+
+/**
  * Windows-specific constants for Chocolatey package manager.
  */
 const CHOCOLATEY_WINGET_ID: string = 'Chocolatey.Chocolatey';
@@ -548,7 +563,7 @@ export class DependencyManager {
 
     const cmd: {command: string; args: string[]} | null = this.getUpdateCommand(id);
     if (!cmd) {
-      const errorMsg: string = this.getPackageManagerErrorMessage(id, 'install');
+      const errorMsg: string = this.getPackageManagerErrorMessage(id, 'update');
       depsLogger.error(errorMsg);
       onProgress({dependencyId: id, status: 'error', message: errorMsg});
       return false;
@@ -821,7 +836,7 @@ export class DependencyManager {
 
     switch (this.platform) {
       case 'darwin':
-        return {command: 'brew', args: ['install', packageName]};
+        return this.getBrewCommand(['install', packageName]);
 
       case 'linux':
         return this.getLinuxInstallCommand(id);
@@ -844,7 +859,7 @@ export class DependencyManager {
 
     switch (this.platform) {
       case 'darwin':
-        return {command: 'brew', args: ['uninstall', packageName]};
+        return this.getBrewCommand(['uninstall', packageName]);
 
       case 'linux':
         return this.getLinuxUninstallCommand(id);
@@ -870,7 +885,7 @@ export class DependencyManager {
 
     switch (this.platform) {
       case 'darwin':
-        return {command: 'brew', args: ['upgrade', packageName]};
+        return this.getBrewCommand(['upgrade', packageName]);
 
       case 'linux':
         // Re-running the install command upgrades to the latest available version.
@@ -958,6 +973,31 @@ export class DependencyManager {
   }
 
   /**
+   * Finds the Homebrew binary by absolute path.
+   *
+   * @returns Absolute path to brew, or null if Homebrew is not installed
+   */
+  private findBrew(): string | null {
+    for (const p of HOMEBREW_PATHS) {
+      if (existsSync(p)) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Builds a Homebrew command with the binary resolved to an absolute path.
+   *
+   * @param args - Arguments to pass to brew (e.g. ['install', 'yt-dlp'])
+   * @returns Command and args, or null if Homebrew is not installed
+   */
+  private getBrewCommand(args: string[]): {command: string; args: string[]} | null {
+    const brew: string | null = this.findBrew();
+    return brew ? {command: brew, args} : null;
+  }
+
+  /**
    * Checks if Chocolatey is available on the system.
    */
   private isChocoAvailable(): boolean {
@@ -985,7 +1025,13 @@ export class DependencyManager {
   /**
    * Gets a helpful error message when no package manager is available.
    */
-  private getPackageManagerErrorMessage(id: DependencyId, operation: 'install' | 'uninstall'): string {
+  private getPackageManagerErrorMessage(id: DependencyId, operation: 'install' | 'uninstall' | 'update'): string {
+    // macOS: everything goes through Homebrew
+    if (this.platform === 'darwin' && !this.findBrew()) {
+      return `Cannot ${operation} ${DEPENDENCY_NAMES[id]}: Homebrew is required but was not found. ` +
+        'Install Homebrew from https://brew.sh, or use the Manual Download link.';
+    }
+
     // Windows: FFmpeg requires winget
     if (this.platform === 'win32' && id === 'ffmpeg' && !this.isWingetAvailable()) {
       return `Cannot ${operation} FFmpeg: winget (Windows Package Manager) is required but not installed. ` +
@@ -1003,7 +1049,7 @@ export class DependencyManager {
       const pkgMgr: 'apt' | 'dnf' | 'pacman' | null = this.detectLinuxPackageManager();
       if (pkgMgr && !this.isPkexecAvailable()) {
         return `Cannot ${operation} ${DEPENDENCY_NAMES[id]}: pkexec is required for graphical authentication. ` +
-          `Please install via terminal: sudo ${pkgMgr} ${operation === 'install' ? 'install' : 'remove'} -y ${this.getPackageName(id)}`;
+          `Please install via terminal: sudo ${pkgMgr} ${operation === 'uninstall' ? 'remove' : 'install'} -y ${this.getPackageName(id)}`;
       }
     }
 
@@ -1108,6 +1154,40 @@ export class DependencyManager {
   }
 
   /**
+   * Builds the environment for a package manager run, putting the manager's own
+   * directory on PATH.
+   *
+   * Resolving the binary absolutely is enough to start it, but not enough for
+   * what it starts in turn: Homebrew shells out to its own prefix, and under
+   * launchd's PATH those lookups would miss for the same reason the `brew`
+   * lookup did.
+   *
+   * Left alone on Windows, where a GUI process already inherits the user's full
+   * environment and `process.env` is case-insensitive in a way that spreading it
+   * into a new object would break.
+   *
+   * @param command - The command about to be spawned
+   * @returns Environment for the child process
+   */
+  private getCommandEnv(command: string): NodeJS.ProcessEnv {
+    if (this.platform === 'win32' || !path.isAbsolute(command)) {
+      return process.env;
+    }
+
+    const dir: string = path.dirname(command);
+    const currentPath: string = process.env['PATH'] ?? '';
+
+    if (currentPath.split(path.delimiter).includes(dir)) {
+      return process.env;
+    }
+
+    return {
+      ...process.env,
+      PATH: currentPath ? `${dir}${path.delimiter}${currentPath}` : dir,
+    };
+  }
+
+  /**
    * Runs a command and streams output via the progress callback.
    * Re-detects binaries after completion.
    *
@@ -1133,6 +1213,7 @@ export class DependencyManager {
 
       const child: ChildProcess = spawn(command, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: this.getCommandEnv(command),
       });
 
       let outputBuffer: string = '';
