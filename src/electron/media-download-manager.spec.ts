@@ -659,11 +659,18 @@ describe('MediaDownloadManager', (): void => {
   // ==========================================================================
 
   describe('moving to a chosen output path', (): void => {
-    const OUTPUT_PATH: string = '/Users/someone/Movies/Chosen.mp4';
+    // Built with path.join so the separators match the host platform: these
+    // paths are compared against ones the manager itself joined.
+    const OUTPUT_PATH: string = path.join(DOWNLOADS_DIR, '..', 'chosen', 'Movie.mp4');
     let child: FakeChild;
+    /** yt-dlp output template for the run, set by finishWithOutputPath. */
+    let stagedTemplate: string;
+    /** Path the finished file was staged at, set by finishWithOutputPath. */
+    let stagedPath: string;
 
     /**
-     * Runs a completed download that was given an output path.
+     * Runs a completed download that was given an output path, recording the
+     * staging paths the manager derived for it.
      *
      * @returns The finished job
      */
@@ -671,22 +678,24 @@ describe('MediaDownloadManager', (): void => {
       child = createFakeChild();
       vi.mocked(spawn).mockReturnValue(child);
       const id: string = manager.startDownload('https://example.com/v', 'video', null, 'My Video', OUTPUT_PATH, vi.fn());
+      stagedTemplate = path.join(DOWNLOADS_DIR, `${id}.%(ext)s`);
+      stagedPath = path.join(DOWNLOADS_DIR, `${id}.mp4`);
       vi.mocked(readdirSync).mockReturnValue([`${id}.mp4`] as unknown as ReturnType<typeof readdirSync>);
       child.emitClose(0);
       return manager.getJob(id);
     }
 
-    it('still stages the download in the downloads directory', (): void => {
+    it('stages the download rather than handing the chosen path to yt-dlp', (): void => {
       finishWithOutputPath();
 
-      expect(lastSpawnArgs().join(' ')).toContain(DOWNLOADS_DIR);
+      expect(lastSpawnArgs()).toContain(stagedTemplate);
       expect(lastSpawnArgs()).not.toContain(OUTPUT_PATH);
     });
 
     it('moves the finished file to the chosen path', (): void => {
       const job: DownloadJob | undefined = finishWithOutputPath();
 
-      expect(renameSync).toHaveBeenCalledWith(expect.stringContaining(DOWNLOADS_DIR), OUTPUT_PATH);
+      expect(renameSync).toHaveBeenCalledWith(stagedPath, OUTPUT_PATH);
       expect(job?.filePath).toBe(OUTPUT_PATH);
     });
 
@@ -703,8 +712,8 @@ describe('MediaDownloadManager', (): void => {
 
       const job: DownloadJob | undefined = finishWithOutputPath();
 
-      expect(copyFileSync).toHaveBeenCalledWith(expect.stringContaining(DOWNLOADS_DIR), OUTPUT_PATH);
-      expect(unlinkSync).toHaveBeenCalled();
+      expect(copyFileSync).toHaveBeenCalledWith(stagedPath, OUTPUT_PATH);
+      expect(unlinkSync).toHaveBeenCalledWith(stagedPath);
       expect(job?.filePath).toBe(OUTPUT_PATH);
     });
 
@@ -719,7 +728,23 @@ describe('MediaDownloadManager', (): void => {
       const job: DownloadJob | undefined = finishWithOutputPath();
 
       expect(job?.status).toBe('done');
-      expect(job?.filePath).toContain(DOWNLOADS_DIR);
+      expect(job?.filePath).toBe(stagedPath);
+    });
+
+    it('keeps the staged file when the failure is not an Error', (): void => {
+      // fs throws plain strings in some runtimes; the warning must not blow up
+      // reaching for .message on something that has none.
+      vi.mocked(renameSync).mockImplementationOnce((): never => {
+        throw 'EXDEV';
+      });
+      vi.mocked(copyFileSync).mockImplementationOnce((): never => {
+        throw 'ENOSPC';
+      });
+
+      const job: DownloadJob | undefined = finishWithOutputPath();
+
+      expect(job?.status).toBe('done');
+      expect(job?.filePath).toBe(stagedPath);
     });
   });
 
