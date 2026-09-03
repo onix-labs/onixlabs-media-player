@@ -6,7 +6,8 @@
  * - buildFormats de-duplication, filtering and ordering
  * - startDownload argument construction, including the `--` terminator
  * - Progress parsing, failure paths and the stderr tail used as the message
- * - finalizeDownload file selection and title renaming
+ * - finalizeDownload file selection, title renaming, and the move to a
+ *   caller-supplied output path (the Save As destination)
  * - cancelDownload status guards
  * - resolveStreamSources selector construction and DASH-pair splitting
  *
@@ -18,10 +19,12 @@
 // ============================================================================
 
 vi.mock('fs', () => ({
+  copyFileSync: vi.fn(),
   existsSync: vi.fn(),
   mkdirSync: vi.fn(),
   readdirSync: vi.fn(),
   renameSync: vi.fn(),
+  unlinkSync: vi.fn(),
 }));
 
 vi.mock('child_process', () => ({
@@ -49,7 +52,7 @@ vi.mock('./logger.js', () => ({
 // Imports (after mocks)
 // ============================================================================
 
-import { existsSync, readdirSync, renameSync } from 'fs';
+import { copyFileSync, existsSync, readdirSync, renameSync, unlinkSync } from 'fs';
 import { spawn, execFile } from 'child_process';
 import type { ChildProcess } from 'child_process';
 import * as path from 'path';
@@ -177,7 +180,7 @@ describe('MediaDownloadManager', (): void => {
     });
 
     it('fails a download job for a file:// URL rather than spawning', (): void => {
-      const id: string = manager.startDownload('file:///etc/passwd', 'video', null, 'x', vi.fn());
+      const id: string = manager.startDownload('file:///etc/passwd', 'video', null, 'x', null, vi.fn());
 
       expect(spawn).not.toHaveBeenCalled();
       expect(manager.getJob(id)?.errorMessage).toMatch(/only http and https/i);
@@ -214,7 +217,7 @@ describe('MediaDownloadManager', (): void => {
       const hostile: string = 'https://example.com/-nasty';
       vi.mocked(spawn).mockReturnValue(createFakeChild());
 
-      manager.startDownload(hostile, 'video', null, 'T', vi.fn());
+      manager.startDownload(hostile, 'video', null, 'T', null, vi.fn());
 
       const args: string[] = lastSpawnArgs();
       expect(args[args.indexOf(hostile) - 1]).toBe('--');
@@ -368,14 +371,14 @@ describe('MediaDownloadManager', (): void => {
       ytdlpPath = null;
       const onUpdate = vi.fn();
 
-      const id: string = manager.startDownload('https://example.com/v', 'video', null, 'T', onUpdate);
+      const id: string = manager.startDownload('https://example.com/v', 'video', null, 'T', null, onUpdate);
 
       expect(manager.getJob(id)).toMatchObject({status: 'error', errorMessage: 'yt-dlp is not installed'});
       expect(spawn).not.toHaveBeenCalled();
     });
 
     it('terminates option parsing before the URL', (): void => {
-      manager.startDownload('https://example.com/v', 'video', null, 'T', vi.fn());
+      manager.startDownload('https://example.com/v', 'video', null, 'T', null, vi.fn());
 
       const args: string[] = lastSpawnArgs();
       expect(args[args.length - 2]).toBe('--');
@@ -383,7 +386,7 @@ describe('MediaDownloadManager', (): void => {
     });
 
     it('extracts audio as mp3 in audio mode', (): void => {
-      manager.startDownload('https://example.com/v', 'audio', null, 'T', vi.fn());
+      manager.startDownload('https://example.com/v', 'audio', null, 'T', null, vi.fn());
 
       const args: string[] = lastSpawnArgs();
       expect(args).toContain('-x');
@@ -391,19 +394,19 @@ describe('MediaDownloadManager', (): void => {
     });
 
     it('requests a specific format id when given one', (): void => {
-      manager.startDownload('https://example.com/v', 'video', '137', 'T', vi.fn());
+      manager.startDownload('https://example.com/v', 'video', '137', 'T', null, vi.fn());
 
       expect(lastSpawnArgs().join(' ')).toContain('-f 137+bestaudio/best');
     });
 
     it('falls back to the best pair when no format id is given', (): void => {
-      manager.startDownload('https://example.com/v', 'video', null, 'T', vi.fn());
+      manager.startDownload('https://example.com/v', 'video', null, 'T', null, vi.fn());
 
       expect(lastSpawnArgs().join(' ')).toContain('-f bestvideo+bestaudio/best');
     });
 
     it('passes the ffmpeg location when ffmpeg is installed', (): void => {
-      manager.startDownload('https://example.com/v', 'video', null, 'T', vi.fn());
+      manager.startDownload('https://example.com/v', 'video', null, 'T', null, vi.fn());
 
       expect(lastSpawnArgs().join(' ')).toContain('--ffmpeg-location /usr/bin/ffmpeg');
     });
@@ -411,13 +414,13 @@ describe('MediaDownloadManager', (): void => {
     it('omits the ffmpeg location when ffmpeg is missing', (): void => {
       ffmpegPath = null;
 
-      manager.startDownload('https://example.com/v', 'video', null, 'T', vi.fn());
+      manager.startDownload('https://example.com/v', 'video', null, 'T', null, vi.fn());
 
       expect(lastSpawnArgs()).not.toContain('--ffmpeg-location');
     });
 
     it('writes into the downloads directory using the job id', (): void => {
-      const id: string = manager.startDownload('https://example.com/v', 'video', null, 'T', vi.fn());
+      const id: string = manager.startDownload('https://example.com/v', 'video', null, 'T', null, vi.fn());
 
       expect(lastSpawnArgs().join(' ')).toContain(path.join(DOWNLOADS_DIR, `${id}.%(ext)s`));
     });
@@ -425,14 +428,14 @@ describe('MediaDownloadManager', (): void => {
     it('reports the job as downloading straight away', (): void => {
       const onUpdate = vi.fn();
 
-      const id: string = manager.startDownload('https://example.com/v', 'video', null, 'T', onUpdate);
+      const id: string = manager.startDownload('https://example.com/v', 'video', null, 'T', null, onUpdate);
 
       expect(onUpdate).toHaveBeenCalled();
       expect(manager.getJob(id)?.status).toBe('downloading');
     });
 
     it('trims the supplied title', (): void => {
-      const id: string = manager.startDownload('https://example.com/v', 'video', null, '  Spaced  ', vi.fn());
+      const id: string = manager.startDownload('https://example.com/v', 'video', null, '  Spaced  ', null, vi.fn());
 
       expect(manager.getJob(id)?.title).toBe('Spaced');
     });
@@ -451,7 +454,7 @@ describe('MediaDownloadManager', (): void => {
       child = createFakeChild();
       vi.mocked(spawn).mockReturnValue(child);
       onUpdate = vi.fn();
-      id = manager.startDownload('https://example.com/v', 'video', null, 'T', onUpdate);
+      id = manager.startDownload('https://example.com/v', 'video', null, 'T', null, onUpdate);
     });
 
     it('parses a percentage into a 0..1 fraction', (): void => {
@@ -520,7 +523,7 @@ describe('MediaDownloadManager', (): void => {
     function start(format: 'audio' | 'video', title: string): string {
       child = createFakeChild();
       vi.mocked(spawn).mockReturnValue(child);
-      return manager.startDownload('https://example.com/v', format, null, title, vi.fn());
+      return manager.startDownload('https://example.com/v', format, null, title, null, vi.fn());
     }
 
     it('fails when no file was produced', (): void => {
@@ -598,7 +601,7 @@ describe('MediaDownloadManager', (): void => {
     function finishWithTitle(title: string, targetExists: boolean = false): DownloadJob | undefined {
       child = createFakeChild();
       vi.mocked(spawn).mockReturnValue(child);
-      const id: string = manager.startDownload('https://example.com/v', 'video', null, title, vi.fn());
+      const id: string = manager.startDownload('https://example.com/v', 'video', null, title, null, vi.fn());
       vi.mocked(readdirSync).mockReturnValue([`${id}.mp4`] as unknown as ReturnType<typeof readdirSync>);
       // The constructor's directory check already ran; only the rename target matters now.
       vi.mocked(existsSync).mockReturnValue(targetExists);
@@ -652,6 +655,75 @@ describe('MediaDownloadManager', (): void => {
   });
 
   // ==========================================================================
+  // moveToChosenPath (via finalize)
+  // ==========================================================================
+
+  describe('moving to a chosen output path', (): void => {
+    const OUTPUT_PATH: string = '/Users/someone/Movies/Chosen.mp4';
+    let child: FakeChild;
+
+    /**
+     * Runs a completed download that was given an output path.
+     *
+     * @returns The finished job
+     */
+    function finishWithOutputPath(): DownloadJob | undefined {
+      child = createFakeChild();
+      vi.mocked(spawn).mockReturnValue(child);
+      const id: string = manager.startDownload('https://example.com/v', 'video', null, 'My Video', OUTPUT_PATH, vi.fn());
+      vi.mocked(readdirSync).mockReturnValue([`${id}.mp4`] as unknown as ReturnType<typeof readdirSync>);
+      child.emitClose(0);
+      return manager.getJob(id);
+    }
+
+    it('still stages the download in the downloads directory', (): void => {
+      finishWithOutputPath();
+
+      expect(lastSpawnArgs().join(' ')).toContain(DOWNLOADS_DIR);
+      expect(lastSpawnArgs()).not.toContain(OUTPUT_PATH);
+    });
+
+    it('moves the finished file to the chosen path', (): void => {
+      const job: DownloadJob | undefined = finishWithOutputPath();
+
+      expect(renameSync).toHaveBeenCalledWith(expect.stringContaining(DOWNLOADS_DIR), OUTPUT_PATH);
+      expect(job?.filePath).toBe(OUTPUT_PATH);
+    });
+
+    it('does not rename to the title when a path was chosen', (): void => {
+      const job: DownloadJob | undefined = finishWithOutputPath();
+
+      expect(job?.filePath).not.toContain('My Video');
+    });
+
+    it('falls back to copy-and-delete across volumes', (): void => {
+      vi.mocked(renameSync).mockImplementationOnce((): never => {
+        throw new Error('EXDEV: cross-device link not permitted');
+      });
+
+      const job: DownloadJob | undefined = finishWithOutputPath();
+
+      expect(copyFileSync).toHaveBeenCalledWith(expect.stringContaining(DOWNLOADS_DIR), OUTPUT_PATH);
+      expect(unlinkSync).toHaveBeenCalled();
+      expect(job?.filePath).toBe(OUTPUT_PATH);
+    });
+
+    it('keeps the staged file when the move cannot be completed', (): void => {
+      vi.mocked(renameSync).mockImplementationOnce((): never => {
+        throw new Error('EXDEV');
+      });
+      vi.mocked(copyFileSync).mockImplementationOnce((): never => {
+        throw new Error('ENOSPC');
+      });
+
+      const job: DownloadJob | undefined = finishWithOutputPath();
+
+      expect(job?.status).toBe('done');
+      expect(job?.filePath).toContain(DOWNLOADS_DIR);
+    });
+  });
+
+  // ==========================================================================
   // cancelDownload
   // ==========================================================================
 
@@ -659,7 +731,7 @@ describe('MediaDownloadManager', (): void => {
     it('kills the process and marks the job cancelled', (): void => {
       const child: FakeChild = createFakeChild();
       vi.mocked(spawn).mockReturnValue(child);
-      const id: string = manager.startDownload('https://example.com/v', 'video', null, 'T', vi.fn());
+      const id: string = manager.startDownload('https://example.com/v', 'video', null, 'T', null, vi.fn());
 
       expect(manager.cancelDownload(id)).toBe(true);
       expect(child.kill).toHaveBeenCalledWith('SIGKILL');
@@ -673,7 +745,7 @@ describe('MediaDownloadManager', (): void => {
     it('returns false for a job that is already finished', (): void => {
       const child: FakeChild = createFakeChild();
       vi.mocked(spawn).mockReturnValue(child);
-      const id: string = manager.startDownload('https://example.com/v', 'video', null, '', vi.fn());
+      const id: string = manager.startDownload('https://example.com/v', 'video', null, '', null, vi.fn());
       vi.mocked(readdirSync).mockReturnValue([`${id}.mp4`] as unknown as ReturnType<typeof readdirSync>);
       child.emitClose(0);
 
@@ -682,7 +754,7 @@ describe('MediaDownloadManager', (): void => {
 
     it('returns false when cancelled twice', (): void => {
       vi.mocked(spawn).mockReturnValue(createFakeChild());
-      const id: string = manager.startDownload('https://example.com/v', 'video', null, 'T', vi.fn());
+      const id: string = manager.startDownload('https://example.com/v', 'video', null, 'T', null, vi.fn());
       manager.cancelDownload(id);
 
       expect(manager.cancelDownload(id)).toBe(false);

@@ -117,6 +117,7 @@ const mockApi: {
   clearRecentItems: ReturnType<typeof vi.fn>;
   openPlaylistDialog: ReturnType<typeof vi.fn>;
   savePlaylistDialog: ReturnType<typeof vi.fn>;
+  saveMediaDialog: ReturnType<typeof vi.fn>;
   openSubtitleDialog: ReturnType<typeof vi.fn>;
   setupGetPort: ReturnType<typeof vi.fn>;
   setupSetPort: ReturnType<typeof vi.fn>;
@@ -163,6 +164,7 @@ const mockApi: {
   clearRecentItems: vi.fn().mockResolvedValue(undefined),
   openPlaylistDialog: vi.fn().mockResolvedValue(null),
   savePlaylistDialog: vi.fn().mockResolvedValue(null),
+  saveMediaDialog: vi.fn().mockResolvedValue(null),
   openSubtitleDialog: vi.fn().mockResolvedValue(null),
   setupGetPort: vi.fn().mockResolvedValue(0),
   setupSetPort: vi.fn().mockResolvedValue(undefined),

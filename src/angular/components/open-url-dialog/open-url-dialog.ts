@@ -4,7 +4,8 @@
  * This is the renderer-side counterpart to the yt-dlp backend (the
  * TypeScript port of ReClip). The user pastes a URL, the dialog resolves
  * its metadata and quality options, and then either:
- * - downloads the media to a local file (default — robust, fully seekable), or
+ * - asks where to save via the native Save As dialog and downloads the media
+ *   there before playing it (robust, fully seekable), or
  * - resolves a direct stream URL and plays it immediately (opt-in).
  *
  * Both paths feed the resolved file/URL into the existing playlist pipeline
@@ -207,8 +208,16 @@ export class OpenUrlDialog implements AfterViewInit, OnDestroy {
         this.close();
         return;
       }
+      const title: string = this.info()?.title ?? '';
+      // Ask where to save before spawning yt-dlp: a cancelled dialog should
+      // leave the form exactly as it was, with nothing downloaded.
+      const outputPath: string | null = await this.electron.saveMediaDialog(title, format);
+      if (!outputPath) {
+        this.submitting.set(false);
+        return;
+      }
       const formatId: string | null = format === 'video' ? this.selectedFormatId() : null;
-      const result: {jobId: string} = await this.electron.downloadUrl(value, format, formatId, this.info()?.title ?? '');
+      const result: {jobId: string} = await this.electron.downloadUrl(value, format, formatId, title, outputPath);
       this.activeJobId.set(result.jobId);
       // Completion/error handled by the effect watching downloadJob.
     } catch (err: unknown) {
