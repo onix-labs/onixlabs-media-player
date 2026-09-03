@@ -2477,13 +2477,16 @@ export class UnifiedMediaServer {
   /**
    * Handles POST /media/url/download — starts a background download of a URL.
    *
-   * Body: { url: string, format?: 'video'|'audio', formatId?: string, title?: string }
+   * Body: { url: string, format?: 'video'|'audio', formatId?: string, title?: string,
+   *         outputPath?: string }
+   * `outputPath` is the destination the user picked in the native Save As
+   * dialog; when omitted the file stays in the downloads directory.
    * Returns the job id immediately; progress, completion, and errors are
    * broadcast over SSE (download:progress / download:complete / download:error).
    */
   private async handleUrlDownload(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
-    const { url, format, formatId, title }: { url?: unknown; format?: unknown; formatId?: unknown; title?: unknown } = JSON.parse(body);
+    const { url, format, formatId, title, outputPath }: { url?: unknown; format?: unknown; formatId?: unknown; title?: unknown; outputPath?: unknown } = JSON.parse(body);
     if (typeof url !== 'string' || !url.trim()) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'No URL provided' }));
@@ -2496,6 +2499,7 @@ export class UnifiedMediaServer {
       mediaFormat,
       typeof formatId === 'string' ? formatId : null,
       typeof title === 'string' ? title : '',
+      typeof outputPath === 'string' && outputPath.trim() ? outputPath : null,
       (job: Readonly<DownloadJob>): void => this.broadcastDownloadUpdate(job)
     );
 

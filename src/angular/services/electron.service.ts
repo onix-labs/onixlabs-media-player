@@ -1540,11 +1540,13 @@ export class ElectronService implements OnDestroy {
    * @param format - 'video' (MP4) or 'audio' (MP3)
    * @param formatId - Optional yt-dlp format id for a chosen resolution
    * @param title - Optional title used to name the downloaded file
+   * @param outputPath - Destination chosen in {@link saveMediaDialog}, which the
+   *   finished file is moved to
    * @returns The created job id
    */
-  public async downloadUrl(url: string, format: UrlMediaFormat, formatId: string | null, title: string): Promise<{jobId: string}> {
+  public async downloadUrl(url: string, format: UrlMediaFormat, formatId: string | null, title: string, outputPath: string): Promise<{jobId: string}> {
     this.downloadJob.set(null);
-    return this.postExpectingMessage<{jobId: string}>('/media/url/download', {url, format, formatId, title});
+    return this.postExpectingMessage<{jobId: string}>('/media/url/download', {url, format, formatId, title, outputPath});
   }
 
   /**
@@ -1677,6 +1679,19 @@ export class ElectronService implements OnDestroy {
   public async savePlaylistDialog(): Promise<string | null> {
     if (!this.isElectron || !this.api) return null;
     return this.api.savePlaylistDialog();
+  }
+
+  /**
+   * Opens a native save dialog for a media file about to be downloaded from a
+   * URL, letting the user choose where it is written before yt-dlp starts.
+   *
+   * @param title - Media title, offered as the suggested filename
+   * @param format - 'video' (suggests .mp4) or 'audio' (suggests .mp3)
+   * @returns Promise resolving to the chosen file path, or null if cancelled
+   */
+  public async saveMediaDialog(title: string, format: UrlMediaFormat): Promise<string | null> {
+    if (!this.isElectron || !this.api) return null;
+    return this.api.saveMediaDialog({title, format});
   }
 
   /**

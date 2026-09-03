@@ -33,6 +33,19 @@ export interface OpenDialogOptions {
 }
 
 /**
+ * Options for the native save dialog shown before a URL download starts.
+ *
+ * @property title - Media title, offered as the filename after sanitizing
+ * @property format - Requested output, which picks the .mp4/.mp3 extension
+ */
+export interface SaveMediaDialogOptions {
+  /** Media title used as the suggested filename */
+  readonly title: string;
+  /** Requested output format, determining the suggested extension */
+  readonly format: 'video' | 'audio';
+}
+
+/**
  * API exposed to the renderer process via window.mediaPlayer.
  *
  * This interface defines the complete set of functionality available to the
@@ -73,6 +86,15 @@ export interface MediaPlayerAPI {
    * @returns Promise resolving to the chosen file path, or null if cancelled
    */
   readonly savePlaylistDialog: () => Promise<string | null>;
+
+  /**
+   * Opens a native save dialog for a media file about to be downloaded from a
+   * URL, so the user chooses the destination before yt-dlp starts.
+   *
+   * @param options - Suggested filename and requested output format
+   * @returns Promise resolving to the chosen file path, or null if cancelled
+   */
+  readonly saveMediaDialog: (options: Readonly<SaveMediaDialogOptions>) => Promise<string | null>;
 
   /**
    * Opens a native dialog to select an external subtitle file.
@@ -444,6 +466,7 @@ const api: MediaPlayerAPI = {
   openFileDialog: (options: Readonly<OpenDialogOptions>): Promise<string[]> => ipcRenderer.invoke('dialog:openFile', options),
   openPlaylistDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openPlaylist'),
   savePlaylistDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:savePlaylist'),
+  saveMediaDialog: (options: Readonly<SaveMediaDialogOptions>): Promise<string | null> => ipcRenderer.invoke('dialog:saveMedia', options),
   openSubtitleDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openSubtitle'),
   openSoundFontDialog: (): Promise<string[]> => ipcRenderer.invoke('dialog:openSoundFont'),
   getPathForFile: (file: Readonly<File>): string => webUtils.getPathForFile(file),

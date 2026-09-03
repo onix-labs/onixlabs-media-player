@@ -4,7 +4,8 @@
  * Tests cover:
  * - fetchInfo success, failure and the re-entry guard
  * - Quality defaulting to the highest available format
- * - submit() in both stream and download modes, including failure handling
+ * - submit() in both stream and download modes, including the Save As dialog
+ *   that precedes a download, and failure handling
  * - The effect that reacts to the active download job completing or failing
  * - Cancellation and the small form setters
  *
@@ -67,6 +68,7 @@ function createMockElectron(): Record<string, unknown> {
     downloadJob: signal<DownloadJob | null>(null),
     getUrlInfo: vi.fn().mockResolvedValue(createInfo()),
     streamUrl: vi.fn().mockResolvedValue(undefined),
+    saveMediaDialog: vi.fn().mockResolvedValue('/chosen/A Video.mp4'),
     downloadUrl: vi.fn().mockResolvedValue({jobId: 'job-1'}),
     cancelDownload: vi.fn().mockResolvedValue(undefined),
     setContentHeight: vi.fn().mockResolvedValue(undefined),
@@ -329,13 +331,35 @@ describe('OpenUrlDialog', (): void => {
       expect(component.activeJobId()).toBe('job-1');
     });
 
+    it('asks where to save before downloading', async (): Promise<void> => {
+      await component.submit();
+
+      expect(mockElectron['saveMediaDialog']).toHaveBeenCalledWith('A Video', 'video');
+    });
+
+    it('offers an mp3 destination for audio', async (): Promise<void> => {
+      component.mediaFormat.set('audio');
+
+      await component.submit();
+
+      expect(mockElectron['saveMediaDialog']).toHaveBeenCalledWith('A Video', 'audio');
+    });
+
+    it('downloads to the chosen path', async (): Promise<void> => {
+      await component.submit();
+
+      expect(mockElectron['downloadUrl']).toHaveBeenCalledWith(
+        'https://example.com/v', 'video', 'fmt-1080', 'A Video', '/chosen/A Video.mp4'
+      );
+    });
+
     it('passes the selected format id for video', async (): Promise<void> => {
       component.selectedFormatId.set('fmt-720');
 
       await component.submit();
 
       expect(mockElectron['downloadUrl']).toHaveBeenCalledWith(
-        'https://example.com/v', 'video', 'fmt-720', 'A Video'
+        'https://example.com/v', 'video', 'fmt-720', 'A Video', '/chosen/A Video.mp4'
       );
     });
 
@@ -346,8 +370,29 @@ describe('OpenUrlDialog', (): void => {
       await component.submit();
 
       expect(mockElectron['downloadUrl']).toHaveBeenCalledWith(
-        'https://example.com/v', 'audio', null, 'A Video'
+        'https://example.com/v', 'audio', null, 'A Video', '/chosen/A Video.mp4'
       );
+    });
+
+    it('starts nothing when the save dialog is cancelled', async (): Promise<void> => {
+      (mockElectron['saveMediaDialog'] as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+      await component.submit();
+
+      expect(mockElectron['downloadUrl']).not.toHaveBeenCalled();
+      expect(component.submitting()).toBe(false);
+      expect(component.error()).toBeNull();
+    });
+
+    it('can be retried after the save dialog was cancelled', async (): Promise<void> => {
+      const saveDialog = mockElectron['saveMediaDialog'] as ReturnType<typeof vi.fn>;
+      saveDialog.mockResolvedValueOnce(null);
+
+      await component.submit();
+      await component.submit();
+
+      expect(mockElectron['downloadUrl']).toHaveBeenCalledTimes(1);
+      expect(component.activeJobId()).toBe('job-1');
     });
 
     it('stays submitting while the job runs', async (): Promise<void> => {

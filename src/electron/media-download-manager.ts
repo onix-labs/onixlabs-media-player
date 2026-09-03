@@ -17,7 +17,7 @@
 
 import {spawn, ChildProcess, execFile} from 'child_process';
 import {randomUUID} from 'crypto';
-import {existsSync, mkdirSync, readdirSync, renameSync} from 'fs';
+import {copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, unlinkSync} from 'fs';
 import * as path from 'path';
 import {createScopedLogger, logProcessSpawn, logProcessExit} from './logger.js';
 import type {UrlMediaInfo, UrlFormat, UrlMediaFormat, DownloadJob} from './media-types.js';
@@ -245,13 +245,19 @@ export class MediaDownloadManager {
    * Starts an asynchronous download of a URL to a local file.
    *
    * The returned job is tracked in memory; callers poll {@link getJob} or react
-   * to the supplied progress callback. On success the job's `filePath` points to
-   * the finished file, renamed to a sanitized title where possible.
+   * to the supplied progress callback. yt-dlp always writes into the downloads
+   * directory first, because the final extension is only known once the merge
+   * or audio extraction has run. On success the finished file is moved to
+   * `outputPath` when the caller chose one (the Save As dialog), and otherwise
+   * renamed to a sanitized title in place; either way the job's `filePath`
+   * points at the file that playback should use.
    *
    * @param url - The page URL to download
    * @param format - 'video' (MP4) or 'audio' (MP3 extraction)
    * @param formatId - Optional yt-dlp format id for a specific video resolution
    * @param title - Optional title used to name the resulting file
+   * @param outputPath - Absolute path the finished file is moved to, or null to
+   *   leave it in the downloads directory under its sanitized title
    * @param onUpdate - Called whenever the job's status or progress changes
    * @returns The newly created job's id
    */
@@ -260,6 +266,7 @@ export class MediaDownloadManager {
     format: UrlMediaFormat,
     formatId: string | null,
     title: string,
+    outputPath: string | null,
     onUpdate: (job: Readonly<DownloadJob>) => void
   ): string {
     const id: string = randomUUID().slice(0, 12);
@@ -339,7 +346,7 @@ export class MediaDownloadManager {
         this.failJob(job, this.lastErrorLine(stderrTail) || `yt-dlp exited with code ${code}`, onUpdate);
         return;
       }
-      this.finalizeDownload(job, onUpdate);
+      this.finalizeDownload(job, outputPath, onUpdate);
     });
 
     child.on('error', (error: Readonly<Error>): void => {
@@ -352,10 +359,15 @@ export class MediaDownloadManager {
   }
 
   /**
-   * Locates the finished file, renames it to a sanitized title, and marks the
-   * job done. Called once yt-dlp exits successfully.
+   * Locates the finished file, moves it to its final home, and marks the job
+   * done. Called once yt-dlp exits successfully.
+   *
+   * @param job - The job being finalized
+   * @param outputPath - Destination chosen by the user, or null to keep the
+   *   file in the downloads directory under a sanitized title
+   * @param onUpdate - Called with the finished (or failed) job
    */
-  private finalizeDownload(job: DownloadJob, onUpdate: (job: Readonly<DownloadJob>) => void): void {
+  private finalizeDownload(job: DownloadJob, outputPath: string | null, onUpdate: (job: Readonly<DownloadJob>) => void): void {
     const produced: string[] = readdirSync(this.downloadsDir)
       .filter((name: string): boolean => name.startsWith(`${job.id}.`))
       .map((name: string): string => path.join(this.downloadsDir, name));
@@ -369,7 +381,7 @@ export class MediaDownloadManager {
     const preferredExt: string = job.format === 'audio' ? '.mp3' : '.mp4';
     const chosen: string = produced.find((f: string): boolean => f.toLowerCase().endsWith(preferredExt)) ?? produced[0];
 
-    job.filePath = this.renameToTitle(chosen, job.title);
+    job.filePath = outputPath ? this.moveToChosenPath(chosen, outputPath) : this.renameToTitle(chosen, job.title);
     job.progress = 1;
     job.status = 'done';
     downloadLogger.info(`Download complete: ${path.basename(job.filePath)}`);
@@ -396,6 +408,35 @@ export class MediaDownloadManager {
     } catch (error: unknown) {
       downloadLogger.warn(`Could not rename download to title: ${error instanceof Error ? error.message : error}`);
       return filePath;
+    }
+  }
+
+  /**
+   * Moves a finished download to the path the user picked in the Save As
+   * dialog. Overwriting is intentional: the dialog already asked.
+   *
+   * A plain rename fails across devices, and the downloads directory often sits
+   * on a different volume from the user's chosen destination (an external disk,
+   * a network share), so fall back to copy-then-delete. If even that fails the
+   * staged path is returned so playback still gets a usable file.
+   *
+   * @param filePath - The staged file in the downloads directory
+   * @param outputPath - Absolute destination path chosen by the user
+   * @returns The destination path, or the staged path if the move failed
+   */
+  private moveToChosenPath(filePath: string, outputPath: string): string {
+    try {
+      renameSync(filePath, outputPath);
+      return outputPath;
+    } catch {
+      try {
+        copyFileSync(filePath, outputPath);
+        unlinkSync(filePath);
+        return outputPath;
+      } catch (error: unknown) {
+        downloadLogger.warn(`Could not move download to ${outputPath}: ${error instanceof Error ? error.message : error}`);
+        return filePath;
+      }
     }
   }
 

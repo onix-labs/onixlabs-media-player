@@ -471,10 +471,11 @@ Based on independent review with all 31 action items resolved:
 │  │  └─────────────┘  └─────────────┘  └─────────────┘               │ │
 │  └───────────────────────────────────────────────────────────────────┘ │
 │                                                                         │
-│  IPC (minimal - 22 channels):                                          │
+│  IPC (minimal - 23 channels):                                          │
 │  ├── dialog:openFile         (native file picker)                      │
 │  ├── dialog:openPlaylist     (playlist file picker for .opp files)     │
 │  ├── dialog:savePlaylist     (save dialog for .opp files)              │
+│  ├── dialog:saveMedia        (save dialog for a URL download)          │
 │  ├── dialog:openSubtitle     (subtitle file picker for .srt/.vtt/.ass) │
 │  ├── dialog:openSoundFont    (SoundFont file picker)                   │
 │  ├── app:getServerPort       (get HTTP server port)                    │

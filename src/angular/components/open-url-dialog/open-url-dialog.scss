@@ -219,13 +219,16 @@
 .url-progress-bar {
   flex: 1;
   height: 0.5rem;
-  border-radius: 2px;
+  border-radius: 9999px;
   background: var(--text-10);
   overflow: hidden;
 }
 
 .url-progress-fill {
   height: 100%;
+  // Matches the track so the leading edge stays rounded as the fill grows;
+  // the track's overflow clip alone would square it off at 0%.
+  border-radius: 9999px;
   background: $color-success;
   transition: width 0.2s ease;
 }

@@ -38,6 +38,21 @@ const AUDIO_EXTENSIONS: readonly string[] = ['mp3', 'flac', 'wav', 'ogg', 'm4a',
 const VIDEO_EXTENSIONS: readonly string[] = ['mp4', 'm4v', 'mkv', 'avi', 'webm', 'mov'];
 
 /**
+ * Characters that are illegal in filenames on at least one supported platform.
+ * Stripped from a media title before it is offered as a save-dialog filename.
+ */
+const ILLEGAL_FILENAME_CHARS: RegExp = /[\\/:*?"<>|]/g;
+
+/**
+ * Maximum length of a filename suggested in the media save dialog. Long video
+ * titles otherwise produce names that some filesystems reject outright.
+ */
+const MAX_SUGGESTED_FILENAME_LENGTH: number = 80;
+
+/** Filename offered when a media title is empty or sanitizes away to nothing. */
+const FALLBACK_MEDIA_FILENAME: string = 'download';
+
+/**
  * Files passed to the app before it was ready.
  * These are queued and processed after the window is created.
  */
@@ -1239,6 +1254,45 @@ class Program {
       }
 
       ipcLogger.info(`dialog:savePlaylist - selected: ${result.filePath}`);
+      return result.filePath;
+    });
+
+    // Save downloaded media dialog - asked by the Open URL window before a
+    // yt-dlp download starts, so the user picks where the file lands.
+    ipcMain.handle("dialog:saveMedia", async (event: Readonly<Electron.IpcMainInvokeEvent>, options: Readonly<{
+      title: string;
+      format: 'video' | 'audio';
+    }>): Promise<string | null> => {
+      ipcLogger.debug(`dialog:saveMedia - format=${options.format}`);
+
+      // Parent on the window that asked (the Open URL window), so the dialog
+      // is attached to what the user is looking at rather than the player.
+      const parent: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender) ?? this.window;
+      if (!parent) {
+        ipcLogger.warn('dialog:saveMedia - no window available');
+        return null;
+      }
+
+      const isAudio: boolean = options.format === 'audio';
+      const extension: string = isAudio ? 'mp3' : 'mp4';
+      const suggestedName: string = options.title
+        .replace(ILLEGAL_FILENAME_CHARS, '')
+        .trim()
+        .slice(0, MAX_SUGGESTED_FILENAME_LENGTH)
+        .trim() || FALLBACK_MEDIA_FILENAME;
+
+      const result: Electron.SaveDialogReturnValue = await dialog.showSaveDialog(parent, {
+        title: 'Save Media As',
+        defaultPath: `${suggestedName}.${extension}`,
+        filters: [{name: isAudio ? 'MP3 Audio' : 'MP4 Video', extensions: [extension]}],
+      });
+
+      if (result.canceled || !result.filePath) {
+        ipcLogger.info('dialog:saveMedia - cancelled');
+        return null;
+      }
+
+      ipcLogger.info(`dialog:saveMedia - selected: ${result.filePath}`);
       return result.filePath;
     });
 

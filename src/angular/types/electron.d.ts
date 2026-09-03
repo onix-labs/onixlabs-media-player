@@ -48,6 +48,27 @@ export interface OpenDialogOptions {
 }
 
 /**
+ * Configuration options for the native save dialog shown before a URL download.
+ *
+ * Passed through IPC to Electron's dialog.showSaveDialog(). The main process
+ * sanitizes the title into a legal filename and appends the extension implied
+ * by the format, so the renderer only has to supply the raw media metadata.
+ *
+ * @example
+ * const options: SaveMediaDialogOptions = {
+ *   title: 'Some Video Title',
+ *   format: 'video'
+ * };
+ */
+export interface SaveMediaDialogOptions {
+  /** Media title, offered to the user as the suggested filename. */
+  title: string;
+
+  /** Requested output format; 'video' suggests .mp4 and 'audio' suggests .mp3. */
+  format: 'video' | 'audio';
+}
+
+/**
  * Represents a subtitle track embedded in a media file.
  *
  * Subtitle tracks are detected via FFprobe and can be extracted
@@ -444,6 +465,14 @@ export interface MediaPlayerAPI {
    * @returns Promise resolving to the chosen file path, or null if cancelled
    */
   savePlaylistDialog: () => Promise<string | null>;
+
+  /**
+   * Opens a native save dialog for a media file about to be downloaded from a
+   * URL, so the user picks the destination before the download starts.
+   * @param options - Suggested filename and requested output format
+   * @returns Promise resolving to the chosen file path, or null if cancelled
+   */
+  saveMediaDialog: (options: SaveMediaDialogOptions) => Promise<string | null>;
 
   /**
    * Opens a native dialog to select an external subtitle file (.srt, .vtt, .ass, .ssa).
