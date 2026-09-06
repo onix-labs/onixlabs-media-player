@@ -55,6 +55,8 @@ function createMockCallbacks(): MenuCallbacks {
     onToggleRepeat: vi.fn(),
     onSelectVisualization: vi.fn(),
     onSelectAspectMode: vi.fn(),
+    onLoadSkin: vi.fn(),
+    onRemoveSkin: vi.fn(),
   };
 }
 

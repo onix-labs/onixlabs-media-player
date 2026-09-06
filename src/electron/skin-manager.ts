@@ -28,10 +28,21 @@ import {extractWmzArchive} from './wmz-archive';
 /** Directory name, under userData, holding all installed skins. */
 const SKINS_DIRECTORY_NAME: string = 'skins';
 
-/** Byte-order marks used to identify the encoding of a skin text file. */
-const BOM_UTF16_LE: readonly number[] = [0xff, 0xfe];
-const BOM_UTF16_BE: readonly number[] = [0xfe, 0xff];
-const BOM_UTF8: readonly number[] = [0xef, 0xbb, 0xbf];
+/**
+ * Byte-order marks used to identify the encoding of a skin text file.
+ *
+ * Held as whole big-endian words rather than byte arrays so each is a single
+ * named value that can be compared with one read.
+ */
+const BOM_UTF16_LE: number = 0xfffe;
+const BOM_UTF16_BE: number = 0xfeff;
+const BOM_UTF8: number = 0xefbbbf;
+
+/** Byte length of a UTF-16 byte-order mark. */
+const BOM_UTF16_LENGTH: number = 2;
+
+/** Byte length of a UTF-8 byte-order mark. */
+const BOM_UTF8_LENGTH: number = 3;
 
 /** Number of leading bytes sampled when guessing an unmarked encoding. */
 const ENCODING_SAMPLE_SIZE: number = 512;
@@ -84,12 +95,13 @@ export interface SkinContent {
  * Tests whether a buffer opens with the given byte-order mark.
  *
  * @param buffer - Buffer to inspect
- * @param bom - Byte sequence to look for at offset zero
+ * @param bom - The mark as a big-endian word
+ * @param length - Byte length of the mark
  * @returns True when the buffer starts with the mark
  */
-function hasByteOrderMark(buffer: Buffer, bom: readonly number[]): boolean {
-  if (buffer.length < bom.length) return false;
-  return bom.every((byte: number, index: number): boolean => buffer[index] === byte);
+function hasByteOrderMark(buffer: Buffer, bom: number, length: number): boolean {
+  if (buffer.length < length) return false;
+  return buffer.readUIntBE(0, length) === bom;
 }
 
 /**
@@ -104,19 +116,19 @@ function hasByteOrderMark(buffer: Buffer, bom: readonly number[]): boolean {
  * @returns Decoded text with any byte-order mark stripped
  */
 export function decodeSkinText(buffer: Buffer): string {
-  if (hasByteOrderMark(buffer, BOM_UTF16_LE)) {
-    return buffer.subarray(BOM_UTF16_LE.length).toString('utf16le');
+  if (hasByteOrderMark(buffer, BOM_UTF16_LE, BOM_UTF16_LENGTH)) {
+    return buffer.subarray(BOM_UTF16_LENGTH).toString('utf16le');
   }
 
-  if (hasByteOrderMark(buffer, BOM_UTF16_BE)) {
+  if (hasByteOrderMark(buffer, BOM_UTF16_BE, BOM_UTF16_LENGTH)) {
     // Node has no utf16be decoder; swapping byte pairs turns it into utf16le.
-    const swapped: Buffer = Buffer.from(buffer.subarray(BOM_UTF16_BE.length));
+    const swapped: Buffer = Buffer.from(buffer.subarray(BOM_UTF16_LENGTH));
     swapped.swap16();
     return swapped.toString('utf16le');
   }
 
-  if (hasByteOrderMark(buffer, BOM_UTF8)) {
-    return buffer.subarray(BOM_UTF8.length).toString('utf8');
+  if (hasByteOrderMark(buffer, BOM_UTF8, BOM_UTF8_LENGTH)) {
+    return buffer.subarray(BOM_UTF8_LENGTH).toString('utf8');
   }
 
   const sample: Buffer = buffer.subarray(0, ENCODING_SAMPLE_SIZE);

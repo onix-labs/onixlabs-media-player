@@ -61,8 +61,14 @@ export interface SkinSlots {
   readonly effects: SkinSlotRect | null;
 }
 
+/** CSS reference pixels per inch, as the browser defines them. */
+const PIXELS_PER_INCH: number = 96;
+
+/** Typographic points per inch. */
+const POINTS_PER_INCH: number = 72;
+
 /** Points-to-pixels ratio, for the font sizes skins express in points. */
-const POINTS_TO_PIXELS: number = 96 / 72;
+const POINTS_TO_PIXELS: number = PIXELS_PER_INCH / POINTS_PER_INCH;
 
 /**
  * Renders the active skin and routes input back into its runtime.

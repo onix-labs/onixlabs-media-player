@@ -309,7 +309,16 @@ export function parseWmsNodes(source: string): {roots: SkinNode[]; warnings: str
     if (source.startsWith('</', open)) {
       const close: number = findTagEnd(source, open);
       const tag: string = source.slice(open + '</'.length, close - 1).trim().toUpperCase();
-      const depth: number = stack.findLastIndex((node: MutableNode): boolean => node.tag === tag);
+      // Innermost match wins, so the search runs outwards from the top of the
+      // stack. Written as a loop rather than findLastIndex, which the app's
+      // TypeScript lib target does not provide.
+      let depth: number = -1;
+      for (let level: number = stack.length - 1; level > 0; level--) {
+        if (stack[level].tag === tag) {
+          depth = level;
+          break;
+        }
+      }
 
       if (depth <= 0) {
         warnings.push(`Ignored unmatched closing tag </${tag}>`);
