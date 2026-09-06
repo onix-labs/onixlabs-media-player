@@ -1287,7 +1287,15 @@ export class SkinRuntime {
       // A label with no handler must not swallow what is underneath it: skins
       // lay captions over the buttons they describe, and a caption that took
       // the press would leave the button dead and drag the window instead.
-      passthrough: element.read('passthrough') === true || (kind === 'text' && !interactive),
+      // A mapped button is a visual only: its group owns the input, because the
+      // region it occupies is a colour in the mapping image rather than the
+      // rectangle bounding it, and the two differ for any non-rectangular
+      // button. Letting the rectangle take the pointer would light up and fire
+      // buttons the cursor is not actually over.
+      passthrough:
+        element.read('passthrough') === true ||
+        (kind === 'text' && !interactive) ||
+        this.mappedRegion(element) !== null,
       interactive,
       cursor: this.cursorFor(element, kind),
       tooltip: this.tooltipFor(element),

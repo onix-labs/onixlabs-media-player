@@ -79,8 +79,8 @@ export class SkinHost implements OnDestroy {
   /** Slider currently being dragged, so moves outside it still track */
   private readonly dragging: WritableSignal<SkinRenderNode | null> = signal<SkinRenderNode | null>(null);
 
-  /** Where the pointer and the window were when a window drag began */
-  private windowDrag: {pointerX: number; pointerY: number; windowX: number; windowY: number} | null = null;
+  /** Where the pointer was when a window drag began, null when not dragging */
+  private windowDrag: {pointerX: number; pointerY: number} | null = null;
 
   /** The active skin's render tree, or null when no skin is active */
   public readonly tree: Signal<SkinRenderNode | null> = this.skins.renderTree;
@@ -164,6 +164,11 @@ export class SkinHost implements OnDestroy {
       return;
     }
 
+    if (node.kind === 'buttongroup') {
+      this.pressGroup(node, event, true);
+      return;
+    }
+
     if (this.isDragRegion(node)) {
       this.beginWindowDrag(event);
       return;
@@ -181,13 +186,27 @@ export class SkinHost implements OnDestroy {
   public onPointerUp(node: SkinRenderNode, event: Readonly<PointerEvent>): void {
     event.stopPropagation();
 
+    // Released unconditionally. A capture that outlives its gesture routes
+    // every later pointer event to one element, which leaves the whole skin
+    // dead to hover and clicks - so it must not depend on which branch below
+    // happens to run.
+    const target: HTMLElement = event.currentTarget as HTMLElement;
+    if (target.hasPointerCapture(event.pointerId)) {
+      target.releasePointerCapture(event.pointerId);
+    }
+
     if (this.windowDrag !== null) {
-      this.endWindowDrag(event);
+      this.endWindowDrag();
       return;
     }
 
     if (node.kind === 'slider') {
-      this.onSliderUp(event);
+      this.onSliderUp();
+      return;
+    }
+
+    if (node.kind === 'buttongroup') {
+      this.pressGroup(node, event, false);
       return;
     }
 
@@ -226,9 +245,9 @@ export class SkinHost implements OnDestroy {
   /**
    * Starts moving the window with the pointer.
    *
-   * The window's position is fetched once, at the start, and every later move
-   * is applied as an offset from where the pointer began. Asking for it on each
-   * move would race the moves themselves.
+   * The window's own position is recorded in the main process rather than read
+   * back here: a round trip on pointerdown would resolve after the first moves
+   * had already been sent, and the drag would jump.
    *
    * @param event - The pointer event that began the drag
    */
@@ -237,12 +256,8 @@ export class SkinHost implements OnDestroy {
     if (bridge === undefined) return;
 
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-    const pointerX: number = event.screenX;
-    const pointerY: number = event.screenY;
-
-    void bridge.getSkinWindowPosition().then((origin: {x: number; y: number}): void => {
-      this.windowDrag = {pointerX, pointerY, windowX: origin.x, windowY: origin.y};
-    });
+    this.windowDrag = {pointerX: event.screenX, pointerY: event.screenY};
+    void bridge.beginSkinWindowDrag();
   }
 
   /**
@@ -251,23 +266,21 @@ export class SkinHost implements OnDestroy {
    * @param event - The pointer event
    */
   private moveWindow(event: Readonly<PointerEvent>): void {
-    const drag: {pointerX: number; pointerY: number; windowX: number; windowY: number} | null = this.windowDrag;
+    const drag: {pointerX: number; pointerY: number} | null = this.windowDrag;
     if (drag === null) return;
 
-    void window.mediaPlayer?.setSkinWindowPosition(
-      Math.round(drag.windowX + (event.screenX - drag.pointerX)),
-      Math.round(drag.windowY + (event.screenY - drag.pointerY))
+    void window.mediaPlayer?.dragSkinWindowBy(
+      event.screenX - drag.pointerX,
+      event.screenY - drag.pointerY
     );
   }
 
   /**
    * Ends a window drag.
-   *
-   * @param event - The pointer event
    */
-  private endWindowDrag(event: Readonly<PointerEvent>): void {
-    (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+  private endWindowDrag(): void {
     this.windowDrag = null;
+    void window.mediaPlayer?.endSkinWindowDrag();
   }
 
   /**
@@ -323,6 +336,43 @@ export class SkinHost implements OnDestroy {
   }
 
   /**
+   * Presses or releases whichever mapped button of a group is under the pointer.
+   *
+   * @param node - The group the pointer is on
+   * @param event - The pointer event
+   * @param down - Whether the button is now held
+   */
+  private pressGroup(node: SkinRenderNode, event: Readonly<PointerEvent>, down: boolean): void {
+    const runtime: SkinRuntime | null = this.skins.current();
+    if (runtime === null) return;
+
+    if (!down) {
+      for (const child of node.children) runtime.setPressed(child.element, false);
+      return;
+    }
+
+    const hit: SkinElement | null = this.hitTestGroup(runtime, node, event);
+    if (hit !== null) runtime.setPressed(hit, true);
+  }
+
+  /**
+   * Finds which mapped button of a group a pointer event landed on.
+   *
+   * @param runtime - The active runtime
+   * @param node - The group under the pointer
+   * @param event - The pointer event
+   * @returns The button hit, or null when the pointer is on no button
+   */
+  private hitTestGroup(
+    runtime: SkinRuntime,
+    node: SkinRenderNode,
+    event: Readonly<MouseEvent>
+  ): SkinElement | null {
+    const bounds: DOMRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    return runtime.hitTest(node.element, event.clientX - bounds.left, event.clientY - bounds.top);
+  }
+
+  /**
    * Resolves a pointer move over a button group against its mapping image.
    *
    * @param node - The group under the pointer
@@ -332,13 +382,7 @@ export class SkinHost implements OnDestroy {
     const runtime: SkinRuntime | null = this.skins.current();
     if (runtime === null) return;
 
-    const bounds: DOMRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const hit: SkinElement | null = runtime.hitTest(
-      node.element,
-      event.clientX - bounds.left,
-      event.clientY - bounds.top
-    );
-
+    const hit: SkinElement | null = this.hitTestGroup(runtime, node, event);
     for (const child of node.children) {
       runtime.setHovered(child.element, child.element === hit);
     }
@@ -354,13 +398,7 @@ export class SkinHost implements OnDestroy {
     const runtime: SkinRuntime | null = this.skins.current();
     if (runtime === null) return;
 
-    const bounds: DOMRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const hit: SkinElement | null = runtime.hitTest(
-      node.element,
-      event.clientX - bounds.left,
-      event.clientY - bounds.top
-    );
-
+    const hit: SkinElement | null = this.hitTestGroup(runtime, node, event);
     if (hit !== null) runtime.click(hit, event);
   }
 
@@ -409,11 +447,8 @@ export class SkinHost implements OnDestroy {
 
   /**
    * Ends a slider drag.
-   *
-   * @param event - The pointer event
    */
-  private onSliderUp(event: Readonly<PointerEvent>): void {
-    (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+  private onSliderUp(): void {
     this.dragging.set(null);
   }
 

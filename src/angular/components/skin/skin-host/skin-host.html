@@ -31,6 +31,7 @@
       (pointermove)="onPointerMove(node, $event)"
       (pointerdown)="onPointerDown(node, $event)"
       (pointerup)="onPointerUp(node, $event)"
+      (pointercancel)="onPointerUp(node, $event)"
       (click)="onNodeClick(node, $event)"
     >
       @switch (node.kind) {

@@ -177,6 +177,9 @@ class Program {
   /** Skin the skin window should show, read by its renderer as it starts */
   private activeSkinId: string | null = null;
 
+  /** Where the skin window was when the user started dragging it */
+  private skinDragOrigin: {x: number; y: number} | null = null;
+
   /** The port the media server is running on */
   private serverPort: number = 0;
 
@@ -1346,19 +1349,28 @@ class Program {
       this.closeSkinWindow();
     });
 
-    // A frameless window has no title bar, so the skin drags it itself. These
-    // act on the calling window, which is the skin window.
-    ipcMain.handle("skin:getWindowPosition", (event: Readonly<Electron.IpcMainInvokeEvent>): {x: number; y: number} => {
-      const win: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
-      if (!win || win.isDestroyed()) return {x: 0, y: 0};
-      const [x, y]: number[] = win.getPosition();
-      return {x, y};
-    });
-
-    ipcMain.handle("skin:setWindowPosition", (event: Readonly<Electron.IpcMainInvokeEvent>, position: Readonly<{x: number; y: number}>): void => {
+    // A frameless window has no title bar, so the skin drags it itself. The
+    // origin is recorded here rather than fetched by the renderer: a round trip
+    // on pointerdown would race the moves that follow it, and the renderer
+    // would be dragging from a position it did not have yet.
+    ipcMain.handle("skin:beginWindowDrag", (event: Readonly<Electron.IpcMainInvokeEvent>): void => {
       const win: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
       if (!win || win.isDestroyed()) return;
-      win.setPosition(Math.round(position.x), Math.round(position.y));
+      const [x, y]: number[] = win.getPosition();
+      this.skinDragOrigin = {x, y};
+    });
+
+    ipcMain.handle("skin:dragWindowBy", (event: Readonly<Electron.IpcMainInvokeEvent>, delta: Readonly<{x: number; y: number}>): void => {
+      const win: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
+      if (!win || win.isDestroyed() || this.skinDragOrigin === null) return;
+      win.setPosition(
+        this.skinDragOrigin.x + Math.round(delta.x),
+        this.skinDragOrigin.y + Math.round(delta.y)
+      );
+    });
+
+    ipcMain.handle("skin:endWindowDrag", (): void => {
+      this.skinDragOrigin = null;
     });
 
     ipcMain.handle("skin:maximizeWindow", (event: Readonly<Electron.IpcMainInvokeEvent>, maximized: boolean): void => {

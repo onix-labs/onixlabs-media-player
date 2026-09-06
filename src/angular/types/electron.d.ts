@@ -866,18 +866,18 @@ export interface MediaPlayerAPI {
    */
   maximizeSkinWindow: (maximized: boolean) => Promise<void>;
 
-  /**
-   * Reads the skin window's screen position, for dragging it by its own art.
-   * @returns The window's top-left corner in screen coordinates
-   */
-  getSkinWindowPosition: () => Promise<{x: number; y: number}>;
+  /** Records where the skin window is, at the start of dragging it by its art. */
+  beginSkinWindowDrag: () => Promise<void>;
 
   /**
-   * Moves the skin window.
-   * @param x - New left edge in screen coordinates
-   * @param y - New top edge in screen coordinates
+   * Moves the skin window relative to where the drag began.
+   * @param x - Horizontal distance the pointer has travelled
+   * @param y - Vertical distance the pointer has travelled
    */
-  setSkinWindowPosition: (x: number, y: number) => Promise<void>;
+  dragSkinWindowBy: (x: number, y: number) => Promise<void>;
+
+  /** Ends a window drag. */
+  endSkinWindowDrag: () => Promise<void>;
 }
 
 /**

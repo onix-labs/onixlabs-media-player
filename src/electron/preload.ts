@@ -547,20 +547,19 @@ export interface MediaPlayerAPI {
    */
   readonly maximizeSkinWindow: (maximized: boolean) => Promise<void>;
 
-  /**
-   * Reads the skin window's screen position, for dragging it by its own art.
-   *
-   * @returns The window's top-left corner in screen coordinates
-   */
-  readonly getSkinWindowPosition: () => Promise<{x: number; y: number}>;
+  /** Records where the skin window is, at the start of dragging it by its art. */
+  readonly beginSkinWindowDrag: () => Promise<void>;
 
   /**
-   * Moves the skin window.
+   * Moves the skin window relative to where the drag began.
    *
-   * @param x - New left edge in screen coordinates
-   * @param y - New top edge in screen coordinates
+   * @param x - Horizontal distance the pointer has travelled
+   * @param y - Vertical distance the pointer has travelled
    */
-  readonly setSkinWindowPosition: (x: number, y: number) => Promise<void>;
+  readonly dragSkinWindowBy: (x: number, y: number) => Promise<void>;
+
+  /** Ends a window drag. */
+  readonly endSkinWindowDrag: () => Promise<void>;
 }
 
 /**
@@ -631,9 +630,10 @@ const api: MediaPlayerAPI = {
   openSkinWindow: (id: string): Promise<void> => ipcRenderer.invoke('skin:open', id),
   closeSkinWindowAndRestore: (): Promise<void> => ipcRenderer.invoke('skin:close'),
   maximizeSkinWindow: (maximized: boolean): Promise<void> => ipcRenderer.invoke('skin:maximizeWindow', maximized),
-  getSkinWindowPosition: (): Promise<{x: number; y: number}> => ipcRenderer.invoke('skin:getWindowPosition'),
-  setSkinWindowPosition: (x: number, y: number): Promise<void> =>
-    ipcRenderer.invoke('skin:setWindowPosition', {x, y}),
+  beginSkinWindowDrag: (): Promise<void> => ipcRenderer.invoke('skin:beginWindowDrag'),
+  dragSkinWindowBy: (x: number, y: number): Promise<void> =>
+    ipcRenderer.invoke('skin:dragWindowBy', {x, y}),
+  endSkinWindowDrag: (): Promise<void> => ipcRenderer.invoke('skin:endWindowDrag'),
   getActiveSkin: (): Promise<string | null> => ipcRenderer.invoke('skin:getActive'),
   minimizeSkinWindow: (): Promise<void> => ipcRenderer.invoke('skin:minimizeWindow'),
   closeSkinWindow: (): Promise<void> => ipcRenderer.invoke('skin:closeWindow'),
