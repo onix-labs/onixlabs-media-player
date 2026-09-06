@@ -1,8 +1,47 @@
 # Spike: Windows Media Player skin (.wmz) support
 
 **Branch:** `spike/wmp-skins`
-**Status:** spike — not production ready. See *Known gaps* and *Security* before going further.
+**Status:** paused, mid-spike — not production ready. Start at *Picking this back up*.
 **Reference skin:** *Windows Media Player 8 — Redux* by Rydsei (557 files, 745 elements, 8,246 lines of JScript).
+
+## Picking this back up
+
+**Where it stands.** The reference skin loads, draws, plays and responds. The archive
+unpacks, art decodes and colour-keys, the chrome is pixel-correct at the design size, the
+visualiser renders in the skin's own pane, and every clickable element dispatches to real
+application behaviour. Resize geometry is modelled and measured headlessly.
+
+**What has actually been seen on screen:** the skin rendering with correct chrome and
+transparency, the visualiser in its pane, and — before the last two commits — buttons and
+dragging *failing*.
+
+**What has not:** everything since `22d90d7`. The pointer-handling rewrite (manual window
+dragging, per-node event dispatch, group-owned mapped buttons) and the text-height fix are
+unverified in the running app. Start there.
+
+**Next steps, in the order I would take them:**
+
+1. Run it and exercise input: drag the window by its background, hover and press the
+   transport buttons, drag the seek and volume sliders. All of that changed last and none of
+   it has been seen working.
+2. Check drag smoothness. Each pointer move sends one IPC; if it lags the cursor, coalesce
+   moves to animation frames before reaching for anything cleverer.
+3. Fill in `res://wmploc.dll` strings with a mapping table — most of the skin's captions and
+   tooltips are blank without it, and it is the largest remaining visual gap.
+4. Decide whether `PLAYLIST` / `LISTBOX` / `POPUP` are worth rendering, or whether the spike
+   has answered its question and should be written up instead.
+
+**Do not skip:** the *Security* section at the bottom. This runs third-party script in the
+renderer and must not ship in that shape.
+
+**How to work on it.** Almost every bug here was found headlessly, not by squinting at the
+app: a throwaway `tsx` script that reads the real `.wmz`, builds a `SkinRuntime` against
+stub `MediaPlayerService` / `SkinImageService` objects, and asserts on the render tree —
+element rectangles, evaluated bindings, clicked handlers. Image sizes can be read straight
+out of the BMP headers, so layout resolves without a browser. That harness turned "the top
+bar looks wrong" into "`svEntireApp.width` is still 670" in one run, repeatedly. Rebuild it
+before debugging anything geometric; `requestAnimationFrame` needs a stub and that is the
+only shim required.
 
 ## What the format actually is
 
@@ -174,14 +213,24 @@ drive seek and volume. Beyond those:
 Pointer handling is done entirely in the component rather than by CSS. `-webkit-app-region`
 was the obvious way to make a frameless window draggable by its own art, but its regions are
 a flat painted union that ignores stacking: any drag region painted after a button covered
-the hole punched for it, and nothing was clickable at all. Dragging is now done by hand —
-pointer capture, one position read at the start, offsets applied on each move.
+the hole punched for it, and nothing was clickable at all.
+
+Dragging is done by hand instead. The main process records where the window was when the
+drag began and the renderer sends only deltas — an earlier version read the position back
+over IPC on pointerdown, and the first moves arrived before it resolved. That version also
+set pointer capture synchronously while recording the drag asynchronously, so a click faster
+than the round trip released nothing; a capture that outlives its gesture routes every later
+pointer event to one element, and the whole window went dead to hover and clicks after a
+single background click. **Capture must be released on every pointer-up regardless of which
+branch runs.**
 
 Every handler also claims its event. Nodes overlap and nest, and without that a mapped
 button inside a BUTTONGROUP fired twice, once directly and once when the group hit-tested
 the same pixel. A node counts as interactive if it is a control or the skin gave it a
 handler; everything else is inert art, and inert art is what drags the window. Labels with
-no handler are pointer-transparent, since skins lay captions over the buttons they describe.
+no handler are pointer-transparent, since skins lay captions over the buttons they describe,
+and mapped buttons are too: a BUTTONELEMENT occupies a colour in the mapping image rather
+than the rectangle bounding it, so its group owns press, hover and click alike.
 
 Two details were load-bearing. `theme.openDialog` is declared to *return a path*, which no
 asynchronous dialog can do — it starts the application's own open-and-play flow and returns
@@ -215,10 +264,11 @@ The five clickable elements that still fail reference element ids the skin never
   overlap the skin does not already have at its design size. Sizes below the skin's stated
   minimum are clamped by the window rather than handled.
 - **No skin-side persistence.** `theme.savePreference` lives for the session only.
-- **Only partly verified on screen.** The skin has been seen rendering in the app: the
-  archive unpacks, the art decodes and colour-keys, and the chrome draws. Interaction —
-  button hover and press states, mapping-image hit testing on the transport controls, and
-  slider dragging — has not been exercised, and neither has resizing.
+- **Input is unverified on screen.** Rendering, transparency and the visualiser have been
+  seen working. Everything about pointer input was rewritten in the last two commits and has
+  not been run since: window dragging, button hover and press art, mapping-image hit testing
+  on the transport group, and slider dragging. Resizing has not been exercised either,
+  though it is measured headlessly.
 
 ## Security
 
