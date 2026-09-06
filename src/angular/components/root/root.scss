@@ -104,6 +104,16 @@ app-skin-host {
   inset: 0;
 }
 
+// The outlet drawn into the skin's media pane. Both outlets are `display: flex`
+// with `flex: 1`, which sizes them from a flex parent they do not have here, so
+// without this they collapse to nothing and the pane renders empty. Positioning
+// against the pane, rather than stretching within it, is what gives them a
+// definite height for their canvas to observe.
+.skin-media-outlet {
+  position: absolute;
+  inset: 0;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

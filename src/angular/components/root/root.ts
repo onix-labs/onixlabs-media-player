@@ -151,6 +151,9 @@ export class Root implements OnDestroy {
   /** Whether the current media is video (used for styling) */
   public readonly isVideo: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.currentMediaType() === 'video');
 
+  /** Whether the current media is audio, and so wants a visualisation */
+  public readonly isAudio: ReturnType<typeof computed<boolean>> = computed((): boolean => this.mediaPlayer.currentMediaType() === 'audio');
+
   /** Whether the platform is macOS (used to show/hide layout header) */
   public readonly isMacOS: ReturnType<typeof computed<boolean>> = computed((): boolean => this.electron.platformInfo().platform === 'darwin');
 

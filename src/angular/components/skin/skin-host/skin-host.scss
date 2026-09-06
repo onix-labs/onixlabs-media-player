@@ -85,9 +85,7 @@
   // would otherwise inherit that from .skin-node.
   image-rendering: auto;
 
-  > * {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
+  // The outlet itself is sized where it is declared, in the parent's template.
+  // Style encapsulation puts it out of reach from here: the element carries the
+  // parent component's content attribute, not this one's.
 }

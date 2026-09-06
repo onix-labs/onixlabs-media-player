@@ -5,11 +5,14 @@
        The outlet is handed to the skin as a template rather than positioned
        over it, so it lands at the z-order the skin author gave the pane —
        above the skin's black backdrop, below the chrome that frames it. -->
+  <!-- Mounted only when there is media of that kind, matching what the
+       built-in layout does: an outlet with nothing to play has no graph to
+       build and nothing to draw. -->
   <ng-template #skinMedia>
     @if (isVideo()) {
-      <app-video-outlet/>
-    } @else {
-      <app-audio-outlet/>
+      <app-video-outlet class="skin-media-outlet"/>
+    } @else if (isAudio()) {
+      <app-audio-outlet class="skin-media-outlet"/>
     }
   </ng-template>
   <app-skin-host [mediaTemplate]="skinMedia" [mediaKind]="isVideo() ? 'video' : 'effects'"/>
