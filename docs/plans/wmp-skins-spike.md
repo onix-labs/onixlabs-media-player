@@ -120,9 +120,10 @@ defines.
   `horizontalAlignment` / `verticalAlignment`. Most of the skin computes its own sizes in
   script and is unaffected. Resizing away from the design size is the least-tested path.
 - **No skin-side persistence.** `theme.savePreference` lives for the session only.
-- **Not verified in the running app.** Everything above was measured headlessly against the
-  real archive. Bitmap decode, colour keying, mapping-image hit testing and the rendered
-  output have not been seen on screen.
+- **Only partly verified on screen.** The skin has been seen rendering in the app: the
+  archive unpacks, the art decodes and colour-keys, and the chrome draws. Interaction —
+  button hover and press states, mapping-image hit testing on the transport controls, and
+  slider dragging — has not been exercised, and neither has resizing.
 
 ## Security
 
