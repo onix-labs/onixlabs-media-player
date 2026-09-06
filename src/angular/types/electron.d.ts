@@ -824,6 +824,32 @@ export interface MediaPlayerAPI {
    * @returns Unsubscribe function
    */
   onSkinCommand: (callback: (command: 'install' | 'remove') => void) => () => void;
+
+  /**
+   * Resizes the window to the dimensions a skin was drawn for and hides the
+   * native window controls, which the skin draws itself.
+   * @param size - The skin's design size and minimum size
+   */
+  applySkinWindowSize: (size: SkinWindowSize) => Promise<void>;
+
+  /**
+   * Restores the window size and native controls from before a skin was active.
+   */
+  restoreSkinWindowSize: () => Promise<void>;
+}
+
+/**
+ * The window dimensions a skin declares.
+ */
+export interface SkinWindowSize {
+  /** Width the skin was drawn for */
+  width: number;
+  /** Height the skin was drawn for */
+  height: number;
+  /** Smallest width the skin's layout supports */
+  minWidth: number;
+  /** Smallest height the skin's layout supports */
+  minHeight: number;
 }
 
 /**

@@ -283,6 +283,9 @@ export class SkinRuntime {
   /** Current view height in pixels */
   private height: number = 0;
 
+  /** Whether the render in progress is at the size the skin was drawn for */
+  private renderingAtDesignSize: boolean = false;
+
   /** Whether a layout pass is pending */
   private dirty: boolean = true;
 
@@ -494,6 +497,24 @@ export class SkinRuntime {
     return {
       width: Number(view.read('width')) || 0,
       height: Number(view.read('height')) || 0,
+    };
+  }
+
+  /**
+   * The smallest size the skin's layout supports.
+   *
+   * Below this a skin's arithmetic starts producing negative widths, so the
+   * window should not be allowed to shrink past it. Skins that state no
+   * minimum are held at their design size.
+   *
+   * @returns Minimum width and height in pixels
+   */
+  public get minimumSize(): SkinImageMetrics {
+    const view: SkinElement = this.root;
+    const design: SkinImageMetrics = this.designSize;
+    return {
+      width: Number(view.read('minwidth')) || design.width,
+      height: Number(view.read('minheight')) || design.height,
     };
   }
 
@@ -755,9 +776,19 @@ export class SkinRuntime {
       this.mappedRegion(element);
     if (region !== null) return region;
 
+    // The baseline is only ever taken while the view is at the size the skin
+    // was drawn for, and is retaken every time it is - skin art loads
+    // asynchronously, so a container's real size arrives several renders after
+    // the first. Baselining on whichever render happened to come first would
+    // capture zeroes, or the previous window's size, and make every later delta
+    // wrong by that much: enough to throw the bottom-anchored transport bar
+    // clean off the view.
+    if (this.renderingAtDesignSize && parentWidth > 0 && parentHeight > 0) {
+      this.designSizes.set(element, {width: parentWidth, height: parentHeight});
+    }
+
     const design: SkinImageMetrics | undefined = this.designSizes.get(element);
     if (design === undefined) {
-      this.designSizes.set(element, {width: parentWidth, height: parentHeight});
       return {left, top, width, height};
     }
 
@@ -850,6 +881,13 @@ export class SkinRuntime {
    * @returns An immutable snapshot of the whole view
    */
   public render(): SkinRenderNode {
+    const design: SkinImageMetrics = this.designSize;
+    this.renderingAtDesignSize =
+      design.width > 0 &&
+      design.height > 0 &&
+      this.width === design.width &&
+      this.height === design.height;
+
     return this.renderElement(this.root, this.width, this.height, 0);
   }
 
@@ -883,9 +921,15 @@ export class SkinRuntime {
           ? this.buttonImage(element)
           : element.read('backgroundimage');
     const backgroundImage: string | null = this.imageUrl(element, backgroundName);
-    const backgroundColour: number | null = parseSkinColour(
-      String(element.read('backgroundcolor') ?? '')
-    );
+
+    // VIDEO and EFFECTS are holes for the application's own panes, not things
+    // the skin draws. Their declared backgroundColor is what the original
+    // painted *behind* live content - the WMP8 skin names yellow - so honouring
+    // it here just puts a yellow rectangle where the visualiser should be.
+    const isSlot: boolean = kind === 'video' || kind === 'effects';
+    const backgroundColour: number | null = isSlot
+      ? null
+      : parseSkinColour(String(element.read('backgroundcolor') ?? ''));
 
     // A button whose art is loaded but whose size was never stated takes the
     // art's size, which is how most skin buttons are declared.

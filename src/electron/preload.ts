@@ -497,6 +497,33 @@ export interface MediaPlayerAPI {
    * @returns Unsubscribe function
    */
   readonly onSkinCommand: (callback: (command: 'install' | 'remove') => void) => () => void;
+
+  /**
+   * Resizes the window to the dimensions a skin was drawn for and hides the
+   * native window controls, which a skin draws itself.
+   *
+   * @param size - The skin's design size and minimum size
+   */
+  readonly applySkinWindowSize: (size: Readonly<SkinWindowSize>) => Promise<void>;
+
+  /**
+   * Restores the window size and native controls from before a skin was active.
+   */
+  readonly restoreSkinWindowSize: () => Promise<void>;
+}
+
+/**
+ * The window dimensions a skin declares.
+ */
+export interface SkinWindowSize {
+  /** Width the skin was drawn for */
+  readonly width: number;
+  /** Height the skin was drawn for */
+  readonly height: number;
+  /** Smallest width the skin's layout supports */
+  readonly minWidth: number;
+  /** Smallest height the skin's layout supports */
+  readonly minHeight: number;
 }
 
 /**
@@ -548,6 +575,9 @@ const api: MediaPlayerAPI = {
   readSkin: (id: string): Promise<SkinSourcesInfo | null> => ipcRenderer.invoke('skin:read', id),
   readSkinAsset: (id: string, assetName: string): Promise<Uint8Array | null> =>
     ipcRenderer.invoke('skin:readAsset', id, assetName),
+  applySkinWindowSize: (size: Readonly<SkinWindowSize>): Promise<void> =>
+    ipcRenderer.invoke('skin:applyWindowSize', size),
+  restoreSkinWindowSize: (): Promise<void> => ipcRenderer.invoke('skin:restoreWindowSize'),
   onSkinCommand: (callback: (command: 'install' | 'remove') => void): () => void => {
     const listener: (_event: Electron.IpcRendererEvent, command: 'install' | 'remove') => void =
       (_event: Electron.IpcRendererEvent, command: 'install' | 'remove'): void => callback(command);

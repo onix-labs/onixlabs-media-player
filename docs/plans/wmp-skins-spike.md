@@ -106,11 +106,19 @@ defines.
   skin takes from Windows resources is blank. Shipping a mapping table for the common
   string ids would recover most captions.
 - **`VIDEO` and `EFFECTS` panes are reported, not filled.** The runtime emits their
-  rectangles; nothing yet positions the application's real outlets over them. This is the
-  next piece of work and it is small.
-- **Alignment on resize is approximate.** Each element records its parent's size on the
-  first settled pass and distributes later growth per `horizontalAlignment` /
-  `verticalAlignment`. Most of the skin computes its own sizes in script and is unaffected.
+  rectangles; nothing yet positions the application's real outlets over them, so both
+  render as empty holes. They are deliberately *not* painted with the skin's declared
+  `backgroundColor` — the WMP8 skin names yellow, which the original painted behind live
+  content and which shows as a yellow rectangle when there is no content to cover it.
+  Filling these is the next piece of work.
+- **The native window frame cannot be removed.** Activating a skin sizes the window to the
+  skin's design dimensions and hides the macOS traffic lights, but `frame`/`transparent`
+  are fixed when a `BrowserWindow` is created, so the frame and its vibrancy remain behind
+  the skin's own rounded corners. Removing them means recreating the window on activation.
+- **Alignment on resize is approximate.** Each element baselines its parent's size while
+  the view is at the skin's design dimensions, then distributes later growth per
+  `horizontalAlignment` / `verticalAlignment`. Most of the skin computes its own sizes in
+  script and is unaffected. Resizing away from the design size is the least-tested path.
 - **No skin-side persistence.** `theme.savePreference` lives for the session only.
 - **Not verified in the running app.** Everything above was measured headlessly against the
   real archive. Bitmap decode, colour keying, mapping-image hit testing and the rendered

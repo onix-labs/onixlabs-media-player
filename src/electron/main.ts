@@ -163,6 +163,18 @@ class Program {
   /** Installed Windows Media Player skins, unpacked under userData/skins */
   private readonly skins: SkinManager = new SkinManager(app.getPath('userData'));
 
+  /**
+   * Window size and constraints from before a skin took the window over.
+   *
+   * A skin declares the dimensions it was drawn for, and its layout only lands
+   * where the author put it at that size, so activating one resizes the window.
+   * The previous size is kept here so deactivating restores it.
+   */
+  private preSkinWindowState: {
+    readonly content: readonly [number, number];
+    readonly minimum: readonly [number, number];
+  } | null = null;
+
   /** The port the media server is running on */
   private serverPort: number = 0;
 
@@ -1271,6 +1283,53 @@ class Program {
       } catch (error: unknown) {
         ipcLogger.warn(`skin:read failed for ${id} - ${String(error)}`);
         return null;
+      }
+    });
+
+    // A skin draws its own window frame, so the native chrome has to get out of
+    // the way: the traffic lights would otherwise sit on top of the skin's own
+    // title bar. The frame itself cannot be removed after the window is created,
+    // which is why this only hides what it can.
+    ipcMain.handle("skin:applyWindowSize", (_: Readonly<Electron.IpcMainInvokeEvent>, size: Readonly<{
+      width: number;
+      height: number;
+      minWidth: number;
+      minHeight: number;
+    }>): void => {
+      if (!this.window || this.window.isDestroyed()) return;
+
+      if (this.preSkinWindowState === null) {
+        const [contentWidth, contentHeight]: number[] = this.window.getContentSize();
+        const [minimumWidth, minimumHeight]: number[] = this.window.getMinimumSize();
+        this.preSkinWindowState = {
+          content: [contentWidth, contentHeight],
+          minimum: [minimumWidth, minimumHeight],
+        };
+      }
+
+      // Minimum first: setContentSize is clamped by the current minimum, so
+      // shrinking to a skin smaller than the app's own floor needs the floor
+      // lowered before the resize, not after.
+      this.window.setMinimumSize(Math.max(1, size.minWidth), Math.max(1, size.minHeight));
+      this.window.setContentSize(Math.max(1, size.width), Math.max(1, size.height));
+
+      if (process.platform === 'darwin') {
+        this.window.setWindowButtonVisibility(false);
+      }
+    });
+
+    ipcMain.handle("skin:restoreWindowSize", (): void => {
+      if (!this.window || this.window.isDestroyed()) return;
+
+      const previous: typeof this.preSkinWindowState = this.preSkinWindowState;
+      if (previous !== null) {
+        this.window.setMinimumSize(previous.minimum[0], previous.minimum[1]);
+        this.window.setContentSize(previous.content[0], previous.content[1]);
+        this.preSkinWindowState = null;
+      }
+
+      if (process.platform === 'darwin') {
+        this.window.setWindowButtonVisibility(true);
       }
     });
 

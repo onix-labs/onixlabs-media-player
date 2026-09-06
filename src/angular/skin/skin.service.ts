@@ -155,11 +155,23 @@ export class SkinService {
       this.failure.set(null);
       this.startTimer(runtime);
 
-      // The design size gives the first layout something to settle against
-      // before the host component has measured itself.
-      runtime.resize(runtime.designSize.width, runtime.designSize.height);
+      // A skin is drawn for one size, and its layout only lands where the
+      // author put it at that size, so the window adopts the skin's dimensions
+      // rather than the skin stretching to fill whatever the window happened to
+      // be. This also settles the first layout before the host has measured.
+      const design: {width: number; height: number} = runtime.designSize;
+      const minimum: {width: number; height: number} = runtime.minimumSize;
+
+      runtime.resize(design.width, design.height);
       runtime.settle();
       this.publish();
+
+      await bridge.applySkinWindowSize({
+        width: design.width,
+        height: design.height,
+        minWidth: minimum.width,
+        minHeight: minimum.height,
+      });
 
       return true;
     } catch (error: unknown) {
@@ -177,10 +189,16 @@ export class SkinService {
       this.timer = null;
     }
 
+    const wasActive: boolean = this.runtime !== null;
+
     this.runtime?.destroy();
     this.runtime = null;
     this.tree.set(null);
     this.activeId.set(null);
+
+    if (wasActive) {
+      void this.bridge?.restoreSkinWindowSize();
+    }
   }
 
   /**
