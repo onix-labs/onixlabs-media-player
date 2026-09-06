@@ -171,6 +171,18 @@ drive seek and volume. Beyond those:
 | `myeffect.next()` / `previous()` | the application's visualiser |
 | `myeffect.currentPresetTitle` | the running visualisation's name, so the skin's caption strip shows it |
 
+Pointer handling is done entirely in the component rather than by CSS. `-webkit-app-region`
+was the obvious way to make a frameless window draggable by its own art, but its regions are
+a flat painted union that ignores stacking: any drag region painted after a button covered
+the hole punched for it, and nothing was clickable at all. Dragging is now done by hand —
+pointer capture, one position read at the start, offsets applied on each move.
+
+Every handler also claims its event. Nodes overlap and nest, and without that a mapped
+button inside a BUTTONGROUP fired twice, once directly and once when the group hit-tested
+the same pixel. A node counts as interactive if it is a control or the skin gave it a
+handler; everything else is inert art, and inert art is what drags the window. Labels with
+no handler are pointer-transparent, since skins lay captions over the buttons they describe.
+
 Two details were load-bearing. `theme.openDialog` is declared to *return a path*, which no
 asynchronous dialog can do — it starts the application's own open-and-play flow and returns
 empty, which the skin reads as "nothing further to do". And JScript handlers read modifier

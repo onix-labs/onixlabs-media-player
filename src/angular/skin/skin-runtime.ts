@@ -135,6 +135,8 @@ export interface SkinRenderNode {
   readonly enabled: boolean;
   /** Whether pointer events pass through to what is beneath */
   readonly passthrough: boolean;
+  /** Whether the node responds to a click rather than dragging the window */
+  readonly interactive: boolean;
   /** CSS cursor for the element */
   readonly cursor: string;
   /** Tooltip text, empty when the skin gives none */
@@ -1254,6 +1256,16 @@ export class SkinRuntime {
       height = Math.ceil(text.fontSize * TEXT_LINE_HEIGHT);
     }
 
+    // A node is interactive if it is a control or the skin gave it a handler.
+    // Everything else is inert art, and in a frameless window inert art is what
+    // drags the window.
+    const interactive: boolean =
+      kind === 'button' ||
+      kind === 'buttongroup' ||
+      kind === 'slider' ||
+      element.node.attributes.has('onclick') ||
+      element.node.attributes.has('ondblclick');
+
     const alpha: number = Number(element.read('alphablend'));
     const children: SkinRenderNode[] = element.children.map(
       (child: SkinElement, childIndex: number): SkinRenderNode =>
@@ -1272,7 +1284,11 @@ export class SkinRuntime {
       opacity: Number.isFinite(alpha) ? alpha / ALPHA_OPAQUE : 1,
       visible: element.read('visible') !== false,
       enabled: element.read('enabled') !== false,
-      passthrough: element.read('passthrough') === true,
+      // A label with no handler must not swallow what is underneath it: skins
+      // lay captions over the buttons they describe, and a caption that took
+      // the press would leave the button dead and drag the window instead.
+      passthrough: element.read('passthrough') === true || (kind === 'text' && !interactive),
+      interactive,
       cursor: this.cursorFor(element, kind),
       tooltip: this.tooltipFor(element),
       backgroundColour: backgroundColour === null ? null : toCssColour(backgroundColour),

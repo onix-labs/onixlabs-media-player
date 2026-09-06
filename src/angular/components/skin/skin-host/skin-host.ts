@@ -8,6 +8,15 @@
  *
  * Two behaviours are worth knowing about.
  *
+ * **Every pointer event is dispatched here, not by CSS.** Nodes overlap
+ * heavily and nest deeply, so each handler claims its event and stops it
+ * bubbling: without that, clicking a mapped button inside a BUTTONGROUP fires
+ * it once directly and once more when the group hit-tests the same pixel.
+ * Window dragging is done the same way rather than with `-webkit-app-region`,
+ * whose regions are a flat painted union that ignores stacking - any drag
+ * region painted later simply covered the holes punched for the buttons, and
+ * nothing was clickable at all.
+ *
  * **Button groups hit-test by colour.** A group draws one image and carries a
  * second, never-drawn mapping image whose flat colour regions identify its
  * buttons. Pointer moves over a group are resolved against that image rather
@@ -70,6 +79,9 @@ export class SkinHost implements OnDestroy {
   /** Slider currently being dragged, so moves outside it still track */
   private readonly dragging: WritableSignal<SkinRenderNode | null> = signal<SkinRenderNode | null>(null);
 
+  /** Where the pointer and the window were when a window drag began */
+  private windowDrag: {pointerX: number; pointerY: number; windowX: number; windowY: number} | null = null;
+
   /** The active skin's render tree, or null when no skin is active */
   public readonly tree: Signal<SkinRenderNode | null> = this.skins.renderTree;
 
@@ -129,8 +141,133 @@ export class SkinHost implements OnDestroy {
    * @param node - Node being drawn
    * @returns True when dragging the node should move the window
    */
-  public isDragRegion(node: SkinRenderNode): boolean {
+  private isDragRegion(node: SkinRenderNode): boolean {
+    if (node.interactive) return false;
     return node.kind === 'container' || node.kind === 'text' || node.kind === 'unsupported';
+  }
+
+  /**
+   * Handles a press on any node, claiming the event for the innermost one.
+   *
+   * Nodes nest, so an unclaimed press would be seen by every ancestor as it
+   * bubbled - a button press would also start a window drag on the container
+   * behind it.
+   *
+   * @param node - Node the pointer went down on
+   * @param event - The pointer event
+   */
+  public onPointerDown(node: SkinRenderNode, event: Readonly<PointerEvent>): void {
+    event.stopPropagation();
+
+    if (node.kind === 'slider') {
+      this.onSliderDown(node, event);
+      return;
+    }
+
+    if (this.isDragRegion(node)) {
+      this.beginWindowDrag(event);
+      return;
+    }
+
+    if (node.interactive) this.onPress(node, true);
+  }
+
+  /**
+   * Handles a release on any node.
+   *
+   * @param node - Node the pointer came up on
+   * @param event - The pointer event
+   */
+  public onPointerUp(node: SkinRenderNode, event: Readonly<PointerEvent>): void {
+    event.stopPropagation();
+
+    if (this.windowDrag !== null) {
+      this.endWindowDrag(event);
+      return;
+    }
+
+    if (node.kind === 'slider') {
+      this.onSliderUp(event);
+      return;
+    }
+
+    if (node.interactive) this.onPress(node, false);
+  }
+
+  /**
+   * Handles pointer movement over a node.
+   *
+   * @param node - Node the pointer is over
+   * @param event - The pointer event
+   */
+  public onPointerMove(node: SkinRenderNode, event: Readonly<PointerEvent>): void {
+    if (this.windowDrag !== null) {
+      this.moveWindow(event);
+      return;
+    }
+
+    if (node.kind === 'buttongroup') this.onGroupMove(node, event);
+    if (node.kind === 'slider') this.onSliderMove(node, event);
+  }
+
+  /**
+   * Handles a click on any node, claiming it for the innermost one.
+   *
+   * @param node - Node that was clicked
+   * @param event - The pointer event
+   */
+  public onNodeClick(node: SkinRenderNode, event: Readonly<MouseEvent>): void {
+    event.stopPropagation();
+
+    if (node.kind === 'buttongroup') this.onGroupClick(node, event);
+    else if (node.interactive) this.onClick(node, event);
+  }
+
+  /**
+   * Starts moving the window with the pointer.
+   *
+   * The window's position is fetched once, at the start, and every later move
+   * is applied as an offset from where the pointer began. Asking for it on each
+   * move would race the moves themselves.
+   *
+   * @param event - The pointer event that began the drag
+   */
+  private beginWindowDrag(event: Readonly<PointerEvent>): void {
+    const bridge: typeof window.mediaPlayer = window.mediaPlayer;
+    if (bridge === undefined) return;
+
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    const pointerX: number = event.screenX;
+    const pointerY: number = event.screenY;
+
+    void bridge.getSkinWindowPosition().then((origin: {x: number; y: number}): void => {
+      this.windowDrag = {pointerX, pointerY, windowX: origin.x, windowY: origin.y};
+    });
+  }
+
+  /**
+   * Moves the window to follow the pointer.
+   *
+   * @param event - The pointer event
+   */
+  private moveWindow(event: Readonly<PointerEvent>): void {
+    const drag: {pointerX: number; pointerY: number; windowX: number; windowY: number} | null = this.windowDrag;
+    if (drag === null) return;
+
+    void window.mediaPlayer?.setSkinWindowPosition(
+      Math.round(drag.windowX + (event.screenX - drag.pointerX)),
+      Math.round(drag.windowY + (event.screenY - drag.pointerY))
+    );
+  }
+
+  /**
+   * Ends a window drag.
+   *
+   * @param event - The pointer event
+   */
+  private endWindowDrag(event: Readonly<PointerEvent>): void {
+    (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+    this.windowDrag = null;
   }
 
   /**
@@ -163,6 +300,8 @@ export class SkinHost implements OnDestroy {
    * @param inside - Whether the pointer is now over it
    */
   public onHover(node: SkinRenderNode, inside: boolean): void {
+    if (!node.interactive) return;
+
     const runtime: SkinRuntime | null = this.skins.current();
     if (runtime === null) return;
 
@@ -189,7 +328,7 @@ export class SkinHost implements OnDestroy {
    * @param node - The group under the pointer
    * @param event - The pointer event
    */
-  public onGroupMove(node: SkinRenderNode, event: Readonly<PointerEvent>): void {
+  private onGroupMove(node: SkinRenderNode, event: Readonly<PointerEvent>): void {
     const runtime: SkinRuntime | null = this.skins.current();
     if (runtime === null) return;
 
@@ -211,7 +350,7 @@ export class SkinHost implements OnDestroy {
    * @param node - The group that was clicked
    * @param event - The pointer event
    */
-  public onGroupClick(node: SkinRenderNode, event: Readonly<PointerEvent>): void {
+  private onGroupClick(node: SkinRenderNode, event: Readonly<MouseEvent>): void {
     const runtime: SkinRuntime | null = this.skins.current();
     if (runtime === null) return;
 
@@ -231,7 +370,7 @@ export class SkinHost implements OnDestroy {
    * @param node - Node under the pointer
    * @param down - Whether the button is now held
    */
-  public onPress(node: SkinRenderNode, down: boolean): void {
+  private onPress(node: SkinRenderNode, down: boolean): void {
     this.skins.current()?.setPressed(node.element, down);
   }
 
@@ -241,7 +380,7 @@ export class SkinHost implements OnDestroy {
    * @param node - Node that was clicked
    * @param event - The originating pointer event
    */
-  public onClick(node: SkinRenderNode, event: Readonly<MouseEvent>): void {
+  private onClick(node: SkinRenderNode, event: Readonly<MouseEvent>): void {
     this.skins.current()?.click(node.element, event);
   }
 
@@ -251,7 +390,7 @@ export class SkinHost implements OnDestroy {
    * @param node - The slider node
    * @param event - The pointer event
    */
-  public onSliderDown(node: SkinRenderNode, event: Readonly<PointerEvent>): void {
+  private onSliderDown(node: SkinRenderNode, event: Readonly<PointerEvent>): void {
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     this.dragging.set(node);
     this.applySliderValue(node, event);
@@ -263,7 +402,7 @@ export class SkinHost implements OnDestroy {
    * @param node - The slider node
    * @param event - The pointer event
    */
-  public onSliderMove(node: SkinRenderNode, event: Readonly<PointerEvent>): void {
+  private onSliderMove(node: SkinRenderNode, event: Readonly<PointerEvent>): void {
     if (this.dragging() !== node) return;
     this.applySliderValue(node, event);
   }
@@ -273,7 +412,7 @@ export class SkinHost implements OnDestroy {
    *
    * @param event - The pointer event
    */
-  public onSliderUp(event: Readonly<PointerEvent>): void {
+  private onSliderUp(event: Readonly<PointerEvent>): void {
     (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
     this.dragging.set(null);
   }

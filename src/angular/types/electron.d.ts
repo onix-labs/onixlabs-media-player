@@ -865,6 +865,19 @@ export interface MediaPlayerAPI {
    * @param maximized - Whether the window should be maximized
    */
   maximizeSkinWindow: (maximized: boolean) => Promise<void>;
+
+  /**
+   * Reads the skin window's screen position, for dragging it by its own art.
+   * @returns The window's top-left corner in screen coordinates
+   */
+  getSkinWindowPosition: () => Promise<{x: number; y: number}>;
+
+  /**
+   * Moves the skin window.
+   * @param x - New left edge in screen coordinates
+   * @param y - New top edge in screen coordinates
+   */
+  setSkinWindowPosition: (x: number, y: number) => Promise<void>;
 }
 
 /**

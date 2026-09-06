@@ -16,8 +16,6 @@
       [class.skin-node--passthrough]="node.passthrough"
       [class.skin-node--tiled]="node.tiled"
       [class.skin-node--disabled]="!node.enabled"
-      [class.skin-node--drag]="isDragRegion(node)"
-      [class.skin-node--no-drag]="!isDragRegion(node)"
       [style.left.px]="node.left"
       [style.top.px]="node.top"
       [style.width.px]="node.width"
@@ -28,12 +26,12 @@
       [style.background-color]="node.backgroundColour"
       [style.background-image]="node.backgroundImage ? 'url(' + node.backgroundImage + ')' : null"
       [title]="node.tooltip"
-      (pointerenter)="node.kind === 'container' ? null : onHover(node, true)"
-      (pointerleave)="node.kind === 'container' ? null : onHover(node, false)"
-      (pointermove)="node.kind === 'buttongroup' ? onGroupMove(node, $event) : null"
-      (pointerdown)="node.kind === 'slider' ? onSliderDown(node, $event) : onPress(node, true)"
-      (pointerup)="node.kind === 'slider' ? onSliderUp($event) : onPress(node, false)"
-      (click)="node.kind === 'buttongroup' ? onGroupClick(node, $event) : (node.kind === 'button' ? onClick(node, $event) : null)"
+      (pointerenter)="onHover(node, true)"
+      (pointerleave)="onHover(node, false)"
+      (pointermove)="onPointerMove(node, $event)"
+      (pointerdown)="onPointerDown(node, $event)"
+      (pointerup)="onPointerUp(node, $event)"
+      (click)="onNodeClick(node, $event)"
     >
       @switch (node.kind) {
         @case ('text') {

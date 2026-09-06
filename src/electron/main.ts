@@ -1346,6 +1346,21 @@ class Program {
       this.closeSkinWindow();
     });
 
+    // A frameless window has no title bar, so the skin drags it itself. These
+    // act on the calling window, which is the skin window.
+    ipcMain.handle("skin:getWindowPosition", (event: Readonly<Electron.IpcMainInvokeEvent>): {x: number; y: number} => {
+      const win: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
+      if (!win || win.isDestroyed()) return {x: 0, y: 0};
+      const [x, y]: number[] = win.getPosition();
+      return {x, y};
+    });
+
+    ipcMain.handle("skin:setWindowPosition", (event: Readonly<Electron.IpcMainInvokeEvent>, position: Readonly<{x: number; y: number}>): void => {
+      const win: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
+      if (!win || win.isDestroyed()) return;
+      win.setPosition(Math.round(position.x), Math.round(position.y));
+    });
+
     ipcMain.handle("skin:maximizeWindow", (event: Readonly<Electron.IpcMainInvokeEvent>, maximized: boolean): void => {
       const win: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
       if (!win || win.isDestroyed()) return;

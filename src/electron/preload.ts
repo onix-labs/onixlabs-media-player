@@ -546,6 +546,21 @@ export interface MediaPlayerAPI {
    * @param maximized - Whether the window should be maximized
    */
   readonly maximizeSkinWindow: (maximized: boolean) => Promise<void>;
+
+  /**
+   * Reads the skin window's screen position, for dragging it by its own art.
+   *
+   * @returns The window's top-left corner in screen coordinates
+   */
+  readonly getSkinWindowPosition: () => Promise<{x: number; y: number}>;
+
+  /**
+   * Moves the skin window.
+   *
+   * @param x - New left edge in screen coordinates
+   * @param y - New top edge in screen coordinates
+   */
+  readonly setSkinWindowPosition: (x: number, y: number) => Promise<void>;
 }
 
 /**
@@ -616,6 +631,9 @@ const api: MediaPlayerAPI = {
   openSkinWindow: (id: string): Promise<void> => ipcRenderer.invoke('skin:open', id),
   closeSkinWindowAndRestore: (): Promise<void> => ipcRenderer.invoke('skin:close'),
   maximizeSkinWindow: (maximized: boolean): Promise<void> => ipcRenderer.invoke('skin:maximizeWindow', maximized),
+  getSkinWindowPosition: (): Promise<{x: number; y: number}> => ipcRenderer.invoke('skin:getWindowPosition'),
+  setSkinWindowPosition: (x: number, y: number): Promise<void> =>
+    ipcRenderer.invoke('skin:setWindowPosition', {x, y}),
   getActiveSkin: (): Promise<string | null> => ipcRenderer.invoke('skin:getActive'),
   minimizeSkinWindow: (): Promise<void> => ipcRenderer.invoke('skin:minimizeWindow'),
   closeSkinWindow: (): Promise<void> => ipcRenderer.invoke('skin:closeWindow'),
