@@ -84,13 +84,13 @@ export class Root implements OnDestroy {
   private readonly skins: SkinService = inject(SkinService);
 
   /**
-   * Whether a Windows Media Player skin is currently driving the interface.
+   * Whether this is the standalone skin window.
    *
-   * The built-in view stays mounted underneath but hidden: its audio and video
-   * elements are what actually play, and destroying them to swap chrome would
-   * stop playback mid-track.
+   * A skin needs a frameless, transparent window, and neither option can be
+   * changed after a window is created - so a skin gets a window of its own and
+   * the main window hides behind it, still playing.
    */
-  public readonly isSkinned: ReturnType<typeof computed<boolean>> = computed((): boolean => this.skins.isActive());
+  public readonly isSkinWindow: boolean = new URLSearchParams(window.location.search).get('window') === 'skin';
 
   /** Removes the menu-command listener when the component is destroyed */
   private readonly skinCommandCleanup: (() => void) | null = this.listenForSkinCommands();
@@ -238,15 +238,15 @@ export class Root implements OnDestroy {
     const bridge: typeof window.mediaPlayer = window.mediaPlayer;
     if (bridge === undefined) return null;
 
-    // Putting a skin on recreates the window, so the renderer that asked for it
-    // is not the one that shows it. This is where the new one picks it back up.
-    void this.skins.restoreActive();
+    // The skin window is told which skin to draw by the main process, because
+    // the window that chose it is not the window that shows it.
+    if (this.isSkinWindow) void this.skins.restoreActive();
 
     return bridge.onSkinCommand((command: 'install' | 'remove'): void => {
       if (command === 'install') {
         void this.skins.install();
       } else {
-        this.skins.deactivate();
+        this.skins.dismiss();
       }
     });
   }
@@ -261,10 +261,10 @@ export class Root implements OnDestroy {
       const supportsGlass: boolean = this.electron.platformInfo().supportsGlass;
       const showGlass: boolean = glassEnabled && supportsGlass;
 
-      // A skinned window is genuinely transparent, and the skin's own art is the
+      // The skin window is genuinely transparent, and the skin's own art is the
       // only thing meant to be opaque. Any background or tint the app paints
       // would show through its rounded corners as a rectangle.
-      if (this.isSkinned()) {
+      if (this.isSkinWindow) {
         document.documentElement.style.setProperty('--app-background-color', 'transparent');
         document.documentElement.style.setProperty('--app-tint-color', 'transparent');
         return;

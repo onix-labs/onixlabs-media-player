@@ -507,9 +507,14 @@ export interface MediaPlayerAPI {
   readonly applySkinWindowSize: (size: Readonly<SkinWindowSize>) => Promise<void>;
 
   /**
-   * Restores the window size and native controls from before a skin was active.
+   * Opens the skin window for the given skin and hides the main window.
+   *
+   * @param id - Identifier of the skin to show
    */
-  readonly restoreSkinWindowSize: () => Promise<void>;
+  readonly openSkinWindow: (id: string) => Promise<void>;
+
+  /** Closes the skin window and brings the main window back. */
+  readonly closeSkinWindowAndRestore: () => Promise<void>;
 
   /**
    * Gets the skin that should be restored after a window recreation.
@@ -529,8 +534,6 @@ export interface MediaPlayerAPI {
  * The window dimensions a skin declares.
  */
 export interface SkinWindowSize {
-  /** Identifier of the skin being applied */
-  readonly id: string;
   /** Width the skin was drawn for */
   readonly width: number;
   /** Height the skin was drawn for */
@@ -592,7 +595,8 @@ const api: MediaPlayerAPI = {
     ipcRenderer.invoke('skin:readAsset', id, assetName),
   applySkinWindowSize: (size: Readonly<SkinWindowSize>): Promise<void> =>
     ipcRenderer.invoke('skin:applyWindowSize', size),
-  restoreSkinWindowSize: (): Promise<void> => ipcRenderer.invoke('skin:restoreWindowSize'),
+  openSkinWindow: (id: string): Promise<void> => ipcRenderer.invoke('skin:open', id),
+  closeSkinWindowAndRestore: (): Promise<void> => ipcRenderer.invoke('skin:close'),
   getActiveSkin: (): Promise<string | null> => ipcRenderer.invoke('skin:getActive'),
   minimizeSkinWindow: (): Promise<void> => ipcRenderer.invoke('skin:minimizeWindow'),
   closeSkinWindow: (): Promise<void> => ipcRenderer.invoke('skin:closeWindow'),

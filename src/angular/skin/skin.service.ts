@@ -101,7 +101,10 @@ export class SkinService {
     if (skin === null) return null;
 
     await this.refresh();
-    await this.activate(skin.id);
+
+    // The skin is drawn in a window of its own, which will read the active id
+    // back out of the main process and activate it there.
+    await bridge.openSkinWindow(skin.id);
     return skin;
   }
 
@@ -167,7 +170,6 @@ export class SkinService {
       this.publish();
 
       await bridge.applySkinWindowSize({
-        id,
         width: design.width,
         height: design.height,
         minWidth: minimum.width,
@@ -182,11 +184,11 @@ export class SkinService {
   }
 
   /**
-   * Re-activates the skin the main process says should be showing.
+   * Activates whichever skin the main process says this window is for.
    *
-   * Turning a skin on swaps the window for a frameless one, which reloads the
-   * renderer and loses everything this service held. The main process keeps the
-   * skin's identity across that gap, and this is the other side of it.
+   * A skin is chosen in the main window but drawn in a window of its own, so
+   * the renderer that shows it is never the one that picked it. The identity
+   * crosses that gap through the main process.
    */
   public async restoreActive(): Promise<void> {
     const bridge: typeof window.mediaPlayer = this.bridge;
@@ -196,7 +198,12 @@ export class SkinService {
     if (id === null) return;
 
     await this.refresh();
-    await this.activate(id);
+
+    // Nothing else will ever show this window if the skin does not come up, and
+    // it is the only window the user can see, so it has to take itself away.
+    if (!(await this.activate(id))) {
+      await bridge.closeSkinWindowAndRestore();
+    }
   }
 
   /**
@@ -208,16 +215,18 @@ export class SkinService {
       this.timer = null;
     }
 
-    const wasActive: boolean = this.runtime !== null;
-
     this.runtime?.destroy();
     this.runtime = null;
     this.tree.set(null);
     this.activeId.set(null);
+  }
 
-    if (wasActive) {
-      void this.bridge?.restoreSkinWindowSize();
-    }
+  /**
+   * Dismisses the skin, closing its window and revealing the built-in interface.
+   */
+  public dismiss(): void {
+    this.deactivate();
+    void this.bridge?.closeSkinWindowAndRestore();
   }
 
   /**

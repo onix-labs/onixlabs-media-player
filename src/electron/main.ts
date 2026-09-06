@@ -164,27 +164,17 @@ class Program {
   private readonly skins: SkinManager = new SkinManager(app.getPath('userData'));
 
   /**
-   * Window size and constraints from before a skin took the window over.
+   * The window a Windows Media Player skin is drawn in, null when unskinned.
    *
-   * A skin declares the dimensions it was drawn for, and its layout only lands
-   * where the author put it at that size, so activating one resizes the window.
-   * The previous size is kept here so deactivating restores it.
+   * A skin paints its own frame, so it needs a frameless transparent window,
+   * and `frame`/`transparent` are fixed when a BrowserWindow is constructed.
+   * Rather than rebuild the main window - which would restart the renderer and
+   * stop playback - the skin gets a window of its own and the main window is
+   * hidden behind it, still playing.
    */
-  private preSkinWindowState: {
-    readonly content: readonly [number, number];
-    readonly minimum: readonly [number, number];
-  } | null = null;
+  private skinWindow: BrowserWindow | null = null;
 
-  /** Whether the main window was created frameless for a skin */
-  private windowIsFrameless: boolean = false;
-
-  /**
-   * Skin the renderer should restore after a window recreation.
-   *
-   * Swapping between framed and frameless means a new window and so a fresh
-   * renderer, which loses the active skin. The main process remembers it across
-   * that gap and the renderer asks for it as it starts.
-   */
+  /** Skin the skin window should show, read by its renderer as it starts */
   private activeSkinId: string | null = null;
 
   /** The port the media server is running on */
@@ -571,7 +561,7 @@ class Program {
    *
    * @returns The configured BrowserWindow instance
    */
-  private createBrowserWindow(frameless: boolean = false): BrowserWindow {
+  private createBrowserWindow(): BrowserWindow {
     const projectRoot: string = Program.getProjectRoot();
     // Preload must always be compiled JS - Electron can't run TS preload scripts
     const preloadPath: string = path.join(projectRoot, "src", "electron", "dist", "preload.js");
@@ -609,19 +599,7 @@ class Program {
     const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
     const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
 
-    if (frameless) {
-      // A skin paints its own frame, shadow and window buttons, so the native
-      // ones have to go entirely. `frame` and `transparent` are fixed when a
-      // BrowserWindow is constructed - there is no setter for either - which is
-      // why activating a skin recreates the window rather than restyling it.
-      platformOptions = {
-        frame: false,
-        transparent: true,
-        hasShadow: false,
-        backgroundColor: '#00000000',
-        fullscreenable: false
-      };
-    } else if (process.platform === 'darwin') {
+    if (process.platform === 'darwin') {
       // macOS: native vibrancy with hidden title bar
       // fullscreenable starts false — enabled when media is loaded (via onPlaylistCountChange)
       platformOptions = {
@@ -1310,83 +1288,58 @@ class Program {
       }
     });
 
-    // A skin draws its own window frame, so the native chrome has to get out of
-    // the way: the traffic lights would otherwise sit on top of the skin's own
-    // title bar. The frame itself cannot be removed after the window is created,
-    // which is why this only hides what it can.
-    ipcMain.handle("skin:applyWindowSize", (_: Readonly<Electron.IpcMainInvokeEvent>, request: Readonly<{
-      id: string;
+    // Skins get a window of their own: frameless and transparent, because they
+    // paint their own chrome, and separate because those two options are fixed
+    // at construction. The main window is hidden rather than closed, so its
+    // media elements keep playing while the skin drives them.
+    ipcMain.handle("skin:open", (_: Readonly<Electron.IpcMainInvokeEvent>, id: string): void => {
+      this.activeSkinId = id;
+      this.showSkinWindow();
+    });
+
+    ipcMain.handle("skin:close", (): void => {
+      this.closeSkinWindow();
+    });
+
+    // Asked for by the skin window's renderer as it starts, since the skin was
+    // chosen in a different window entirely.
+    ipcMain.handle("skin:getActive", (): string | null => this.activeSkinId);
+
+    // Sizes the calling window, which is the skin window: a skin's layout only
+    // lands where the author put it at the size it was drawn for.
+    ipcMain.handle("skin:applyWindowSize", (event: Readonly<Electron.IpcMainInvokeEvent>, size: Readonly<{
       width: number;
       height: number;
       minWidth: number;
       minHeight: number;
     }>): void => {
-      if (!this.window || this.window.isDestroyed()) return;
-
-      this.activeSkinId = request.id;
-
-      if (this.preSkinWindowState === null) {
-        const [contentWidth, contentHeight]: number[] = this.window.getContentSize();
-        const [minimumWidth, minimumHeight]: number[] = this.window.getMinimumSize();
-        this.preSkinWindowState = {
-          content: [contentWidth, contentHeight],
-          minimum: [minimumWidth, minimumHeight],
-        };
-      }
-
-      // The window is only rebuilt when its framing has to change. The renderer
-      // re-activates its skin after every reload and calls back in here, so
-      // rebuilding unconditionally would loop forever.
-      if (!this.windowIsFrameless) {
-        this.replaceMainWindow(true, request);
-        return;
-      }
+      const win: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
+      if (!win || win.isDestroyed()) return;
 
       // Minimum first: setContentSize is clamped by the current minimum, so
-      // shrinking to a skin smaller than the app's own floor needs the floor
+      // shrinking to a skin smaller than the current floor needs the floor
       // lowered before the resize, not after.
-      this.window.setMinimumSize(Math.max(1, request.minWidth), Math.max(1, request.minHeight));
-      this.window.setContentSize(Math.max(1, request.width), Math.max(1, request.height));
-    });
+      win.setMinimumSize(Math.max(1, size.minWidth), Math.max(1, size.minHeight));
+      win.setContentSize(Math.max(1, size.width), Math.max(1, size.height));
 
-    ipcMain.handle("skin:restoreWindowSize", (): void => {
-      this.activeSkinId = null;
-      if (!this.window || this.window.isDestroyed()) return;
+      if (win.isVisible()) return;
 
-      const previous: typeof this.preSkinWindowState = this.preSkinWindowState;
-      this.preSkinWindowState = null;
-
-      if (this.windowIsFrameless) {
-        this.replaceMainWindow(
-          false,
-          previous === null
-            ? undefined
-            : {
-                width: previous.content[0],
-                height: previous.content[1],
-                minWidth: previous.minimum[0],
-                minHeight: previous.minimum[1],
-              }
-        );
-        return;
-      }
-
-      if (previous !== null) {
-        this.window.setMinimumSize(previous.minimum[0], previous.minimum[1]);
-        this.window.setContentSize(previous.content[0], previous.content[1]);
+      // The main window is hidden here rather than when the skin window opens,
+      // so a skin that fails to load leaves the application still on screen
+      // instead of hiding everything behind a window that never appears.
+      win.show();
+      if (win === this.skinWindow && this.window && !this.window.isDestroyed()) {
+        this.window.webContents.setBackgroundThrottling(false);
+        this.window.hide();
       }
     });
 
-    // Asked for by the renderer as it starts, so a skin survives the window
-    // recreation that putting it on required in the first place.
-    ipcMain.handle("skin:getActive", (): string | null => this.activeSkinId);
-
-    ipcMain.handle("skin:minimizeWindow", (): void => {
-      this.window?.minimize();
+    ipcMain.handle("skin:minimizeWindow", (event: Readonly<Electron.IpcMainInvokeEvent>): void => {
+      BrowserWindow.fromWebContents(event.sender)?.minimize();
     });
 
     ipcMain.handle("skin:closeWindow", (): void => {
-      this.window?.close();
+      this.closeSkinWindow();
     });
 
     ipcMain.handle("skin:readAsset", (_: Readonly<Electron.IpcMainInvokeEvent>, id: string, assetName: string): Uint8Array | null => {
@@ -2237,59 +2190,86 @@ class Program {
    * Re-initializes window events and menu for the new window.
    */
   /**
-   * Replaces the main window with one of the opposite framing.
+   * Opens the window a skin is drawn in, hiding the main window behind it.
    *
-   * `frame` and `transparent` cannot be changed on a live BrowserWindow, so
-   * switching a skin on or off means building a new window and discarding the
-   * old one. The new window is created before the old is destroyed, because an
-   * instant with no windows open would fire `window-all-closed` and quit the
-   * application.
+   * The window is frameless and transparent because the skin paints its own
+   * frame, and it starts hidden: it is shown once the renderer has sized it to
+   * the skin's own dimensions, so the user never sees a default-sized flash of
+   * a half-drawn skin. The main window is hidden at that same moment, so a skin
+   * that fails to load never leaves the application with nothing on screen.
    *
-   * The renderer is reloaded by this, so playback in the media elements stops;
-   * the skin is restored on the other side via {@link activeSkinId}.
-   *
-   * @param frameless - Whether the replacement should be frameless and transparent
-   * @param contentSize - Content size for the new window, when one is wanted
+   * The main window is hidden rather than closed. Its audio and video elements
+   * are what actually play, and the skin drives them through the media server
+   * exactly as the built-in interface does, so playback continues uninterrupted
+   * across the switch. Background throttling is lifted on it for the same
+   * reason - a hidden window's timers are otherwise slowed, which would stall
+   * the playback clock.
    */
-  private replaceMainWindow(
-    frameless: boolean,
-    contentSize?: Readonly<{width: number; height: number; minWidth: number; minHeight: number}>
-  ): void {
-    const previous: BrowserWindow | null = this.window;
-    if (previous === null || previous.isDestroyed()) return;
-
-    windowLogger.info(`Recreating main window (frameless: ${frameless})`);
-
-    const bounds: Electron.Rectangle = previous.getBounds();
-
-    // The outgoing window's own handlers would otherwise null out this.window
-    // and run the close-time audio fade against a window that is going away.
-    previous.removeAllListeners('close');
-    previous.removeAllListeners('closed');
-
-    this.window = this.createBrowserWindow(frameless);
-    this.windowIsFrameless = frameless;
-
-    if (contentSize !== undefined) {
-      this.window.setMinimumSize(Math.max(1, contentSize.minWidth), Math.max(1, contentSize.minHeight));
-      this.window.setContentSize(Math.max(1, contentSize.width), Math.max(1, contentSize.height));
-      this.window.setPosition(bounds.x, bounds.y);
-    } else {
-      this.window.setBounds(bounds);
+  private showSkinWindow(): void {
+    if (this.skinWindow && !this.skinWindow.isDestroyed()) {
+      this.skinWindow.focus();
+      return;
     }
 
-    this.setupWindowEvents();
-    this.setupApplicationMenu();
+    const projectRoot: string = Program.getProjectRoot();
+    const preloadPath: string = path.join(projectRoot, "src", "electron", "dist", "preload.js");
 
-    if (Program.IS_DEVELOPMENT) {
-      void this.window.loadURL(Program.DEVELOPMENT_SERVER_URL);
-    } else {
-      void this.window.loadURL(`http://127.0.0.1:${this.serverPort}/`);
+    this.skinWindow = new BrowserWindow({
+      frame: false,
+      transparent: true,
+      hasShadow: false,
+      backgroundColor: '#00000000',
+      resizable: true,
+      show: false,
+      fullscreenable: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        preload: preloadPath,
+        zoomFactor: 1.0,
+        webSecurity: true
+      }
+    });
+
+    this.hardenWindow(this.skinWindow);
+
+    const baseUrl: string = Program.IS_DEVELOPMENT
+      ? Program.DEVELOPMENT_SERVER_URL
+      : `http://127.0.0.1:${this.serverPort}/`;
+    void this.skinWindow.loadURL(`${baseUrl}?window=skin`);
+
+    this.skinWindow.on('closed', (): void => {
+      this.skinWindow = null;
+      this.activeSkinId = null;
+      this.restoreMainWindow();
+    });
+
+    windowLogger.info('Skin window opened');
+  }
+
+  /**
+   * Closes the skin window and brings the main window back.
+   */
+  private closeSkinWindow(): void {
+    this.activeSkinId = null;
+
+    if (this.skinWindow && !this.skinWindow.isDestroyed()) {
+      this.skinWindow.destroy();
+      this.skinWindow = null;
     }
 
-    this.window.on('closed', this.onClosed.bind(this));
+    this.restoreMainWindow();
+  }
 
-    previous.destroy();
+  /**
+   * Reveals the main window after a skin has been dismissed.
+   */
+  private restoreMainWindow(): void {
+    if (!this.window || this.window.isDestroyed()) return;
+    this.window.webContents.setBackgroundThrottling(true);
+    this.window.show();
+    this.window.focus();
   }
 
   private onActivate(): void {

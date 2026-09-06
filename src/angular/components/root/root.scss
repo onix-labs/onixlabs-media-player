@@ -96,22 +96,12 @@
     display: none;
   }
 
-  // A skin covers the built-in interface rather than replacing it. `visibility`
-  // rather than `display: none` on purpose: the media elements underneath are
-  // what actually play, and taking them out of the layout would interrupt
-  // playback the moment a skin loaded.
-  &.behind-skin {
-    position: absolute;
-    inset: 0;
-    visibility: hidden;
-    pointer-events: none;
-  }
 }
 
+// In the skin window the skin is the whole interface, so it takes the viewport.
 app-skin-host {
   position: absolute;
   inset: 0;
-  z-index: 1;
 }
 
 @keyframes fadeIn {

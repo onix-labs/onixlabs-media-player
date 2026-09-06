@@ -40,8 +40,16 @@ Three properties of the format drive most of the design:
 | Renderer | `src/angular/components/skin/skin-host/` |
 
 Entry point: **View → Load Media Player Skin…**, and **View → Use Built-in Interface** to
-go back. A skin covers the built-in interface rather than replacing it — the existing view
-stays mounted and hidden so its media elements keep playing while the skin drives them.
+go back.
+
+A skin is drawn in a **window of its own**, frameless and transparent, because `frame` and
+`transparent` are constructor-only on `BrowserWindow` — there is no setter for either, so
+a live window cannot be made transparent. The main window is *hidden*, not closed, so its
+audio and video elements keep playing while the skin drives them through the media server
+exactly as the built-in interface does. Background throttling is lifted on the hidden
+window, or its timers would slow and stall the playback clock. The main window is hidden
+only once the skin window has actually shown, so a skin that fails to load cannot leave
+the application with nothing on screen.
 
 ## The two findings that mattered
 
@@ -90,8 +98,19 @@ skin's globals.
 - **Alignment must not double-count.** This skin declares `horizontalAlignment="stretch"`
   *and* `width="jscript:svEntireApp.width - left - 298"` on the same element. The
   expression already accounts for the new size, so adding the alignment delta on top tore
-  the layout apart on resize. Alignment now only fills in for values the skin does not
-  compute or assign itself.
+  the layout apart on resize. Alignment only fills in for values the skin does not compute
+  or assign itself.
+- **Layout is part of the fixed point, not a step after it.** Alignment changes an
+  element's *real* width, and the skin reads those widths back:
+  `svUpperRightCorner.left` is `jscript:svEntireApp.width-298`. Adjusting only the rendered
+  box left every such expression computing against the design size however large the window
+  got — the top and bottom chrome simply never moved. Alignment now writes into the
+  elements' own properties inside the settle loop, so the next pass sees the new sizes.
+- **The design reference must be captured deliberately.** A skin's layout is arbitrary
+  JScript, so the only way to learn where the author put things is to set the view to the
+  size the skin was drawn for, settle, and walk it. Baselining off whichever render came
+  first captured zeroes (art loads asynchronously) or the wrong window size, and every
+  later offset was wrong by that much.
 
 ## Measured against the reference skin
 
@@ -113,9 +132,9 @@ defines.
 
 - **Not rendered:** `PLAYLIST`, `LISTBOX`, `EDITBOX`, `POPUP`. These are stubs; the
   reference skin has 4, 2, 1 and 3 of them.
-- **On Windows the menu bar goes with the frame.** A frameless window has nowhere to put
-  it, so *View → Use Built-in Interface* is unreachable from a skinned window there. The
-  skin's own close button works; the menu route needs a keyboard accelerator.
+- **On Windows the menu bar lives on the main window**, which is hidden while a skin is up,
+  so *View → Use Built-in Interface* is unreachable there. The skin's own close button works;
+  the menu route needs a keyboard accelerator or a tray entry.
 - **`res://wmploc.dll` strings** resolve to empty. Every label and tooltip the reference
   skin takes from Windows resources is blank. Shipping a mapping table for the common
   string ids would recover most captions.
@@ -125,17 +144,10 @@ defines.
   `backgroundColor` — the WMP8 skin names yellow, which the original painted behind live
   content and which shows as a yellow rectangle when there is no content to cover it.
   Filling these is the next piece of work.
-- **Activating a skin reloads the renderer.** `frame` and `transparent` are constructor-only
-  on `BrowserWindow` — there is no setter for either — so a skin is shown by *replacing* the
-  main window with a frameless, transparent one, and dismissing it replaces it back. The new
-  window is created before the old is destroyed, or the moment with no windows open would
-  fire `window-all-closed` and quit. The renderer restarts across that swap, which
-  interrupts playback; the main process remembers the active skin so the new renderer can
-  restore it. Making this seamless would mean keeping playback out of the renderer.
-- **Alignment on resize is approximate.** Each element baselines its parent's size while
-  the view is at the skin's design dimensions, then distributes later growth per
-  `horizontalAlignment` / `verticalAlignment`. Most of the skin computes its own sizes in
-  script and is unaffected. Resizing away from the design size is the least-tested path.
+- **Resize is modelled, not exhaustively verified.** Chrome tiles exactly at every size
+  measured (`0..94 | 94..702 | 702..1000` at 1000px wide) and no size introduces a sibling
+  overlap the skin does not already have at its design size. Sizes below the skin's stated
+  minimum are clamped by the window rather than handled.
 - **No skin-side persistence.** `theme.savePreference` lives for the session only.
 - **Only partly verified on screen.** The skin has been seen rendering in the app: the
   archive unpacks, the art decodes and colour-keys, and the chrome draws. Interaction —

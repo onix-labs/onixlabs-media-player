@@ -9,13 +9,19 @@
  * which reads `view.width` - and settling by iteration handles that without
  * having to extract dependencies from arbitrary JScript.
  *
- * Geometry follows the original's alignment model. An element records the size
- * its parent had on the first settled pass, and thereafter any growth in the
- * parent is distributed according to `horizontalAlignment` and
- * `verticalAlignment`: `left` keeps the element put, `right` moves it by the
- * full delta, `center` by half, and `stretch` grows the element itself. Most
- * skins compute their own sizes in script and this only matters for the parts
- * that do not, but those parts are the ones that would otherwise tear on resize.
+ * Geometry follows the original's alignment model, measured against a design
+ * pass. Because a skin's layout is arbitrary JScript rather than something
+ * readable off the markup, the only way to learn where the author put things is
+ * to ask: the view is briefly set to the size the skin was drawn for, settled,
+ * and walked, and every element's box recorded. Growth away from that size is
+ * then distributed per `horizontalAlignment` and `verticalAlignment` - `left`
+ * keeps an element put, `right` moves it by the parent's full growth, `center`
+ * by half, `stretch` grows the element itself.
+ *
+ * Properties the skin computes are exempt: they were recalculated for the
+ * current size already, and adjusting them again would count the resize twice.
+ * Skins mix the two freely on one element, which is why the distinction has to
+ * be made per property rather than per element.
  *
  * Rendering is a snapshot. Each settled pass produces an immutable tree of
  * {@link SkinRenderNode}, which is what the host component draws; nothing in
@@ -128,6 +134,27 @@ export interface SkinRenderNode {
   readonly slider: SkinSliderState | null;
   /** Child nodes in stacking order */
   readonly children: readonly SkinRenderNode[];
+}
+
+/**
+ * An element's geometry as it is at the skin's design size.
+ *
+ * This is the reference the alignment model measures growth against, captured
+ * by running the skin's own layout at the size it was drawn for.
+ */
+interface SkinDesignBox {
+  /** Parent's width at the design size */
+  readonly parentWidth: number;
+  /** Parent's height at the design size */
+  readonly parentHeight: number;
+  /** Element's left offset at the design size */
+  readonly left: number;
+  /** Element's top offset at the design size */
+  readonly top: number;
+  /** Element's width at the design size */
+  readonly width: number;
+  /** Element's height at the design size */
+  readonly height: number;
 }
 
 /** Maximum layout passes before the runtime stops chasing a fixed point. */
@@ -271,8 +298,14 @@ export class SkinRuntime {
   /** Elements the pointer is currently pressed on */
   private readonly pressed: Set<SkinElement> = new Set<SkinElement>();
 
-  /** Parent sizes recorded on the first settled pass, keyed by element */
-  private readonly designSizes: Map<SkinElement, SkinImageMetrics> = new Map<SkinElement, SkinImageMetrics>();
+  /** Each element's geometry at the skin's design size, keyed by element */
+  private readonly designLayout: Map<SkinElement, SkinDesignBox> = new Map<SkinElement, SkinDesignBox>();
+
+  /** Whether the design layout needs recapturing before the next render */
+  private designLayoutStale: boolean = true;
+
+  /** The size the skin was drawn for, taken from the VIEW's own markup */
+  private readonly designViewSize: SkinImageMetrics;
 
   /** Asset names already requested, so a missing image is fetched once */
   private readonly requested: Set<string> = new Set<string>();
@@ -283,8 +316,6 @@ export class SkinRuntime {
   /** Current view height in pixels */
   private height: number = 0;
 
-  /** Whether the render in progress is at the size the skin was drawn for */
-  private renderingAtDesignSize: boolean = false;
 
   /** Whether a layout pass is pending */
   private dirty: boolean = true;
@@ -326,6 +357,10 @@ export class SkinRuntime {
     };
 
     this.root = this.instantiate(this.definition.view, null, host);
+    this.designViewSize = {
+      width: this.viewAttributeNumber('width'),
+      height: this.viewAttributeNumber('height'),
+    };
     this.publishModel();
 
     this.engine = new SkinExpressionEngine(this.bindings, this.orderedScripts(source.scripts));
@@ -426,7 +461,9 @@ export class SkinRuntime {
     this.requested.add(key);
 
     void this.images.load(this.skinId, assetName, transparencyColour).then((): void => {
-      // An image's arrival changes intrinsic sizes, so layout has to settle again.
+      // Art arriving changes intrinsic sizes, so both the live layout and the
+      // design reference it is measured against are now out of date.
+      this.designLayoutStale = true;
       this.invalidate();
     });
   }
@@ -493,11 +530,7 @@ export class SkinRuntime {
    * @returns Design width and height in pixels
    */
   public get designSize(): SkinImageMetrics {
-    const view: SkinElement = this.root;
-    return {
-      width: Number(view.read('width')) || 0,
-      height: Number(view.read('height')) || 0,
-    };
+    return this.designViewSize;
   }
 
   /**
@@ -510,12 +543,26 @@ export class SkinRuntime {
    * @returns Minimum width and height in pixels
    */
   public get minimumSize(): SkinImageMetrics {
-    const view: SkinElement = this.root;
-    const design: SkinImageMetrics = this.designSize;
     return {
-      width: Number(view.read('minwidth')) || design.width,
-      height: Number(view.read('minheight')) || design.height,
+      width: this.viewAttributeNumber('minwidth') || this.designViewSize.width,
+      height: this.viewAttributeNumber('minheight') || this.designViewSize.height,
     };
+  }
+
+  /**
+   * Reads a numeric attribute straight off the VIEW element's markup.
+   *
+   * The view's live `width` and `height` properties track the window, so the
+   * size the skin was *drawn* for has to come from the definition rather than
+   * from the element.
+   *
+   * @param name - Lower-cased attribute name
+   * @returns The stated number, or 0 when absent or not numeric
+   */
+  private viewAttributeNumber(name: string): number {
+    const attribute: SkinAttribute | undefined = this.definition.view.attributes.get(name);
+    if (attribute === undefined) return 0;
+    return Number(attribute.value) || 0;
   }
 
   /**
@@ -555,8 +602,116 @@ export class SkinRuntime {
         if (this.evaluateBindings(element)) changed = true;
       }
 
+      // Layout is part of the fixed point, not something applied afterwards.
+      // Alignment changes an element's real width, and the skin reads those
+      // widths: `svUpperRightCorner.left` is `jscript:svEntireApp.width-298`.
+      // Adjusting only the rendered box would leave every such expression
+      // computing against the design size no matter how big the window got.
+      if (this.layoutPass(this.root, this.width, this.height)) changed = true;
+
       if (!changed) break;
     }
+  }
+
+  /**
+   * Applies the alignment model down the tree, writing results into the
+   * elements' own properties.
+   *
+   * Properties the skin computes are left alone: they were recalculated for the
+   * current size by the binding pass, and adjusting them again would count the
+   * resize twice. This skin states `horizontalAlignment="stretch"` *and*
+   * `width="jscript:svEntireApp.width - left - 298"` on one element, so the
+   * distinction has to be per property rather than per element.
+   *
+   * @param element - Element to lay out
+   * @param parentWidth - Parent's current inner width
+   * @param parentHeight - Parent's current inner height
+   * @returns True when any property changed
+   */
+  private layoutPass(element: SkinElement, parentWidth: number, parentHeight: number): boolean {
+    let changed: boolean = false;
+
+    if (element === this.root) {
+      // The view's size is the window's, and skins read it as `View1.width`.
+      if (element.applyBinding('width', parentWidth)) changed = true;
+      if (element.applyBinding('height', parentHeight)) changed = true;
+    } else if (this.mappedRegion(element) === null) {
+      changed = this.applyAlignment(element, parentWidth, parentHeight) || changed;
+    }
+
+    const size: SkinImageMetrics = this.effectiveSize(element);
+    for (const child of element.children) {
+      if (this.layoutPass(child, size.width, size.height)) changed = true;
+    }
+
+    return changed;
+  }
+
+  /**
+   * Positions and sizes one element against its design box.
+   *
+   * @param element - Element to align
+   * @param parentWidth - Parent's current inner width
+   * @param parentHeight - Parent's current inner height
+   * @returns True when any property changed
+   */
+  private applyAlignment(element: SkinElement, parentWidth: number, parentHeight: number): boolean {
+    const design: SkinDesignBox | undefined = this.designLayout.get(element);
+    if (design === undefined) return false;
+
+    const deltaWidth: number = parentWidth - design.parentWidth;
+    const deltaHeight: number = parentHeight - design.parentHeight;
+    const horizontal: string = String(element.read('horizontalalignment') ?? 'left').toLowerCase();
+    const vertical: string = String(element.read('verticalalignment') ?? 'top').toLowerCase();
+
+    let changed: boolean = false;
+
+    if (!element.isDerived('left')) {
+      let left: number = design.left;
+      if (horizontal === 'right') left = design.left + deltaWidth;
+      else if (horizontal === 'center') left = design.left + deltaWidth / 2;
+      if (element.applyBinding('left', left)) changed = true;
+    }
+
+    if (horizontal === 'stretch' && !element.isDerived('width')) {
+      if (element.applyBinding('width', design.width + deltaWidth)) changed = true;
+    }
+
+    if (!element.isDerived('top')) {
+      let top: number = design.top;
+      if (vertical === 'bottom') top = design.top + deltaHeight;
+      else if (vertical === 'center') top = design.top + deltaHeight / 2;
+      if (element.applyBinding('top', top)) changed = true;
+    }
+
+    if (vertical === 'stretch' && !element.isDerived('height')) {
+      if (element.applyBinding('height', design.height + deltaHeight)) changed = true;
+    }
+
+    return changed;
+  }
+
+  /**
+   * The size an element's children are laid out against.
+   *
+   * An element that states no size takes its art's, which is how most of a
+   * skin's containers get their dimensions.
+   *
+   * @param element - Element to measure
+   * @returns The element's effective inner size
+   */
+  private effectiveSize(element: SkinElement): SkinImageMetrics {
+    const stated: SkinImageMetrics = {
+      width: Number(element.read('width')) || 0,
+      height: Number(element.read('height')) || 0,
+    };
+    if (stated.width > 0 && stated.height > 0) return stated;
+
+    const metrics: SkinImageMetrics | null = this.artMetrics(element);
+    return {
+      width: stated.width > 0 ? stated.width : (metrics?.width ?? 0),
+      height: stated.height > 0 ? stated.height : (metrics?.height ?? 0),
+    };
   }
 
   /**
@@ -750,79 +905,27 @@ export class SkinRuntime {
   }
 
   /**
-   * Applies the alignment model to an element's geometry.
+   * Reads an element's laid-out box.
    *
-   * The first call for an element records its parent's size as the design size;
-   * later calls distribute the difference according to the alignment attributes.
+   * Alignment has already been applied during settle, into the element's own
+   * properties, so this is a read rather than a calculation. The exception is a
+   * BUTTONELEMENT, which states no geometry at all: it occupies whichever
+   * region of its group's mapping image carries its `mappingColor`.
    *
-   * @param element - Element to position
-   * @param parentWidth - Parent's current inner width
-   * @param parentHeight - Parent's current inner height
-   * @returns The element's laid-out box
+   * @param element - Element to place
+   * @returns The element's box within its parent
    */
-  private geometry(
-    element: SkinElement,
-    parentWidth: number,
-    parentHeight: number
-  ): {left: number; top: number; width: number; height: number} {
-    const left: number = Number(element.read('left')) || 0;
-    const top: number = Number(element.read('top')) || 0;
-    const width: number = Number(element.read('width')) || 0;
-    const height: number = Number(element.read('height')) || 0;
-
-    // A BUTTONELEMENT states no geometry: it occupies whichever region of its
-    // group's mapping image carries its mappingColor.
+  private geometry(element: SkinElement): {left: number; top: number; width: number; height: number} {
     const region: {left: number; top: number; width: number; height: number} | null =
       this.mappedRegion(element);
     if (region !== null) return region;
 
-    // The baseline is only ever taken while the view is at the size the skin
-    // was drawn for, and is retaken every time it is - skin art loads
-    // asynchronously, so a container's real size arrives several renders after
-    // the first. Baselining on whichever render happened to come first would
-    // capture zeroes, or the previous window's size, and make every later delta
-    // wrong by that much: enough to throw the bottom-anchored transport bar
-    // clean off the view.
-    if (this.renderingAtDesignSize && parentWidth > 0 && parentHeight > 0) {
-      this.designSizes.set(element, {width: parentWidth, height: parentHeight});
-    }
-
-    const design: SkinImageMetrics | undefined = this.designSizes.get(element);
-    if (design === undefined) {
-      return {left, top, width, height};
-    }
-
-    const deltaWidth: number = parentWidth - design.width;
-    const deltaHeight: number = parentHeight - design.height;
-    const horizontal: string = String(element.read('horizontalalignment') ?? 'left').toLowerCase();
-    const vertical: string = String(element.read('verticalalignment') ?? 'top').toLowerCase();
-
-    // Alignment only fills in for values the skin does not compute. This one
-    // states `width="jscript:svEntireApp.width - left - 298"` *and*
-    // `horizontalAlignment="stretch"` on the same element: the expression
-    // already accounts for the new size, so adding the delta as well counts the
-    // resize twice and the layout tears apart as the window grows.
-    let x: number = left;
-    let boxWidth: number = width;
-    if (!element.isDerived('left')) {
-      if (horizontal === 'right') x = left + deltaWidth;
-      else if (horizontal === 'center') x = left + deltaWidth / 2;
-    }
-    if (horizontal === 'stretch' && !element.isDerived('width')) {
-      boxWidth = width + deltaWidth;
-    }
-
-    let y: number = top;
-    let boxHeight: number = height;
-    if (!element.isDerived('top')) {
-      if (vertical === 'bottom') y = top + deltaHeight;
-      else if (vertical === 'center') y = top + deltaHeight / 2;
-    }
-    if (vertical === 'stretch' && !element.isDerived('height')) {
-      boxHeight = height + deltaHeight;
-    }
-
-    return {left: x, top: y, width: boxWidth, height: boxHeight};
+    return {
+      left: Number(element.read('left')) || 0,
+      top: Number(element.read('top')) || 0,
+      width: Number(element.read('width')) || 0,
+      height: Number(element.read('height')) || 0,
+    };
   }
 
   /**
@@ -894,14 +997,84 @@ export class SkinRuntime {
    * @returns An immutable snapshot of the whole view
    */
   public render(): SkinRenderNode {
-    const design: SkinImageMetrics = this.designSize;
-    this.renderingAtDesignSize =
-      design.width > 0 &&
-      design.height > 0 &&
-      this.width === design.width &&
-      this.height === design.height;
-
+    if (this.designLayoutStale) this.captureDesignLayout();
     return this.renderElement(this.root, this.width, this.height, 0);
+  }
+
+  /**
+   * Records every element's geometry as it is at the skin's design size.
+   *
+   * Alignment needs to know where the author put things, and the only way to
+   * find that out is to ask the skin at the size it was drawn for: its layout
+   * is arbitrary JScript, not something that can be read off the markup. So the
+   * view is briefly set to the design size, settled, walked, and set back.
+   *
+   * Doing it deliberately rather than baselining whichever render happened to
+   * come first is what makes resize behave. Art loads asynchronously, and a
+   * baseline taken before it arrives captures zeroes; one taken after the user
+   * has already resized captures the wrong size. Either way every later offset
+   * is wrong by that much, which is what tore this skin's chrome apart.
+   */
+  private captureDesignLayout(): void {
+    const design: SkinImageMetrics = this.designSize;
+    if (design.width <= 0 || design.height <= 0) return;
+
+    const actualWidth: number = this.width;
+    const actualHeight: number = this.height;
+
+    this.width = design.width;
+    this.height = design.height;
+    this.dirty = true;
+    this.settle();
+
+    this.designLayout.clear();
+    this.recordDesignBox(this.root, design.width, design.height);
+
+    this.width = actualWidth;
+    this.height = actualHeight;
+    this.dirty = true;
+    this.settle();
+
+    this.designLayoutStale = false;
+  }
+
+  /**
+   * Walks the tree recording each element's box at the design size.
+   *
+   * @param element - Element to record
+   * @param parentWidth - Design width of the element's parent
+   * @param parentHeight - Design height of the element's parent
+   */
+  private recordDesignBox(element: SkinElement, parentWidth: number, parentHeight: number): void {
+    const isRoot: boolean = element === this.root;
+    const left: number = isRoot ? 0 : Number(element.read('left')) || 0;
+    const top: number = isRoot ? 0 : Number(element.read('top')) || 0;
+    const stated: {width: number; height: number} = {
+      width: isRoot ? parentWidth : Number(element.read('width')) || 0,
+      height: isRoot ? parentHeight : Number(element.read('height')) || 0,
+    };
+
+    const metrics: SkinImageMetrics | null = this.artMetrics(element);
+    const width: number = stated.width > 0 ? stated.width : (metrics?.width ?? 0);
+    const height: number = stated.height > 0 ? stated.height : (metrics?.height ?? 0);
+
+    this.designLayout.set(element, {parentWidth, parentHeight, left, top, width, height});
+
+    for (const child of element.children) {
+      this.recordDesignBox(child, width, height);
+    }
+  }
+
+  /**
+   * Natural size of whichever image currently sizes an element.
+   *
+   * @param element - Element to measure
+   * @returns The art's natural size, or null when it has none loaded
+   */
+  private artMetrics(element: SkinElement): SkinImageMetrics | null {
+    const name: unknown = element.read('backgroundimage') ?? element.read('image');
+    if (typeof name !== 'string' || name.trim() === '') return null;
+    return this.images.metrics(this.skinId, name);
   }
 
   /**
@@ -923,7 +1096,7 @@ export class SkinRuntime {
     const box: {left: number; top: number; width: number; height: number} =
       element === this.root
         ? {left: 0, top: 0, width: parentWidth, height: parentHeight}
-        : this.geometry(element, parentWidth, parentHeight);
+        : this.geometry(element);
 
     // A button group's visible art is its `image`; its `mappingImage` is never
     // drawn, only sampled for hit testing.
