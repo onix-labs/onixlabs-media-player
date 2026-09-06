@@ -62,7 +62,7 @@ export interface SkinTextStyle {
   readonly colour: string;
   /** Font family as named by the skin */
   readonly fontFamily: string;
-  /** Font size in points, as skins express it */
+  /** Font size in CSS pixels, converted from the points skins express */
   readonly fontSize: number;
   /** Whether the skin asked for bold */
   readonly bold: boolean;
@@ -168,6 +168,24 @@ const WMP_VOLUME_MAXIMUM: number = 100;
 
 /** Default font size, in points, when a skin names none. */
 const DEFAULT_FONT_SIZE: number = 8;
+
+/** CSS reference pixels per inch, as the browser defines them. */
+const PIXELS_PER_INCH: number = 96;
+
+/** Typographic points per inch. */
+const POINTS_PER_INCH: number = 72;
+
+/** Points-to-pixels ratio, for the font sizes skins express in points. */
+const POINTS_TO_PIXELS: number = PIXELS_PER_INCH / POINTS_PER_INCH;
+
+/**
+ * Line height used to give an unsized text element a height.
+ *
+ * Skins routinely state a TEXT's position and width but not its height, leaving
+ * it to size to its own font the way a label does. Without this such an element
+ * is zero pixels tall and draws nothing at all.
+ */
+const TEXT_LINE_HEIGHT: number = 1.25;
 
 /** Fallback text colour when a skin names none. */
 const DEFAULT_TEXT_COLOUR: string = '#000000';
@@ -837,7 +855,7 @@ export class SkinRuntime {
       content: this.textContent(element),
       colour: colour === null ? DEFAULT_TEXT_COLOUR : toCssColour(colour),
       fontFamily: String(element.read('fontface') ?? 'Tahoma'),
-      fontSize: Number(element.read('fontsize')) || DEFAULT_FONT_SIZE,
+      fontSize: (Number(element.read('fontsize')) || DEFAULT_FONT_SIZE) * POINTS_TO_PIXELS,
       bold: style.includes('bold'),
       italic: style.includes('italic'),
       align: justification === 'right' || justification === 'center' ? justification : 'left',
@@ -1121,8 +1139,17 @@ export class SkinRuntime {
     // art's size, which is how most skin buttons are declared.
     const imageMetrics: SkinImageMetrics | null =
       typeof backgroundName === 'string' ? this.images.metrics(this.skinId, backgroundName) : null;
+    const text: SkinTextStyle | null = kind === 'text' ? this.textStyle(element) : null;
+
     const width: number = box.width > 0 ? box.width : (imageMetrics?.width ?? 0);
-    const height: number = box.height > 0 ? box.height : (imageMetrics?.height ?? 0);
+    let height: number = box.height > 0 ? box.height : (imageMetrics?.height ?? 0);
+
+    // A label sizes to its font. Skins state a TEXT's position and width and
+    // leave the height out - the track name over this skin's visualiser is
+    // declared that way - and a zero-height box draws nothing.
+    if (height <= 0 && text !== null) {
+      height = Math.ceil(text.fontSize * TEXT_LINE_HEIGHT);
+    }
 
     const alpha: number = Number(element.read('alphablend'));
     const children: SkinRenderNode[] = element.children.map(
@@ -1148,7 +1175,7 @@ export class SkinRuntime {
       backgroundColour: backgroundColour === null ? null : toCssColour(backgroundColour),
       backgroundImage,
       tiled: element.read('tiled') === true || element.read('backgroundtiled') === true,
-      text: kind === 'text' ? this.textStyle(element) : null,
+      text,
       slider: kind === 'slider' ? this.sliderState(element) : null,
       children,
     };

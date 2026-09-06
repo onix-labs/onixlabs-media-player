@@ -89,6 +89,11 @@ skin's globals.
   from *never converging* to **settling in 3 passes**.
 - **`theme.loadString` must exist.** Three of the nine script files call it at load time;
   without it they threw part-way and silently lost every declaration after that point.
+- **A TEXT with no stated height is a label, not an empty box.** Skins give a TEXT its
+  position and width and leave the height out, expecting it to size to its font — this
+  skin's artist and track name are declared that way. Taking the height literally made them
+  zero pixels tall, so the strip above the visualiser rendered as a black band with the
+  metadata invisible inside it.
 - **Transparency is magenta unless stated otherwise.** Of 271 art references in the
   reference skin, only 39 name a `transparencyColor`; nine more carry magenta with none
   declared anywhere in their ancestry — the stop button, the skin-mode button, the radio
@@ -158,6 +163,10 @@ track would be decoded twice and drift apart.
 - **On Windows the menu bar lives on the main window**, which is hidden while a skin is up,
   so *View → Use Built-in Interface* is unreachable there. The skin's own close button works;
   the menu route needs a keyboard accelerator or a tray entry.
+- **The strip above the visualiser is the skin's title bar, not a gap.** This skin insets
+  its `EFFECTS` pane by 50px at the top and 24px at the bottom, and fills the space with the
+  artist and track name over black — the official preview shows exactly that. It reads as an
+  empty band until something is playing.
 - **`res://wmploc.dll` strings** resolve to empty. Every label and tooltip the reference
   skin takes from Windows resources is blank. Shipping a mapping table for the common
   string ids would recover most captions.
