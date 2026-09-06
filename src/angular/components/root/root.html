@@ -12,7 +12,12 @@
     @if (isVideo()) {
       <app-video-outlet class="skin-media-outlet"/>
     } @else if (isAudio()) {
-      <app-audio-outlet class="skin-media-outlet"/>
+      <!-- The outlet announces itself on every visualisation change, including
+           the first, which is how the skin's own next/previous buttons reach
+           it: a view query cannot, since it is instantiated inside the skin
+           host rather than here. -->
+      <app-audio-outlet #skinVisualiser class="skin-media-outlet"
+                        (visualizationChange)="onSkinVisualiserReady(skinVisualiser)"/>
     }
   </ng-template>
   <app-skin-host [mediaTemplate]="skinMedia" [mediaKind]="isVideo() ? 'video' : 'effects'"/>

@@ -235,6 +235,15 @@ export class Root implements OnDestroy {
    * - backgroundColor/glassEnabled: Updates CSS variable for background color
    */
   /**
+   * Registers the visualiser with the skin subsystem.
+   *
+   * @param outlet - The audio outlet drawn into the skin's pane
+   */
+  public onSkinVisualiserReady(outlet: AudioOutlet): void {
+    this.skins.registerVisualiser(outlet);
+  }
+
+  /**
    * Subscribes to the application menu's skin commands.
    *
    * @returns Unsubscribe function, or null when running outside Electron

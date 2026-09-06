@@ -524,7 +524,11 @@ export class WmpObjectModel {
       get dvd(): object {
         return asWmpObject({isAvailable: (): boolean => false, domain: ''}, true);
       },
-      launchURL: (): void => {},
+      // Skins link out to the web from their logo and "buy" buttons. The
+      // bridge validates the protocol before handing anything to the shell.
+      launchURL: (url: string): void => {
+        if (typeof url === 'string' && url !== '') void window.mediaPlayer?.openExternal(url);
+      },
       newPlaylist: (): null => null,
       newMedia: (): null => null,
     });
@@ -558,8 +562,11 @@ export class WmpObjectModel {
       // controls there are - the skin draws the buttons and expects them to work.
       close: (): void => void window.mediaPlayer?.closeSkinWindow(),
       minimize: (): void => void window.mediaPlayer?.minimizeSkinWindow(),
-      maximize: (): void => {},
-      restore: (): void => {},
+      maximize: (): void => void window.mediaPlayer?.maximizeSkinWindow(true),
+      restore: (): void => void window.mediaPlayer?.maximizeSkinWindow(false),
+      // WMP's name for leaving skin mode: the skin's own "return to full mode"
+      // button, which here means dismissing the skin window.
+      returnToMediaCenter: (): void => void window.mediaPlayer?.closeSkinWindowAndRestore(),
       moveTo: (): void => {},
       resizeTo: (): void => {},
     };
@@ -601,6 +608,17 @@ export class WmpObjectModel {
       // ship. Returning empty rather than throwing matters: skins call this at
       // load time, and a throw would abort the rest of the script file.
       loadString: (): string => '',
+      // Skins call this expecting a chosen path back synchronously. There is no
+      // synchronous file dialog here, so the application's own open-media flow
+      // is started instead and the empty string tells the skin's follow-on code
+      // that it has nothing further to do - the flow adds and plays the file
+      // itself.
+      openDialog: (kind: string): string => {
+        if (typeof kind === 'string' && kind.toUpperCase().includes('OPEN')) {
+          void this.player.eject();
+        }
+        return '';
+      },
       loadPreference: (name: string): string => this.preferences.get(name) ?? '',
       savePreference: (name: string, value: string): void => {
         this.preferences.set(name, String(value));

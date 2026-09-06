@@ -859,6 +859,12 @@ export interface MediaPlayerAPI {
 
   /** Closes the window, for a skin's own close button. */
   closeSkinWindow: () => Promise<void>;
+
+  /**
+   * Maximizes or restores the window, for a skin's own full-screen button.
+   * @param maximized - Whether the window should be maximized
+   */
+  maximizeSkinWindow: (maximized: boolean) => Promise<void>;
 }
 
 /**

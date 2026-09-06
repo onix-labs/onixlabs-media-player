@@ -33,7 +33,7 @@
       (pointermove)="node.kind === 'buttongroup' ? onGroupMove(node, $event) : null"
       (pointerdown)="node.kind === 'slider' ? onSliderDown(node, $event) : onPress(node, true)"
       (pointerup)="node.kind === 'slider' ? onSliderUp($event) : onPress(node, false)"
-      (click)="node.kind === 'buttongroup' ? onGroupClick(node, $event) : (node.kind === 'button' ? onClick(node) : null)"
+      (click)="node.kind === 'buttongroup' ? onGroupClick(node, $event) : (node.kind === 'button' ? onClick(node, $event) : null)"
     >
       @switch (node.kind) {
         @case ('text') {

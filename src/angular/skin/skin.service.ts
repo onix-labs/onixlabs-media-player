@@ -17,7 +17,7 @@
 import {Injectable, computed, inject, signal, type Signal, type WritableSignal} from '@angular/core';
 import {MediaPlayerService} from '../services/media-player.service';
 import {SkinImageService} from './skin-image.service';
-import {SkinRuntime, type SkinRenderNode} from './skin-runtime';
+import {SkinRuntime, type SkinRenderNode, type SkinVisualiser} from './skin-runtime';
 import type {SkinScriptError} from './skin-expression';
 import type {InstalledSkin, SkinSources} from '../types/electron';
 
@@ -53,6 +53,15 @@ export class SkinService {
 
   /** Handle of the interval driving the skin's own timer */
   private timer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * The application's visualiser, once the skin window has built one.
+   *
+   * Registered rather than looked up: the outlet is declared in one component's
+   * template and instantiated inside another's, so it announces itself when it
+   * builds its first visualisation.
+   */
+  private visualiser: SkinVisualiser | null = null;
 
   /** Installed skins available to activate */
   public readonly available: Signal<readonly InstalledSkin[]> = this.installed.asReadonly();
@@ -171,7 +180,8 @@ export class SkinService {
         {skinId: id, definitionSource: sources.definition, scripts: sources.scripts},
         this.player,
         this.images,
-        (): void => this.publish()
+        (): void => this.publish(),
+        (): SkinVisualiser | null => this.visualiser
       );
 
       this.runtime = runtime;
@@ -225,6 +235,16 @@ export class SkinService {
     if (!(await this.activate(id))) {
       await bridge.closeSkinWindowAndRestore();
     }
+  }
+
+  /**
+   * Registers the visualiser a skin's EFFECTS element should drive.
+   *
+   * @param visualiser - The application's visualiser
+   */
+  public registerVisualiser(visualiser: SkinVisualiser): void {
+    this.visualiser = visualiser;
+    this.runtime?.invalidate();
   }
 
   /**

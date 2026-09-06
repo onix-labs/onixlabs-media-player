@@ -1346,6 +1346,13 @@ class Program {
       this.closeSkinWindow();
     });
 
+    ipcMain.handle("skin:maximizeWindow", (event: Readonly<Electron.IpcMainInvokeEvent>, maximized: boolean): void => {
+      const win: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
+      if (!win || win.isDestroyed()) return;
+      if (maximized) win.maximize();
+      else win.unmaximize();
+    });
+
     ipcMain.handle("skin:readAsset", (_: Readonly<Electron.IpcMainInvokeEvent>, id: string, assetName: string): Uint8Array | null => {
       try {
         const data: Buffer | null = this.skins.readAsset(id, assetName);

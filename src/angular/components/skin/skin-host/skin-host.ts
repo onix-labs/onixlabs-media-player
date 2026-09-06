@@ -222,7 +222,7 @@ export class SkinHost implements OnDestroy {
       event.clientY - bounds.top
     );
 
-    if (hit !== null) runtime.click(hit);
+    if (hit !== null) runtime.click(hit, event);
   }
 
   /**
@@ -239,9 +239,10 @@ export class SkinHost implements OnDestroy {
    * Dispatches a click to the runtime.
    *
    * @param node - Node that was clicked
+   * @param event - The originating pointer event
    */
-  public onClick(node: SkinRenderNode): void {
-    this.skins.current()?.click(node.element);
+  public onClick(node: SkinRenderNode, event: Readonly<MouseEvent>): void {
+    this.skins.current()?.click(node.element, event);
   }
 
   /**

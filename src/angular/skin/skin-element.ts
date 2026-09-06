@@ -50,6 +50,11 @@ export interface SkinElementHost {
   readonly metrics: (assetName: string) => SkinImageMetrics | null;
   /** Signals that something changed and a layout pass should be scheduled */
   readonly invalidate: () => void;
+  /**
+   * Supplies a real implementation for a method the skin calls on an element,
+   * or null to fall back to an inert one.
+   */
+  readonly method: (element: SkinElement, name: string) => ((...args: unknown[]) => unknown) | null;
 }
 
 /** Properties whose default value is the natural width of the element's image. */
@@ -111,6 +116,11 @@ const INERT_METHODS: readonly string[] = [
   'findItem',
   'selectItem',
   'clear',
+  'deleteAll',
+  'copy',
+  'abortCopy',
+  'sort',
+  'moveItem',
   'show',
   'hide',
 ];
@@ -162,7 +172,7 @@ export class SkinElement {
   public readonly children: SkinElement[] = [];
 
   /** Services provided by the owning runtime */
-  private readonly host: SkinElementHost;
+  public readonly host: SkinElementHost;
 
   /** Currently resolved property values, keyed by lower-cased name */
   private readonly values: Map<string, unknown> = new Map<string, unknown>();
@@ -353,6 +363,12 @@ export class SkinElement {
     return new Proxy(Object.create(null) as Record<string, unknown>, {
       get: (_target: Record<string, unknown>, property: string | symbol): unknown => {
         if (typeof property === 'symbol') return undefined;
+
+        // The runtime backs a few of these with real behaviour - an EFFECTS
+        // element's next() drives the application's visualiser - and everything
+        // else falls through to a no-op.
+        const implementation: ((...args: unknown[]) => unknown) | null = element.host.method(element, property);
+        if (implementation !== null) return implementation;
 
         if (INERT_METHODS.includes(property)) {
           return (): void => {};

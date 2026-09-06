@@ -43,6 +43,23 @@ import {
 } from './skin-image.service';
 import {WmpObjectModel} from './wmp-object-model';
 
+/**
+ * The application's visualiser, as a skin's EFFECTS element drives it.
+ *
+ * Structurally satisfied by `AudioOutlet`, so the real outlet can be handed
+ * straight in without the skin subsystem depending on the component.
+ */
+export interface SkinVisualiser {
+  /** Advances to the next visualisation */
+  readonly nextVisualization: () => void;
+  /** Returns to the previous visualisation */
+  readonly previousVisualization: () => void;
+  /** Name of the visualisation now showing */
+  readonly visualizationName: () => string;
+  /** Category the current visualisation belongs to */
+  readonly visualizationCategory: () => string;
+}
+
 /** How a render node should be drawn. */
 export type SkinRenderKind =
   | 'container'
@@ -310,6 +327,19 @@ export class SkinRuntime {
   /** Called when a settled layout pass has produced a new render tree */
   private readonly onRendered: () => void;
 
+  /** Reaches the application's visualiser, which EFFECTS elements drive */
+  private readonly visualiser: () => SkinVisualiser | null;
+
+  /** The ambient `event` object JScript handlers read modifier keys from */
+  private readonly eventState: Record<string, unknown> = {
+    shiftKey: false,
+    ctrlKey: false,
+    altKey: false,
+    keyCode: 0,
+    x: 0,
+    y: 0,
+  };
+
   /** Elements the pointer is currently over */
   private readonly hovered: Set<SkinElement> = new Set<SkinElement>();
 
@@ -357,11 +387,13 @@ export class SkinRuntime {
     source: SkinRuntimeSource,
     player: MediaPlayerService,
     images: SkinImageService,
-    onRendered: () => void
+    onRendered: () => void,
+    visualiser: () => SkinVisualiser | null = (): null => null
   ) {
     this.skinId = source.skinId;
     this.images = images;
     this.onRendered = onRendered;
+    this.visualiser = visualiser;
     this.definition = parseSkinDefinition(source.definitionSource);
     this.model = new WmpObjectModel(player, (): void => this.invalidate());
 
@@ -372,9 +404,17 @@ export class SkinRuntime {
         this.engine.executeFor(self, statements, context),
       metrics: (assetName: string): SkinImageMetrics | null => this.metricsFor(assetName),
       invalidate: (): void => this.invalidate(),
+      method: (element: SkinElement, name: string): ((...args: unknown[]) => unknown) | null =>
+        this.elementMethod(element, name),
     };
 
     this.root = this.instantiate(this.definition.view, null, host);
+
+    // JScript handlers read the ambient `event` object rather than taking a
+    // parameter - this skin's visualisation buttons branch on `event.shiftKey`.
+    // It has to be a real binding, because browsers define `window.event` and
+    // an unclaimed name would resolve to that instead.
+    this.bindings.set('event', this.eventState);
     this.designViewSize = {
       width: this.viewAttributeNumber('width'),
       height: this.viewAttributeNumber('height'),
@@ -626,6 +666,7 @@ export class SkinRuntime {
       // Adjusting only the rendered box would leave every such expression
       // computing against the design size no matter how big the window got.
       if (this.layoutPass(this.root, this.width, this.height)) changed = true;
+      if (this.publishVisualiser()) changed = true;
 
       if (!changed) break;
     }
@@ -947,6 +988,68 @@ export class SkinRuntime {
   }
 
   /**
+   * Backs a method a skin calls on an element, where the application has one.
+   *
+   * Only the EFFECTS element has real behaviour: its next and previous drive
+   * the application's own visualiser, which is what the skin's visualisation
+   * buttons ultimately call. Everything else falls back to an inert method.
+   *
+   * @param element - Element the method was called on
+   * @param name - Method name as script spelled it
+   * @returns An implementation, or null to fall back
+   */
+  private elementMethod(element: SkinElement, name: string): ((...args: unknown[]) => unknown) | null {
+    if (element.tag !== 'EFFECTS') return null;
+
+    const visualiser: SkinVisualiser | null = this.visualiser();
+    if (visualiser === null) return null;
+
+    // `nextEffect`/`previousEffect` step whole effect plugins rather than
+    // presets within one; with a single visualiser they are the same move.
+    const lowered: string = name.toLowerCase();
+    if (lowered === 'next' || lowered === 'nexteffect') {
+      return (): void => {
+        visualiser.nextVisualization();
+        this.invalidate();
+      };
+    }
+    if (lowered === 'previous' || lowered === 'previouseffect') {
+      return (): void => {
+        visualiser.previousVisualization();
+        this.invalidate();
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Publishes the current visualisation onto the skin's EFFECTS elements.
+   *
+   * A skin reads the running effect's name off the element and shows it in its
+   * own caption strip, so writing it through the ordinary binding path also
+   * fires the `currentPresetTitle_onchange` handler the skin uses to do that.
+   *
+   * @returns True when anything changed
+   */
+  private publishVisualiser(): boolean {
+    const visualiser: SkinVisualiser | null = this.visualiser();
+    if (visualiser === null) return false;
+
+    const title: string = visualiser.visualizationName();
+    const category: string = visualiser.visualizationCategory();
+    let changed: boolean = false;
+
+    for (const element of this.elements) {
+      if (element.tag !== 'EFFECTS') continue;
+      if (element.applyBinding('currenteffecttype', category)) changed = true;
+      if (element.applyBinding('currentpresettitle', title)) changed = true;
+    }
+
+    return changed;
+  }
+
+  /**
    * Finds the mapping image a button group hit-tests against.
    *
    * @param group - The button group
@@ -1256,9 +1359,17 @@ export class SkinRuntime {
    * idiom and depends on `down` already reflecting the click.
    *
    * @param element - Element that was clicked
+   * @param event - The originating pointer event, for the modifier keys
+   *                handlers read off the ambient `event` object
    */
-  public click(element: SkinElement): void {
+  public click(element: SkinElement, event?: Readonly<MouseEvent>): void {
     if (element.read('enabled') === false) return;
+
+    this.eventState['shiftKey'] = event?.shiftKey ?? false;
+    this.eventState['ctrlKey'] = event?.ctrlKey ?? false;
+    this.eventState['altKey'] = event?.altKey ?? false;
+    this.eventState['x'] = event?.offsetX ?? 0;
+    this.eventState['y'] = event?.offsetY ?? 0;
 
     if (element.read('sticky') === true) {
       element.write('down', element.read('down') !== true);

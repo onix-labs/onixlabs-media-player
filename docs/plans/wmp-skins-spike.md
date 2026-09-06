@@ -126,6 +126,7 @@ skin's globals.
 | Script files loaded | 9 / 9, no load errors |
 | Bound expressions evaluating | **921 / 923 (99.8%)** |
 | Event handlers running clean | **402 / 442 (91.0%)** |
+| Clickable elements clicking clean | **266 / 271 (98%)** |
 | Layout convergence | 3 passes |
 | Elements resolving to real geometry | 402 / 745 |
 
@@ -155,6 +156,29 @@ up. The visualisations take a real `AnalyserNode` and video needs a real `<video
 neither crosses a process boundary — so the window drawing the skin has to be the window
 playing the media. The main window stands its outlets down for the duration, or the same
 track would be decoded twice and drift apart.
+
+## What the buttons do
+
+Transport, shuffle, repeat and mute reach `MediaPlayerService` directly, and the sliders
+drive seek and volume. Beyond those:
+
+| Skin idiom | Wired to |
+| --- | --- |
+| `player.launchURL(url)` | the shell, through the bridge's protocol check |
+| `theme.openDialog('FILE_OPEN', …)` | the application's open-media flow |
+| `view.close()` / `minimize()` / `maximize()` | the skin window |
+| `view.returnToMediaCenter()` | dismissing the skin — WMP's own name for leaving skin mode |
+| `myeffect.next()` / `previous()` | the application's visualiser |
+| `myeffect.currentPresetTitle` | the running visualisation's name, so the skin's caption strip shows it |
+
+Two details were load-bearing. `theme.openDialog` is declared to *return a path*, which no
+asynchronous dialog can do — it starts the application's own open-and-play flow and returns
+empty, which the skin reads as "nothing further to do". And JScript handlers read modifier
+keys off an ambient `event` object rather than a parameter (`VizNext` branches on
+`event.shiftKey`), so the runtime publishes one; it has to be a real binding, because
+browsers define `window.event` and an unclaimed name resolves to that instead.
+
+The five clickable elements that still fail reference element ids the skin never defines.
 
 ## Known gaps
 

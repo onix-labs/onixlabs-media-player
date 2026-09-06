@@ -539,6 +539,13 @@ export interface MediaPlayerAPI {
 
   /** Closes the window, for a skin's own close button. */
   readonly closeSkinWindow: () => Promise<void>;
+
+  /**
+   * Maximizes or restores the window, for a skin's own full-screen button.
+   *
+   * @param maximized - Whether the window should be maximized
+   */
+  readonly maximizeSkinWindow: (maximized: boolean) => Promise<void>;
 }
 
 /**
@@ -608,6 +615,7 @@ const api: MediaPlayerAPI = {
     ipcRenderer.invoke('skin:applyWindowSize', size),
   openSkinWindow: (id: string): Promise<void> => ipcRenderer.invoke('skin:open', id),
   closeSkinWindowAndRestore: (): Promise<void> => ipcRenderer.invoke('skin:close'),
+  maximizeSkinWindow: (maximized: boolean): Promise<void> => ipcRenderer.invoke('skin:maximizeWindow', maximized),
   getActiveSkin: (): Promise<string | null> => ipcRenderer.invoke('skin:getActive'),
   minimizeSkinWindow: (): Promise<void> => ipcRenderer.invoke('skin:minimizeWindow'),
   closeSkinWindow: (): Promise<void> => ipcRenderer.invoke('skin:closeWindow'),
