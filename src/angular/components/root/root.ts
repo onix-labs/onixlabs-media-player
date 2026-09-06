@@ -33,8 +33,10 @@ import {HelpTopicsView} from '../help/help-topics-view/help-topics-view';
 import {MiniplayerControls} from '../miniplayer/miniplayer-controls';
 import {SetupWizard} from '../setup-wizard/setup-wizard';
 import {OpenUrlDialog} from '../open-url-dialog/open-url-dialog';
-import {SkinHost} from '../skin/skin-host/skin-host';
+import {SkinHost, type SkinSlots, type SkinSlotRect} from '../skin/skin-host/skin-host';
 import {SkinService} from '../../skin/skin.service';
+import {AudioOutlet} from '../audio/audio-outlet/audio-outlet';
+import {VideoOutlet} from '../video/video-outlet/video-outlet';
 import {ElectronService} from '../../services/electron.service';
 import {MediaPlayerService} from '../../services/media-player.service';
 import {SettingsService, type VideoAspectMode} from '../../services/settings.service';
@@ -64,7 +66,7 @@ import {buildFileDialogFilters} from '../../constants/media.constants';
  */
 @Component({
   selector: 'app-root',
-  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView, AboutView, HelpTopicsView, MiniplayerControls, SetupWizard, OpenUrlDialog, SkinHost],
+  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView, AboutView, HelpTopicsView, MiniplayerControls, SetupWizard, OpenUrlDialog, SkinHost, AudioOutlet, VideoOutlet],
   templateUrl: './root.html',
   styleUrl: './root.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -91,6 +93,29 @@ export class Root implements OnDestroy {
    * the main window hides behind it, still playing.
    */
   public readonly isSkinWindow: boolean = new URLSearchParams(window.location.search).get('window') === 'skin';
+
+  /**
+   * Where the active skin wants the video and visualisation panes.
+   *
+   * A skin marks these out with VIDEO and EFFECTS elements but does not draw
+   * them - they are holes for the application's own outlets, which are placed
+   * over them here. The skin renders above, so its chrome still frames them.
+   */
+  public readonly skinSlots: ReturnType<typeof signal<SkinSlots>> = signal<SkinSlots>({video: null, effects: null});
+
+  /**
+   * The pane the current media should be shown in.
+   *
+   * A skin decides which of its two panes is live by its own rules, and only
+   * publishes a rectangle for the visible one, so following that is more
+   * faithful than deciding here.
+   *
+   * @returns The rectangle to fill, or null when the skin shows neither
+   */
+  public readonly skinMediaSlot: ReturnType<typeof computed<SkinSlotRect | null>> = computed((): SkinSlotRect | null => {
+    const slots: SkinSlots = this.skinSlots();
+    return this.isVideo() ? slots.video : slots.effects;
+  });
 
   /** Removes the menu-command listener when the component is destroyed */
   private readonly skinCommandCleanup: (() => void) | null = this.listenForSkinCommands();

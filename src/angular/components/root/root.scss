@@ -99,9 +99,26 @@
 }
 
 // In the skin window the skin is the whole interface, so it takes the viewport.
+// It sits above the media slot: the skin's chrome has to frame the picture, and
+// the panes it reserves are transparent, so the outlet shows through them.
 app-skin-host {
   position: absolute;
   inset: 0;
+  z-index: 1;
+}
+
+.skin-media-slot {
+  position: absolute;
+  overflow: hidden;
+  z-index: 0;
+
+  // The outlets size themselves to their container, which here is the
+  // rectangle the skin reserved rather than the window.
+  > * {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
 }
 
 @keyframes fadeIn {

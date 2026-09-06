@@ -128,6 +128,24 @@ The residual failures are honest gaps, not parse or scope problems: popup list c
 `EFFECTS` methods, keyboard event objects, and two references to ids the skin itself never
 defines.
 
+## Filling the skin's panes
+
+A skin marks out where the picture goes with `VIDEO` and `EFFECTS` elements. They draw
+nothing themselves — their declared `backgroundColor` is what the original painted *behind*
+live content, and honouring it just puts a yellow rectangle where the visualiser belongs —
+so the runtime reports their rectangles and the application's own outlets are positioned
+over them. The skin renders *above*, so its chrome still frames the picture and the
+transparent panes let the outlet show through.
+
+Which pane is used follows the skin rather than the app: a skin decides by its own rules
+which of the two is live and only publishes a rectangle for the visible one.
+
+This is why the skin window, not the main window, holds the media element while a skin is
+up. The visualisations take a real `AnalyserNode` and video needs a real `<video>`, and
+neither crosses a process boundary — so the window drawing the skin has to be the window
+playing the media. The main window stands its outlets down for the duration, or the same
+track would be decoded twice and drift apart.
+
 ## Known gaps
 
 - **Not rendered:** `PLAYLIST`, `LISTBOX`, `EDITBOX`, `POPUP`. These are stubs; the
@@ -138,12 +156,10 @@ defines.
 - **`res://wmploc.dll` strings** resolve to empty. Every label and tooltip the reference
   skin takes from Windows resources is blank. Shipping a mapping table for the common
   string ids would recover most captions.
-- **`VIDEO` and `EFFECTS` panes are reported, not filled.** The runtime emits their
-  rectangles; nothing yet positions the application's real outlets over them, so both
-  render as empty holes. They are deliberately *not* painted with the skin's declared
-  `backgroundColor` — the WMP8 skin names yellow, which the original painted behind live
-  content and which shows as a yellow rectangle when there is no content to cover it.
-  Filling these is the next piece of work.
+- **Toggling a skin interrupts playback briefly.** The skin window owns the media element
+  while it is up, so the main window's outlet stands down and the skin window's opens the
+  stream and seeks to the server's position. Both directions cost a buffering gap. Avoiding
+  it would mean playback living somewhere neither window owns.
 - **Resize is modelled, not exhaustively verified.** Chrome tiles exactly at every size
   measured (`0..94 | 94..702 | 702..1000` at 1000px wide) and no size introduces a sibling
   overlap the skin does not already have at its design size. Sizes below the skin's stated

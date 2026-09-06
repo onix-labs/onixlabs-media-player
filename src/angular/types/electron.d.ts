@@ -826,6 +826,13 @@ export interface MediaPlayerAPI {
   onSkinCommand: (callback: (command: 'install' | 'remove') => void) => () => void;
 
   /**
+   * Subscribes to the skin window opening and closing.
+   * @param callback - Called with whether a skin window is now showing
+   * @returns Unsubscribe function
+   */
+  onSkinActiveChanged: (callback: (active: boolean) => void) => () => void;
+
+  /**
    * Resizes the window to the dimensions a skin was drawn for and hides the
    * native window controls, which the skin draws itself.
    * @param size - The skin's design size and minimum size

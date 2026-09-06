@@ -1,7 +1,25 @@
 @if (isSkinWindow) {
   <!-- Standalone skin window: the skin is the entire interface, drawn into a
-       frameless transparent window. Playback stays in the hidden main window. -->
-  <app-skin-host/>
+       frameless transparent window.
+
+       The media outlet sits *behind* the skin and is positioned into whichever
+       pane the skin marked out. The skin's VIDEO and EFFECTS elements draw
+       nothing, so the outlet shows through them, while the chrome around them
+       stays opaque and frames it. -->
+  @if (skinMediaSlot(); as slot) {
+    <div class="skin-media-slot"
+         [style.left.px]="slot.left"
+         [style.top.px]="slot.top"
+         [style.width.px]="slot.width"
+         [style.height.px]="slot.height">
+      @if (isVideo()) {
+        <app-video-outlet/>
+      } @else {
+        <app-audio-outlet/>
+      }
+    </div>
+  }
+  <app-skin-host (slotsChange)="skinSlots.set($event)"/>
 } @else if (isConfigurationWindow) {
   <!-- Standalone configuration window -->
   <app-configuration-view [isStandaloneWindow]="true"/>

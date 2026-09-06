@@ -70,6 +70,27 @@ export class SkinService {
   public readonly isActive: Signal<boolean> = computed((): boolean => this.tree() !== null);
 
   /**
+   * Whether the skin window is showing, as seen from any window.
+   *
+   * The main window reads this to stand its media outlets down: the skin window
+   * opens media elements of its own, and two windows decoding the same track
+   * would play it twice, drifting apart.
+   */
+  private readonly skinWindowShowing: WritableSignal<boolean> = signal<boolean>(false);
+
+  /** Whether the skin window is showing */
+  public readonly isSkinWindowActive: Signal<boolean> = this.skinWindowShowing.asReadonly();
+
+  /**
+   * Subscribes to the skin window opening and closing.
+   */
+  public constructor() {
+    window.mediaPlayer?.onSkinActiveChanged((active: boolean): void => {
+      this.skinWindowShowing.set(active);
+    });
+  }
+
+  /**
    * The Electron bridge, or undefined when running outside Electron.
    *
    * @returns The preload API when present

@@ -1,7 +1,10 @@
 <div class="container">
   <div class="content-area">
     <div class="media-area">
-      @if (isAudio()) {
+      @if (skinOwnsPlayback()) {
+        <!-- The skin window has its own outlet on the same stream; two would
+             decode the track twice. -->
+      } @else if (isAudio()) {
         <app-audio-outlet #audioOutlet (visualizationChange)="currentVisualizationType.set($event)"/>
       } @else if (isVideo()) {
         <app-video-outlet #videoOutlet (aspectModeChange)="aspectModeDisplayName.set($event)" (flipChange)="videoFlipMode.set($event)"/>

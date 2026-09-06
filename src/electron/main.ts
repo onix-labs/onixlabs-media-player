@@ -1331,6 +1331,10 @@ class Program {
       if (win === this.skinWindow && this.window && !this.window.isDestroyed()) {
         this.window.webContents.setBackgroundThrottling(false);
         this.window.hide();
+        // The skin window is about to open its own media element. The main
+        // window has to release the media server first, or the same track
+        // plays twice, out of step with itself.
+        this.window.webContents.send('skin:activeChanged', true);
       }
     });
 
@@ -2268,6 +2272,7 @@ class Program {
   private restoreMainWindow(): void {
     if (!this.window || this.window.isDestroyed()) return;
     this.window.webContents.setBackgroundThrottling(true);
+    this.window.webContents.send('skin:activeChanged', false);
     this.window.show();
     this.window.focus();
   }

@@ -26,6 +26,7 @@ import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {FileDropTarget} from '../../../directives/file-drop-target';
 import {DependencyService} from '../../../services/dependency.service';
+import {SkinService} from '../../../skin/skin.service';
 import {SettingsService, VIDEO_ASPECT_OPTIONS, type VideoAspectMode} from '../../../services/settings.service';
 import {EQ_PRESETS} from '../../../services/equalizer';
 import {VIDEO_ADJUSTMENT_PRESETS} from '../../../services/video-adjustments';
@@ -91,6 +92,18 @@ export class LayoutOutlet {
 
   /** Dependency service for external binary status */
   private readonly deps: DependencyService = inject(DependencyService);
+
+  /** Skin subsystem, consulted to know when the skin window owns playback */
+  private readonly skins: SkinService = inject(SkinService);
+
+  /**
+   * Whether a skin window is showing and therefore owns playback.
+   *
+   * While it is, this window's media outlets stand down. They and the skin
+   * window's would otherwise both open the same stream, decoding the track
+   * twice and drifting apart.
+   */
+  public readonly skinOwnsPlayback: ReturnType<typeof computed<boolean>> = computed((): boolean => this.skins.isSkinWindowActive());
 
   /** Settings service for reading the persisted video aspect mode */
   private readonly settings: SettingsService = inject(SettingsService);

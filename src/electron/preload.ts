@@ -499,6 +499,17 @@ export interface MediaPlayerAPI {
   readonly onSkinCommand: (callback: (command: 'install' | 'remove') => void) => () => void;
 
   /**
+   * Subscribes to the skin window opening and closing.
+   *
+   * The main window uses this to stand its media outlets down while the skin
+   * window owns playback, so the same track is not decoded twice.
+   *
+   * @param callback - Called with whether a skin window is now showing
+   * @returns Unsubscribe function
+   */
+  readonly onSkinActiveChanged: (callback: (active: boolean) => void) => () => void;
+
+  /**
    * Resizes the window to the dimensions a skin was drawn for and hides the
    * native window controls, which a skin draws itself.
    *
@@ -600,6 +611,12 @@ const api: MediaPlayerAPI = {
   getActiveSkin: (): Promise<string | null> => ipcRenderer.invoke('skin:getActive'),
   minimizeSkinWindow: (): Promise<void> => ipcRenderer.invoke('skin:minimizeWindow'),
   closeSkinWindow: (): Promise<void> => ipcRenderer.invoke('skin:closeWindow'),
+  onSkinActiveChanged: (callback: (active: boolean) => void): () => void => {
+    const listener: (_event: Electron.IpcRendererEvent, active: boolean) => void =
+      (_event: Electron.IpcRendererEvent, active: boolean): void => callback(active);
+    ipcRenderer.on('skin:activeChanged', listener);
+    return (): void => { ipcRenderer.removeListener('skin:activeChanged', listener); };
+  },
   onSkinCommand: (callback: (command: 'install' | 'remove') => void): () => void => {
     const listener: (_event: Electron.IpcRendererEvent, command: 'install' | 'remove') => void =
       (_event: Electron.IpcRendererEvent, command: 'install' | 'remove'): void => callback(command);
