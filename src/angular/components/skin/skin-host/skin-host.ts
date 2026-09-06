@@ -170,6 +170,21 @@ export class SkinHost implements OnDestroy {
   }
 
   /**
+   * Whether a node should act as a window drag handle.
+   *
+   * A skinned window is frameless, so there is no title bar to grab: the skin's
+   * own background has to move the window, exactly as the original did.
+   * Anything the user can operate is excluded, or its buttons and sliders would
+   * drag the window instead of responding.
+   *
+   * @param node - Node being drawn
+   * @returns True when dragging the node should move the window
+   */
+  public isDragRegion(node: SkinRenderNode): boolean {
+    return node.kind === 'container' || node.kind === 'text' || node.kind === 'unsupported';
+  }
+
+  /**
    * Converts a skin's point-based font size to CSS pixels.
    *
    * @param points - Font size as the skin expresses it

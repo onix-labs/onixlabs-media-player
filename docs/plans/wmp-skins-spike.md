@@ -81,6 +81,17 @@ skin's globals.
   from *never converging* to **settling in 3 passes**.
 - **`theme.loadString` must exist.** Three of the nine script files call it at load time;
   without it they threw part-way and silently lost every declaration after that point.
+- **Transparency is magenta unless stated otherwise.** Of 271 art references in the
+  reference skin, only 39 name a `transparencyColor`; nine more carry magenta with none
+  declared anywhere in their ancestry — the stop button, the skin-mode button, the radio
+  help button — and render as magenta rectangles unless magenta is assumed. Assuming it is
+  safe in the other direction, since keying only zeroes pixels that match exactly. Four
+  references use `transparencyColor="auto"`, which means *key the top-left pixel*.
+- **Alignment must not double-count.** This skin declares `horizontalAlignment="stretch"`
+  *and* `width="jscript:svEntireApp.width - left - 298"` on the same element. The
+  expression already accounts for the new size, so adding the alignment delta on top tore
+  the layout apart on resize. Alignment now only fills in for values the skin does not
+  compute or assign itself.
 
 ## Measured against the reference skin
 
@@ -102,6 +113,9 @@ defines.
 
 - **Not rendered:** `PLAYLIST`, `LISTBOX`, `EDITBOX`, `POPUP`. These are stubs; the
   reference skin has 4, 2, 1 and 3 of them.
+- **On Windows the menu bar goes with the frame.** A frameless window has nowhere to put
+  it, so *View → Use Built-in Interface* is unreachable from a skinned window there. The
+  skin's own close button works; the menu route needs a keyboard accelerator.
 - **`res://wmploc.dll` strings** resolve to empty. Every label and tooltip the reference
   skin takes from Windows resources is blank. Shipping a mapping table for the common
   string ids would recover most captions.
@@ -111,10 +125,13 @@ defines.
   `backgroundColor` — the WMP8 skin names yellow, which the original painted behind live
   content and which shows as a yellow rectangle when there is no content to cover it.
   Filling these is the next piece of work.
-- **The native window frame cannot be removed.** Activating a skin sizes the window to the
-  skin's design dimensions and hides the macOS traffic lights, but `frame`/`transparent`
-  are fixed when a `BrowserWindow` is created, so the frame and its vibrancy remain behind
-  the skin's own rounded corners. Removing them means recreating the window on activation.
+- **Activating a skin reloads the renderer.** `frame` and `transparent` are constructor-only
+  on `BrowserWindow` — there is no setter for either — so a skin is shown by *replacing* the
+  main window with a frameless, transparent one, and dismissing it replaces it back. The new
+  window is created before the old is destroyed, or the moment with no windows open would
+  fire `window-all-closed` and quit. The renderer restarts across that swap, which
+  interrupts playback; the main process remembers the active skin so the new renderer can
+  restore it. Making this seamless would mean keeping playback out of the renderer.
 - **Alignment on resize is approximate.** Each element baselines its parent's size while
   the view is at the skin's design dimensions, then distributes later growth per
   `horizontalAlignment` / `verticalAlignment`. Most of the skin computes its own sizes in

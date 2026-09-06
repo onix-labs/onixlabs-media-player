@@ -39,6 +39,17 @@
     pointer-events: none;
   }
 
+  // A skinned window has no frame, so the skin's own background is the only
+  // thing left to drag it by. Interactive nodes opt back out, or a click on a
+  // button would move the window instead of pressing it.
+  &--drag {
+    -webkit-app-region: drag;
+  }
+
+  &--no-drag {
+    -webkit-app-region: no-drag;
+  }
+
   &--disabled {
     pointer-events: none;
   }

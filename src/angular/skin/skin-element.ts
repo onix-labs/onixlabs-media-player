@@ -311,6 +311,25 @@ export class SkinElement {
   }
 
   /**
+   * Whether a property's value is produced rather than stated.
+   *
+   * A property bound to a `jscript:` expression is recomputed whenever the view
+   * changes, and a property script has assigned was set deliberately. Either
+   * way the value is already correct for the current size, and applying an
+   * alignment offset on top of it would count the same resize twice.
+   *
+   * @param name - Property name, matched case-insensitively
+   * @returns True when the value comes from an expression or a script assignment
+   */
+  public isDerived(name: string): boolean {
+    const key: string = name.toLowerCase();
+    if (this.overridden.has(key)) return true;
+
+    const attribute: SkinAttribute | undefined = this.node.attributes.get(key);
+    return attribute !== undefined && (attribute.kind === 'jscript' || attribute.kind === 'wmpprop');
+  }
+
+  /**
    * A human-readable name for this element, used in diagnostics.
    *
    * @returns The element's id when it has one, otherwise its tag

@@ -16,6 +16,8 @@
       [class.skin-node--passthrough]="node.passthrough"
       [class.skin-node--tiled]="node.tiled"
       [class.skin-node--disabled]="!node.enabled"
+      [class.skin-node--drag]="isDragRegion(node)"
+      [class.skin-node--no-drag]="!isDragRegion(node)"
       [style.left.px]="node.left"
       [style.top.px]="node.top"
       [style.width.px]="node.width"

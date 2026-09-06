@@ -167,6 +167,7 @@ export class SkinService {
       this.publish();
 
       await bridge.applySkinWindowSize({
+        id,
         width: design.width,
         height: design.height,
         minWidth: minimum.width,
@@ -178,6 +179,24 @@ export class SkinService {
       this.failure.set(error instanceof Error ? error.message : String(error));
       return false;
     }
+  }
+
+  /**
+   * Re-activates the skin the main process says should be showing.
+   *
+   * Turning a skin on swaps the window for a frameless one, which reloads the
+   * renderer and loses everything this service held. The main process keeps the
+   * skin's identity across that gap, and this is the other side of it.
+   */
+  public async restoreActive(): Promise<void> {
+    const bridge: typeof window.mediaPlayer = this.bridge;
+    if (bridge === undefined) return;
+
+    const id: string | null = await bridge.getActiveSkin();
+    if (id === null) return;
+
+    await this.refresh();
+    await this.activate(id);
   }
 
   /**

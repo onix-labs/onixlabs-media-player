@@ -836,12 +836,26 @@ export interface MediaPlayerAPI {
    * Restores the window size and native controls from before a skin was active.
    */
   restoreSkinWindowSize: () => Promise<void>;
+
+  /**
+   * Gets the skin that should be restored after a window recreation.
+   * @returns The skin's identifier, or null when no skin is active
+   */
+  getActiveSkin: () => Promise<string | null>;
+
+  /** Minimizes the window, for a skin's own minimize button. */
+  minimizeSkinWindow: () => Promise<void>;
+
+  /** Closes the window, for a skin's own close button. */
+  closeSkinWindow: () => Promise<void>;
 }
 
 /**
  * The window dimensions a skin declares.
  */
 export interface SkinWindowSize {
+  /** Identifier of the skin being applied */
+  id: string;
   /** Width the skin was drawn for */
   width: number;
   /** Height the skin was drawn for */

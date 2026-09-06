@@ -797,17 +797,30 @@ export class SkinRuntime {
     const horizontal: string = String(element.read('horizontalalignment') ?? 'left').toLowerCase();
     const vertical: string = String(element.read('verticalalignment') ?? 'top').toLowerCase();
 
+    // Alignment only fills in for values the skin does not compute. This one
+    // states `width="jscript:svEntireApp.width - left - 298"` *and*
+    // `horizontalAlignment="stretch"` on the same element: the expression
+    // already accounts for the new size, so adding the delta as well counts the
+    // resize twice and the layout tears apart as the window grows.
     let x: number = left;
     let boxWidth: number = width;
-    if (horizontal === 'right') x = left + deltaWidth;
-    else if (horizontal === 'center') x = left + deltaWidth / 2;
-    else if (horizontal === 'stretch') boxWidth = width + deltaWidth;
+    if (!element.isDerived('left')) {
+      if (horizontal === 'right') x = left + deltaWidth;
+      else if (horizontal === 'center') x = left + deltaWidth / 2;
+    }
+    if (horizontal === 'stretch' && !element.isDerived('width')) {
+      boxWidth = width + deltaWidth;
+    }
 
     let y: number = top;
     let boxHeight: number = height;
-    if (vertical === 'bottom') y = top + deltaHeight;
-    else if (vertical === 'center') y = top + deltaHeight / 2;
-    else if (vertical === 'stretch') boxHeight = height + deltaHeight;
+    if (!element.isDerived('top')) {
+      if (vertical === 'bottom') y = top + deltaHeight;
+      else if (vertical === 'center') y = top + deltaHeight / 2;
+    }
+    if (vertical === 'stretch' && !element.isDerived('height')) {
+      boxHeight = height + deltaHeight;
+    }
 
     return {left: x, top: y, width: boxWidth, height: boxHeight};
   }

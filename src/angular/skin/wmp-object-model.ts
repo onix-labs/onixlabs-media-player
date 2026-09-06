@@ -554,8 +554,10 @@ export class WmpObjectModel {
       },
       minWidth: 0,
       minHeight: 0,
-      close: (): void => {},
-      minimize: (): void => {},
+      // A skinned window is frameless, so these are the only close and minimize
+      // controls there are - the skin draws the buttons and expects them to work.
+      close: (): void => void window.mediaPlayer?.closeSkinWindow(),
+      minimize: (): void => void window.mediaPlayer?.minimizeSkinWindow(),
       maximize: (): void => {},
       restore: (): void => {},
       moveTo: (): void => {},

@@ -34,6 +34,31 @@ export interface SkinImage {
   readonly height: number;
 }
 
+/**
+ * How an image's transparent region is identified.
+ *
+ * - colour: a specific colour is keyed out
+ * - auto: the image's top-left pixel names the colour, which is what
+ *   `transparencyColor="auto"` means
+ * - none: the image is drawn opaque
+ */
+export type SkinColourKey =
+  | {readonly mode: 'colour'; readonly colour: number}
+  | {readonly mode: 'auto'}
+  | {readonly mode: 'none'};
+
+/**
+ * The colour keyed out when a skin names none.
+ *
+ * Magenta is the WMP skin convention, and skins rely on it going unstated. In
+ * the reference skin nine art references - including the stop button and the
+ * skin-mode button - carry magenta with no `transparencyColor` anywhere in
+ * their ancestry, and render as magenta rectangles if it is not assumed. The
+ * assumption is safe in the other direction too: art that does not use magenta
+ * is unaffected, because the key only zeroes pixels that match it exactly.
+ */
+const DEFAULT_TRANSPARENCY_COLOUR: number = 0xff00ff;
+
 /** The extent of one colour region within a button group's mapping image. */
 export interface SkinRegionBounds {
   /** Left edge, in mapping-image pixels */
@@ -127,6 +152,33 @@ export function parseSkinColour(value: string | null | undefined): number | null
 }
 
 /**
+ * Interprets a skin's `transparencyColor` attribute.
+ *
+ * @param value - Attribute value as written, or null when unstated
+ * @returns How the image's transparency should be determined
+ */
+export function resolveColourKey(value: string | null | undefined): SkinColourKey {
+  const trimmed: string = (value ?? '').trim().toLowerCase();
+
+  if (trimmed === 'auto') return {mode: 'auto'};
+  if (trimmed === 'none') return {mode: 'none'};
+
+  const parsed: number | null = parseSkinColour(trimmed);
+  return {mode: 'colour', colour: parsed ?? DEFAULT_TRANSPARENCY_COLOUR};
+}
+
+/**
+ * Renders a colour key as a stable cache token.
+ *
+ * @param key - The resolved key
+ * @returns Token distinguishing one keying of an image from another
+ */
+function colourKeyToken(key: SkinColourKey): string {
+  if (key.mode === 'colour') return key.colour.toString(HEX_RADIX);
+  return key.mode;
+}
+
+/**
  * Renders a packed colour as a CSS colour string.
  *
  * @param colour - Packed `0xRRGGBB` value
@@ -168,8 +220,8 @@ export class SkinImageService {
    * @param transparencyColour - Colour to key out, or null for none
    * @returns Cache key
    */
-  private cacheKey(skinId: string, assetName: string, transparencyColour: number | null): string {
-    return `${skinId}|${assetName.toLowerCase()}|${transparencyColour ?? 'opaque'}`;
+  private cacheKey(skinId: string, assetName: string, key: SkinColourKey): string {
+    return `${skinId}|${assetName.toLowerCase()}|${colourKeyToken(key)}`;
   }
 
   /**
@@ -214,6 +266,34 @@ export class SkinImageService {
     bitmap.close();
 
     return context.getImageData(0, 0, canvas.width, canvas.height);
+  }
+
+  /**
+   * Copies pixel data, so the drawn image and the sampled image can diverge.
+   *
+   * @param data - Pixels to copy
+   * @returns An independent copy
+   */
+  private clone(data: ImageData): ImageData {
+    return new ImageData(new Uint8ClampedArray(data.data), data.width, data.height);
+  }
+
+  /**
+   * Reads the colour of an image's top-left pixel.
+   *
+   * This is what `transparencyColor="auto"` names: the skin declares that
+   * whatever is in the corner is the background it wants keyed out.
+   *
+   * @param data - Decoded pixels
+   * @returns Packed `0xRRGGBB` colour, or null for an empty image
+   */
+  private topLeftColour(data: ImageData): number | null {
+    if (data.width === 0 || data.height === 0) return null;
+    return (
+      (data.data[CHANNEL_RED] << SHIFT_RED) |
+      (data.data[CHANNEL_GREEN] << SHIFT_GREEN) |
+      data.data[CHANNEL_BLUE]
+    );
   }
 
   /**
@@ -276,8 +356,8 @@ export class SkinImageService {
     assetName: string,
     transparencyColour: string | null
   ): Promise<SkinImage | null> {
-    const colour: number | null = parseSkinColour(transparencyColour);
-    const key: string = this.cacheKey(skinId, assetName, colour);
+    const colourKey: SkinColourKey = resolveColourKey(transparencyColour);
+    const key: string = this.cacheKey(skinId, assetName, colourKey);
 
     const cached: SkinImage | undefined = this.images.get(key);
     if (cached !== undefined) return cached;
@@ -293,7 +373,16 @@ export class SkinImageService {
       const data: ImageData | null = await this.decode(bytes);
       if (data === null) return null;
 
-      this.pixels.set(`${skinId}|${assetName.toLowerCase()}`, data);
+      // Stored before keying so that mapping images, which are sampled rather
+       // than drawn, still report their original colours.
+      this.pixels.set(`${skinId}|${assetName.toLowerCase()}`, this.clone(data));
+
+      const colour: number | null =
+        colourKey.mode === 'auto'
+          ? this.topLeftColour(data)
+          : colourKey.mode === 'colour'
+            ? colourKey.colour
+            : null;
 
       if (colour !== null) this.applyColourKey(data, colour);
       return this.toObjectUrl(data);
@@ -330,7 +419,7 @@ export class SkinImageService {
     assetName: string,
     transparencyColour: string | null
   ): SkinImage | null {
-    const key: string = this.cacheKey(skinId, assetName, parseSkinColour(transparencyColour));
+    const key: string = this.cacheKey(skinId, assetName, resolveColourKey(transparencyColour));
     return this.images.get(key) ?? null;
   }
 

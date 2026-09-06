@@ -175,6 +175,18 @@ class Program {
     readonly minimum: readonly [number, number];
   } | null = null;
 
+  /** Whether the main window was created frameless for a skin */
+  private windowIsFrameless: boolean = false;
+
+  /**
+   * Skin the renderer should restore after a window recreation.
+   *
+   * Swapping between framed and frameless means a new window and so a fresh
+   * renderer, which loses the active skin. The main process remembers it across
+   * that gap and the renderer asks for it as it starts.
+   */
+  private activeSkinId: string | null = null;
+
   /** The port the media server is running on */
   private serverPort: number = 0;
 
@@ -559,7 +571,7 @@ class Program {
    *
    * @returns The configured BrowserWindow instance
    */
-  private createBrowserWindow(): BrowserWindow {
+  private createBrowserWindow(frameless: boolean = false): BrowserWindow {
     const projectRoot: string = Program.getProjectRoot();
     // Preload must always be compiled JS - Electron can't run TS preload scripts
     const preloadPath: string = path.join(projectRoot, "src", "electron", "dist", "preload.js");
@@ -597,7 +609,19 @@ class Program {
     const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
     const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
 
-    if (process.platform === 'darwin') {
+    if (frameless) {
+      // A skin paints its own frame, shadow and window buttons, so the native
+      // ones have to go entirely. `frame` and `transparent` are fixed when a
+      // BrowserWindow is constructed - there is no setter for either - which is
+      // why activating a skin recreates the window rather than restyling it.
+      platformOptions = {
+        frame: false,
+        transparent: true,
+        hasShadow: false,
+        backgroundColor: '#00000000',
+        fullscreenable: false
+      };
+    } else if (process.platform === 'darwin') {
       // macOS: native vibrancy with hidden title bar
       // fullscreenable starts false — enabled when media is loaded (via onPlaylistCountChange)
       platformOptions = {
@@ -1290,13 +1314,16 @@ class Program {
     // the way: the traffic lights would otherwise sit on top of the skin's own
     // title bar. The frame itself cannot be removed after the window is created,
     // which is why this only hides what it can.
-    ipcMain.handle("skin:applyWindowSize", (_: Readonly<Electron.IpcMainInvokeEvent>, size: Readonly<{
+    ipcMain.handle("skin:applyWindowSize", (_: Readonly<Electron.IpcMainInvokeEvent>, request: Readonly<{
+      id: string;
       width: number;
       height: number;
       minWidth: number;
       minHeight: number;
     }>): void => {
       if (!this.window || this.window.isDestroyed()) return;
+
+      this.activeSkinId = request.id;
 
       if (this.preSkinWindowState === null) {
         const [contentWidth, contentHeight]: number[] = this.window.getContentSize();
@@ -1307,30 +1334,59 @@ class Program {
         };
       }
 
+      // The window is only rebuilt when its framing has to change. The renderer
+      // re-activates its skin after every reload and calls back in here, so
+      // rebuilding unconditionally would loop forever.
+      if (!this.windowIsFrameless) {
+        this.replaceMainWindow(true, request);
+        return;
+      }
+
       // Minimum first: setContentSize is clamped by the current minimum, so
       // shrinking to a skin smaller than the app's own floor needs the floor
       // lowered before the resize, not after.
-      this.window.setMinimumSize(Math.max(1, size.minWidth), Math.max(1, size.minHeight));
-      this.window.setContentSize(Math.max(1, size.width), Math.max(1, size.height));
-
-      if (process.platform === 'darwin') {
-        this.window.setWindowButtonVisibility(false);
-      }
+      this.window.setMinimumSize(Math.max(1, request.minWidth), Math.max(1, request.minHeight));
+      this.window.setContentSize(Math.max(1, request.width), Math.max(1, request.height));
     });
 
     ipcMain.handle("skin:restoreWindowSize", (): void => {
+      this.activeSkinId = null;
       if (!this.window || this.window.isDestroyed()) return;
 
       const previous: typeof this.preSkinWindowState = this.preSkinWindowState;
+      this.preSkinWindowState = null;
+
+      if (this.windowIsFrameless) {
+        this.replaceMainWindow(
+          false,
+          previous === null
+            ? undefined
+            : {
+                width: previous.content[0],
+                height: previous.content[1],
+                minWidth: previous.minimum[0],
+                minHeight: previous.minimum[1],
+              }
+        );
+        return;
+      }
+
       if (previous !== null) {
         this.window.setMinimumSize(previous.minimum[0], previous.minimum[1]);
         this.window.setContentSize(previous.content[0], previous.content[1]);
-        this.preSkinWindowState = null;
       }
+    });
 
-      if (process.platform === 'darwin') {
-        this.window.setWindowButtonVisibility(true);
-      }
+    // Asked for by the renderer as it starts, so a skin survives the window
+    // recreation that putting it on required in the first place.
+    ipcMain.handle("skin:getActive", (): string | null => this.activeSkinId);
+
+    ipcMain.handle("skin:minimizeWindow", (): void => {
+      this.window?.minimize();
+    });
+
+    ipcMain.handle("skin:closeWindow", (): void => {
+      this.window?.close();
     });
 
     ipcMain.handle("skin:readAsset", (_: Readonly<Electron.IpcMainInvokeEvent>, id: string, assetName: string): Uint8Array | null => {
@@ -2180,6 +2236,62 @@ class Program {
    * Creates a new window if none exist, standard macOS behavior.
    * Re-initializes window events and menu for the new window.
    */
+  /**
+   * Replaces the main window with one of the opposite framing.
+   *
+   * `frame` and `transparent` cannot be changed on a live BrowserWindow, so
+   * switching a skin on or off means building a new window and discarding the
+   * old one. The new window is created before the old is destroyed, because an
+   * instant with no windows open would fire `window-all-closed` and quit the
+   * application.
+   *
+   * The renderer is reloaded by this, so playback in the media elements stops;
+   * the skin is restored on the other side via {@link activeSkinId}.
+   *
+   * @param frameless - Whether the replacement should be frameless and transparent
+   * @param contentSize - Content size for the new window, when one is wanted
+   */
+  private replaceMainWindow(
+    frameless: boolean,
+    contentSize?: Readonly<{width: number; height: number; minWidth: number; minHeight: number}>
+  ): void {
+    const previous: BrowserWindow | null = this.window;
+    if (previous === null || previous.isDestroyed()) return;
+
+    windowLogger.info(`Recreating main window (frameless: ${frameless})`);
+
+    const bounds: Electron.Rectangle = previous.getBounds();
+
+    // The outgoing window's own handlers would otherwise null out this.window
+    // and run the close-time audio fade against a window that is going away.
+    previous.removeAllListeners('close');
+    previous.removeAllListeners('closed');
+
+    this.window = this.createBrowserWindow(frameless);
+    this.windowIsFrameless = frameless;
+
+    if (contentSize !== undefined) {
+      this.window.setMinimumSize(Math.max(1, contentSize.minWidth), Math.max(1, contentSize.minHeight));
+      this.window.setContentSize(Math.max(1, contentSize.width), Math.max(1, contentSize.height));
+      this.window.setPosition(bounds.x, bounds.y);
+    } else {
+      this.window.setBounds(bounds);
+    }
+
+    this.setupWindowEvents();
+    this.setupApplicationMenu();
+
+    if (Program.IS_DEVELOPMENT) {
+      void this.window.loadURL(Program.DEVELOPMENT_SERVER_URL);
+    } else {
+      void this.window.loadURL(`http://127.0.0.1:${this.serverPort}/`);
+    }
+
+    this.window.on('closed', this.onClosed.bind(this));
+
+    previous.destroy();
+  }
+
   private onActivate(): void {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainLogger.info('Dock activation - creating new window');
