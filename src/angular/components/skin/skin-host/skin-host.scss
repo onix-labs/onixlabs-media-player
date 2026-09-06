@@ -74,3 +74,20 @@
   pointer-events: none;
   image-rendering: pixelated;
 }
+
+// The application's own outlet, filling the pane the skin reserved for it.
+.skin-media {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+
+  // Skin art is pixel art and is drawn unsmoothed; the picture is not, and
+  // would otherwise inherit that from .skin-node.
+  image-rendering: auto;
+
+  > * {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+}

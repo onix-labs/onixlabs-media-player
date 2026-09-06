@@ -14,10 +14,12 @@
  * than against DOM geometry, so overlapping and non-rectangular buttons work
  * the way the skin author intended.
  *
- * **Video and visualisation panes are reported, not drawn.** A skin marks out
- * where they belong with VIDEO and EFFECTS elements; the component emits those
- * rectangles in view coordinates and leaves the parent to position the
- * application's real outlets over them.
+ * **The media pane is drawn inside the tree, not over it.** A skin marks out
+ * where the picture goes with VIDEO and EFFECTS elements, and the parent hands
+ * in a template to fill it. It has to render at that node's own position in the
+ * tree rather than being layered behind the skin: skin chrome is opaque and
+ * overlaps the pane on every side - this one paints a black backdrop across the
+ * whole screen area - so anything stacked underneath is simply covered.
  *
  * @module app/components/skin/skin-host
  */
@@ -27,39 +29,18 @@ import {
   Component,
   ElementRef,
   OnDestroy,
-  computed,
-  effect,
   inject,
-  output,
+  input,
   signal,
-  type OutputEmitterRef,
+  type InputSignal,
   type Signal,
+  type TemplateRef,
   type WritableSignal,
 } from '@angular/core';
 import {NgTemplateOutlet} from '@angular/common';
 import {SkinService} from '../../../skin/skin.service';
 import type {SkinElement} from '../../../skin/skin-element';
 import type {SkinRenderNode, SkinRuntime, SkinSliderState} from '../../../skin/skin-runtime';
-
-/** A rectangle in view coordinates. */
-export interface SkinSlotRect {
-  /** Left edge in pixels, relative to the skin's origin */
-  readonly left: number;
-  /** Top edge in pixels, relative to the skin's origin */
-  readonly top: number;
-  /** Width in pixels */
-  readonly width: number;
-  /** Height in pixels */
-  readonly height: number;
-}
-
-/** Where a skin wants the application's own media panes placed. */
-export interface SkinSlots {
-  /** Rectangle reserved for video, or null when the skin declares none */
-  readonly video: SkinSlotRect | null;
-  /** Rectangle reserved for visualisations, or null when the skin declares none */
-  readonly effects: SkinSlotRect | null;
-}
 
 /** CSS reference pixels per inch, as the browser defines them. */
 const PIXELS_PER_INCH: number = 96;
@@ -75,7 +56,7 @@ const POINTS_TO_PIXELS: number = PIXELS_PER_INCH / POINTS_PER_INCH;
  *
  * @example
  * <!-- In a parent template -->
- * <app-skin-host (slotsChange)="placeOutlets($event)" />
+ * <app-skin-host [mediaTemplate]="visualiser" mediaKind="effects" />
  */
 @Component({
   selector: 'app-skin-host',
@@ -101,24 +82,23 @@ export class SkinHost implements OnDestroy {
   /** The active skin's render tree, or null when no skin is active */
   public readonly tree: Signal<SkinRenderNode | null> = this.skins.renderTree;
 
-  /** Where the skin wants the application's video and visualisation panes */
-  public readonly slotsChange: OutputEmitterRef<SkinSlots> = output<SkinSlots>();
+  /**
+   * Content to draw in the pane the skin reserves for the picture.
+   *
+   * Rendered inside the skin's own tree rather than layered over it. A skin's
+   * chrome is opaque and overlaps the pane on every side - this one paints a
+   * black backdrop across the whole screen area - so anything stacked behind
+   * the skin is simply covered. Placing it at the pane's own node gives it the
+   * z-order the author intended.
+   */
+  public readonly mediaTemplate: InputSignal<TemplateRef<unknown> | null> =
+    input<TemplateRef<unknown> | null>(null);
 
-  /** Rectangles the skin reserved for the application's own panes */
-  private readonly slots: Signal<SkinSlots> = computed((): SkinSlots => {
-    const root: SkinRenderNode | null = this.tree();
-    if (root === null) return {video: null, effects: null};
-
-    const found: {video: SkinSlotRect | null; effects: SkinSlotRect | null} = {
-      video: null,
-      effects: null,
-    };
-    this.collectSlots(root, 0, 0, found);
-    return found;
-  });
+  /** Which of the skin's two panes the media should occupy */
+  public readonly mediaKind: InputSignal<'video' | 'effects'> = input<'video' | 'effects'>('effects');
 
   /**
-   * Wires up size tracking and slot reporting.
+   * Keeps the skin's view size in step with the host element.
    */
   public constructor() {
     this.resizeObserver = new ResizeObserver((entries: readonly ResizeObserverEntry[]): void => {
@@ -128,10 +108,16 @@ export class SkinHost implements OnDestroy {
     });
 
     this.resizeObserver.observe(this.hostElement.nativeElement);
+  }
 
-    effect((): void => {
-      this.slotsChange.emit(this.slots());
-    });
+  /**
+   * Whether a node is the pane the media should be drawn in.
+   *
+   * @param node - Node being drawn
+   * @returns True when the media template belongs here
+   */
+  public isMediaPane(node: SkinRenderNode): boolean {
+    return node.kind === this.mediaKind() && this.mediaTemplate() !== null;
   }
 
   /**
@@ -139,34 +125,6 @@ export class SkinHost implements OnDestroy {
    */
   public ngOnDestroy(): void {
     this.resizeObserver.disconnect();
-  }
-
-  /**
-   * Walks the render tree accumulating offsets to find the media panes.
-   *
-   * @param node - Node to inspect
-   * @param offsetLeft - Accumulated left offset of the node's parent
-   * @param offsetTop - Accumulated top offset of the node's parent
-   * @param found - Collector receiving the first pane of each kind
-   */
-  private collectSlots(
-    node: SkinRenderNode,
-    offsetLeft: number,
-    offsetTop: number,
-    found: {video: SkinSlotRect | null; effects: SkinSlotRect | null}
-  ): void {
-    const left: number = offsetLeft + node.left;
-    const top: number = offsetTop + node.top;
-
-    if (node.visible) {
-      const rect: SkinSlotRect = {left, top, width: node.width, height: node.height};
-      if (node.kind === 'video' && found.video === null) found.video = rect;
-      if (node.kind === 'effects' && found.effects === null) found.effects = rect;
-    }
-
-    for (const child of node.children) {
-      this.collectSlots(child, left, top, found);
-    }
   }
 
   /**

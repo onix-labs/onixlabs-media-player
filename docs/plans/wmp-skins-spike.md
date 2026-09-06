@@ -132,10 +132,15 @@ defines.
 
 A skin marks out where the picture goes with `VIDEO` and `EFFECTS` elements. They draw
 nothing themselves — their declared `backgroundColor` is what the original painted *behind*
-live content, and honouring it just puts a yellow rectangle where the visualiser belongs —
-so the runtime reports their rectangles and the application's own outlets are positioned
-over them. The skin renders *above*, so its chrome still frames the picture and the
-transparent panes let the outlet show through.
+live content, and honouring it just puts a yellow rectangle where the visualiser belongs.
+
+The outlet is handed to `SkinHost` as a `TemplateRef` and rendered **at that node's own
+position in the skin's tree**. Layering it behind the whole skin does not work: skin chrome
+is opaque and overlaps the pane on every side — this one paints a black `BackgroundX`
+across the entire screen area at the same z-index — so anything stacked underneath is
+simply covered, which is why the first attempt showed nothing at all. Rendering at the
+pane's node puts it above that backdrop and below the chrome that frames it, which is the
+z-order the author intended.
 
 Which pane is used follows the skin rather than the app: a skin decides by its own rules
 which of the two is live and only publishes a rectangle for the visible one.

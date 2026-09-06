@@ -63,11 +63,19 @@
         }
 
         @case ('video') {
-          <!-- Reported through slotsChange; the parent positions the real outlet. -->
+          @if (isMediaPane(node)) {
+            <div class="skin-media">
+              <ng-container *ngTemplateOutlet="mediaTemplate()!"></ng-container>
+            </div>
+          }
         }
 
         @case ('effects') {
-          <!-- Reported through slotsChange; the parent positions the real outlet. -->
+          @if (isMediaPane(node)) {
+            <div class="skin-media">
+              <ng-container *ngTemplateOutlet="mediaTemplate()!"></ng-container>
+            </div>
+          }
         }
       }
 
