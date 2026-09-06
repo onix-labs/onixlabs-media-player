@@ -1,0 +1,1107 @@
+/**
+ * @fileoverview Drives a loaded skin: layout, bindings, events and rendering.
+ *
+ * The runtime owns the live element tree and the loop that keeps it consistent.
+ * That loop is a fixed-point iteration rather than a dependency graph: a pass
+ * re-evaluates every bound attribute on every element, and passes repeat until
+ * nothing changes or a ceiling is reached. Skins bind elements to each other
+ * freely and often circularly - `btnAppFillTop.width` reads `svEntireApp.width`
+ * which reads `view.width` - and settling by iteration handles that without
+ * having to extract dependencies from arbitrary JScript.
+ *
+ * Geometry follows the original's alignment model. An element records the size
+ * its parent had on the first settled pass, and thereafter any growth in the
+ * parent is distributed according to `horizontalAlignment` and
+ * `verticalAlignment`: `left` keeps the element put, `right` moves it by the
+ * full delta, `center` by half, and `stretch` grows the element itself. Most
+ * skins compute their own sizes in script and this only matters for the parts
+ * that do not, but those parts are the ones that would otherwise tear on resize.
+ *
+ * Rendering is a snapshot. Each settled pass produces an immutable tree of
+ * {@link SkinRenderNode}, which is what the host component draws; nothing in
+ * the template reaches back into the mutable element state.
+ *
+ * @module app/skin/skin-runtime
+ */
+
+import type {MediaPlayerService} from '../services/media-player.service';
+import {SkinElement, type SkinElementHost, type SkinImageMetrics} from './skin-element';
+import {SkinExpressionEngine, type SkinScriptError} from './skin-expression';
+import {parseSkinDefinition, type SkinAttribute, type SkinDefinition, type SkinNode} from './wms-parser';
+import {
+  parseSkinColour,
+  toCssColour,
+  type SkinImage,
+  type SkinImageService,
+  type SkinRegionBounds,
+} from './skin-image.service';
+import {WmpObjectModel} from './wmp-object-model';
+
+/** How a render node should be drawn. */
+export type SkinRenderKind =
+  | 'container'
+  | 'button'
+  | 'buttongroup'
+  | 'text'
+  | 'slider'
+  | 'video'
+  | 'effects'
+  | 'unsupported';
+
+/** Text styling resolved for a TEXT-like element. */
+export interface SkinTextStyle {
+  /** Text to display, already resolved from value bindings */
+  readonly content: string;
+  /** CSS colour for the text */
+  readonly colour: string;
+  /** Font family as named by the skin */
+  readonly fontFamily: string;
+  /** Font size in points, as skins express it */
+  readonly fontSize: number;
+  /** Whether the skin asked for bold */
+  readonly bold: boolean;
+  /** Whether the skin asked for italic */
+  readonly italic: boolean;
+  /** CSS text alignment derived from the skin's justification */
+  readonly align: string;
+  /** Whether text wraps rather than clipping to one line */
+  readonly wrap: boolean;
+}
+
+/** Resolved state of a SLIDER-like element. */
+export interface SkinSliderState {
+  /** Current value */
+  readonly value: number;
+  /** Lowest value the slider accepts */
+  readonly minimum: number;
+  /** Highest value the slider accepts */
+  readonly maximum: number;
+  /** Whether the slider runs horizontally */
+  readonly horizontal: boolean;
+  /** Thumb image URL, or null when not yet loaded */
+  readonly thumbUrl: string | null;
+  /** Thumb width in pixels */
+  readonly thumbWidth: number;
+  /** Thumb height in pixels */
+  readonly thumbHeight: number;
+}
+
+/** An immutable snapshot of one element, ready to render. */
+export interface SkinRenderNode {
+  /** Stable key for template tracking */
+  readonly key: string;
+  /** The element this node was produced from */
+  readonly element: SkinElement;
+  /** How the node should be drawn */
+  readonly kind: SkinRenderKind;
+  /** Left offset within the parent, in pixels */
+  readonly left: number;
+  /** Top offset within the parent, in pixels */
+  readonly top: number;
+  /** Width in pixels */
+  readonly width: number;
+  /** Height in pixels */
+  readonly height: number;
+  /** Stacking order within the parent */
+  readonly zIndex: number;
+  /** Opacity in the range 0-1, from the skin's alphaBlend */
+  readonly opacity: number;
+  /** Whether the element is drawn at all */
+  readonly visible: boolean;
+  /** Whether the element responds to input */
+  readonly enabled: boolean;
+  /** Whether pointer events pass through to what is beneath */
+  readonly passthrough: boolean;
+  /** CSS cursor for the element */
+  readonly cursor: string;
+  /** Tooltip text, empty when the skin gives none */
+  readonly tooltip: string;
+  /** CSS background colour, or null for transparent */
+  readonly backgroundColour: string | null;
+  /** Background image URL, or null when absent or not yet loaded */
+  readonly backgroundImage: string | null;
+  /** Whether the background image tiles rather than stretching */
+  readonly tiled: boolean;
+  /** Text styling, present only for text nodes */
+  readonly text: SkinTextStyle | null;
+  /** Slider state, present only for slider nodes */
+  readonly slider: SkinSliderState | null;
+  /** Child nodes in stacking order */
+  readonly children: readonly SkinRenderNode[];
+}
+
+/** Maximum layout passes before the runtime stops chasing a fixed point. */
+const MAX_LAYOUT_PASSES: number = 8;
+
+/** Fully opaque alpha, as skins express it. */
+const ALPHA_OPAQUE: number = 255;
+
+/** Upper bound of WMP's volume scale, which typed volume sliders span. */
+const WMP_VOLUME_MAXIMUM: number = 100;
+
+/** Default font size, in points, when a skin names none. */
+const DEFAULT_FONT_SIZE: number = 8;
+
+/** Fallback text colour when a skin names none. */
+const DEFAULT_TEXT_COLOUR: string = '#000000';
+
+/** Tags rendered as a bare container with an optional background. */
+const CONTAINER_TAGS: ReadonlySet<string> = new Set<string>(['VIEW', 'SUBVIEW', 'BUTTONGROUP']);
+
+/** Tags rendered as a clickable image with hover, down and disabled states. */
+const BUTTON_TAGS: ReadonlySet<string> = new Set<string>([
+  'BUTTON',
+  'PLAYBUTTON',
+  'PAUSEBUTTON',
+  'STOPBUTTON',
+  'REWBUTTON',
+  'FFWDBUTTON',
+  'NEXTBUTTON',
+  'PREVBUTTON',
+  'SHUFFLEBUTTON',
+  'REPEATBUTTON',
+  'MUTEBUTTON',
+  'BUTTONELEMENT',
+]);
+
+/** Tags rendered as text. */
+const TEXT_TAGS: ReadonlySet<string> = new Set<string>([
+  'TEXT',
+  'CURRENTPOSITIONTEXT',
+  'DURATIONTEXT',
+  'STATUSTEXT',
+  'TRACKNAMETEXT',
+]);
+
+/** Tags rendered as a slider. */
+const SLIDER_TAGS: ReadonlySet<string> = new Set<string>([
+  'SLIDER',
+  'SEEKSLIDER',
+  'VOLUMESLIDER',
+  'BALANCESLIDER',
+  'CUSTOMSLIDER',
+]);
+
+/**
+ * Transport actions implied by an element's tag.
+ *
+ * WMP's typed buttons carry their behaviour in the tag rather than in an
+ * `onclick`, so a skin can write `<STOPBUTTON image="..."/>` and get a working
+ * stop button. Elements that also declare an `onclick` run both, matching the
+ * original.
+ */
+const IMPLICIT_ACTIONS: Readonly<Record<string, string>> = {
+  PLAYBUTTON: 'play',
+  PLAYELEMENT: 'play',
+  PAUSEBUTTON: 'pause',
+  PAUSEELEMENT: 'pause',
+  STOPBUTTON: 'stop',
+  STOPELEMENT: 'stop',
+  NEXTBUTTON: 'next',
+  NEXTELEMENT: 'next',
+  PREVBUTTON: 'previous',
+  PREVELEMENT: 'previous',
+  REWBUTTON: 'previous',
+  REWELEMENT: 'previous',
+  FFWDBUTTON: 'next',
+  FFWDELEMENT: 'next',
+  MUTEBUTTON: 'mute',
+  SHUFFLEBUTTON: 'shuffle',
+  REPEATBUTTON: 'repeat',
+};
+
+/** Attributes holding a colour that keys transparency for this element's art. */
+const TRANSPARENCY_ATTRIBUTE: string = 'transparencycolor';
+
+/**
+ * Everything needed to bring up a skin's runtime.
+ *
+ * @property skinId - Installed skin identifier, used for asset lookups
+ * @property definitionSource - Decoded `.wms` text
+ * @property scripts - Decoded script sources, keyed by lower-cased file name
+ */
+export interface SkinRuntimeSource {
+  /** Installed skin identifier */
+  readonly skinId: string;
+  /** Decoded `.wms` text */
+  readonly definitionSource: string;
+  /** Decoded script sources, keyed by lower-cased file name */
+  readonly scripts: Readonly<Record<string, string>>;
+}
+
+/**
+ * A live skin: its element tree, its script namespace, and its render output.
+ *
+ * @example
+ * const runtime = new SkinRuntime(source, player, images, () => redraw());
+ * runtime.resize(670, 482);
+ * const tree = runtime.render();
+ */
+export class SkinRuntime {
+  /** Installed skin identifier, used for asset lookups */
+  public readonly skinId: string;
+
+  /** The parsed definition this runtime was built from */
+  public readonly definition: SkinDefinition;
+
+  /** Root element, corresponding to the definition's VIEW */
+  public readonly root: SkinElement;
+
+  /** Every element in the tree, in document order */
+  private readonly elements: SkinElement[] = [];
+
+  /** Named values script sees: the object model plus one entry per element id */
+  private readonly bindings: Map<string, unknown> = new Map<string, unknown>();
+
+  /** The script sandbox */
+  private readonly engine: SkinExpressionEngine;
+
+  /** The player object model published into the sandbox */
+  private readonly model: WmpObjectModel;
+
+  /** Image cache shared with the rest of the application */
+  private readonly images: SkinImageService;
+
+  /** Called when a settled layout pass has produced a new render tree */
+  private readonly onRendered: () => void;
+
+  /** Elements the pointer is currently over */
+  private readonly hovered: Set<SkinElement> = new Set<SkinElement>();
+
+  /** Elements the pointer is currently pressed on */
+  private readonly pressed: Set<SkinElement> = new Set<SkinElement>();
+
+  /** Parent sizes recorded on the first settled pass, keyed by element */
+  private readonly designSizes: Map<SkinElement, SkinImageMetrics> = new Map<SkinElement, SkinImageMetrics>();
+
+  /** Asset names already requested, so a missing image is fetched once */
+  private readonly requested: Set<string> = new Set<string>();
+
+  /** Current view width in pixels */
+  private width: number = 0;
+
+  /** Current view height in pixels */
+  private height: number = 0;
+
+  /** Whether a layout pass is pending */
+  private dirty: boolean = true;
+
+  /** Handle of the scheduled settle, so repeated invalidation coalesces */
+  private scheduled: number | null = null;
+
+  /**
+   * Builds and starts a skin runtime.
+   *
+   * Construction parses the definition, instantiates the tree, runs the skin's
+   * scripts, and fires the view's `onload` handler - in that order, because the
+   * scripts expect every element id to already resolve.
+   *
+   * @param source - The skin's identifier and decoded sources
+   * @param player - Player service the object model drives
+   * @param images - Shared image cache
+   * @param onRendered - Called when a new render tree is available
+   */
+  public constructor(
+    source: SkinRuntimeSource,
+    player: MediaPlayerService,
+    images: SkinImageService,
+    onRendered: () => void
+  ) {
+    this.skinId = source.skinId;
+    this.images = images;
+    this.onRendered = onRendered;
+    this.definition = parseSkinDefinition(source.definitionSource);
+    this.model = new WmpObjectModel(player, (): void => this.invalidate());
+
+    const host: SkinElementHost = {
+      evaluate: (self: object, expression: string, context: string): unknown =>
+        this.engine.evaluateFor(self, expression, context),
+      execute: (self: object, statements: string, context: string): void =>
+        this.engine.executeFor(self, statements, context),
+      metrics: (assetName: string): SkinImageMetrics | null => this.metricsFor(assetName),
+      invalidate: (): void => this.invalidate(),
+    };
+
+    this.root = this.instantiate(this.definition.view, null, host);
+    this.publishModel();
+
+    this.engine = new SkinExpressionEngine(this.bindings, this.orderedScripts(source.scripts));
+
+    const onLoad: SkinAttribute | undefined = this.definition.view.attributes.get('onload');
+    if (onLoad !== undefined) {
+      this.engine.executeFor(this.root.scope, onLoad.value, 'view onload');
+    }
+  }
+
+  /**
+   * Orders the skin's scripts as the view's `scriptFile` attribute lists them.
+   *
+   * Order matters: later scripts call into earlier ones at load time. Files the
+   * archive contains but the view never lists are appended, since some skins
+   * rely on a file being present without declaring it.
+   *
+   * @param scripts - Decoded sources keyed by lower-cased file name
+   * @returns Sources in load order
+   */
+  private orderedScripts(scripts: Readonly<Record<string, string>>): string[] {
+    const remaining: Map<string, string> = new Map<string, string>(Object.entries(scripts));
+    const ordered: string[] = [];
+
+    for (const name of this.definition.scriptFiles) {
+      const key: string = name.toLowerCase();
+      const source: string | undefined = remaining.get(key);
+      if (source === undefined) continue;
+      ordered.push(source);
+      remaining.delete(key);
+    }
+
+    // A definition naming `136.js` ships alongside a stray `136..js`; loading
+    // the leftovers would define the same globals twice, so they are dropped
+    // unless the skin declared no scripts at all.
+    if (ordered.length === 0) ordered.push(...remaining.values());
+
+    return ordered;
+  }
+
+  /**
+   * Recursively instantiates an element and its children.
+   *
+   * @param node - Parsed node to instantiate
+   * @param parent - Parent element, or null for the root
+   * @param host - Services to give the new elements
+   * @returns The instantiated element
+   */
+  private instantiate(node: SkinNode, parent: SkinElement | null, host: SkinElementHost): SkinElement {
+    const element: SkinElement = new SkinElement(node, parent, host);
+    this.elements.push(element);
+
+    if (element.id !== null) {
+      this.bindings.set(element.id, element.proxy);
+    }
+
+    for (const child of node.children) {
+      element.children.push(this.instantiate(child, element, host));
+    }
+
+    return element;
+  }
+
+  /**
+   * Republishes the player object model into the script namespace.
+   *
+   * The model rebuilds objects whose contents track player state, so this runs
+   * at the start of every settle rather than once at construction.
+   */
+  private publishModel(): void {
+    this.model.setViewSize(this.width, this.height);
+    for (const [name, value] of this.model.bindings()) {
+      this.bindings.set(name, value);
+    }
+  }
+
+  /**
+   * Reports a skin image's natural size, requesting a load if needed.
+   *
+   * @param assetName - Asset name as written in the definition
+   * @returns The natural size, or null until the image has been decoded
+   */
+  private metricsFor(assetName: string): SkinImageMetrics | null {
+    const metrics: SkinImageMetrics | null = this.images.metrics(this.skinId, assetName);
+    if (metrics === null) this.request(assetName, null);
+    return metrics;
+  }
+
+  /**
+   * Ensures an asset is loaded, scheduling a re-layout when it arrives.
+   *
+   * @param assetName - Asset name as written in the definition
+   * @param transparencyColour - Colour to key out, as written in the definition
+   */
+  private request(assetName: string, transparencyColour: string | null): void {
+    const key: string = `${assetName.toLowerCase()}|${transparencyColour ?? ''}`;
+    if (this.requested.has(key)) return;
+    this.requested.add(key);
+
+    void this.images.load(this.skinId, assetName, transparencyColour).then((): void => {
+      // An image's arrival changes intrinsic sizes, so layout has to settle again.
+      this.invalidate();
+    });
+  }
+
+  /**
+   * Resolves an element's image URL, requesting the image if it is not cached.
+   *
+   * @param element - Element the image belongs to
+   * @param assetName - Asset name, or a non-string when the property is unset
+   * @returns The object URL, or null until the image has been decoded
+   */
+  private imageUrl(element: SkinElement, assetName: unknown): string | null {
+    if (typeof assetName !== 'string' || assetName.trim() === '') return null;
+
+    const transparency: unknown = this.inheritedTransparency(element);
+    const colour: string | null = typeof transparency === 'string' ? transparency : null;
+    const cached: SkinImage | null = this.images.cached(this.skinId, assetName, colour);
+
+    if (cached === null) {
+      this.request(assetName, colour);
+      return null;
+    }
+
+    return cached.url;
+  }
+
+  /**
+   * Finds the transparency colour governing an element's art.
+   *
+   * Skins routinely set `transparencyColor` once on a container and expect its
+   * children's images to be keyed with it, so the lookup walks up the tree.
+   *
+   * @param element - Element to resolve the colour for
+   * @returns The colour as written, or null when no ancestor names one
+   */
+  private inheritedTransparency(element: SkinElement): unknown {
+    let current: SkinElement | null = element;
+
+    while (current !== null) {
+      const colour: unknown = current.read(TRANSPARENCY_ATTRIBUTE);
+      if (typeof colour === 'string' && colour.trim() !== '') return colour;
+      current = current.parent;
+    }
+
+    return null;
+  }
+
+  /**
+   * Records the view's size and settles layout against it.
+   *
+   * @param width - View width in pixels
+   * @param height - View height in pixels
+   */
+  public resize(width: number, height: number): void {
+    if (this.width === width && this.height === height) return;
+    this.width = width;
+    this.height = height;
+    this.invalidate();
+  }
+
+  /**
+   * The size the definition was authored at, used as the initial window size.
+   *
+   * @returns Design width and height in pixels
+   */
+  public get designSize(): SkinImageMetrics {
+    const view: SkinElement = this.root;
+    return {
+      width: Number(view.read('width')) || 0,
+      height: Number(view.read('height')) || 0,
+    };
+  }
+
+  /**
+   * Marks layout stale and schedules a settle on the next frame.
+   *
+   * Handlers frequently change several properties in a row; coalescing means
+   * one settle rather than one per assignment.
+   */
+  public invalidate(): void {
+    this.dirty = true;
+    if (this.scheduled !== null) return;
+
+    this.scheduled = requestAnimationFrame((): void => {
+      this.scheduled = null;
+      this.settle();
+      this.onRendered();
+    });
+  }
+
+  /**
+   * Runs layout passes until bindings stop changing.
+   *
+   * The pass ceiling is a guard against skins whose bindings genuinely
+   * oscillate; stopping early leaves the tree at its last state rather than
+   * spinning a frame away.
+   */
+  public settle(): void {
+    if (!this.dirty) return;
+    this.dirty = false;
+
+    this.publishModel();
+
+    for (let pass: number = 0; pass < MAX_LAYOUT_PASSES; pass++) {
+      let changed: boolean = false;
+
+      for (const element of this.elements) {
+        if (this.evaluateBindings(element)) changed = true;
+      }
+
+      if (!changed) break;
+    }
+  }
+
+  /**
+   * Re-evaluates every bound attribute on one element.
+   *
+   * @param element - Element to update
+   * @returns True when any property's value changed
+   */
+  private evaluateBindings(element: SkinElement): boolean {
+    let changed: boolean = false;
+
+    for (const [name, attribute] of element.node.attributes) {
+      if (attribute.kind !== 'jscript' && attribute.kind !== 'wmpprop') continue;
+
+      // A `wmpprop:` value is a property path, which evaluates identically to
+      // the expression it spells - the prefix only marks it as one-way.
+      const value: unknown = this.engine.evaluateFor(
+        element.scope,
+        attribute.value,
+        `${element.describe()}.${name}`
+      );
+
+      if (value === undefined) continue;
+      if (element.applyBinding(name, value)) changed = true;
+    }
+
+    return changed;
+  }
+
+  /**
+   * Classifies an element for rendering.
+   *
+   * @param element - Element to classify
+   * @returns How the element should be drawn
+   */
+  private kindOf(element: SkinElement): SkinRenderKind {
+    if (element.tag === 'BUTTONGROUP') return 'buttongroup';
+    if (CONTAINER_TAGS.has(element.tag)) return 'container';
+    if (BUTTON_TAGS.has(element.tag) || element.tag.endsWith('ELEMENT')) return 'button';
+    if (TEXT_TAGS.has(element.tag)) return 'text';
+    if (SLIDER_TAGS.has(element.tag)) return 'slider';
+    if (element.tag === 'VIDEO') return 'video';
+    if (element.tag === 'EFFECTS') return 'effects';
+    return 'unsupported';
+  }
+
+  /**
+   * Chooses the image an element should currently display.
+   *
+   * Precedence follows the original: disabled beats pressed, pressed beats
+   * hovered, and a sticky button that is down uses its down art even when the
+   * pointer is elsewhere.
+   *
+   * @param element - Element to choose art for
+   * @returns Asset name, or a non-string when the element has no art
+   */
+  private buttonImage(element: SkinElement): unknown {
+    const enabled: boolean = element.read('enabled') !== false;
+    const down: boolean = element.read('down') === true || this.pressed.has(element);
+    const hover: boolean = this.hovered.has(element);
+
+    if (!enabled) {
+      const disabled: unknown = element.read('disabledimage');
+      if (typeof disabled === 'string' && disabled !== '') return disabled;
+    }
+
+    if (down && hover) {
+      const hoverDown: unknown = element.read('hoverdownimage');
+      if (typeof hoverDown === 'string' && hoverDown !== '') return hoverDown;
+    }
+
+    if (down) {
+      const downImage: unknown = element.read('downimage');
+      if (typeof downImage === 'string' && downImage !== '') return downImage;
+    }
+
+    if (hover) {
+      const hoverImage: unknown = element.read('hoverimage');
+      if (typeof hoverImage === 'string' && hoverImage !== '') return hoverImage;
+    }
+
+    return element.read('image');
+  }
+
+  /**
+   * Resolves the text a text element should display.
+   *
+   * `res://` references point into Windows resource DLLs this application does
+   * not ship, so they resolve to nothing rather than to their own URL. Position
+   * and duration elements ignore `value` and report the clock instead.
+   *
+   * @param element - Element to resolve text for
+   * @returns The text to draw
+   */
+  private textContent(element: SkinElement): string {
+    if (element.tag === 'CURRENTPOSITIONTEXT' || element.tag === 'DURATIONTEXT') {
+      const path: string =
+        element.tag === 'CURRENTPOSITIONTEXT'
+          ? 'player.controls.currentPositionString'
+          : 'player.currentMedia ? player.currentMedia.durationString : ""';
+      const value: unknown = this.engine.evaluate(path, `${element.describe()} clock`);
+      return typeof value === 'string' ? value : '';
+    }
+
+    const value: unknown = element.read('value');
+    if (typeof value !== 'string') return value === undefined || value === null ? '' : String(value);
+    if (value.toLowerCase().startsWith('res://')) return '';
+    return value;
+  }
+
+  /**
+   * Builds the text styling for a text element.
+   *
+   * @param element - Element to style
+   * @returns Resolved text style
+   */
+  private textStyle(element: SkinElement): SkinTextStyle {
+    const style: string = String(element.read('fontstyle') ?? '').toLowerCase();
+    const colour: number | null = parseSkinColour(String(element.read('foregroundcolor') ?? ''));
+    const justification: string = String(element.read('justification') ?? 'left').toLowerCase();
+
+    return {
+      content: this.textContent(element),
+      colour: colour === null ? DEFAULT_TEXT_COLOUR : toCssColour(colour),
+      fontFamily: String(element.read('fontface') ?? 'Tahoma'),
+      fontSize: Number(element.read('fontsize')) || DEFAULT_FONT_SIZE,
+      bold: style.includes('bold'),
+      italic: style.includes('italic'),
+      align: justification === 'right' || justification === 'center' ? justification : 'left',
+      wrap: element.read('wordwrap') === true,
+    };
+  }
+
+  /**
+   * Builds the state of a slider element.
+   *
+   * Typed sliders take their range from what they control rather than from
+   * `min`/`max`, which skins omit for them.
+   *
+   * @param element - Element to resolve
+   * @returns Resolved slider state
+   */
+  private sliderState(element: SkinElement): SkinSliderState {
+    const thumbName: unknown = this.hovered.has(element)
+      ? (element.read('thumbhoverimage') ?? element.read('thumbimage'))
+      : element.read('thumbimage');
+    const thumbUrl: string | null = this.imageUrl(element, thumbName);
+    const thumbMetrics: SkinImageMetrics | null =
+      typeof thumbName === 'string' ? this.images.metrics(this.skinId, thumbName) : null;
+
+    const bounds: {minimum: number; maximum: number; value: number} = this.sliderRange(element);
+
+    return {
+      value: bounds.value,
+      minimum: bounds.minimum,
+      maximum: bounds.maximum,
+      horizontal: String(element.read('direction') ?? 'horizontal').toLowerCase() !== 'vertical',
+      thumbUrl,
+      thumbWidth: thumbMetrics?.width ?? 0,
+      thumbHeight: thumbMetrics?.height ?? 0,
+    };
+  }
+
+  /**
+   * Resolves a slider's range and current value.
+   *
+   * @param element - Slider to resolve
+   * @returns Minimum, maximum and current value
+   */
+  private sliderRange(element: SkinElement): {minimum: number; maximum: number; value: number} {
+    if (element.tag === 'SEEKSLIDER') {
+      const duration: unknown = this.engine.evaluate('player.currentMedia ? player.currentMedia.duration : 0', 'seek range');
+      const position: unknown = this.engine.evaluate('player.controls.currentPosition', 'seek position');
+      return {
+        minimum: 0,
+        maximum: Number(duration) || 0,
+        value: Number(position) || 0,
+      };
+    }
+
+    if (element.tag === 'VOLUMESLIDER') {
+      const volume: unknown = this.engine.evaluate('player.settings.volume', 'volume');
+      return {minimum: 0, maximum: WMP_VOLUME_MAXIMUM, value: Number(volume) || 0};
+    }
+
+    return {
+      minimum: Number(element.read('min')) || 0,
+      maximum: Number(element.read('max')) || 0,
+      value: Number(element.read('value')) || 0,
+    };
+  }
+
+  /**
+   * Applies the alignment model to an element's geometry.
+   *
+   * The first call for an element records its parent's size as the design size;
+   * later calls distribute the difference according to the alignment attributes.
+   *
+   * @param element - Element to position
+   * @param parentWidth - Parent's current inner width
+   * @param parentHeight - Parent's current inner height
+   * @returns The element's laid-out box
+   */
+  private geometry(
+    element: SkinElement,
+    parentWidth: number,
+    parentHeight: number
+  ): {left: number; top: number; width: number; height: number} {
+    const left: number = Number(element.read('left')) || 0;
+    const top: number = Number(element.read('top')) || 0;
+    const width: number = Number(element.read('width')) || 0;
+    const height: number = Number(element.read('height')) || 0;
+
+    // A BUTTONELEMENT states no geometry: it occupies whichever region of its
+    // group's mapping image carries its mappingColor.
+    const region: {left: number; top: number; width: number; height: number} | null =
+      this.mappedRegion(element);
+    if (region !== null) return region;
+
+    const design: SkinImageMetrics | undefined = this.designSizes.get(element);
+    if (design === undefined) {
+      this.designSizes.set(element, {width: parentWidth, height: parentHeight});
+      return {left, top, width, height};
+    }
+
+    const deltaWidth: number = parentWidth - design.width;
+    const deltaHeight: number = parentHeight - design.height;
+    const horizontal: string = String(element.read('horizontalalignment') ?? 'left').toLowerCase();
+    const vertical: string = String(element.read('verticalalignment') ?? 'top').toLowerCase();
+
+    let x: number = left;
+    let boxWidth: number = width;
+    if (horizontal === 'right') x = left + deltaWidth;
+    else if (horizontal === 'center') x = left + deltaWidth / 2;
+    else if (horizontal === 'stretch') boxWidth = width + deltaWidth;
+
+    let y: number = top;
+    let boxHeight: number = height;
+    if (vertical === 'bottom') y = top + deltaHeight;
+    else if (vertical === 'center') y = top + deltaHeight / 2;
+    else if (vertical === 'stretch') boxHeight = height + deltaHeight;
+
+    return {left: x, top: y, width: boxWidth, height: boxHeight};
+  }
+
+  /**
+   * Finds the mapping image a button group hit-tests against.
+   *
+   * @param group - The button group
+   * @returns The mapping image's asset name, or null when it declares none
+   */
+  private mappingImageOf(group: SkinElement): string | null {
+    const mapping: unknown = group.read('mappingimage');
+    if (typeof mapping !== 'string' || mapping.trim() === '') return null;
+
+    // Hit testing reads raw pixels, so the mapping image must be decoded even
+    // though it is never drawn.
+    this.request(mapping, null);
+    return mapping;
+  }
+
+  /**
+   * Resolves the box a mapped button element occupies within its group.
+   *
+   * @param element - Element that may claim a mapping colour
+   * @returns The element's box, or null when it is not a mapped element
+   */
+  private mappedRegion(
+    element: SkinElement
+  ): {left: number; top: number; width: number; height: number} | null {
+    const group: SkinElement | null = element.parent;
+    if (group === null || group.tag !== 'BUTTONGROUP') return null;
+
+    const colour: number | null = parseSkinColour(String(element.read('mappingcolor') ?? ''));
+    if (colour === null) return null;
+
+    const mapping: string | null = this.mappingImageOf(group);
+    if (mapping === null) return null;
+
+    const bounds: SkinRegionBounds | null = this.images.regionBounds(this.skinId, mapping, colour);
+    if (bounds === null) return null;
+
+    return {left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height};
+  }
+
+  /**
+   * Finds which mapped element of a button group lies under a point.
+   *
+   * @param group - The button group the pointer is over
+   * @param x - Pointer position within the group, in pixels
+   * @param y - Pointer position within the group, in pixels
+   * @returns The element claiming that pixel's colour, or null when none does
+   */
+  public hitTest(group: SkinElement, x: number, y: number): SkinElement | null {
+    const mapping: string | null = this.mappingImageOf(group);
+    if (mapping === null) return null;
+
+    const colour: number | null = this.images.pixelAt(this.skinId, mapping, x, y);
+    if (colour === null) return null;
+
+    for (const child of group.children) {
+      const claimed: number | null = parseSkinColour(String(child.read('mappingcolor') ?? ''));
+      if (claimed !== null && claimed === colour) return child;
+    }
+
+    return null;
+  }
+
+  /**
+   * Builds the render tree for the current state.
+   *
+   * @returns An immutable snapshot of the whole view
+   */
+  public render(): SkinRenderNode {
+    return this.renderElement(this.root, this.width, this.height, 0);
+  }
+
+  /**
+   * Builds one render node and its descendants.
+   *
+   * @param element - Element to snapshot
+   * @param parentWidth - Parent's current inner width
+   * @param parentHeight - Parent's current inner height
+   * @param index - Position among siblings, used to build a stable key
+   * @returns The render node
+   */
+  private renderElement(
+    element: SkinElement,
+    parentWidth: number,
+    parentHeight: number,
+    index: number
+  ): SkinRenderNode {
+    const kind: SkinRenderKind = this.kindOf(element);
+    const box: {left: number; top: number; width: number; height: number} =
+      element === this.root
+        ? {left: 0, top: 0, width: parentWidth, height: parentHeight}
+        : this.geometry(element, parentWidth, parentHeight);
+
+    // A button group's visible art is its `image`; its `mappingImage` is never
+    // drawn, only sampled for hit testing.
+    const backgroundName: unknown =
+      kind === 'buttongroup'
+        ? (element.read('image') ?? element.read('backgroundimage'))
+        : kind === 'button'
+          ? this.buttonImage(element)
+          : element.read('backgroundimage');
+    const backgroundImage: string | null = this.imageUrl(element, backgroundName);
+    const backgroundColour: number | null = parseSkinColour(
+      String(element.read('backgroundcolor') ?? '')
+    );
+
+    // A button whose art is loaded but whose size was never stated takes the
+    // art's size, which is how most skin buttons are declared.
+    const imageMetrics: SkinImageMetrics | null =
+      typeof backgroundName === 'string' ? this.images.metrics(this.skinId, backgroundName) : null;
+    const width: number = box.width > 0 ? box.width : (imageMetrics?.width ?? 0);
+    const height: number = box.height > 0 ? box.height : (imageMetrics?.height ?? 0);
+
+    const alpha: number = Number(element.read('alphablend'));
+    const children: SkinRenderNode[] = element.children.map(
+      (child: SkinElement, childIndex: number): SkinRenderNode =>
+        this.renderElement(child, width, height, childIndex)
+    );
+
+    return {
+      key: `${element.id ?? element.tag}-${index}`,
+      element,
+      kind,
+      left: box.left,
+      top: box.top,
+      width,
+      height,
+      zIndex: Number(element.read('zindex')) || 0,
+      opacity: Number.isFinite(alpha) ? alpha / ALPHA_OPAQUE : 1,
+      visible: element.read('visible') !== false,
+      enabled: element.read('enabled') !== false,
+      passthrough: element.read('passthrough') === true,
+      cursor: this.cursorFor(element, kind),
+      tooltip: this.tooltipFor(element),
+      backgroundColour: backgroundColour === null ? null : toCssColour(backgroundColour),
+      backgroundImage,
+      tiled: element.read('tiled') === true || element.read('backgroundtiled') === true,
+      text: kind === 'text' ? this.textStyle(element) : null,
+      slider: kind === 'slider' ? this.sliderState(element) : null,
+      children,
+    };
+  }
+
+  /**
+   * Chooses the CSS cursor for an element.
+   *
+   * @param element - Element to resolve
+   * @param kind - How the element is drawn
+   * @returns A CSS cursor value
+   */
+  private cursorFor(element: SkinElement, kind: SkinRenderKind): string {
+    const declared: string = String(element.read('cursor') ?? '').toLowerCase();
+    if (declared === 'hand' || declared === 'player') return 'pointer';
+    if (declared === 'system' || declared === 'arrow') return 'default';
+    if (declared !== '') return 'default';
+    return kind === 'button' || kind === 'slider' ? 'pointer' : 'default';
+  }
+
+  /**
+   * Chooses the tooltip text for an element.
+   *
+   * Sticky buttons carry separate up and down tooltips; unresolvable `res://`
+   * references produce no tooltip at all.
+   *
+   * @param element - Element to resolve
+   * @returns Tooltip text, empty when there is none to show
+   */
+  private tooltipFor(element: SkinElement): string {
+    const down: boolean = element.read('down') === true;
+    const candidates: readonly unknown[] = [
+      down ? element.read('downtooltip') : element.read('uptooltip'),
+      element.read('tooltip'),
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string' || candidate.trim() === '') continue;
+      if (candidate.toLowerCase().startsWith('res://')) continue;
+      return candidate;
+    }
+
+    return '';
+  }
+
+  /**
+   * Records that the pointer entered or left an element.
+   *
+   * @param element - Element under the pointer
+   * @param inside - Whether the pointer is now over it
+   */
+  public setHovered(element: SkinElement, inside: boolean): void {
+    if (inside === this.hovered.has(element)) return;
+
+    if (inside) this.hovered.add(element);
+    else this.hovered.delete(element);
+
+    this.invalidate();
+  }
+
+  /**
+   * Records that the pointer was pressed or released on an element.
+   *
+   * @param element - Element the pointer is on
+   * @param down - Whether the button is now held
+   */
+  public setPressed(element: SkinElement, down: boolean): void {
+    if (down) this.pressed.add(element);
+    else this.pressed.delete(element);
+    this.invalidate();
+  }
+
+  /**
+   * Handles a click on an element.
+   *
+   * A sticky button toggles its own `down` state first, because its `onclick`
+   * reads that state - `player.settings.setMode('loop', down)` is the standard
+   * idiom and depends on `down` already reflecting the click.
+   *
+   * @param element - Element that was clicked
+   */
+  public click(element: SkinElement): void {
+    if (element.read('enabled') === false) return;
+
+    if (element.read('sticky') === true) {
+      element.write('down', element.read('down') !== true);
+    }
+
+    const action: string | undefined = IMPLICIT_ACTIONS[element.tag];
+    if (action !== undefined) this.runImplicitAction(action);
+
+    const handler: SkinAttribute | undefined = element.node.attributes.get('onclick');
+    if (handler !== undefined) {
+      this.engine.executeFor(element.scope, handler.value, `${element.describe()}.onclick`);
+    }
+
+    this.invalidate();
+  }
+
+  /**
+   * Runs the transport action implied by a typed element's tag.
+   *
+   * @param action - Action name from the implicit action table
+   */
+  private runImplicitAction(action: string): void {
+    const statements: Readonly<Record<string, string>> = {
+      play: 'player.controls.play();',
+      pause: 'player.controls.pause();',
+      stop: 'player.controls.stop();',
+      next: 'player.controls.next();',
+      previous: 'player.controls.previous();',
+      mute: 'player.settings.mute = !player.settings.mute;',
+      shuffle: "player.settings.setMode('shuffle', !player.settings.getMode('shuffle'));",
+      repeat: "player.settings.setMode('loop', !player.settings.getMode('loop'));",
+    };
+
+    const source: string | undefined = statements[action];
+    if (source !== undefined) this.engine.execute(source, `implicit ${action}`);
+  }
+
+  /**
+   * Applies a new value to a slider the user has dragged.
+   *
+   * @param element - Slider being dragged
+   * @param value - New value in the slider's own range
+   */
+  public setSliderValue(element: SkinElement, value: number): void {
+    if (element.tag === 'SEEKSLIDER') {
+      this.engine.execute(`player.controls.currentPosition = ${value};`, 'seek drag');
+    } else if (element.tag === 'VOLUMESLIDER') {
+      this.engine.execute(`player.settings.volume = ${value};`, 'volume drag');
+    } else {
+      element.write('value', value);
+      const handler: SkinAttribute | undefined = element.node.attributes.get('value_onchange');
+      if (handler !== undefined) {
+        this.engine.executeFor(element.scope, handler.value, `${element.describe()}.value_onchange`);
+      }
+    }
+
+    this.invalidate();
+  }
+
+  /**
+   * Runs the view's `ontimer` handler, if it declares one.
+   *
+   * Skins use the timer to poll for metadata and transport changes they have no
+   * event for; the interval comes from the view's `timerInterval` attribute.
+   *
+   * @returns The declared interval in milliseconds, or null when there is no timer
+   */
+  public timerInterval(): number | null {
+    if (!this.definition.view.attributes.has('ontimer')) return null;
+    const interval: number = Number(this.root.read('timerinterval'));
+    return Number.isFinite(interval) && interval > 0 ? interval : null;
+  }
+
+  /**
+   * Fires the view's timer handler.
+   */
+  public tick(): void {
+    const handler: SkinAttribute | undefined = this.definition.view.attributes.get('ontimer');
+    if (handler === undefined) return;
+    this.engine.executeFor(this.root.scope, handler.value, 'view ontimer');
+    this.invalidate();
+  }
+
+  /**
+   * Every script failure recorded since the skin loaded.
+   *
+   * @returns Recorded errors, oldest first
+   */
+  public get errors(): readonly SkinScriptError[] {
+    return this.engine.errors;
+  }
+
+  /**
+   * Releases the runtime's scheduled work and cached art.
+   */
+  public destroy(): void {
+    if (this.scheduled !== null) {
+      cancelAnimationFrame(this.scheduled);
+      this.scheduled = null;
+    }
+    this.images.evict(this.skinId);
+  }
+}

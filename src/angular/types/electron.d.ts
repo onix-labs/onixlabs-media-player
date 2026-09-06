@@ -784,6 +784,80 @@ export interface MediaPlayerAPI {
    * @returns true if installation succeeded, false otherwise
    */
   setupInstallBundledSoundFont: () => Promise<boolean>;
+
+  /**
+   * Lists every installed Windows Media Player skin.
+   * @returns Descriptors of installed skins
+   */
+  listSkins: () => Promise<InstalledSkin[]>;
+
+  /**
+   * Prompts for a `.wmz` package and installs it.
+   * @returns The installed skin, or null if the dialog was cancelled
+   */
+  installSkin: () => Promise<InstalledSkin | null>;
+
+  /**
+   * Removes an installed skin.
+   * @param id - Identifier of the skin to remove
+   */
+  removeSkin: (id: string) => Promise<void>;
+
+  /**
+   * Reads a skin's definition and script sources, decoded to text.
+   * @param id - Identifier of the skin to read
+   * @returns The skin's sources, or null if it is not installed
+   */
+  readSkin: (id: string) => Promise<SkinSources | null>;
+
+  /**
+   * Reads a single asset from an installed skin.
+   * @param id - Identifier of the skin the asset belongs to
+   * @param assetName - Asset name as written in the skin definition
+   * @returns The asset's bytes, or null if the skin has no such asset
+   */
+  readSkinAsset: (id: string, assetName: string) => Promise<Uint8Array | null>;
+
+  /**
+   * Subscribes to skin commands issued from the application menu.
+   * @param callback - Called with the requested command
+   * @returns Unsubscribe function
+   */
+  onSkinCommand: (callback: (command: 'install' | 'remove') => void) => () => void;
+}
+
+/**
+ * An installed Windows Media Player skin.
+ */
+export interface InstalledSkin {
+  /** Stable identifier, also the skin's directory name */
+  id: string;
+
+  /** Display title declared by the skin */
+  name: string;
+
+  /** Author credited by the skin */
+  author: string;
+
+  /** Name of the `.wms` definition file within the skin */
+  definitionFile: string;
+
+  /** Relative paths of every file the skin contains */
+  assets: string[];
+}
+
+/**
+ * A skin's definition and script sources, decoded to text.
+ */
+export interface SkinSources {
+  /** Descriptor of the skin these sources belong to */
+  skin: InstalledSkin;
+
+  /** Decoded `.wms` XML source */
+  definition: string;
+
+  /** Decoded script sources, keyed by lower-cased file name */
+  scripts: Record<string, string>;
 }
 
 /**

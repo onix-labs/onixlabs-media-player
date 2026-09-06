@@ -452,6 +452,79 @@ export interface MediaPlayerAPI {
    * @returns true if installation succeeded, false otherwise
    */
   readonly setupInstallBundledSoundFont: () => Promise<boolean>;
+
+  /**
+   * Lists every installed Windows Media Player skin.
+   * @returns Descriptors of installed skins
+   */
+  readonly listSkins: () => Promise<InstalledSkinInfo[]>;
+
+  /**
+   * Prompts for a `.wmz` package and installs it.
+   * @returns The installed skin, or null when the dialog was cancelled
+   */
+  readonly installSkin: () => Promise<InstalledSkinInfo | null>;
+
+  /**
+   * Removes an installed skin.
+   * @param id - Identifier of the skin to remove
+   */
+  readonly removeSkin: (id: string) => Promise<void>;
+
+  /**
+   * Reads a skin's definition and script sources, decoded to text.
+   * @param id - Identifier of the skin to read
+   * @returns The skin's sources, or null when it is not installed
+   */
+  readonly readSkin: (id: string) => Promise<SkinSourcesInfo | null>;
+
+  /**
+   * Reads a single asset from an installed skin.
+   *
+   * Assets cross IPC as bytes rather than as a path, so the renderer can decode
+   * and colour-key them into same-origin blobs without a custom protocol.
+   *
+   * @param id - Identifier of the skin the asset belongs to
+   * @param assetName - Asset name as written in the skin definition
+   * @returns The asset's bytes, or null when the skin has no such asset
+   */
+  readonly readSkinAsset: (id: string, assetName: string) => Promise<Uint8Array | null>;
+
+  /**
+   * Subscribes to skin commands issued from the application menu.
+   *
+   * @param callback - Called with the requested command
+   * @returns Unsubscribe function
+   */
+  readonly onSkinCommand: (callback: (command: 'install' | 'remove') => void) => () => void;
+}
+
+/**
+ * Descriptor of an installed skin, as sent to the renderer.
+ */
+export interface InstalledSkinInfo {
+  /** Stable identifier, also the skin's directory name */
+  readonly id: string;
+  /** Display title declared by the skin */
+  readonly name: string;
+  /** Author credited by the skin */
+  readonly author: string;
+  /** Name of the `.wms` definition file within the skin */
+  readonly definitionFile: string;
+  /** Relative paths of every file the skin contains */
+  readonly assets: readonly string[];
+}
+
+/**
+ * A skin's decoded sources, as sent to the renderer.
+ */
+export interface SkinSourcesInfo {
+  /** Descriptor of the skin these sources belong to */
+  readonly skin: InstalledSkinInfo;
+  /** Decoded `.wms` XML source */
+  readonly definition: string;
+  /** Decoded script sources, keyed by lower-cased file name */
+  readonly scripts: Readonly<Record<string, string>>;
 }
 
 /**
@@ -469,6 +542,18 @@ const api: MediaPlayerAPI = {
   saveMediaDialog: (options: Readonly<SaveMediaDialogOptions>): Promise<string | null> => ipcRenderer.invoke('dialog:saveMedia', options),
   openSubtitleDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openSubtitle'),
   openSoundFontDialog: (): Promise<string[]> => ipcRenderer.invoke('dialog:openSoundFont'),
+  listSkins: (): Promise<InstalledSkinInfo[]> => ipcRenderer.invoke('skin:list'),
+  installSkin: (): Promise<InstalledSkinInfo | null> => ipcRenderer.invoke('skin:install'),
+  removeSkin: (id: string): Promise<void> => ipcRenderer.invoke('skin:remove', id),
+  readSkin: (id: string): Promise<SkinSourcesInfo | null> => ipcRenderer.invoke('skin:read', id),
+  readSkinAsset: (id: string, assetName: string): Promise<Uint8Array | null> =>
+    ipcRenderer.invoke('skin:readAsset', id, assetName),
+  onSkinCommand: (callback: (command: 'install' | 'remove') => void): () => void => {
+    const listener: (_event: Electron.IpcRendererEvent, command: 'install' | 'remove') => void =
+      (_event: Electron.IpcRendererEvent, command: 'install' | 'remove'): void => callback(command);
+    ipcRenderer.on('skin:command', listener);
+    return (): void => { ipcRenderer.removeListener('skin:command', listener); };
+  },
   getPathForFile: (file: Readonly<File>): string => webUtils.getPathForFile(file),
   getServerPort: (): Promise<number> => ipcRenderer.invoke('app:getServerPort'),
   getServerToken: (): Promise<string> => ipcRenderer.invoke('app:getServerToken'),

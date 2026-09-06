@@ -33,6 +33,8 @@ import {HelpTopicsView} from '../help/help-topics-view/help-topics-view';
 import {MiniplayerControls} from '../miniplayer/miniplayer-controls';
 import {SetupWizard} from '../setup-wizard/setup-wizard';
 import {OpenUrlDialog} from '../open-url-dialog/open-url-dialog';
+import {SkinHost} from '../skin/skin-host/skin-host';
+import {SkinService} from '../../skin/skin.service';
 import {ElectronService} from '../../services/electron.service';
 import {MediaPlayerService} from '../../services/media-player.service';
 import {SettingsService, type VideoAspectMode} from '../../services/settings.service';
@@ -62,7 +64,7 @@ import {buildFileDialogFilters} from '../../constants/media.constants';
  */
 @Component({
   selector: 'app-root',
-  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView, AboutView, HelpTopicsView, MiniplayerControls, SetupWizard, OpenUrlDialog],
+  imports: [LayoutHeader, LayoutOutlet, LayoutControls, ConfigurationView, AboutView, HelpTopicsView, MiniplayerControls, SetupWizard, OpenUrlDialog, SkinHost],
   templateUrl: './root.html',
   styleUrl: './root.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -77,6 +79,21 @@ export class Root implements OnDestroy {
 
   /** Service for media playback state */
   private readonly mediaPlayer: MediaPlayerService = inject(MediaPlayerService);
+
+  /** Windows Media Player skin subsystem (spike) */
+  private readonly skins: SkinService = inject(SkinService);
+
+  /**
+   * Whether a Windows Media Player skin is currently driving the interface.
+   *
+   * The built-in view stays mounted underneath but hidden: its audio and video
+   * elements are what actually play, and destroying them to swap chrome would
+   * stop playback mid-track.
+   */
+  public readonly isSkinned: ReturnType<typeof computed<boolean>> = computed((): boolean => this.skins.isActive());
+
+  /** Removes the menu-command listener when the component is destroyed */
+  private readonly skinCommandCleanup: (() => void) | null = this.listenForSkinCommands();
 
   /** Service for settings (auto-hide delay) */
   private readonly settings: SettingsService = inject(SettingsService);
@@ -212,6 +229,24 @@ export class Root implements OnDestroy {
    * - menuOpenFile: Opens file dialog and adds files to playlist
    * - backgroundColor/glassEnabled: Updates CSS variable for background color
    */
+  /**
+   * Subscribes to the application menu's skin commands.
+   *
+   * @returns Unsubscribe function, or null when running outside Electron
+   */
+  private listenForSkinCommands(): (() => void) | null {
+    const bridge: typeof window.mediaPlayer = window.mediaPlayer;
+    if (bridge === undefined) return null;
+
+    return bridge.onSkinCommand((command: 'install' | 'remove'): void => {
+      if (command === 'install') {
+        void this.skins.install();
+      } else {
+        this.skins.deactivate();
+      }
+    });
+  }
+
   public constructor() {
     // React to background color/tint and glass settings changes
     // Uses two CSS variables:
@@ -527,6 +562,8 @@ export class Root implements OnDestroy {
     if (this.mouseTimeout) {
       clearTimeout(this.mouseTimeout);
     }
+    this.skinCommandCleanup?.();
+    this.skins.deactivate();
   }
 
   // ============================================================================

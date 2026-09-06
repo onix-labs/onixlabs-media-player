@@ -1,0 +1,77 @@
+@if (tree(); as root) {
+  <div class="skin-root" [style.width.px]="root.width" [style.height.px]="root.height">
+    <ng-container *ngTemplateOutlet="skinNode; context: {$implicit: root}"></ng-container>
+  </div>
+}
+
+<!--
+  Recursive template: a skin's tree nests arbitrarily deep, and every level is
+  drawn the same way, so the template outlets itself rather than delegating to a
+  child component.
+-->
+<ng-template #skinNode let-node>
+  @if (node.visible) {
+    <div
+      class="skin-node"
+      [class.skin-node--passthrough]="node.passthrough"
+      [class.skin-node--tiled]="node.tiled"
+      [class.skin-node--disabled]="!node.enabled"
+      [style.left.px]="node.left"
+      [style.top.px]="node.top"
+      [style.width.px]="node.width"
+      [style.height.px]="node.height"
+      [style.z-index]="node.zIndex"
+      [style.opacity]="node.opacity"
+      [style.cursor]="node.cursor"
+      [style.background-color]="node.backgroundColour"
+      [style.background-image]="node.backgroundImage ? 'url(' + node.backgroundImage + ')' : null"
+      [title]="node.tooltip"
+      (pointerenter)="node.kind === 'container' ? null : onHover(node, true)"
+      (pointerleave)="node.kind === 'container' ? null : onHover(node, false)"
+      (pointermove)="node.kind === 'buttongroup' ? onGroupMove(node, $event) : null"
+      (pointerdown)="node.kind === 'slider' ? onSliderDown(node, $event) : onPress(node, true)"
+      (pointerup)="node.kind === 'slider' ? onSliderUp($event) : onPress(node, false)"
+      (click)="node.kind === 'buttongroup' ? onGroupClick(node, $event) : (node.kind === 'button' ? onClick(node) : null)"
+    >
+      @switch (node.kind) {
+        @case ('text') {
+          <span
+            class="skin-text"
+            [class.skin-text--wrap]="node.text.wrap"
+            [style.color]="node.text.colour"
+            [style.font-family]="node.text.fontFamily"
+            [style.font-size.px]="fontPixels(node.text.fontSize)"
+            [style.font-weight]="node.text.bold ? 'bold' : 'normal'"
+            [style.font-style]="node.text.italic ? 'italic' : 'normal'"
+            [style.text-align]="node.text.align"
+          >{{ node.text.content }}</span>
+        }
+
+        @case ('slider') {
+          @if (node.slider.thumbUrl) {
+            <img
+              class="skin-slider-thumb"
+              alt=""
+              draggable="false"
+              [src]="node.slider.thumbUrl"
+              [style.left.px]="node.slider.horizontal ? thumbOffset(node) : 0"
+              [style.top.px]="node.slider.horizontal ? 0 : thumbOffset(node)"
+            />
+          }
+        }
+
+        @case ('video') {
+          <!-- Reported through slotsChange; the parent positions the real outlet. -->
+        }
+
+        @case ('effects') {
+          <!-- Reported through slotsChange; the parent positions the real outlet. -->
+        }
+      }
+
+      @for (child of node.children; track child.key) {
+        <ng-container *ngTemplateOutlet="skinNode; context: {$implicit: child}"></ng-container>
+      }
+    </div>
+  }
+</ng-template>

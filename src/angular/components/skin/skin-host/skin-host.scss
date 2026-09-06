@@ -1,0 +1,65 @@
+// Skin art is authored pixel-for-pixel against a fixed grid, so nothing here
+// may introduce spacing, smoothing or inherited typography of its own.
+
+:host {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+
+  // Skins position everything absolutely and expect no text selection or
+  // native drag behaviour anywhere in the tree.
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.skin-root {
+  position: relative;
+  overflow: hidden;
+}
+
+.skin-node {
+  position: absolute;
+  overflow: visible;
+
+  // Bitmaps are drawn at their authored size by default. Tiling is opt-in,
+  // because a stretched tile is the more obvious failure of the two.
+  background-repeat: no-repeat;
+  background-position: 0 0;
+
+  // Skin art is pixel art: any smoothing on scale is a defect, not a nicety.
+  image-rendering: pixelated;
+
+  &--tiled {
+    background-repeat: repeat;
+  }
+
+  &--passthrough {
+    pointer-events: none;
+  }
+
+  &--disabled {
+    pointer-events: none;
+  }
+}
+
+.skin-text {
+  display: block;
+  width: 100%;
+  height: 100%;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+
+  &--wrap {
+    white-space: normal;
+  }
+}
+
+.skin-slider-thumb {
+  position: absolute;
+  pointer-events: none;
+  image-rendering: pixelated;
+}

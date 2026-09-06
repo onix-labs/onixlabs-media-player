@@ -91,6 +91,12 @@ export interface MenuCallbacks {
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
   onSelectVisualization: (id: string) => void;
+
+  /** Called when the user asks to load a Windows Media Player skin */
+  onLoadSkin: () => void;
+
+  /** Called when the user asks to return to the built-in interface */
+  onRemoveSkin: () => void;
   onSelectAspectMode: (mode: string) => void;
 }
 
@@ -321,6 +327,15 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
       {
         label: 'Mini Player',
         enabled: false // Placeholder
+      },
+      {type: 'separator'},
+      {
+        label: 'Load Media Player Skin\u2026',
+        click: callbacks.onLoadSkin
+      },
+      {
+        label: 'Use Built-in Interface',
+        click: callbacks.onRemoveSkin
       },
       {type: 'separator'},
       {

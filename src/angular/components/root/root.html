@@ -19,9 +19,16 @@
        The layout outlet (and its audio/video elements) must not be destroyed
        and re-created when switching modes, or playback visibly stutters while
        the media element reloads. Only the surrounding chrome changes. -->
+  <!-- A Windows Media Player skin replaces the chrome, not the playback
+       pipeline: the built-in view stays mounted and hidden beneath it so its
+       media elements keep playing while the skin drives them. -->
+  @if (isSkinned()) {
+    <app-skin-host/>
+  }
   <div class="media-player-view"
        [class.miniplayer-container]="isMiniplayer()"
        [class.hidden]="isHelpMode()"
+       [class.behind-skin]="isSkinned()"
        (mouseenter)="onMiniplayerMouseEnter()"
        (mouseleave)="onMiniplayerMouseLeave()">
     @if (!isFullscreen() && !isMiniplayer() && isMacOS()) {

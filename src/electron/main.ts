@@ -23,6 +23,8 @@ import type {WindowBounds, MacOSVisualEffectState, AppearanceSettings, RecentIte
 import type {SettingsManager} from './settings-manager.js';
 import type {DependencyState} from './dependency-manager.js';
 import {initializeLogger, mainLogger, ipcLogger, windowLogger, getLogFilePath} from './logger.js';
+import {SkinManager} from './skin-manager.js';
+import type {InstalledSkin, SkinContent} from './skin-manager.js';
 import {existsSync, statSync} from 'fs';
 
 /**
@@ -157,6 +159,9 @@ class Program {
 
   /** The unified HTTP media server instance */
   private mediaServer: UnifiedMediaServer | null = null;
+
+  /** Installed Windows Media Player skins, unpacked under userData/skins */
+  private readonly skins: SkinManager = new SkinManager(app.getPath('userData'));
 
   /** The port the media server is running on */
   private serverPort: number = 0;
@@ -1211,6 +1216,74 @@ class Program {
       return result.canceled ? [] : result.filePaths;
     });
 
+    // ------------------------------------------------------------------
+    // Windows Media Player skins (spike)
+    //
+    // Skin assets cross IPC as bytes rather than as paths so the renderer can
+    // colour-key them into same-origin blobs; handing back a file URL would
+    // taint the canvas the keying needs.
+    // ------------------------------------------------------------------
+
+    ipcMain.handle("skin:list", (): InstalledSkin[] => {
+      try {
+        return this.skins.list();
+      } catch (error: unknown) {
+        ipcLogger.warn(`skin:list failed - ${String(error)}`);
+        return [];
+      }
+    });
+
+    ipcMain.handle("skin:install", async (): Promise<InstalledSkin | null> => {
+      if (!this.window) {
+        ipcLogger.warn('skin:install - no window available');
+        return null;
+      }
+
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
+        title: 'Select Windows Media Player Skin',
+        properties: ['openFile'],
+        filters: [{name: 'Media Player Skins', extensions: ['wmz', 'zip']}],
+      });
+
+      if (result.canceled || result.filePaths.length === 0) return null;
+
+      try {
+        const skin: InstalledSkin = this.skins.install(result.filePaths[0]);
+        ipcLogger.info(`skin:install - installed "${skin.name}" as ${skin.id}`);
+        return skin;
+      } catch (error: unknown) {
+        ipcLogger.warn(`skin:install failed - ${String(error)}`);
+        return null;
+      }
+    });
+
+    ipcMain.handle("skin:remove", (_: Readonly<Electron.IpcMainInvokeEvent>, id: string): void => {
+      try {
+        this.skins.remove(id);
+      } catch (error: unknown) {
+        ipcLogger.warn(`skin:remove failed - ${String(error)}`);
+      }
+    });
+
+    ipcMain.handle("skin:read", (_: Readonly<Electron.IpcMainInvokeEvent>, id: string): SkinContent | null => {
+      try {
+        return this.skins.read(id);
+      } catch (error: unknown) {
+        ipcLogger.warn(`skin:read failed for ${id} - ${String(error)}`);
+        return null;
+      }
+    });
+
+    ipcMain.handle("skin:readAsset", (_: Readonly<Electron.IpcMainInvokeEvent>, id: string, assetName: string): Uint8Array | null => {
+      try {
+        const data: Buffer | null = this.skins.readAsset(id, assetName);
+        return data === null ? null : new Uint8Array(data);
+      } catch (error: unknown) {
+        ipcLogger.warn(`skin:readAsset failed for ${id}/${assetName} - ${String(error)}`);
+        return null;
+      }
+    });
+
     // Open playlist file dialog - scoped to .opp files
     ipcMain.handle("dialog:openPlaylist", async (): Promise<string | null> => {
       ipcLogger.debug('dialog:openPlaylist');
@@ -1970,6 +2043,12 @@ class Program {
       },
       onSelectAspectMode: (mode: string): void => {
         this.window?.webContents.send('menu:selectAspectMode', mode);
+      },
+      onLoadSkin: (): void => {
+        this.window?.webContents.send('skin:command', 'install');
+      },
+      onRemoveSkin: (): void => {
+        this.window?.webContents.send('skin:command', 'remove');
       }
     }, this.getInitialMenuState());
   }
