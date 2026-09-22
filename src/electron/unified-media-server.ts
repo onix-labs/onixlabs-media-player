@@ -262,8 +262,33 @@ export class UnifiedMediaServer {
   /** Window (ms) after a track start during which clock syncs are ignored */
   private readonly TRACK_START_SYNC_GUARD_MS: number = 1500;
 
-  /** Timeout (ms) for the DASH seek keyframe probe */
+  /** Timeout (ms) for the seek keyframe probe */
   private readonly KEYFRAME_PROBE_TIMEOUT_MS: number = 5000;
+
+  /**
+   * Seconds ffmpeg subtracts from an input-side -ss before seeking when the
+   * input has a video stream with B-frames (its "dts heuristic": 3/23 s, so
+   * the seek covers the keyframe's decode time as well as its presentation
+   * time). ffprobe does not do this, so a keyframe found by probing is only
+   * reached by ffmpeg when -ss is nudged forward by the same amount. Held
+   * as a literal (3/23 rounded up at the microsecond ffmpeg works in) to
+   * satisfy the magic-number lint, which only exempts literal initialisers.
+   */
+  private readonly FFMPEG_SEEK_DTS_HEURISTIC_S: number = 0.130435;
+
+  /**
+   * Margin (s) added on top of the heuristic so the compensated seek lands at
+   * or just after the probed keyframe rather than a rounding error before it.
+   */
+  private readonly SEEK_LANDING_MARGIN_S: number = 0.001;
+
+  /**
+   * Cap (µs) on fragment length for stream-copied video. delay_moov holds the
+   * header back until the first fragment is cut, and cutting only on
+   * keyframes would delay playback by a whole GOP (several seconds of content
+   * on typical MKVs); a 1 s cap keeps startup near-instant.
+   */
+  private readonly COPIED_VIDEO_FRAG_DURATION_US: number = 1_000_000;
 
   /** Max clock-vs-request gap (s) for a stream request to count as the active seek */
   private readonly SEEK_ALIGN_WINDOW_S: number = 3;
@@ -1137,19 +1162,13 @@ export class UnifiedMediaServer {
       if (audioUrl) {
         // DASH: mux the separate video and audio streams together.
         // Async because it may probe the video's seek keyframe first.
-        this.serveDashStream(req, res, filePath, audioUrl, url).catch((err: unknown): void => {
-          ffmpegLogger.error(`DASH stream failed: ${err instanceof Error ? err.message : String(err)}`);
-          if (!res.headersSent) {
-            (res as ServerResponse).writeHead(500);
-          }
-          (res as ServerResponse).end();
-        });
+        this.serveDashStream(req, res, filePath, audioUrl, url).catch(this.failStream(res, 'DASH stream'));
       } else if (cachedInfo?.type === 'audio') {
         // Audio-only remote stream (no separate video to map).
         this.serveRemoteAudioStream(req, res, filePath, url);
       } else {
         // Progressive single-file stream: remux/transcode as one input.
-        this.serveTranscodedFile(req, res, filePath, url);
+        this.serveTranscodedFile(req, res, filePath, url).catch(this.failStream(res, 'Transcoded stream'));
       }
       return;
     }
@@ -1179,7 +1198,7 @@ export class UnifiedMediaServer {
       const needsAudioTranscode: boolean = !UnifiedMediaServer.BROWSER_COMPATIBLE_AUDIO_CODECS.has(audioCodec);
       if (needsAudioTranscode) {
         serverLogger.info(`Native container ${ext} has incompatible audio codec "${audioCodec}" - routing to transcoder`);
-        this.serveTranscodedFile(req, res, filePath, url);
+        this.serveTranscodedFile(req, res, filePath, url).catch(this.failStream(res, 'Transcoded stream'));
         return;
       }
     }
@@ -1187,7 +1206,7 @@ export class UnifiedMediaServer {
     if (isNativeVideo || isNativeAudio) {
       this.serveDirectFile(req, res, filePath, ext);
     } else {
-      this.serveTranscodedFile(req, res, filePath, url);
+      this.serveTranscodedFile(req, res, filePath, url).catch(this.failStream(res, 'Transcoded stream'));
     }
   }
 
@@ -1336,13 +1355,32 @@ export class UnifiedMediaServer {
    * 4. **Audio-only transcode**: For audio files (.wma, .ape, .tak) that need
    *    conversion to AAC.
    *
+   * A/V SYNC ON SEEK (remux and hybrid modes): an input-side -ss lands the
+   * demuxer on a keyframe BEFORE the target. A stream-copied video track keeps
+   * every packet from that keyframe, but the audio (trimmed by the accurate
+   * seek, or skipped by the demuxer) starts at the target itself, so the
+   * output has up to a GOP of video with no audio. The fragmented MP4 muxer
+   * has already written its header by then and cannot carry the audio track's
+   * late start, so it writes the first audio packet at time zero; Chromium's
+   * audio decoder derives every later timestamp from that first packet, so
+   * ALL audio plays early by the gap. The same misplacement happens without
+   * any seek at all: with B-frames the video's first decode time precedes the
+   * audio's by the reorder delay, so audio leads by a frame or two from the
+   * start. See copiedVideoInputArgs and copiedVideoMuxArgs for the shape of
+   * the command that avoids both; full transcode mode needs neither, since
+   * both streams are decoded and trimmed to the exact target.
+   *
+   * The seek is also snapped to the probed keyframe and the playback clock
+   * rebased to it (as serveDashStream does), so the seek bar and subtitles
+   * match the content instead of sitting a keyframe ahead.
+   *
    * @param req - Incoming HTTP request
    * @param res - HTTP response to write to
    * @param filePath - Absolute path to the file
    * @param url - URL containing optional 't' (time) parameter for seeking
    */
-  private serveTranscodedFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string, url: Readonly<URL>): void {
-    const seekTime: string = url.searchParams.get('t') || '0';
+  private async serveTranscodedFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string, url: Readonly<URL>): Promise<void> {
+    const requestedSeek: number = parseFloat(url.searchParams.get('t') || '0') || 0;
     const audioTrackParam: string | null = url.searchParams.get('audioTrack');
     const audioTrackIndex: number = audioTrackParam !== null ? parseInt(audioTrackParam, 10) : 0;
     const ext: string = path.extname(filePath).toLowerCase();
@@ -1383,16 +1421,39 @@ export class UnifiedMediaServer {
 
     // Determine transcoding mode for logging
     const mode: string = isAudioTranscode ? 'audio-only' : canRemux ? 'remux' : needsHybridTranscode ? 'hybrid' : 'full';
-    ffmpegLogger.info(`Transcoding: ${path.basename(filePath)} (mode: ${mode}, seek: ${seekTime}s, audioTrack: ${audioTrackIndex}/${audioCodec}, crf: ${crfValue}, audio: ${audioBitrateStr})`);
 
+    // Video is stream-copied in remux and hybrid modes, so the stream starts
+    // at the keyframe the seek lands on rather than the requested time. Find
+    // that keyframe so both inputs can be seeked to the same instant, and
+    // rebase the clock so the seek bar matches the content. Falls back to the
+    // requested time if the probe fails.
+    const copiesVideo: boolean = !isAudioTranscode && (canRemux || needsHybridTranscode);
+    let seekTime: number = requestedSeek;
+    if (copiesVideo && requestedSeek > 0) {
+      const keyframeTime: number | null = await this.probeSeekKeyframe(filePath, requestedSeek);
+      if (keyframeTime !== null) {
+        seekTime = keyframeTime;
+        this.alignPlaybackToKeyframe(requestedSeek, keyframeTime);
+      }
+    }
+
+    // The client may have gone away during the probe
+    if (res.writableEnded || res.destroyed) {
+      return;
+    }
+
+    ffmpegLogger.info(`Transcoding: ${path.basename(filePath)} (mode: ${mode}, seek: ${requestedSeek}s → ${seekTime}s, audioTrack: ${audioTrackIndex}/${audioCodec}, crf: ${crfValue}, audio: ${audioBitrateStr})`);
+
+    const seekArg: string = String(seekTime);
     let ffmpegArgs: string[];
+    let contentType: string;
 
     if (isAudioTranscode) {
       // Audio-only transcoding to AAC/ADTS
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
-        '-ss', seekTime,
+        '-ss', seekArg,
         '-i', filePath,
         '-c:a', 'aac',
         '-b:a', audioBitrateStr,
@@ -1400,65 +1461,50 @@ export class UnifiedMediaServer {
         '-f', 'adts',
         'pipe:1'
       ];
-      res.writeHead(200, {
-        'Content-Type': 'audio/aac',
-        'Transfer-Encoding': 'chunked',        'Cache-Control': 'no-cache',
-      });
+      contentType = 'audio/aac';
     } else if (canRemux) {
       // Remux mode: stream copy (no re-encoding) for compatible codecs
       // This is I/O-bound, not CPU-bound, so playback starts instantly
       // IMPORTANT: Always use explicit stream mapping to select specific tracks
-      // Note: Stream copy preserves original A/V sync, but -avoid_negative_ts helps
-      // with timestamp normalization for fragmented MP4 output
+      // The file is opened twice so video and audio can be seeked to the same
+      // instant (see copiedVideoInputArgs)
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
-        '-ss', seekTime,            // Seek before input (fast seek to nearest keyframe)
-        '-i', filePath,
-        '-map', '0:v:0',            // Map first video stream
-        '-map', `0:a:${audioTrackIndex}`, // Map selected audio stream only
+        ...this.copiedVideoInputArgs(filePath, filePath, seekTime, true),
+        '-map', '0:v:0',            // Video from the first input
+        '-map', `1:a:${audioTrackIndex}`, // Selected audio stream from the second
         '-c:v', 'copy',             // Copy video stream without re-encoding
         '-c:a', 'copy',             // Copy audio stream without re-encoding
-        '-avoid_negative_ts', 'make_zero', // Normalize timestamps to start at zero
-        '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
-        '-f', 'mp4',
-        'pipe:1'
+        ...this.copiedVideoMuxArgs(),
       ];
-      res.writeHead(200, {
-        'Content-Type': 'video/mp4',
-        'Transfer-Encoding': 'chunked',        'Cache-Control': 'no-cache',
-      });
+      contentType = 'video/mp4';
     } else if (needsHybridTranscode) {
       // Hybrid mode: copy video, transcode audio only
       // Much faster than full transcode when video is already H.264/HEVC
       // Common case: MP4/MKV with H.264 video + AC3/DTS/TrueHD audio
       //
       // A/V sync strategy for hybrid mode (video copy + audio transcode):
-      // - Input seeking for fast keyframe-based positioning
+      // - The file is opened twice: the video input seeked to land exactly on
+      //   the probed keyframe, the audio input trimmed to that same instant
+      //   (see copiedVideoInputArgs)
       // - Video is copied as-is (timestamps preserved in stream)
       // - Audio is transcoded and synced to video using aresample filter
       // - The async parameter stretches/compresses audio to match video timing
       ffmpegArgs = [
         '-hide_banner',
         '-loglevel', 'warning',
-        '-ss', seekTime,            // Input seeking (fast seek to nearest keyframe)
-        '-i', filePath,
-        '-map', '0:v:0',            // Map first video stream
-        '-map', `0:a:${audioTrackIndex}`, // Map selected audio stream
+        ...this.copiedVideoInputArgs(filePath, filePath, seekTime, false),
+        '-map', '0:v:0',            // Video from the first input
+        '-map', `1:a:${audioTrackIndex}`, // Selected audio stream from the second
         '-c:v', 'copy',             // Copy video without re-encoding
         '-c:a', 'aac',              // Transcode audio to AAC
         '-b:a', audioBitrateStr,    // Audio bitrate from settings
         '-ar', '48000',             // Sample rate
         '-af', 'aresample=async=1:min_hard_comp=0.100000:first_pts=0', // Sync audio to video
-        '-avoid_negative_ts', 'make_zero', // Normalize negative timestamps
-        '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
-        '-f', 'mp4',
-        'pipe:1'
+        ...this.copiedVideoMuxArgs(),
       ];
-      res.writeHead(200, {
-        'Content-Type': 'video/mp4',
-        'Transfer-Encoding': 'chunked',        'Cache-Control': 'no-cache',
-      });
+      contentType = 'video/mp4';
     } else {
       // Full transcode mode: re-encode video and audio for incompatible codecs
       // IMPORTANT: Always use explicit stream mapping for predictable results
@@ -1476,7 +1522,9 @@ export class UnifiedMediaServer {
       ffmpegLogger.info(`Using encoder: ${encoderConfig.encoder}`);
 
       // A/V sync strategy for full transcode mode:
-      // - Input seeking (-ss before -i) for fast approximate positioning
+      // - Input seeking (-ss before -i) for fast approximate positioning;
+      //   accurate seek then decodes and discards both streams up to the
+      //   exact target, so no keyframe alignment is needed here
       // - Both streams re-encoded with setpts/asetpts to reset PTS to 0
       // - This ensures perfect A/V sync since both streams start fresh
       ffmpegArgs = [
@@ -1485,7 +1533,7 @@ export class UnifiedMediaServer {
         '-threads', '0',            // Use all available CPU cores
         '-probesize', '10M',        // Analyze 10MB for stream detection
         '-analyzeduration', '5000000', // Analyze 5 seconds for timestamps
-        '-ss', seekTime,            // Input seeking (fast seek)
+        '-ss', seekArg,             // Input seeking (fast seek)
         '-i', filePath,
         '-map', '0:v:0',            // Map first video stream explicitly
         '-map', `0:a:${audioTrackIndex}`, // Map selected audio stream explicitly
@@ -1510,48 +1558,28 @@ export class UnifiedMediaServer {
         '-f', 'mp4',
         'pipe:1'
       ];
-      res.writeHead(200, {
-        'Content-Type': 'video/mp4',
-        'Transfer-Encoding': 'chunked',        'Cache-Control': 'no-cache',
-      });
+      contentType = 'video/mp4';
     }
 
-    const ffmpegBin: string | null = this.deps.getFfmpegPath();
-    if (!ffmpegBin) {
-      ffmpegLogger.error('ffmpeg binary not found');
-      res.writeHead(500);
-      res.end(JSON.stringify({ error: 'ffmpeg not found' }));
-      return;
-    }
-    logProcessSpawn(ffmpegLogger, 'ffmpeg', ffmpegArgs);
-    const ffmpeg: ChildProcess = spawn(ffmpegBin, ffmpegArgs);
-    ffmpeg.stdout?.pipe(res);
+    this.streamFfmpeg(req, res, ffmpegArgs, contentType);
+  }
 
-    ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
-      logProcessOutput(ffmpegLogger, 'stderr', data.toString());
-    });
-
-    ffmpeg.on('error', (err: Readonly<Error>): void => {
-      ffmpegLogger.error(`FFmpeg spawn error: ${err.message}`);
+  /**
+   * Builds the rejection handler for an async stream handler: logs the
+   * failure and ends the response, with a 500 if headers are still unsent.
+   *
+   * @param res - The response being served
+   * @param label - What was being streamed, for the log line
+   * @returns A handler suitable for `.catch()`
+   */
+  private failStream(res: Readonly<ServerResponse>, label: string): (err: unknown) => void {
+    return (err: unknown): void => {
+      ffmpegLogger.error(`${label} failed: ${err instanceof Error ? err.message : String(err)}`);
       if (!res.headersSent) {
         (res as ServerResponse).writeHead(500);
       }
       (res as ServerResponse).end();
-    });
-
-    ffmpeg.on('close', (code: number | null): void => {
-      logProcessExit(ffmpegLogger, 'ffmpeg', code, null);
-    });
-
-    // Clean up FFmpeg process when client disconnects
-    const cleanup: () => void = (): void => {
-      if (ffmpeg.exitCode === null) {
-        ffmpeg.kill('SIGKILL');
-      }
     };
-
-    req.on('close', cleanup);
-    res.on('close', cleanup);
   }
 
   /**
@@ -1573,13 +1601,11 @@ export class UnifiedMediaServer {
     const audioBitrate: number = this.settings.getSettings().transcoding.audioBitrate;
 
     // A/V SYNC ON SEEK: the two inputs seek independently — the video input's
-    // -ss snaps to the nearest keyframe BEFORE the target (up to a full GOP
-    // early) while the audio input lands almost exactly on it. FFmpeg resets
-    // each input's timestamps to zero at its own landing point and the
-    // browser plays both tracks from their first samples together, so audio
-    // ends up ahead of video by the keyframe gap on every seek. (Encoding
-    // the gap as a timestamp offset via -copyts doesn't help — Chromium's
-    // progressive fMP4 playback aligns the track starts regardless.)
+    // -ss snaps to a keyframe BEFORE the target (up to a full GOP early)
+    // while the audio input lands almost exactly on it, so the output has a
+    // stretch of video with no audio, the muxer misplaces the first audio
+    // packet at zero, and audio plays ahead of video by the gap (the full
+    // story is on serveTranscodedFile).
     //
     // Fix: probe where the video seek will actually land (its keyframe) and
     // seek BOTH inputs to that exact time, so the streams genuinely start at
@@ -1604,25 +1630,198 @@ export class UnifiedMediaServer {
     const ffmpegArgs: string[] = [
       '-hide_banner',
       '-loglevel', 'warning',
-      '-ss', String(seekTime),    // Seek each input before reading (fast keyframe seek)
-      '-i', videoUrl,
-      '-ss', String(seekTime),
-      '-i', audioUrl,
+      ...this.copiedVideoInputArgs(videoUrl, audioUrl, seekTime, false),
       '-map', '0:v:0',            // Video from the first input
       '-map', '1:a:0',            // Audio from the second input
       '-c:v', 'copy',             // Copy video as-is
       '-c:a', 'aac',              // Transcode audio (handles Opus → AAC for MP4)
       '-b:a', `${audioBitrate}k`,
-      '-avoid_negative_ts', 'make_zero',
-      '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Fragmented MP4 for streaming
-      '-f', 'mp4',
-      'pipe:1'
+      ...this.copiedVideoMuxArgs(),
     ];
     this.streamFfmpeg(req, res, ffmpegArgs, 'video/mp4');
   }
 
+  // ==========================================================================
+  // A/V sync for stream-copied video: the investigation record
+  // ==========================================================================
+  //
+  // Everything below was established on 2026-09-22 by running the exact
+  // ffmpeg command the app spawns against local MKVs (Vivarium: H.264 + AC3,
+  // 24 fps, has_b_frames=2, keyframes ~1.4–6 s apart) and reading the output
+  // back with ffprobe. The app log alone could not show any of it: ffmpeg
+  // printed no warnings and the browser reports no A/V offset. To re-check
+  // any claim here, take the "Spawning: ffmpeg …" line from the log, add
+  // "-t 3" and a file name in place of pipe:1, then run
+  //   ffprobe -show_entries stream=index,codec_type,start_time
+  //   ffprobe -select_streams a:0 -show_entries packet=pts_time,duration_time
+  //   ffprobe -select_streams v:0 -show_entries packet=pts_time,dts_time,flags
+  // A correct output has the audio packets contiguous, and the first audio
+  // presentation time (first packet + 1024 samples of AAC priming, or the
+  // first packet itself for copied audio) within one audio frame of the
+  // video's first presentation time.
+  //
+  // THE SYMPTOM: after a seek, audio ran ahead of video by a variable amount,
+  // anything from a couple of frames to several seconds.
+  //
+  // THREE SEPARATE MECHANISMS STACK UP:
+  //
+  // 1. Where the seek lands. An input-side -ss puts the demuxer on a keyframe
+  //    at or before the target. Copied video keeps every packet from there;
+  //    audio does not. Transcoded audio is trimmed to the target by the
+  //    accurate seek, and copied audio from the same file is skipped by the
+  //    demuxer to the target as well (-noaccurate_seek made no difference).
+  //    So the output starts with (target − keyframe) seconds of video that
+  //    has no audio: up to a whole GOP.
+  //
+  // 2. ffmpeg's dts heuristic. Given a video stream with B-frames, ffmpeg
+  //    subtracts 3/23 s from -ss before seeking, so that the keyframe's
+  //    decode time is covered as well as its presentation time. ffprobe does
+  //    not. So a keyframe found by ffprobe at K is NOT what "-ss K" reaches:
+  //    ffmpeg lands on the keyframe before it. Measured: -ss 925.513 (a
+  //    keyframe) landed on 924.137; -ss 925.6435 landed on 925.513.
+  //
+  // 3. How the muxer and Chromium treat a late-starting track. With
+  //    empty_moov the header is written before any packet, so when a track's
+  //    first packet arrives with a non-zero (post make_zero) time the muxer
+  //    has nowhere to record the offset and writes that first packet at zero;
+  //    later packets keep their true times. Chromium's audio decoder anchors
+  //    its clock on the first packet and derives every later timestamp by
+  //    counting samples, so a gap after the first packet is simply closed up:
+  //    the whole track plays early by the gap. This also fires with NO seek:
+  //    B-frame reordering puts the video's first decode time 1–2 frames
+  //    before its first presentation time, make_zero shifts everything by
+  //    that, and the audio then "starts late" by the reorder delay. So audio
+  //    led by ~83 ms on this file from the very first frame.
+  //
+  // WHAT WAS TRIED, AND WHY EACH FELL SHORT (all measured, not reasoned):
+  //
+  // - Original: single input, -ss at the requested time. Audio-less lead-in
+  //   of (target − keyframe): the first audio packet written at 0, the rest
+  //   from 4.5 s on. Audio ahead by the GOP. Worst case.
+  // - Single input, -ss at the ffprobe keyframe (first attempt). Mechanism 2
+  //   lands one keyframe earlier than intended; still 1.4 s of audio-less
+  //   lead-in and the same misplacement. Audio ahead by 1.4 s.
+  // - -noaccurate_seek. Output byte-for-byte the same as accurate seek for
+  //   audio start time. No effect.
+  // - -copyts (tried historically for DASH). Same first-packet misplacement;
+  //   the timestamps being "correct" in the container does not survive
+  //   mechanism 3.
+  // - delay_moov alone, single input. The container is now honest (audio's
+  //   real start recorded, packets contiguous) but the audio-less lead-in
+  //   remains: 1.4 s of silent video after every seek, and the seek bar is
+  //   off by the same amount because the client assumes the stream starts
+  //   at the keyframe.
+  // - Single input with the nudged -ss (K + 3/23). Video now starts at K but
+  //   the audio trim point is also K + 3/23, so audio starts 130 ms after
+  //   video. Correct in the container only with delay_moov, and then relies
+  //   on Chromium padding silence for a late audio start, which was not
+  //   something to bet on.
+  //
+  // WHAT WORKS (this code):
+  //
+  // - Two inputs. The video input gets "-ss K + nudge" with "-itsoffset
+  //   nudge" so it lands on K (mechanism 2) and its timestamps still read as
+  //   if the seek were K. The audio input is seeked so that it starts at K
+  //   too: "-ss K" for transcoded audio (the accurate trim is exact), or the
+  //   same nudged seek for copied audio (it lands on the keyframe like the
+  //   video does). Both tracks now genuinely start at the same instant, so
+  //   mechanism 1 is gone and mechanism 3 has no gap to close up.
+  // - delay_moov with a 1 s fragment cap. Handles the B-frame reorder
+  //   offset (mechanism 3 with no seek): the muxer records each track's true
+  //   start, and the cap keeps the delayed header from costing a GOP of
+  //   startup (measured 0.72 s → 0.10 s to first bytes on a 6 s GOP).
+  //
+  // MEASURED RESULT on the hybrid seek command: video first frame at 0.083 s,
+  // audio first packet at 0.061 s + 0.021 s priming = 0.083 s, 142 contiguous
+  // audio packets in 3 s. With no seek: identical numbers. With copied
+  // audio: video 0.083 s, audio 0.106 s (the next AC3 frame after the
+  // keyframe, 23 ms later — one audio frame is the best a copy can do).
+  // Confirmed in the app on H.264+AC3, HEVC+AC3 (hybrid) and HEVC+AAC
+  // (remux) MKVs across many seeks each.
+  //
+  // KNOWN RESIDUALS:
+  //
+  // - Copied audio can start up to one audio frame (≤ 32 ms for AC3/AAC)
+  //   after the video. Transcoded audio has no such offset.
+  // - The seek lands on the keyframe before the requested time, up to a GOP
+  //   early. The client's seek-alignment effect moves the seek bar to match.
+  // - HEVC in MKV carries no dts, so ffmpeg logs "Invalid DTS … replacing by
+  //   guess" / "Non-monotonic DTS" for the first few copied packets after a
+  //   seek. Benign: those are the reorder-delay packets, and playback was
+  //   verified in sync with them present.
+  // - The keyframe probe is one ffprobe spawn per seek (~50–100 ms local).
+  //   If it fails the seek falls back to the requested time and mechanism 1
+  //   returns for that one seek.
+
   /**
-   * Snaps the playback clock to the keyframe a DASH seek actually landed on,
+   * Builds the input arguments for a stream whose video track is copied and
+   * whose audio comes from a second input (the same file opened twice for
+   * local media, the separate adaptive streams for DASH).
+   *
+   * Two inputs because a single input has one trim point: the demuxer lands
+   * the video on the keyframe at or before the seek, while the audio starts
+   * at the seek itself, and nothing can move the audio back to the keyframe.
+   * With its own input the audio is seeked to the keyframe time directly and
+   * trimmed there by the accurate seek.
+   *
+   * The video input's -ss is nudged forward by ffmpeg's B-frame dts
+   * heuristic (see FFMPEG_SEEK_DTS_HEURISTIC_S) so it lands on the probed
+   * keyframe rather than the one before it, and -itsoffset cancels the nudge
+   * out of the timestamps so both inputs share the same zero. Transcoded
+   * audio needs no nudge: the accurate-seek trim works in presentation time,
+   * so it starts at the keyframe time exactly. Copied audio is never trimmed
+   * — it starts wherever its demuxer lands — so when the audio source also
+   * holds the video stream (the same local file), the heuristic would land
+   * it a GOP early too; it gets the same nudge so it lands on the keyframe.
+   *
+   * @param videoSource - Path or URL supplying the video track
+   * @param audioSource - Path or URL supplying the audio track
+   * @param keyframeTime - Media time (s) the stream starts at; 0 for no seek
+   * @param audioCopied - Whether the audio track is stream-copied rather than transcoded
+   * @returns The -ss/-itsoffset/-i arguments for both inputs, in order
+   */
+  private copiedVideoInputArgs(videoSource: string, audioSource: string, keyframeTime: number, audioCopied: boolean): string[] {
+    if (keyframeTime <= 0) {
+      return ['-i', videoSource, '-i', audioSource];
+    }
+    const nudge: number = this.FFMPEG_SEEK_DTS_HEURISTIC_S + this.SEEK_LANDING_MARGIN_S;
+    const nudgedSeek: string[] = ['-itsoffset', String(nudge), '-ss', String(keyframeTime + nudge)];
+    return [
+      ...nudgedSeek,
+      '-i', videoSource,
+      ...(audioCopied ? nudgedSeek : ['-ss', String(keyframeTime)]),
+      '-i', audioSource,
+    ];
+  }
+
+  /**
+   * Builds the muxer arguments for a fragmented MP4 whose video track is
+   * copied.
+   *
+   * With B-frames the copied video's first decode time precedes its first
+   * presentation time, so after make_zero the audio track starts later than
+   * zero. The header (moov) normally goes out before any packet, and a track
+   * that then starts late gets its first packet written at zero — which is
+   * where Chromium anchors the whole audio track, playing it early by the
+   * offset. delay_moov holds the header until the first fragment is cut so
+   * the muxer can record each track's real start. Fragments are capped at
+   * COPIED_VIDEO_FRAG_DURATION_US so that first cut, and so playback, is not
+   * a whole GOP away.
+   *
+   * @returns The timestamp, movflags, format and output arguments
+   */
+  private copiedVideoMuxArgs(): string[] {
+    return [
+      '-avoid_negative_ts', 'make_zero',
+      '-movflags', 'frag_keyframe+empty_moov+default_base_moof+delay_moov',
+      '-frag_duration', String(this.COPIED_VIDEO_FRAG_DURATION_US),
+      '-f', 'mp4',
+      'pipe:1',
+    ];
+  }
+
+  /**
+   * Snaps the playback clock to the keyframe a stream-copied seek actually landed on,
    * and broadcasts the alignment so the client can adopt the keyframe time
    * as its stream offset. Without this the seek bar (anchored to the
    * requested time) would sit up to a full GOP ahead of the content for the
@@ -1661,7 +1860,8 @@ export class UnifiedMediaServer {
    * target) and reports the first packet's timestamp.
    *
    * Used by the DASH muxer to seek the separate video and audio inputs to the
-   * SAME instant, keeping them in sync after a seek.
+   * SAME instant, and by the local remux/hybrid transcoder to trim the audio
+   * to the instant the copied video starts, keeping them in sync after a seek.
    *
    * @param videoUrl - The video stream URL to probe
    * @param seekTime - The requested seek position in seconds
@@ -1759,7 +1959,8 @@ export class UnifiedMediaServer {
   /**
    * Spawns ffmpeg with the given arguments and pipes its stdout to the response
    * as a chunked stream. Handles process errors and kills ffmpeg when the client
-   * disconnects. Shared by the remote DASH and audio stream handlers.
+   * disconnects. Shared by the local transcoder and the remote DASH and audio
+   * stream handlers.
    *
    * @param req - Incoming HTTP request (used to detect client disconnect)
    * @param res - HTTP response to stream to
