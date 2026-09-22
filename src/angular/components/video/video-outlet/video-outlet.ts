@@ -422,10 +422,11 @@ export class VideoOutlet implements OnInit, OnDestroy {
       }
     });
 
-    // React to seek alignments from the server: when a streamed (DASH) seek
-    // lands on a keyframe before the requested position, adopt the actual
-    // stream start as the transcode offset so the seek bar, drift sync, and
-    // subtitles line up with the content instead of sitting a keyframe ahead.
+    // React to seek alignments from the server: when a stream-copied seek
+    // (remux, hybrid, or DASH) lands on a keyframe before the requested
+    // position, adopt the actual stream start as the transcode offset so the
+    // seek bar, drift sync, and subtitles line up with the content instead of
+    // sitting a keyframe ahead.
     effect((): void => {
       const alignment: {requested: number; actual: number} | null = this.electron.seekAlignment();
       if (!alignment || !this.isTranscoded) return;

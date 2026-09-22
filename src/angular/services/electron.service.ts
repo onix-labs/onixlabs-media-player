@@ -118,9 +118,10 @@ export class ElectronService implements OnDestroy {
   public readonly mediaEnded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
 
   /**
-   * Latest seek alignment from the server: when a streamed (DASH) seek lands
-   * on a keyframe before the requested position, the server reports both so
-   * outlets can adopt the actual stream start as their time offset.
+   * Latest seek alignment from the server: when a stream-copied seek (local
+   * remux/hybrid or remote DASH) lands on a keyframe before the requested
+   * position, the server reports both so outlets can adopt the actual stream
+   * start as their time offset.
    */
   public readonly seekAlignment: ReturnType<typeof signal<{requested: number; actual: number} | null>> = signal<{requested: number; actual: number} | null>(null);
 
