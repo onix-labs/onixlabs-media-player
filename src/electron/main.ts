@@ -111,7 +111,7 @@ class Program {
    * URL of the Angular development server for hot reload support.
    * Only used when IS_DEVELOPMENT is true.
    */
-  private static readonly DEVELOPMENT_SERVER_URL: string = process.env["DEV_SERVER_URL"] || "http://localhost:4200";
+  private static readonly DEVELOPMENT_SERVER_URL: string = process.env["DEV_SERVER_URL"] || "http://localhost:4300";
 
   /**
    * Calculates the project root directory path.
