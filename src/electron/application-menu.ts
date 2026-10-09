@@ -109,6 +109,8 @@ export interface MenuState {
   windowModeDefault: boolean;
   /** Whether the settings window is open (disables fullscreen/miniplayer) */
   configOpen: boolean;
+  /** Whether View offers Developer Tools (development builds only) */
+  developerToolsEnabled: boolean;
   recentFiles: readonly RecentItem[];
   recentPlaylists: readonly RecentItem[];
 }
@@ -117,7 +119,7 @@ export interface MenuState {
 let storedCallbacks: MenuCallbacks | null = null;
 
 /** Current menu state */
-let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false, hasMedia: false, isPlaying: false, isVideo: false, openEnabled: true, windowModeDefault: true, configOpen: false, recentFiles: [], recentPlaylists: []};
+let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false, hasMedia: false, isPlaying: false, isVideo: false, openEnabled: true, windowModeDefault: true, configOpen: false, developerToolsEnabled: false, recentFiles: [], recentPlaylists: []};
 
 /**
  * Updates the menu state and rebuilds the menu.
@@ -343,7 +345,14 @@ function buildMenu(callbacks: MenuCallbacks, state: MenuState): void {
         label: 'Options',
         accelerator: isMac ? undefined : 'Ctrl+,',
         click: callbacks.onShowConfig
-      }
+      },
+      // Toggles DevTools on whichever window is focused, so the settings and
+      // about windows can be inspected too. Production windows have DevTools
+      // disabled outright, so leaving this out there is not just cosmetic.
+      ...(state.developerToolsEnabled ? [
+        {type: 'separator'} as MenuItemConstructorOptions,
+        {label: 'Developer Tools', role: 'toggleDevTools'} as MenuItemConstructorOptions
+      ] : [])
     ]
   });
 
