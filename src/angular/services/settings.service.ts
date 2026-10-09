@@ -455,6 +455,7 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   // Simple category
   {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
   {id: 'logo', name: 'Logo', category: 'Simple', applicableSettings: []},
+  {id: 'album-art', name: 'Album Art', category: 'Simple', applicableSettings: []},
 ];
 
 /**
@@ -552,6 +553,7 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   // Simple category
   {value: 'blank', label: 'Simple : Blank', description: 'Renders nothing'},
   {value: 'logo', label: 'Simple : Logo', description: 'The ONIXPlayer logo, centred'},
+  {value: 'album-art', label: 'Simple : Album Art', description: "The track's embedded album art, centred"},
 ];
 
 /**

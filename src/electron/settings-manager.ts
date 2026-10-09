@@ -816,6 +816,7 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'ambience-ripple',
   'blank',
   'logo',
+  'album-art',
 ];
 
 // ============================================================================

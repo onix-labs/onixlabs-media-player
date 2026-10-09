@@ -57,6 +57,7 @@ Play your music with stunning real-time visualizations. ONIXPlayer supports MP3,
 **Simple:**
 
 * **Logo** — The ONIXPlayer logo, centred and scaled (not audio-reactive)
+* **Album Art** — The track's embedded album art, centred, or a placeholder when it has none (not audio-reactive)
 
 * **Blank** — A "no visualization" option that renders nothing
 

@@ -515,6 +515,16 @@ export abstract class Visualization {
   }
 
   /**
+   * Tells the visualization where the current track's embedded artwork can be
+   * fetched. Override in visualizations that show it (e.g. Album Art).
+   *
+   * @param _url - The artwork URL, or null when the track cannot have any
+   */
+  public setArtworkUrl(_url: string | null): void {
+    // Override in visualizations that show the track's artwork
+  }
+
+  /**
    * Calculates the glow blur radius based on intensity and base value.
    *
    * @param baseBlur - The base blur radius (when intensity is 1.0)

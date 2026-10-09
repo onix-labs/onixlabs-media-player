@@ -54,6 +54,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     items: [
       {id: 'blank', name: 'Blank'},
       {id: 'logo', name: 'Logo'},
+      {id: 'album-art', name: 'Album Art'},
     ],
   },
 ];

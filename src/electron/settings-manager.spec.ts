@@ -264,7 +264,7 @@ describe('SettingsManager', () => {
       const validTypes: readonly string[] = [
         'bars', 'waveform', 'tunnel', 'neon', 'pulsar', 'water', 'infinity', 'onix', 'modern', 'spotlight', 'hallucia', 'hawking',
         'ambience-zoom', 'ambience-stretch', 'ambience-ripple',
-        'blank', 'logo',
+        'blank', 'logo', 'album-art',
       ];
 
       for (const vizType of validTypes) {

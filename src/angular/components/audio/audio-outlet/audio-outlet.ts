@@ -328,6 +328,12 @@ export class AudioOutlet implements OnInit, OnDestroy {
       }
     });
 
+    // React to track changes - point the visualization at the new track's artwork
+    effect((): void => {
+      const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
+      this.visualization?.setArtworkUrl(this.getArtworkUrl(track));
+    });
+
     // React to playback state changes
     effect((): void => {
       const state: string = this.mediaPlayer.playbackState();
@@ -1019,6 +1025,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.vizCanvas = canvas;
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
     this.visualization.setFftSize(this.settings.fftSize());
+    this.applyCurrentArtwork();
     this.applyVisualizationSettings(type);
     this.applyRenderSize();
 
@@ -1091,8 +1098,32 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.visualizationChange.emit(`${this.visualization.category} : ${this.visualization.name}`);
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
     this.visualization.setFftSize(this.settings.fftSize());
+    this.applyCurrentArtwork();
     this.applyVisualizationSettings(vizType);
     this.applyRenderSize();
+  }
+
+  /**
+   * Points a newly created visualization at the current track's artwork.
+   *
+   * Read untracked: visualizations are created from within effects, which
+   * must not start depending on the current track as a side effect.
+   */
+  private applyCurrentArtwork(): void {
+    const track: PlaylistItem | null = untracked((): PlaylistItem | null => this.mediaPlayer.currentTrack());
+    this.visualization?.setArtworkUrl(this.getArtworkUrl(track));
+  }
+
+  /**
+   * Builds the media server URL of a track's embedded artwork.
+   *
+   * @param track - The track to fetch artwork for
+   * @returns The artwork URL, or null when there is no local track to read it from
+   */
+  private getArtworkUrl(track: PlaylistItem | null): string | null {
+    const serverUrl: string = untracked((): string => this.mediaPlayer.serverUrl());
+    if (!track || !serverUrl || /^https?:\/\//i.test(track.filePath)) return null;
+    return this.electron.appendAuth(`${serverUrl}/media/artwork?path=${encodeURIComponent(track.filePath)}`);
   }
 
   /**
