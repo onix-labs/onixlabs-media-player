@@ -178,6 +178,24 @@ describe('application-menu', (): void => {
       expect(openItem!['accelerator']).toBe('CmdOrCtrl+O');
     });
 
+    it('View menu omits Developer Tools unless enabled', (): void => {
+      createApplicationMenu(createMockCallbacks(), {developerToolsEnabled: false});
+      const viewMenu: Record<string, unknown> | undefined = findMenu(getCapturedTemplate(), 'View');
+      const devToolsItem: Record<string, unknown> | undefined = findSubmenuItem(getSubmenu(viewMenu!), 'Developer Tools');
+      expect(devToolsItem).toBeUndefined();
+    });
+
+    it('View menu includes Developer Tools when enabled', (): void => {
+      createApplicationMenu(createMockCallbacks(), {developerToolsEnabled: true});
+      const viewMenu: Record<string, unknown> | undefined = findMenu(getCapturedTemplate(), 'View');
+      const devToolsItem: Record<string, unknown> | undefined = findSubmenuItem(getSubmenu(viewMenu!), 'Developer Tools');
+      expect(devToolsItem).toBeDefined();
+      expect(devToolsItem!['role']).toBe('toggleDevTools');
+
+      // Module-level state persists between tests; restore the default
+      createApplicationMenu(createMockCallbacks(), {developerToolsEnabled: false});
+    });
+
     it('View menu includes Visualizations submenu', (): void => {
       const viewMenu: Record<string, unknown> | undefined = findMenu(template, 'View');
       expect(viewMenu).toBeDefined();

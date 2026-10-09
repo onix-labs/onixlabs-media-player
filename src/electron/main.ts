@@ -111,7 +111,7 @@ class Program {
    * URL of the Angular development server for hot reload support.
    * Only used when IS_DEVELOPMENT is true.
    */
-  private static readonly DEVELOPMENT_SERVER_URL: string = process.env["DEV_SERVER_URL"] || "http://localhost:4200";
+  private static readonly DEVELOPMENT_SERVER_URL: string = process.env["DEV_SERVER_URL"] || "http://localhost:4300";
 
   /**
    * Calculates the project root directory path.
@@ -567,7 +567,8 @@ class Program {
         sandbox: false,
         preload: preloadPath,
         zoomFactor: 1.0,
-        webSecurity: true
+        webSecurity: true,
+        devTools: Program.IS_DEVELOPMENT
       }
     };
 
@@ -792,7 +793,8 @@ class Program {
         sandbox: false,
         preload: preloadPath,
         zoomFactor: 1.0,
-        webSecurity: true
+        webSecurity: true,
+        devTools: Program.IS_DEVELOPMENT
       }
     });
 
@@ -904,7 +906,8 @@ class Program {
         sandbox: false,
         preload: preloadPath,
         zoomFactor: 1.0,
-        webSecurity: true
+        webSecurity: true,
+        devTools: Program.IS_DEVELOPMENT
       }
     });
 
@@ -1007,7 +1010,8 @@ class Program {
         sandbox: false,
         preload: preloadPath,
         zoomFactor: 1.0,
-        webSecurity: true
+        webSecurity: true,
+        devTools: Program.IS_DEVELOPMENT
       }
     });
 
@@ -1116,7 +1120,8 @@ class Program {
         sandbox: false,
         preload: preloadPath,
         zoomFactor: 1.0,
-        webSecurity: true
+        webSecurity: true,
+        devTools: Program.IS_DEVELOPMENT
       }
     });
 
@@ -1971,7 +1976,7 @@ class Program {
       onSelectAspectMode: (mode: string): void => {
         this.window?.webContents.send('menu:selectAspectMode', mode);
       }
-    }, this.getInitialMenuState());
+    }, {...this.getInitialMenuState(), developerToolsEnabled: Program.IS_DEVELOPMENT});
   }
 
   /**
