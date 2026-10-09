@@ -39,6 +39,7 @@ export {SpotlightVisualization} from './spotlight-visualization';
 export {HalluciaVisualization} from './hallucia-visualization';
 export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
+export {AlbumArtVisualization} from './album-art-visualization';
 export {HawkingVisualization} from './hawking-visualization';
 export {
   AmbienceTwirlVisualization,
@@ -61,6 +62,7 @@ import {SpotlightVisualization} from './spotlight-visualization';
 import {HalluciaVisualization} from './hallucia-visualization';
 import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
+import {AlbumArtVisualization} from './album-art-visualization';
 import {HawkingVisualization} from './hawking-visualization';
 import {
   AmbienceTwirlVisualization,
@@ -90,6 +92,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   'ambience-stretch': AmbienceWarpVisualization,
   blank: BlankVisualization,
   logo: LogoVisualization,
+  'album-art': AlbumArtVisualization,
 };
 
 /**
@@ -114,6 +117,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   'ambience-stretch': {name: 'Warp', category: 'Nostalgia'},
   blank: {name: 'Blank', category: 'Simple'},
   logo: {name: 'Logo', category: 'Simple'},
+  'album-art': {name: 'Album Art', category: 'Simple'},
 };
 
 /**
@@ -155,7 +159,7 @@ const NOSTALGIA_TYPES: readonly string[] =
  * - Bars & Waves: bars, waveform, modern, tunnel, infinity, neon, hawking, onix
  * - Signature: water (Reactor), spotlight
  * - Nostalgia: twirl, warp, ripple, pulsar, hallucia
- * - Simple: blank, logo
+ * - Simple: blank, logo, album-art
  */
 export const VISUALIZATION_TYPES: string[] = [
   // Bars & Waves
@@ -165,7 +169,7 @@ export const VISUALIZATION_TYPES: string[] = [
   // Nostalgia
   ...NOSTALGIA_TYPES,
   // Simple
-  'blank', 'logo',
+  'blank', 'logo', 'album-art',
 ];
 
 /** A single selectable visualization option (type value + display name). */

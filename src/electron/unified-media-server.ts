@@ -866,6 +866,8 @@ export class UnifiedMediaServer {
         this.handleUrlStatus(res, pathname);
       } else if (pathname.startsWith('/media/url/cancel/') && method === 'POST') {
         this.handleUrlCancel(res, pathname);
+      } else if (pathname === '/media/artwork' && method === 'GET') {
+        this.handleArtwork(res, url);
       } else if (pathname === '/media/subtitles' && method === 'GET') {
         this.handleSubtitles(req, res, url);
       } else if (pathname === '/media/subtitles/external' && method === 'GET') {
@@ -2797,6 +2799,100 @@ export class UnifiedMediaServer {
     } else {
       this.sse.broadcast('download:progress', job);
     }
+  }
+
+  /**
+   * Handles GET /media/artwork requests.
+   * Extracts the embedded album art from an audio file as a PNG image.
+   *
+   * Embedded art is carried as a video stream (an attached picture), so the
+   * first video stream is taken; an audio file has no other. Responds 404 when
+   * the file has none, so the client can fall back to a placeholder.
+   *
+   * Query parameters:
+   * - path: Absolute path to the audio file (required)
+   *
+   * @param res - HTTP response
+   * @param url - Parsed URL with query parameters
+   */
+  private handleArtwork(res: Readonly<ServerResponse>, url: Readonly<URL>): void {
+    const filePath: string | null = url.searchParams.get('path');
+
+    if (!filePath) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Missing path parameter' }));
+      return;
+    }
+
+    // Remote sources would have ffmpeg fetch the stream just to look for art
+    if (UnifiedMediaServer.isRemoteUrl(filePath)) {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: 'No artwork' }));
+      return;
+    }
+
+    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    if (!validation.valid) {
+      res.writeHead(validation.error === 'File not found' ? 404 : 400);
+      res.end(JSON.stringify({ error: validation.error }));
+      return;
+    }
+
+    const ffmpegBin: string | null = this.deps.getFfmpegPath();
+    if (!ffmpegBin) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'FFmpeg not found' }));
+      return;
+    }
+
+    // Buffered rather than piped: whether the file has artwork is only known
+    // once ffmpeg exits, and the status code has to say so.
+    const ffmpeg: ChildProcess = spawn(ffmpegBin, [
+      '-v', 'error',
+      '-i', filePath,
+      '-map', '0:v:0',
+      '-frames:v', '1',
+      '-c:v', 'png',
+      '-f', 'image2pipe',
+      'pipe:1'
+    ]);
+
+    const chunks: Buffer[] = [];
+    ffmpeg.stdout?.on('data', (chunk: Buffer): void => {
+      chunks.push(chunk);
+    });
+
+    ffmpeg.on('error', (err: Readonly<Error>): void => {
+      ffmpegLogger.error(`Artwork extraction failed: ${err.message}`);
+      if (!res.headersSent) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+
+    ffmpeg.on('close', (code: number | null): void => {
+      if (res.headersSent) return;
+
+      const image: Buffer = Buffer.concat(chunks);
+      if (code !== 0 || image.length === 0) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: 'No artwork' }));
+        return;
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Content-Length': image.length,
+        'Cache-Control': 'public, max-age=3600',
+      });
+      res.end(image);
+    });
+
+    // Handle client disconnect (the response, not the request: a GET request
+    // can report 'close' as soon as it has been read, before ffmpeg finishes)
+    res.on('close', (): void => {
+      if (ffmpeg.exitCode === null) ffmpeg.kill('SIGTERM');
+    });
   }
 
   /**
