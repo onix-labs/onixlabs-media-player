@@ -127,6 +127,14 @@ let currentState: MenuState = {shuffleEnabled: false, repeatEnabled: false, hasM
  * @param state - New state for menu checkboxes
  */
 export function updateMenuState(state: Partial<MenuState>): void {
+  // Rebuilding is a native operation that, on Windows and Linux, re-applies the
+  // menu bar to every window, and several callers report the same state on
+  // each playback transition. Skip the rebuild when nothing actually changed.
+  const changed: boolean = (Object.keys(state) as (keyof MenuState)[]).some(
+    (key: keyof MenuState): boolean => state[key] !== currentState[key]
+  );
+  if (!changed) return;
+
   currentState = {...currentState, ...state};
   if (storedCallbacks) {
     buildMenu(storedCallbacks, currentState);

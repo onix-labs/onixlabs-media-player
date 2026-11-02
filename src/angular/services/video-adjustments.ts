@@ -133,20 +133,24 @@ export function normalizeAdjustments(values: Partial<VideoAdjustmentValues> | un
  * Levels map symmetrically around neutral: a -100..100 value becomes a
  * 0..2 CSS multiplier (0 → 1×). Soften maps to a 0..10px blur radius.
  *
+ * Functions at their identity value are left out, and an all-neutral set
+ * yields 'none': any other filter value makes the compositor give the video
+ * its own render surface and run a filter pass on every frame.
+ *
  * @param values - The adjustment values
  * @param enabled - Whether adjustments are active
- * @returns A CSS filter string, or 'none' when disabled
+ * @returns A CSS filter string, or 'none' when disabled or neutral
  */
 export function buildVideoFilter(values: VideoAdjustmentValues, enabled: boolean): string {
   if (!enabled) return 'none';
-  return [
-    `brightness(${1 + values.brightness / 100})`,
-    `contrast(${1 + values.contrast / 100})`,
-    `saturate(${1 + values.saturation / 100})`,
-    `hue-rotate(${values.hue}deg)`,
-    `blur(${values.blur / 10}px)`,
-    `grayscale(${values.grayscale / 100})`,
-    `sepia(${values.sepia / 100})`,
-    `invert(${values.invert ? 1 : 0})`,
-  ].join(' ');
+  const parts: string[] = [];
+  if (values.brightness !== 0) parts.push(`brightness(${1 + values.brightness / 100})`);
+  if (values.contrast !== 0) parts.push(`contrast(${1 + values.contrast / 100})`);
+  if (values.saturation !== 0) parts.push(`saturate(${1 + values.saturation / 100})`);
+  if (values.hue !== 0) parts.push(`hue-rotate(${values.hue}deg)`);
+  if (values.blur !== 0) parts.push(`blur(${values.blur / 10}px)`);
+  if (values.grayscale !== 0) parts.push(`grayscale(${values.grayscale / 100})`);
+  if (values.sepia !== 0) parts.push(`sepia(${values.sepia / 100})`);
+  if (values.invert) parts.push('invert(1)');
+  return parts.length > 0 ? parts.join(' ') : 'none';
 }

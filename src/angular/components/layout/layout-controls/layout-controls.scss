@@ -1,6 +1,25 @@
 @use 'variables' as *;
 @use 'mixins' as *;
 
+:host(.fullscreen-overlay) {
+  // In fullscreen the controls float over the live canvas. A backdrop blur
+  // there is re-run on every frame the visualization or video repaints, and
+  // the seek bar's glow repaints ten times a second as the time advances, so
+  // both give way to a flat tint over the overlay's existing gradient.
+  .seek-bar-container progress,
+  .button-group {
+    backdrop-filter: none;
+  }
+
+  .button-group {
+    background: $black-50;
+  }
+
+  .seek-bar-container progress:not([value="0"])::-webkit-progress-value {
+    box-shadow: none;
+  }
+}
+
 :host {
   display: flex;
   flex-direction: column;

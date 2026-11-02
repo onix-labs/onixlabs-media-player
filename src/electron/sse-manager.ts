@@ -28,6 +28,9 @@ import type { SSEEventType } from './media-types.js';
  * events to all of them simultaneously.
  */
 export class SSEManager {
+  /** Buffered bytes above which a client is treated as not draining. */
+  private static readonly MAX_BUFFERED_BYTES: number = 65536;
+
   /** Set of active SSE client connections */
   private readonly clients: Set<ServerResponse> = new Set<ServerResponse>();
 
@@ -79,7 +82,12 @@ export class SSEManager {
    */
   public broadcast(event: SSEEventType, data: Readonly<unknown>): void {
     const message: string = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    // Time updates arrive ten times a second and each supersedes the last, so
+    // a client that is not draining (a throttled hidden window, a stale
+    // connection) skips them rather than piling them up in its socket buffer.
+    const droppable: boolean = event === 'playback:time';
     for (const client of this.clients) {
+      if (droppable && client.writableLength > SSEManager.MAX_BUFFERED_BYTES) continue;
       client.write(message);
     }
   }

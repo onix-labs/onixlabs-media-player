@@ -30,12 +30,9 @@
     cursor: not-allowed;
   }
 
-  canvas {
-    display: block;
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-  }
+  // Clips the oversized canvas during a zoom or shrink transition. The
+  // canvases themselves are created in code and styled inline, because
+  // emulated encapsulation never tags elements added outside the template.
+  overflow: hidden;
 }
 

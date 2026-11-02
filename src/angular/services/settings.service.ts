@@ -465,7 +465,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   version: 2,
   visualization: {
     defaultType: 'water',
-    maxFrameRate: 0,
+    maxFrameRate: 60,
     fftSize: 2048,
     renderResolution: 'native',
     crossfadeDuration: 1000,
@@ -847,7 +847,7 @@ export class SettingsService implements OnDestroy {
 
   /** Maximum frame rate for visualizations (0 = uncapped) */
   public readonly maxFrameRate: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().visualization?.maxFrameRate ?? 0
+    (): number => this.settings().visualization?.maxFrameRate ?? 60
   );
 
   /** FFT size for audio analysis (256, 512, 1024, 2048, or 4096) */
@@ -1443,9 +1443,17 @@ export class SettingsService implements OnDestroy {
       }
     }
 
-    // Build the update with just this visualization's setting
-    const vizUpdate: VisualizationLocalSettings = {[setting]: validValue};
-    await this.updateSetting('visualization', 'perVisualizationSettings', {[vizId]: vizUpdate});
+    // Send the whole map with this setting merged in. The local merge and the
+    // pending-write coalescing are both shallow, so sending only {[vizId]: …}
+    // would briefly drop every other visualization's settings from the local
+    // signal, and a second change inside the debounce window would overwrite
+    // the first before it was ever sent. The server deep-merges either way.
+    const current: PerVisualizationSettings = this.perVisualizationSettings();
+    const merged: PerVisualizationSettings = {
+      ...current,
+      [vizId]: {...current[vizId], [setting]: validValue},
+    };
+    await this.updateSetting('visualization', 'perVisualizationSettings', merged);
   }
 
   /**

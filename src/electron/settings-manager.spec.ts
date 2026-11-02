@@ -111,7 +111,7 @@ describe('SettingsManager', () => {
 
       expect(settings.version).toBe(2);
       expect(settings.visualization.defaultType).toBe('water');
-      expect(settings.visualization.maxFrameRate).toBe(0);
+      expect(settings.visualization.maxFrameRate).toBe(60);
       expect(settings.visualization.fftSize).toBe(2048);
       expect(settings.application.serverPort).toBe(0);
       expect(settings.application.controlsAutoHideDelay).toBe(5);
@@ -122,7 +122,7 @@ describe('SettingsManager', () => {
       expect(settings.playback.videoAspectMode).toBe('default');
       expect(settings.transcoding.videoQuality).toBe('medium');
       expect(settings.transcoding.audioBitrate).toBe(192);
-      expect(settings.appearance.glassEnabled).toBe(true);
+      expect(settings.appearance.glassEnabled).toBe(process.platform !== 'win32');
       expect(settings.appearance.macOSVisualEffectState).toBe('active');
       expect(settings.appearance.backgroundColor).toBe('#1e1e1e');
       expect(settings.windowState.miniplayerBounds).toBeNull();
@@ -222,7 +222,7 @@ describe('SettingsManager', () => {
       const settings: AppSettings = manager.getSettings();
 
       expect(settings.visualization.defaultType).toBe('water');
-      expect(settings.visualization.maxFrameRate).toBe(0);
+      expect(settings.visualization.maxFrameRate).toBe(60);
       expect(settings.visualization.fftSize).toBe(2048);
       expect(settings.application.serverPort).toBe(0);
       expect(settings.application.controlsAutoHideDelay).toBe(5);
@@ -234,7 +234,7 @@ describe('SettingsManager', () => {
       expect(settings.transcoding.videoQuality).toBe('medium');
       expect(settings.transcoding.audioBitrate).toBe(192);
       // glassEnabled is not boolean -> falls through to default
-      expect(settings.appearance.glassEnabled).toBe(true);
+      expect(settings.appearance.glassEnabled).toBe(process.platform !== 'win32');
       expect(settings.appearance.macOSVisualEffectState).toBe('active');
       expect(settings.appearance.backgroundColor).toBe('#1e1e1e');
     });
@@ -290,7 +290,7 @@ describe('SettingsManager', () => {
       for (const rate of invalidRates) {
         const manager: SettingsManager = new SettingsManager();
         const result: AppSettings = manager.updateVisualizationSettings({ maxFrameRate: rate });
-        expect(result.visualization.maxFrameRate).toBe(0);
+        expect(result.visualization.maxFrameRate).toBe(60);
       }
     });
 
@@ -649,7 +649,7 @@ describe('SettingsManager', () => {
         glassEnabled: 'true' as unknown as boolean,
       });
       // Should remain at default (true)
-      expect(result.appearance.glassEnabled).toBe(true);
+      expect(result.appearance.glassEnabled).toBe(process.platform !== 'win32');
     });
 
     it('should accept valid macOSVisualEffectState values', () => {
@@ -784,6 +784,7 @@ describe('SettingsManager', () => {
     it('should persist settings to disk after an update', () => {
       const manager: SettingsManager = new SettingsManager();
       manager.updateVisualizationSettings({ defaultType: 'neon' });
+      manager.flush();
 
       // Read the file directly and verify
       const onDisk: AppSettings = readSettingsFile();
@@ -800,6 +801,7 @@ describe('SettingsManager', () => {
       manager1.updateAppearanceSettings({ glassEnabled: false, backgroundColor: '#333333' });
       manager1.setMiniplayerBounds({ x: 10, y: 20, width: 300, height: 200 });
 
+      manager1.flush();
       // Create a new manager instance (should load from disk)
       const manager2: SettingsManager = new SettingsManager();
       const settings: AppSettings = manager2.getSettings();
@@ -829,6 +831,7 @@ describe('SettingsManager', () => {
         },
       });
 
+      manager1.flush();
       const manager2: SettingsManager = new SettingsManager();
       const settings: AppSettings = manager2.getSettings();
 
@@ -856,7 +859,7 @@ describe('SettingsManager', () => {
       const settings: AppSettings = manager.getSettings();
 
       expect(settings.visualization.defaultType).toBe('tunnel');
-      expect(settings.visualization.maxFrameRate).toBe(0);
+      expect(settings.visualization.maxFrameRate).toBe(60);
       expect(settings.visualization.fftSize).toBe(2048);
     });
 
@@ -1385,6 +1388,7 @@ describe('SettingsManager', () => {
         const manager1: SettingsManager = new SettingsManager();
         manager1.markSetupComplete();
 
+        manager1.flush();
         // Create a new manager to reload from disk
         const manager2: SettingsManager = new SettingsManager();
         expect(manager2.isSetupComplete()).toBe(true);
@@ -1416,6 +1420,7 @@ describe('SettingsManager', () => {
         const manager1: SettingsManager = new SettingsManager();
         manager1.markSetupComplete('2026.1.0');
 
+        manager1.flush();
         const manager2: SettingsManager = new SettingsManager();
         expect(manager2.getSetupCompletedVersion()).toBe('2026.1.0');
       });
@@ -1469,6 +1474,7 @@ describe('SettingsManager', () => {
         const manager1: SettingsManager = new SettingsManager();
         manager1.updateApplicationSettings({ serverPort: 9999 });
 
+        manager1.flush();
         const manager2: SettingsManager = new SettingsManager();
         expect(manager2.getSettings().application.serverPort).toBe(9999);
       });

@@ -113,6 +113,16 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   /** Extra trail-canvas margin beyond the outer circle, for glow (pixels). */
   private static readonly TRAIL_MARGIN: number = 15;
 
+  /**
+   * Most pixels the rings trail may hold. 1280x720.
+   *
+   * The trail is a square wider than the screen, redrawn from itself once per
+   * band every frame, so its cost is a multiple of its pixel count. Above this
+   * budget it renders smaller and is scaled up when composited; it holds only
+   * soft, low-alpha fills, so the upscale does not show.
+   */
+  private static readonly TRAIL_PIXEL_BUDGET: number = 921_600;
+
   // --- Colour cycling -------------------------------------------------------
 
   /** Per-frame hue drift (degrees). */
@@ -211,6 +221,17 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   private freezeCanvas: HTMLCanvasElement | null = null;
   private freezeCtx: CanvasRenderingContext2D | null = null;
 
+  /**
+   * Whether the tower layer needs redrawing.
+   *
+   * Fourteen filled circles, each with a shadowed rim stroke whose shadow
+   * covers the circle's whole bounding box: the most expensive thing in the
+   * frame, and it only changes when the hue reaches a new degree (every
+   * dozen frames or so) or on resize. Between those it is composited from
+   * the cached layer.
+   */
+  private towerDirty: boolean = true;
+
   public constructor(config: VisualizationConfig) {
     super(config);
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
@@ -250,7 +271,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     // Advance time-based state. A bass hit jumps the hue and starts a cross-fade.
     this.updateBassTrigger();
     this.hue = (this.hue + SpotlightVisualization.HUE_CYCLE_SPEED) % 360;
-    this.updateColors();
+    if (this.updateColors()) this.towerDirty = true;
 
     // Age the rings trail with the rotate/fade/blur spiral (rings counter-spin).
     this.spinTrail(this.ringsCanvas!, ringsCtx, SpotlightVisualization.RING_FADE);
@@ -263,9 +284,12 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     // Tower (background + circles) on its own layer so a hue jump can cross-fade
     // the old colours out beneath the new ones, rather than snapping the whole
     // scene to the new hue in a single frame.
-    towerCtx.fillStyle = this.backgroundColorString;
-    towerCtx.fillRect(0, 0, width, height);
-    this.drawConcentricCircles(towerCtx);
+    if (this.towerDirty) {
+      towerCtx.fillStyle = this.backgroundColorString;
+      towerCtx.fillRect(0, 0, width, height);
+      this.drawConcentricCircles(towerCtx);
+      this.towerDirty = false;
+    }
 
     ctx.drawImage(this.towerCanvas!, 0, 0);
     if (this.hueTransition > 0) {
@@ -283,7 +307,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     const trailOffsetY: number = this.centerY - this.trailCy;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(this.ringsCanvas!, trailOffsetX, trailOffsetY);
+    ctx.drawImage(this.ringsCanvas!, trailOffsetX, trailOffsetY, this.trailSize, this.trailSize);
     ctx.restore();
 
     this.applyFadeOverlay();
@@ -342,13 +366,19 @@ export class SpotlightVisualization extends Canvas2DVisualization {
       this.freezeCtx = offscreen.ctx;
     }
 
-    // Size the trail surfaces to the trail square (clears them; resize is rare).
-    if (this.ringsCanvas.width !== this.trailSize) {
-      this.ringsCanvas.width = this.trailSize;
-      this.ringsCanvas.height = this.trailSize;
-      this.tempCanvas.width = this.trailSize;
-      this.tempCanvas.height = this.trailSize;
+    // Size the trail surfaces to the trail square, held to the pixel budget
+    // (clears them; resize is rare). Drawing stays in trail coordinates
+    // through a transform.
+    const surface: {width: number; height: number} =
+      this.getSurfaceSize(this.trailSize, this.trailSize, SpotlightVisualization.TRAIL_PIXEL_BUDGET);
+    if (this.ringsCanvas.width !== surface.width || this.ringsCanvas.height !== surface.height) {
+      this.ringsCanvas.width = surface.width;
+      this.ringsCanvas.height = surface.height;
+      this.tempCanvas.width = surface.width;
+      this.tempCanvas.height = surface.height;
     }
+    this.applySurfaceTransform(this.ringsCtx!, this.trailSize, this.trailSize);
+    this.towerDirty = true;
 
     // The tower layers match the visible canvas (clears them; resize is rare).
     if (this.towerCanvas.width !== width || this.towerCanvas.height !== height) {
@@ -401,8 +431,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
    * outlined (no baseline). Coloured to match the circle it sits on.
    */
   private drawFrequencyRing(ctx: CanvasRenderingContext2D, ring: number): void {
-    this.analyser.getByteFrequencyData(this.freqArray);
-
+    // freqArray was read once for the frame by updateBassTrigger.
     const binCount: number = this.freqArray.length;
     const numSamples: number = SpotlightVisualization.CIRCULAR_SAMPLES;
     const sensitivityFactor: number = this.sensitivityFactor;
@@ -570,9 +599,9 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
     const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
 
-    tempCtx.clearRect(0, 0, size, size);
-    tempCtx.drawImage(canvas, 0, 0);
+    this.copySurface(tempCtx, canvas);
 
+    // Trail coordinates; the surface transform maps them onto the reduced canvas.
     ctx.clearRect(0, 0, size, size);
 
     const effectiveFade: number = fadeRate * this.getFadeMultiplier();
@@ -603,7 +632,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
       ctx.translate(cx, cy);
       ctx.rotate(SpotlightVisualization.TRAIL_ROTATION * direction);
       ctx.translate(-cx, -cy);
-      ctx.drawImage(tempCanvas, 0, 0);
+      ctx.drawImage(tempCanvas, 0, 0, size, size);
       ctx.restore();
     }
   }
@@ -646,10 +675,14 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     this.spinSign = Math.random() < SpotlightVisualization.SPIN_REROLL_CHANCE ? 1 : -1;
   }
 
-  /** Recomputes the cached circle, waveform and background colours on hue change. */
-  private updateColors(): void {
+  /**
+   * Recomputes the cached circle and background colours on hue change.
+   *
+   * @returns Whether the colours changed
+   */
+  private updateColors(): boolean {
     const hueInt: number = Math.floor(this.hue);
-    if (hueInt === this.cachedHue) return;
+    if (hueInt === this.cachedHue) return false;
     this.cachedHue = hueInt;
 
     const span: number = SpotlightVisualization.CIRCLE_COUNT - 1;
@@ -667,6 +700,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     // Background: same hue, a shade darker than the darkest circle.
     const background: Rgb = this.hslToRgb(this.hue, SpotlightVisualization.CIRCLE_SATURATION, SpotlightVisualization.BACKGROUND_LIGHTNESS);
     this.backgroundColorString = `rgb(${background.r}, ${background.g}, ${background.b})`;
+    return true;
   }
 
   public override destroy(): void {

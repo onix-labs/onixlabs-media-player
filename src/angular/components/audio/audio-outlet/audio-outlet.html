@@ -1,6 +1,8 @@
 <audio #audioElement crossorigin="anonymous" style="display: none;"></audio>
-<div class="visualizer-container"
+<!-- Each visualization renders into its own canvas, created and inserted here
+     by AudioOutlet so it reaches the screen without an intermediate copy. -->
+<div #container
+     class="visualizer-container"
      (dblclick)="onDoubleClick()"
      appFileDropTarget>
-  <canvas #canvas></canvas>
 </div>

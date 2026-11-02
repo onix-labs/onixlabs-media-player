@@ -157,6 +157,23 @@ export class OnixVisualization extends Canvas2DVisualization {
   /** Strength of the additive bloom pass. */
   private static readonly BLOOM_STRENGTH: number = 1;
 
+  /**
+   * Resolution the bloom is blurred at, as a fraction of the canvas.
+   *
+   * A 64px blur is so soft that a quarter-resolution copy blurred by 16px is
+   * indistinguishable from it, at a small fraction of the cost.
+   */
+  private static readonly BLOOM_SCALE: number = 0.25;
+
+  /**
+   * Most pixels the trail buffer may hold. 1280x720.
+   *
+   * The trail is redrawn from itself once per ring every frame, so its cost is
+   * a multiple of its pixel count. Above this budget it renders smaller and is
+   * scaled up, and the waveform circle is redrawn at full size on top.
+   */
+  private static readonly TRAIL_PIXEL_BUDGET: number = 921_600;
+
   public readonly name: string = 'Onix';
   public readonly category: string = 'Bars & Waves';
 
@@ -171,6 +188,9 @@ export class OnixVisualization extends Canvas2DVisualization {
   /** Temp canvas for the zoom/rotate effect (reused, not recreated each frame). */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
+
+  /** Small intermediate the bloom is blurred in. */
+  private bloom: OffscreenCanvasPair | null = null;
 
   /** Smoothed bass envelope driving the centre circle. */
   private bassLevel: number = 0;
@@ -246,8 +266,7 @@ export class OnixVisualization extends Canvas2DVisualization {
     const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
 
     // Copy current trails to temp canvas (reused, not recreated)
-    tempCtx.clearRect(0, 0, width, height);
-    tempCtx.drawImage(trailCanvas, 0, 0);
+    this.copySurface(tempCtx, trailCanvas);
 
     // Clear trail canvas
     trailCtx.clearRect(0, 0, width, height);
@@ -271,25 +290,36 @@ export class OnixVisualization extends Canvas2DVisualization {
     this.waveformAngle -= OnixVisualization.WAVEFORM_ROTATION_SPEED;
 
     // Draw the center circle with rotation
+    this.calculateCenterCirclePoints();
+    const trailScale: number = trailCanvas.width / width;
     trailCtx.save();
     trailCtx.translate(centerX, centerY);
     trailCtx.rotate(this.waveformAngle);
     trailCtx.translate(-centerX, -centerY);
-    this.drawCenterCircle(trailCtx);
+    this.drawCenterCircle(trailCtx, false, trailScale);
     trailCtx.restore();
 
     // Clear main canvas and draw trails, then add a blurred copy on top. Once
     // content is baked into the trail buffer there is no stroke left to hang a
     // shadow on, so the glow on the trails has to come from the buffer itself.
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(trailCanvas, 0, 0);
+    ctx.drawImage(trailCanvas, 0, 0, width, height);
 
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.filter = `blur(${OnixVisualization.BLOOM_BLUR}px)`;
-    ctx.globalAlpha = OnixVisualization.BLOOM_STRENGTH;
-    ctx.drawImage(trailCanvas, 0, 0);
-    ctx.restore();
+    // A reduced trail softens this frame's circle with its history; laying the
+    // stroke and filament over again at full size keeps the line sharp.
+    if (trailScale < 1) {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(this.waveformAngle);
+      ctx.translate(-centerX, -centerY);
+      this.drawCenterCircle(ctx, true, 1);
+      ctx.restore();
+    }
+
+    this.drawBloom(
+      this.bloom!, trailCanvas,
+      OnixVisualization.BLOOM_BLUR, OnixVisualization.BLOOM_STRENGTH, OnixVisualization.BLOOM_SCALE
+    );
 
     // Draw the bass-reactive white circle on main canvas (no trail effect)
     this.drawBassCircle(ctx);
@@ -329,11 +359,23 @@ export class OnixVisualization extends Canvas2DVisualization {
       this.tempCtx = offscreen.ctx;
     }
 
+    if (!this.bloom) {
+      this.bloom = this.createOffscreenCanvas();
+    }
+
+    // The trail and its working copy are held to the pixel budget, and drawn
+    // into in canvas coordinates through a transform.
+    const surface: {width: number; height: number} =
+      this.getSurfaceSize(this.width, this.height, OnixVisualization.TRAIL_PIXEL_BUDGET);
+
     // Resize trail canvas while preserving content
-    this.resizeCanvasPreserving(this.trailCanvas, this.trailCtx!, this.width, this.height);
+    this.resizeCanvasPreserving(this.trailCanvas, this.trailCtx!, surface.width, surface.height);
+    this.applySurfaceTransform(this.trailCtx!, this.width, this.height);
     // Temp canvas doesn't need content preserved (it's just working space)
-    this.tempCanvas.width = this.width;
-    this.tempCanvas.height = this.height;
+    if (this.tempCanvas.width !== surface.width || this.tempCanvas.height !== surface.height) {
+      this.tempCanvas.width = surface.width;
+      this.tempCanvas.height = surface.height;
+    }
 
     this.ctx.clearRect(0, 0, this.width, this.height);
   }
@@ -407,13 +449,14 @@ export class OnixVisualization extends Canvas2DVisualization {
       trailCtx.rotate(spin);
       trailCtx.scale(zoom, zoom);
       trailCtx.translate(-centerX, -centerY);
-      trailCtx.drawImage(tempCanvas, 0, 0);
+      trailCtx.drawImage(tempCanvas, 0, 0, this.width, this.height);
 
       trailCtx.restore();
     }
   }
 
-  private drawCenterCircle(ctx: CanvasRenderingContext2D): void {
+  /** Fills the centre-circle point array from the current waveform. */
+  private calculateCenterCirclePoints(): void {
     const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
     const dataLength: number = dataArray.length;
     const height: number = this.height;
@@ -452,7 +495,20 @@ export class OnixVisualization extends Canvas2DVisualization {
     }
     // Close the circle
     this.centerPoints[numPoints] = this.centerPoints[0];
+  }
 
+  /**
+   * Strokes the centre circle from the calculated points.
+   *
+   * @param ctx - Destination context
+   * @param coreOnly - Skip the glow layer, drawing only the stroke and filament
+   * @param shadowScale - Device pixels per canvas pixel on `ctx`; shadow blur
+   *   ignores the transform, so it has to be scaled by hand on a reduced surface
+   */
+  private drawCenterCircle(ctx: CanvasRenderingContext2D, coreOnly: boolean, shadowScale: number): void {
+    const centerX: number = this.centerX;
+    const centerY: number = this.centerY;
+    const numPoints: number = OnixVisualization.CENTER_CIRCLE_POINTS;
     const points: Array<{x: number; y: number}> = this.centerPoints;
     const colors: Uint8Array = ONIX_COLORS_FLAT;
 
@@ -485,19 +541,21 @@ export class OnixVisualization extends Canvas2DVisualization {
       ctx.closePath();
     };
 
-    const glowBlur: number = this.getScaledGlowBlur(OnixVisualization.BASE_GLOW_BLUR);
+    const glowBlur: number = this.getScaledGlowBlur(OnixVisualization.BASE_GLOW_BLUR) * shadowScale;
 
     // Draw glow layer - use white shadow so glow complements all spectrum colors
-    ctx.save();
-    ctx.shadowBlur = glowBlur;
-    ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
-    ctx.strokeStyle = glowGradient;
-    ctx.lineWidth = this.lineWidth + 3;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    buildPath();
-    ctx.stroke();
-    ctx.restore();
+    if (!coreOnly) {
+      ctx.save();
+      ctx.shadowBlur = glowBlur;
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
+      ctx.strokeStyle = glowGradient;
+      ctx.lineWidth = this.lineWidth + 3;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      buildPath();
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Draw main stroke with gradient
     ctx.strokeStyle = gradient;
@@ -600,5 +658,6 @@ export class OnixVisualization extends Canvas2DVisualization {
     this.trailCtx = null;
     this.tempCanvas = null;
     this.tempCtx = null;
+    this.bloom = null;
   }
 }

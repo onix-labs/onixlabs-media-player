@@ -612,6 +612,9 @@ export interface RecentItemsSettingsUpdate {
 /** Current settings schema version */
 const SETTINGS_VERSION: number = 2;
 
+/** Delay before a settings change is written to disk, coalescing bursts of changes. */
+const SAVE_DEBOUNCE_MS: number = 250;
+
 /**
  * Default values for per-visualization local settings.
  * Used when a setting is not customized for a visualization.
@@ -690,7 +693,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   version: SETTINGS_VERSION,
   visualization: {
     defaultType: 'water',  // Reactor (Signature) is the first-load default
-    maxFrameRate: 0,  // 0 = uncapped
+    maxFrameRate: 60,  // capped so high-refresh monitors don't multiply the render cost (0 = uncapped)
     fftSize: 2048,  // 2048 = balanced resolution/performance
     renderResolution: 'native',  // 'native' = render at display pixel size
     crossfadeDuration: 1000,  // 1000 = 1s crossfade between visualizations
@@ -721,7 +724,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     hardwareAcceleration: 'auto',  // auto-detect best encoder
   },
   appearance: {
-    glassEnabled: true,  // glass effect enabled by default (vibrancy on macOS, acrylic on Windows)
+    // Vibrancy on macOS is cheap; Windows acrylic makes DWM re-blur behind the
+    // window on every frame the visualization repaints, so it is opt-in there.
+    glassEnabled: process.platform !== 'win32',
     macOSVisualEffectState: 'active',  // always active (even when window inactive)
     colorScheme: 'system',  // follow system preference by default
     backgroundColor: '#1e1e1e',  // derived from HSL values for BrowserWindow creation
@@ -845,6 +850,9 @@ export class SettingsManager {
 
   /** Current settings in memory */
   private settings: AppSettings;
+
+  /** Pending trailing write scheduled by save(), or null when the file is current. */
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Creates a new SettingsManager and loads settings from disk.
@@ -1598,24 +1606,42 @@ export class SettingsManager {
    * @returns The updated complete settings object
    */
   public addRecentFile(filePath: string): AppSettings {
-    const displayName: string = path.basename(filePath);
-    const item: RecentItem = {
-      path: filePath,
-      displayName,
-      timestamp: new Date().toISOString(),
-      type: 'file',
-    };
+    return this.addRecentFiles([filePath]);
+  }
 
-    // Remove existing entry with same path (case-insensitive on Windows)
+  /**
+   * Adds several files to the recent files list in one change.
+   *
+   * Equivalent to calling addRecentFile for each path in order (so the last
+   * path ends up first), but rebuilds the list and schedules a save once.
+   *
+   * @param filePaths - Absolute paths, in the order they were added
+   * @returns The updated complete settings object
+   */
+  public addRecentFiles(filePaths: readonly string[]): AppSettings {
+    if (filePaths.length === 0) return this.settings;
+
+    const key: (p: string) => string = (p: string): string =>
+      process.platform === 'win32' ? p.toLowerCase() : p;
+    const timestamp: string = new Date().toISOString();
+
+    // Newest first; a path repeated within the batch keeps its latest position.
+    const seen: Set<string> = new Set<string>();
+    const added: RecentItem[] = [];
+    for (let i: number = filePaths.length - 1; i >= 0; i--) {
+      const filePath: string = filePaths[i];
+      if (seen.has(key(filePath))) continue;
+      seen.add(key(filePath));
+      added.push({path: filePath, displayName: path.basename(filePath), timestamp, type: 'file'});
+    }
+
+    // Remove existing entries with the same paths (case-insensitive on Windows)
     const filtered: RecentItem[] = this.settings.recentItems.recentFiles.filter(
-      (f: RecentItem): boolean =>
-        process.platform === 'win32'
-          ? f.path.toLowerCase() !== filePath.toLowerCase()
-          : f.path !== filePath
+      (f: RecentItem): boolean => !seen.has(key(f.path))
     );
 
     // Add to front, trim to max
-    const updated: readonly RecentItem[] = [item, ...filtered].slice(
+    const updated: readonly RecentItem[] = [...added, ...filtered].slice(
       0,
       this.settings.recentItems.maxFiles
     );
@@ -1794,6 +1820,34 @@ export class SettingsManager {
    * if the process crashes mid-write.
    */
   private save(): void {
+    if (this.saveTimer !== null) return;
+    this.saveTimer = setTimeout((): void => {
+      this.saveTimer = null;
+      this.writeNow();
+    }, SAVE_DEBOUNCE_MS);
+    // A pending save must not keep the process alive; quit flushes it instead.
+    this.saveTimer.unref?.();
+  }
+
+  /**
+   * Writes any pending settings change to disk immediately.
+   *
+   * Mutations schedule a trailing write rather than writing synchronously, so
+   * a burst of changes (a slider drag, a folder dropped onto the playlist)
+   * costs one write instead of one per change. Call this before the process
+   * exits so the last change is never lost.
+   */
+  public flush(): void {
+    if (this.saveTimer === null) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    this.writeNow();
+  }
+
+  /**
+   * Writes the current settings to disk atomically, synchronously.
+   */
+  private writeNow(): void {
     const tempPath: string = `${this.settingsPath}.tmp`;
 
     try {

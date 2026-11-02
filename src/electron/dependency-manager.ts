@@ -376,13 +376,15 @@ export class DependencyManager {
    * @returns Complete dependency state including SoundFont info
    */
   public getState(preferredSoundFont?: string | null): DependencyState {
+    // Scanned once and shared, rather than once here and again in findSoundFont.
+    const soundfonts: SoundFontInfo[] = this.getSoundFonts();
     return {
       ffmpeg: this.getDependencyStatus('ffmpeg'),
       fluidsynth: this.getDependencyStatus('fluidsynth'),
       openmpt123: this.getDependencyStatus('openmpt123'),
       ytdlp: this.getDependencyStatus('yt-dlp'),
-      soundfonts: this.getSoundFonts(),
-      activeSoundFont: this.findSoundFont(preferredSoundFont) ?? null,
+      soundfonts,
+      activeSoundFont: this.selectSoundFont(soundfonts, preferredSoundFont) ?? null,
       hardwareEncoders: this.hardwareEncoders,
     };
   }
@@ -624,7 +626,17 @@ export class DependencyManager {
    * @returns Path to a SoundFont file, or undefined if none found
    */
   public findSoundFont(preferredFileName?: string | null): string | undefined {
-    const userSoundFonts: SoundFontInfo[] = this.getSoundFonts();
+    return this.selectSoundFont(this.getSoundFonts(), preferredFileName);
+  }
+
+  /**
+   * Picks the active SoundFont from an already-scanned list.
+   *
+   * @param userSoundFonts - The installed SoundFonts, as getSoundFonts returns them
+   * @param preferredFileName - Optional preferred SoundFont file name
+   * @returns Path to a SoundFont file, or undefined if none found
+   */
+  private selectSoundFont(userSoundFonts: readonly SoundFontInfo[], preferredFileName?: string | null): string | undefined {
 
     // If a preferred file name is specified, try to use it
     if (preferredFileName) {

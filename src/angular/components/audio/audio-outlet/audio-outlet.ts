@@ -70,8 +70,8 @@ export class AudioOutlet implements OnInit, OnDestroy {
   // View References
   // ============================================================================
 
-  /** Reference to the canvas element for visualizations */
-  @ViewChild('canvas', {static: true}) public canvasRef!: ElementRef<HTMLCanvasElement>;
+  /** Element the visualization canvases are inserted into */
+  @ViewChild('container', {static: true}) public containerRef!: ElementRef<HTMLDivElement>;
 
   /** Reference to the hidden audio element for playback */
   @ViewChild('audioElement', {static: true}) public audioRef!: ElementRef<HTMLAudioElement>;
@@ -146,16 +146,52 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Animation frame ID for the visualization loop */
   private animationId: number | null = null;
 
-  /** Observer that keeps the cached canvas display size current. */
+  /** Observer that keeps the cached display size current. */
   private canvasResizeObserver: ResizeObserver | null = null;
 
   /**
-   * Canvas display size in CSS pixels, refreshed by canvasResizeObserver.
+   * Display size in CSS pixels, refreshed by canvasResizeObserver.
    *
    * Cached so the draw loop never has to force a layout read; see observeCanvasSize.
    */
   private displayWidth: number = 0;
   private displayHeight: number = 0;
+
+  /** When the display size last changed (performance.now), for RESIZE_SETTLE_MS. */
+  private displaySizeChangedAt: number = 0;
+
+  /**
+   * How long the display size must hold still before backing stores follow it.
+   *
+   * Reallocating a canvas clears it, and the trail visualizations then copy
+   * their buffers across at the new size. The playlist opening animates the
+   * layout width for 300ms, which used to do that on every frame of the
+   * animation; until the size settles the canvas is simply stretched by CSS.
+   */
+  private readonly RESIZE_SETTLE_MS: number = 150;
+
+  /**
+   * Largest backing store, in pixels, that 'native' resolution renders at.
+   *
+   * 1920x1080. A Retina Mac's CSS-pixel canvas sits below this, but a Windows
+   * display at 100% scaling exposes every physical pixel - 3.7MP at 1440p,
+   * 8.3MP at 4K - and every visualization's cost scales with it. Above the
+   * budget the backing store is scaled down and the browser upscales it
+   * smoothly, so the cost stops growing with the display.
+   */
+  private readonly NATIVE_PIXEL_BUDGET: number = 2_073_600;
+
+  /** The fixed render resolution setting, parsed once rather than every frame. */
+  private readonly fixedRenderSize: ReturnType<typeof computed<{width: number; height: number} | null>> = computed(
+    (): {width: number; height: number} | null => {
+      const resolution: RenderResolution = this.settings.renderResolution();
+      if (resolution === 'native') return null;
+      const separator: number = resolution.indexOf('x');
+      const width: number = parseInt(resolution.slice(0, separator), 10);
+      const height: number = parseInt(resolution.slice(separator + 1), 10);
+      return width > 0 && height > 0 ? {width, height} : null;
+    }
+  );
 
   /** Whether the loop has parked because the visualization has nothing to render. */
   private renderIdle: boolean = false;
@@ -176,17 +212,24 @@ export class AudioOutlet implements OnInit, OnDestroy {
   /** Current visualization instance */
   private visualization: Visualization | null = null;
 
-  /** Offscreen buffer the active visualization renders into (composited to the visible canvas) */
+  /** Canvas the active visualization renders into, shown directly on screen */
   private vizCanvas: HTMLCanvasElement | null = null;
-
-  /** 2D context of the visible canvas, used to composite visualization buffers */
-  private compositeCtx: CanvasRenderingContext2D | null = null;
 
   /** Outgoing visualization kept alive during a crossfade (null when not crossfading) */
   private outgoingVisualization: Visualization | null = null;
 
-  /** Offscreen buffer the outgoing visualization renders into during a crossfade */
+  /** Canvas the outgoing visualization renders into during a crossfade */
   private outgoingVizCanvas: HTMLCanvasElement | null = null;
+
+  /**
+   * The per-visualization values last pushed into the active visualization.
+   *
+   * Every settings broadcast is a freshly parsed object, so the settings
+   * effect fires on writes to any setting at all. Comparing against what was
+   * last applied keeps those from re-running every setter, some of which
+   * rebuild gradients.
+   */
+  private appliedSettingsKey: string | null = null;
 
   /** Whether a visualization crossfade is currently in progress */
   private isCrossfading: boolean = false;
@@ -524,6 +567,13 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const barColorTop: string = this.settings.getEffectiveSetting(vizId, 'barColorTop') as string ?? '#cc0000';
     const strobeFrequency: number = this.settings.getEffectiveSetting(vizId, 'strobeFrequency') ?? 5;
 
+    const key: string = [
+      vizId, sensitivity, barDensity, trailIntensity, lineWidth, glowIntensity,
+      waveformSmoothing, barColorBottom, barColorMiddle, barColorTop, strobeFrequency,
+    ].join('|');
+    if (key === this.appliedSettingsKey) return;
+    this.appliedSettingsKey = key;
+
     // Apply settings
     this.visualization.setSensitivity(sensitivity);
     this.visualization.setBarDensity(barDensity);
@@ -553,7 +603,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     this.setupUserGestureHandler();
     // Must precede initVisualization: that sizes the visualization from the
     // cached display size, so the cache has to be seeded first.
-    this.observeCanvasSize(this.canvasRef.nativeElement);
+    this.observeCanvasSize(this.containerRef.nativeElement);
     this.initVisualization();
     this.startAnimationLoop();
 
@@ -661,8 +711,10 @@ export class AudioOutlet implements OnInit, OnDestroy {
       this.canvasResizeObserver.disconnect();
       this.canvasResizeObserver = null;
     }
-    this.outgoingVisualization?.destroy();
+    this.retireOutgoing();
     this.visualization?.destroy();
+    this.vizCanvas?.remove();
+    this.vizCanvas = null;
     if (this.audioContext) {
       // Rejects if the context is already closed, which teardown ordering can
       // easily produce; nothing here can act on it, so it is swallowed rather
@@ -1023,6 +1075,7 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const canvas: HTMLCanvasElement = this.createVizCanvas();
     this.visualization = createVisualization(type, {canvas, analyser: this.analyser});
     this.vizCanvas = canvas;
+    this.appliedSettingsKey = null;
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
     this.visualization.setFftSize(this.settings.fftSize());
     this.applyCurrentArtwork();
@@ -1032,34 +1085,56 @@ export class AudioOutlet implements OnInit, OnDestroy {
     if (outgoing && outgoingCanvas) {
       // A switch mid-crossfade: drop the older outgoing visualization and
       // crossfade from the one that was most recently on screen.
-      this.outgoingVisualization?.destroy();
+      this.retireOutgoing();
       this.outgoingVisualization = outgoing;
       this.outgoingVizCanvas = outgoingCanvas;
+      // It may have been parked while idle; it has to be visible to fade out.
+      outgoingCanvas.style.visibility = '';
       this.isCrossfading = true;
       this.crossfadeStartTime = performance.now();
       this.crossfadeDurationMs = this.settings.visualizationCrossfadeDuration();
       this.activeCrossfadeStyle = this.resolveCrossfadeStyle(this.settings.visualizationCrossfadeStyle());
+      this.applyTransitionStyles(0);
     } else {
       // Nothing was on screen (e.g. first activation): show the new one instantly.
       outgoing?.destroy();
+      outgoingCanvas?.remove();
     }
   }
 
   /**
-   * Creates an offscreen canvas for a visualization to render into.
+   * Creates the canvas a visualization renders into and puts it on screen.
    *
-   * Each visualization renders to its own buffer so that two visualizations
-   * can be composited together during a crossfade. The buffer is sized to the
-   * current visible-canvas backing store; the animation loop keeps it in sync.
+   * Each visualization owns its canvas so that two can be shown at once during
+   * a crossfade, and that canvas is the one displayed: nothing copies it to a
+   * second, visible canvas every frame. The newest canvas goes last, so it
+   * stacks on top unless a transition says otherwise.
    *
-   * @returns A fresh offscreen canvas element
+   * @returns The new canvas, already inserted into the container
    */
   private createVizCanvas(): HTMLCanvasElement {
     const canvas: HTMLCanvasElement = document.createElement('canvas');
-    const visible: HTMLCanvasElement = this.canvasRef.nativeElement;
-    canvas.width = Math.max(1, visible.width);
-    canvas.height = Math.max(1, visible.height);
+    canvas.style.position = 'absolute';
+    canvas.style.inset = '0';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.display = 'block';
+    canvas.width = Math.max(1, this.displayWidth);
+    canvas.height = Math.max(1, this.displayHeight);
+    this.containerRef.nativeElement.appendChild(canvas);
+    // The idle flag describes the canvas that was parked, not this one.
+    this.renderIdle = false;
     return canvas;
+  }
+
+  /**
+   * Destroys the outgoing visualization, if any, and takes its canvas off screen.
+   */
+  private retireOutgoing(): void {
+    this.outgoingVisualization?.destroy();
+    this.outgoingVisualization = null;
+    this.outgoingVizCanvas?.remove();
+    this.outgoingVizCanvas = null;
   }
 
   /**
@@ -1069,10 +1144,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * outgoing visualization is not left rendering.
    */
   private cancelCrossfade(): void {
-    this.outgoingVisualization?.destroy();
-    this.outgoingVisualization = null;
-    this.outgoingVizCanvas = null;
+    this.retireOutgoing();
     this.isCrossfading = false;
+    if (this.vizCanvas) this.clearTransitionStyles(this.vizCanvas);
   }
 
   /**
@@ -1088,11 +1162,13 @@ export class AudioOutlet implements OnInit, OnDestroy {
     // the previous visualization, then build the new one on a fresh buffer.
     this.cancelCrossfade();
     this.visualization?.destroy();
+    this.vizCanvas?.remove();
 
     const vizType: string = this.visualizationType();
     const canvas: HTMLCanvasElement = this.createVizCanvas();
     this.visualization = createVisualization(vizType, {canvas, analyser: this.analyser});
     this.vizCanvas = canvas;
+    this.appliedSettingsKey = null;
     this.visualizationNameSignal.set(this.visualization.name);
     this.visualizationCategorySignal.set(this.visualization.category);
     this.visualizationChange.emit(`${this.visualization.category} : ${this.visualization.name}`);
@@ -1130,54 +1206,63 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * Computes the visualization's target backing-store size for the current
    * render-resolution setting.
    *
-   * 'native' tracks the canvas's displayed pixel size, read from the cache that
-   * observeCanvasSize maintains. A fixed resolution returns that exact size, so
-   * the smaller backing store is stretched by CSS to fill the screen with
-   * nearest-neighbour scaling (pixelated, no blending).
+   * 'native' tracks the display size in CSS pixels, read from the cache that
+   * observeCanvasSize maintains, scaled down to NATIVE_PIXEL_BUDGET when it is
+   * larger and smoothly upscaled. A fixed resolution returns that exact size,
+   * stretched by CSS with nearest-neighbour scaling (pixelated, no blending).
+   * Visualizations that must stay crisp ignore both reductions.
    *
    * @returns The target width/height and whether pixelated scaling applies
    */
   private getRenderSize(): {width: number; height: number; pixelated: boolean} {
-    const resolution: RenderResolution = this.settings.renderResolution();
-    if (resolution !== 'native' && !this.visualization?.rendersAtNativeResolution) {
-      const separator: number = resolution.indexOf('x');
-      const width: number = parseInt(resolution.slice(0, separator), 10);
-      const height: number = parseInt(resolution.slice(separator + 1), 10);
-      if (width > 0 && height > 0) {
-        return {width, height, pixelated: true};
-      }
+    const width: number = this.displayWidth;
+    const height: number = this.displayHeight;
+    if (this.visualization?.rendersAtNativeResolution) {
+      return {width, height, pixelated: false};
     }
-    return {width: this.displayWidth, height: this.displayHeight, pixelated: false};
+
+    const fixed: {width: number; height: number} | null = this.fixedRenderSize();
+    if (fixed) {
+      return {width: fixed.width, height: fixed.height, pixelated: true};
+    }
+
+    const pixels: number = width * height;
+    if (pixels > this.NATIVE_PIXEL_BUDGET) {
+      const scale: number = Math.sqrt(this.NATIVE_PIXEL_BUDGET / pixels);
+      return {width: Math.round(width * scale), height: Math.round(height * scale), pixelated: false};
+    }
+    return {width, height, pixelated: false};
   }
 
   /**
-   * Tracks the canvas's display size, caching it for the draw loop.
+   * Tracks the container's display size, caching it for the draw loop.
    *
-   * The loop needs the canvas's laid-out size every frame to keep the
-   * backing store in sync, but reading it there means a synchronous layout
-   * measurement per frame — and a forced reflow whenever something else has
-   * dirtied layout, such as the controls fading in and out over the
-   * visualization. A ResizeObserver moves that read onto the rare occasions
-   * the size actually changes.
+   * The loop needs the laid-out size every frame to keep the backing store in
+   * sync, but reading it there means a synchronous layout measurement per
+   * frame - and a forced reflow whenever something else has dirtied layout,
+   * such as the controls fading in and out over the visualization. A
+   * ResizeObserver moves that read onto the rare occasions the size changes.
    *
-   * The measurement is still getBoundingClientRect so the cached values match
-   * what the loop used to compute; the observer only controls when it runs.
-   *
-   * @param canvas - The visualization canvas to observe
+   * @param element - The element whose size the canvases fill
    */
-  private observeCanvasSize(canvas: HTMLCanvasElement): void {
+  private observeCanvasSize(element: HTMLElement): void {
     const measure: () => void = (): void => {
-      const rect: DOMRect = canvas.getBoundingClientRect();
-      this.displayWidth = Math.round(rect.width);
-      this.displayHeight = Math.round(rect.height);
+      const rect: DOMRect = element.getBoundingClientRect();
+      const width: number = Math.round(rect.width);
+      const height: number = Math.round(rect.height);
+      if (width === this.displayWidth && height === this.displayHeight) return;
+      this.displayWidth = width;
+      this.displayHeight = height;
+      this.displaySizeChangedAt = performance.now();
     };
 
     // Seed synchronously: the observer's first callback does not arrive until
     // after this frame, and the loop may render before then.
     measure();
+    this.displaySizeChangedAt = 0;
 
     this.canvasResizeObserver = new ResizeObserver(measure);
-    this.canvasResizeObserver.observe(canvas);
+    this.canvasResizeObserver.observe(element);
   }
 
   /**
@@ -1185,10 +1270,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * nearest-neighbour (pixelated) CSS scaling when a fixed resolution is active.
    */
   private applyRenderSize(): void {
-    if (!this.visualization) return;
-    const canvas: HTMLCanvasElement = this.canvasRef.nativeElement;
+    if (!this.visualization || !this.vizCanvas) return;
     const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize();
-    canvas.style.imageRendering = size.pixelated ? 'pixelated' : 'auto';
+    this.vizCanvas.style.imageRendering = size.pixelated ? 'pixelated' : 'auto';
     this.visualization.resize(size.width, size.height);
   }
 
@@ -1201,9 +1285,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * Rendering is paused during fullscreen transitions to reduce GPU spike.
    */
   private startAnimationLoop(): void {
-    const canvas: HTMLCanvasElement = this.canvasRef.nativeElement;
-    this.compositeCtx = canvas.getContext('2d');
-
     const draw: (timestamp: number) => void = (timestamp: number): void => {
       this.animationId = requestAnimationFrame(draw);
 
@@ -1223,171 +1304,130 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.lastFrameTime = timestamp - (elapsed % frameInterval);
       }
 
-      // Target backing-store size: the display size ('native') or the fixed
-      // render resolution (stretched to fill via CSS with nearest-neighbour).
-      const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize();
+      const canvas: HTMLCanvasElement | null = this.vizCanvas;
 
-      // Keep the visible (compositor) canvas sized to the render target.
-      if (canvas.width !== size.width || canvas.height !== size.height) {
-        canvas.width = size.width;
-        canvas.height = size.height;
-        canvas.style.imageRendering = size.pixelated ? 'pixelated' : 'auto';
-      }
-
-      // Keep the active visualization's offscreen buffer in sync with the size.
-      if (this.vizCanvas && (this.vizCanvas.width !== size.width || this.vizCanvas.height !== size.height)) {
-        this.visualization?.resize(size.width, size.height);
+      // Keep the active visualization's backing store at the render size, once
+      // the display size has stopped changing (see RESIZE_SETTLE_MS).
+      if (canvas && timestamp - this.displaySizeChangedAt >= this.RESIZE_SETTLE_MS) {
+        const size: {width: number; height: number; pixelated: boolean} = this.getRenderSize();
+        if (canvas.width !== size.width || canvas.height !== size.height) {
+          canvas.style.imageRendering = size.pixelated ? 'pixelated' : 'auto';
+          this.visualization?.resize(size.width, size.height);
+        }
       }
 
       // Playback has stopped and the fade has run to completion, so draw() would
-      // spend a full frame's work compositing an entirely transparent result.
-      // Blank the visible canvas once, then keep ticking without rendering until
-      // playback resumes. A crossfade still needs both buffers drawn, so it is
+      // spend a full frame's work producing an entirely transparent result.
+      // Hide the canvas once, then keep ticking without rendering until
+      // playback resumes. A crossfade still needs both canvases drawn, so it is
       // never treated as idle.
       if (!this.isCrossfading && this.visualization?.isIdle()) {
-        if (!this.renderIdle) {
-          this.compositeCtx?.clearRect(0, 0, size.width, size.height);
+        if (!this.renderIdle && canvas) {
+          canvas.style.visibility = 'hidden';
           this.renderIdle = true;
         }
         return;
       }
+      if (this.renderIdle && canvas) {
+        canvas.style.visibility = '';
+      }
       this.renderIdle = false;
 
-      // Render the active visualization into its own offscreen buffer.
       this.visualization?.draw();
 
-      // Composite the offscreen buffer(s) onto the visible canvas, blending the
-      // outgoing and incoming visualizations together during a crossfade.
-      this.renderComposite(size.width, size.height);
+      if (this.isCrossfading) {
+        this.advanceCrossfade();
+      }
     };
 
     this.animationId = requestAnimationFrame(draw);
   }
 
   /**
-   * Composites the active visualization's buffer onto the visible canvas.
+   * Advances an in-progress crossfade by one frame.
    *
-   * During a crossfade the outgoing visualization keeps animating in its own
-   * buffer and the two are combined using the configured transition style.
+   * The outgoing visualization keeps animating in its own canvas, and the two
+   * canvases are blended by the compositor through their CSS opacity,
+   * transform and filter rather than by drawing both into a third canvas.
    * Progress is measured against the wall clock so dropped or rate-limited
-   * frames do not distort the transition. Buffers are drawn scaled to fill so a
-   * size mismatch (e.g. a native-resolution visualization transitioning with a
-   * pixelated one) is handled gracefully.
-   *
-   * @param width - Visible canvas backing-store width
-   * @param height - Visible canvas backing-store height
+   * frames do not distort the transition.
    */
-  private renderComposite(width: number, height: number): void {
-    const ctx: CanvasRenderingContext2D | null = this.compositeCtx;
-    if (!ctx) return;
+  private advanceCrossfade(): void {
+    const elapsed: number = performance.now() - this.crossfadeStartTime;
+    const t: number = Math.min(1, elapsed / this.crossfadeDurationMs);
+    const eased: number = t * t * (3 - 2 * t);
 
-    ctx.clearRect(0, 0, width, height);
+    this.outgoingVisualization?.draw();
 
-    if (this.isCrossfading && this.outgoingVizCanvas && this.vizCanvas) {
-      const elapsed: number = performance.now() - this.crossfadeStartTime;
-      const t: number = Math.min(1, elapsed / this.crossfadeDurationMs);
-      const eased: number = t * t * (3 - 2 * t);
-
-      // Keep the outgoing visualization live as it transitions out.
-      this.outgoingVisualization?.draw();
-
-      this.drawTransitionFrame(ctx, this.outgoingVizCanvas, this.vizCanvas, width, height, eased);
-
-      if (t >= 1) {
-        this.outgoingVisualization?.destroy();
-        this.outgoingVisualization = null;
-        this.outgoingVizCanvas = null;
-        this.isCrossfading = false;
-      }
-    } else if (this.vizCanvas) {
-      ctx.drawImage(this.vizCanvas, 0, 0, width, height);
+    if (t >= 1) {
+      this.retireOutgoing();
+      this.isCrossfading = false;
+      if (this.vizCanvas) this.clearTransitionStyles(this.vizCanvas);
+      return;
     }
+
+    this.applyTransitionStyles(eased);
   }
 
   /**
-   * Draws a single frame of the active transition, combining the outgoing and
-   * incoming visualization buffers according to the resolved crossfade style.
+   * Styles the outgoing and incoming canvases for one frame of the transition.
    *
-   * @param ctx - The visible canvas 2D context to draw onto
-   * @param prev - The outgoing visualization's buffer
-   * @param cur - The incoming visualization's buffer
-   * @param width - Target width
-   * @param height - Target height
    * @param progress - Eased transition progress (0 = outgoing, 1 = incoming)
    */
-  private drawTransitionFrame(
-    ctx: CanvasRenderingContext2D,
-    prev: HTMLCanvasElement,
-    cur: HTMLCanvasElement,
-    width: number,
-    height: number,
-    progress: number
-  ): void {
+  private applyTransitionStyles(progress: number): void {
+    const prev: HTMLCanvasElement | null = this.outgoingVizCanvas;
+    const cur: HTMLCanvasElement | null = this.vizCanvas;
+    if (!prev || !cur) return;
+
+    prev.style.opacity = `${1 - progress}`;
+    cur.style.opacity = `${progress}`;
+
     switch (this.activeCrossfadeStyle) {
       case 'zoom': {
         // Incoming fades in at full size behind; outgoing expands outwards
         // (scaling about the centre) and fades out on top.
-        ctx.save();
-        ctx.globalAlpha = progress;
-        ctx.drawImage(cur, 0, 0, width, height);
-        ctx.restore();
-
-        ctx.save();
-        ctx.globalAlpha = 1 - progress;
-        const zoomScale: number = 1 + progress * (this.ZOOM_EXPAND_SCALE - 1);
-        ctx.translate(width / 2, height / 2);
-        ctx.scale(zoomScale, zoomScale);
-        ctx.translate(-width / 2, -height / 2);
-        ctx.drawImage(prev, 0, 0, width, height);
-        ctx.restore();
+        prev.style.zIndex = '1';
+        cur.style.zIndex = '0';
+        prev.style.transform = `scale(${1 + progress * (this.ZOOM_EXPAND_SCALE - 1)})`;
         break;
       }
       case 'shrink': {
         // Outgoing fades out at full size behind; incoming starts oversized and
-        // transparent, shrinking into view (scaling about the centre) while
-        // becoming opaque on top.
-        ctx.save();
-        ctx.globalAlpha = 1 - progress;
-        ctx.drawImage(prev, 0, 0, width, height);
-        ctx.restore();
-
-        ctx.save();
-        ctx.globalAlpha = progress;
-        const shrinkScale: number = this.SHRINK_START_SCALE - progress * (this.SHRINK_START_SCALE - 1);
-        ctx.translate(width / 2, height / 2);
-        ctx.scale(shrinkScale, shrinkScale);
-        ctx.translate(-width / 2, -height / 2);
-        ctx.drawImage(cur, 0, 0, width, height);
-        ctx.restore();
+        // transparent, shrinking into view while becoming opaque on top.
+        prev.style.zIndex = '0';
+        cur.style.zIndex = '1';
+        cur.style.transform = `scale(${this.SHRINK_START_SCALE - progress * (this.SHRINK_START_SCALE - 1)})`;
         break;
       }
       case 'blur': {
         // Outgoing progressively blurs and fades out; incoming starts blurred
         // and transparent, sharpening and fading in.
-        ctx.save();
-        ctx.globalAlpha = 1 - progress;
-        ctx.filter = `blur(${(progress * this.BLUR_MAX_PX).toFixed(2)}px)`;
-        ctx.drawImage(prev, 0, 0, width, height);
-        ctx.restore();
-
-        ctx.save();
-        ctx.globalAlpha = progress;
-        ctx.filter = `blur(${((1 - progress) * this.BLUR_MAX_PX).toFixed(2)}px)`;
-        ctx.drawImage(cur, 0, 0, width, height);
-        ctx.restore();
+        prev.style.zIndex = '0';
+        cur.style.zIndex = '1';
+        prev.style.filter = `blur(${(progress * this.BLUR_MAX_PX).toFixed(2)}px)`;
+        cur.style.filter = `blur(${((1 - progress) * this.BLUR_MAX_PX).toFixed(2)}px)`;
         break;
       }
       case 'fade':
       default: {
         // Classic opacity crossfade: outgoing fades out, incoming fades in.
-        ctx.globalAlpha = 1 - progress;
-        ctx.drawImage(prev, 0, 0, width, height);
-        ctx.globalAlpha = progress;
-        ctx.drawImage(cur, 0, 0, width, height);
-        ctx.globalAlpha = 1;
+        prev.style.zIndex = '0';
+        cur.style.zIndex = '1';
         break;
       }
     }
+  }
+
+  /**
+   * Returns a canvas to its resting style once a transition is over.
+   *
+   * @param canvas - The canvas to reset
+   */
+  private clearTransitionStyles(canvas: HTMLCanvasElement): void {
+    canvas.style.opacity = '';
+    canvas.style.transform = '';
+    canvas.style.filter = '';
+    canvas.style.zIndex = '';
   }
 
   /**
