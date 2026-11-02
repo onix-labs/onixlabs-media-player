@@ -204,7 +204,7 @@ describe('SettingsManager', () => {
       expect(settings.application.serverPort).toBe(0);
       expect(settings.playback.defaultVolume).toBe(0.5);
       expect(settings.transcoding.videoQuality).toBe('medium');
-      expect(settings.appearance.glassEnabled).toBe(true);
+      expect(settings.appearance.glassEnabled).toBe(process.platform !== 'win32');
       expect(settings.windowState.miniplayerBounds).toBeNull();
     });
 
@@ -1317,6 +1317,8 @@ describe('SettingsManager', () => {
     it('should use atomic write (temp file strategy)', () => {
       const manager: SettingsManager = new SettingsManager();
       manager.updateVisualizationSettings({ defaultType: 'water' });
+      // Saves are debounced; write the pending change now.
+      manager.flush();
 
       // The temp file should not linger after a successful save
       const tempPath: string = settingsFilePath() + '.tmp';
