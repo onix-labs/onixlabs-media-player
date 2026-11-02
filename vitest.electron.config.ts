@@ -5,6 +5,10 @@ export default defineConfig({
     environment: 'node',
     include: ['src/electron/**/*.spec.ts'],
     globals: true,
+    // Vitest 5 clears mock call history before every test by default. These
+    // suites were written against the Vitest 4 behaviour and manage their own
+    // mock state, so keep it.
+    clearMocks: false,
     testTimeout: 10000,
     coverage: {
       provider: 'v8',
