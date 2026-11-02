@@ -389,6 +389,10 @@ class Program {
     this.window.on("closed", this.onClosed.bind(this));
     app.on("activate", this.onActivate.bind(this));
     app.on("window-all-closed", this.onAllWindowsClosed.bind(this));
+    // Settings writes are debounced; make sure the last change reaches disk.
+    app.on('will-quit', (): void => {
+      this.mediaServer?.getSettingsManager().flush();
+    });
 
     mainLogger.info('Application initialized successfully');
   }
@@ -577,7 +581,7 @@ class Program {
 
     // Get appearance settings
     const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? true;
+    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
     const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
     const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
 
@@ -706,7 +710,7 @@ class Program {
     // Windows/Linux use the default window frame with title bar and controls
     // Also apply glass/vibrancy/acrylic effects to match main window
     const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? true;
+    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
     const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
     const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
 
@@ -865,7 +869,7 @@ class Program {
 
     // Platform-specific options for hidden title bar with traffic lights (macOS only)
     const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? true;
+    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
     const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
     const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
 
@@ -968,7 +972,7 @@ class Program {
 
     // Platform-specific chrome (mirrors the About window) for native glass.
     const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? true;
+    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
     const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
     const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
 
@@ -1079,7 +1083,7 @@ class Program {
 
     // Get appearance settings for consistent styling
     const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? true;
+    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
     const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
     const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
 

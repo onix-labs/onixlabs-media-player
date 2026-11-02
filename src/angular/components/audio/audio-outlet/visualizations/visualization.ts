@@ -922,6 +922,108 @@ export abstract class Canvas2DVisualization extends Visualization {
   }
 
   /**
+   * Size for a working surface that holds a logical area at no more than
+   * `budget` pixels.
+   *
+   * The feedback visualizations redraw their trail buffers from themselves
+   * many times a frame, clipped into rings, so their cost is a multiple of the
+   * buffer's pixel count. Holding that count to a budget makes the cost stop
+   * growing with the display; the buffer is then drawn to the canvas scaled up,
+   * and the trails it holds are soft enough that the upscale does not show.
+   * Below the budget the surface is the logical size and nothing changes.
+   *
+   * @param width - Logical width the surface represents
+   * @param height - Logical height the surface represents
+   * @param budget - Most pixels the surface may hold
+   * @returns The surface's backing-store size
+   */
+  protected getSurfaceSize(width: number, height: number, budget: number): {width: number; height: number} {
+    const pixels: number = width * height;
+    if (pixels <= budget || pixels <= 0) return {width, height};
+    const scale: number = Math.sqrt(budget / pixels);
+    return {
+      width: Math.max(1, Math.round(width * scale)),
+      height: Math.max(1, Math.round(height * scale)),
+    };
+  }
+
+  /**
+   * Maps a logical area onto the whole of a surface's backing store.
+   *
+   * Lets drawing code keep working in canvas coordinates whatever size the
+   * surface actually is. Resizing a canvas resets its transform, so this has
+   * to be applied again after every resize.
+   *
+   * @param ctx - The surface's context
+   * @param logicalWidth - Width the surface represents
+   * @param logicalHeight - Height the surface represents
+   */
+  protected applySurfaceTransform(ctx: CanvasRenderingContext2D, logicalWidth: number, logicalHeight: number): void {
+    if (logicalWidth <= 0 || logicalHeight <= 0) return;
+    ctx.setTransform(ctx.canvas.width / logicalWidth, 0, 0, ctx.canvas.height / logicalHeight, 0, 0);
+  }
+
+  /**
+   * Replaces a surface's contents with a same-sized surface, pixel for pixel.
+   *
+   * Ignores the destination's transform and uses 'copy', so it needs no clear
+   * beforehand and never resamples.
+   *
+   * @param ctx - Destination context
+   * @param source - Source canvas, the same size as the destination
+   */
+  protected copySurface(ctx: CanvasRenderingContext2D, source: HTMLCanvasElement): void {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'copy';
+    ctx.drawImage(source, 0, 0);
+    ctx.restore();
+  }
+
+  /**
+   * Draws a blurred copy of `source` additively over the canvas.
+   *
+   * The blur runs on a small intermediate rather than at canvas resolution:
+   * a Gaussian's cost grows with both the pixels it covers and its radius, so
+   * blurring at `scale` of each dimension with the radius scaled to match
+   * costs roughly scale cubed of the full-size pass, and a bloom is soft
+   * enough that upscaling it back loses nothing visible.
+   *
+   * @param bloom - Intermediate canvas and context, resized here as needed
+   * @param source - What to bloom
+   * @param blur - Blur radius in canvas pixels
+   * @param strength - Opacity of the additive pass
+   * @param scale - Resolution of the intermediate, as a fraction of the canvas
+   */
+  protected drawBloom(
+    bloom: OffscreenCanvasPair,
+    source: HTMLCanvasElement,
+    blur: number,
+    strength: number,
+    scale: number
+  ): void {
+    const width: number = Math.max(1, Math.round(this.width * scale));
+    const height: number = Math.max(1, Math.round(this.height * scale));
+    if (bloom.canvas.width !== width || bloom.canvas.height !== height) {
+      bloom.canvas.width = width;
+      bloom.canvas.height = height;
+    }
+
+    const bloomCtx: CanvasRenderingContext2D = bloom.ctx;
+    bloomCtx.save();
+    bloomCtx.globalCompositeOperation = 'copy';
+    bloomCtx.filter = `blur(${blur * scale}px)`;
+    bloomCtx.drawImage(source, 0, 0, width, height);
+    bloomCtx.restore();
+
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = 'lighter';
+    this.ctx.globalAlpha = strength;
+    this.ctx.drawImage(bloom.canvas, 0, 0, this.width, this.height);
+    this.ctx.restore();
+  }
+
+  /**
    * Applies a directional zoom effect to a trail canvas.
    * Copies the trail to a temp canvas, clears the trail, then draws back
    * with scaling and fade to create a zoom-from-center tunnel effect.

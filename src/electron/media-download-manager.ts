@@ -17,7 +17,8 @@
 
 import {spawn, ChildProcess, execFile} from 'child_process';
 import {randomUUID} from 'crypto';
-import {copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, unlinkSync} from 'fs';
+import {existsSync, mkdirSync, readdirSync, renameSync} from 'fs';
+import {copyFile, unlink} from 'fs/promises';
 import * as path from 'path';
 import {createScopedLogger, logProcessSpawn, logProcessExit} from './logger.js';
 import type {UrlMediaInfo, UrlFormat, UrlMediaFormat, DownloadJob} from './media-types.js';
@@ -381,7 +382,33 @@ export class MediaDownloadManager {
     const preferredExt: string = job.format === 'audio' ? '.mp3' : '.mp4';
     const chosen: string = produced.find((f: string): boolean => f.toLowerCase().endsWith(preferredExt)) ?? produced[0];
 
-    job.filePath = outputPath ? this.moveToChosenPath(chosen, outputPath) : this.renameToTitle(chosen, job.title);
+    if (!outputPath) {
+      this.completeJob(job, this.renameToTitle(chosen, job.title), onUpdate);
+      return;
+    }
+
+    try {
+      renameSync(chosen, outputPath);
+      this.completeJob(job, outputPath, onUpdate);
+    } catch {
+      // Different volume: copy off the main thread so a multi-gigabyte file
+      // does not freeze the UI, the SSE stream and the media server.
+      job.progress = 1;
+      void this.copyToChosenPath(chosen, outputPath).then((filePath: string): void => {
+        this.completeJob(job, filePath, onUpdate);
+      });
+    }
+  }
+
+  /**
+   * Marks a job done at its final path and notifies the caller.
+   *
+   * @param job - The job being completed
+   * @param filePath - Where the finished file now lives
+   * @param onUpdate - Called with the finished job
+   */
+  private completeJob(job: DownloadJob, filePath: string, onUpdate: (job: Readonly<DownloadJob>) => void): void {
+    job.filePath = filePath;
     job.progress = 1;
     job.status = 'done';
     downloadLogger.info(`Download complete: ${path.basename(job.filePath)}`);
@@ -412,31 +439,27 @@ export class MediaDownloadManager {
   }
 
   /**
-   * Moves a finished download to the path the user picked in the Save As
-   * dialog. Overwriting is intentional: the dialog already asked.
+   * Copies a finished download to the path the user picked in the Save As
+   * dialog, then deletes the staged file. Overwriting is intentional: the
+   * dialog already asked.
    *
-   * A plain rename fails across devices, and the downloads directory often sits
-   * on a different volume from the user's chosen destination (an external disk,
-   * a network share), so fall back to copy-then-delete. If even that fails the
-   * staged path is returned so playback still gets a usable file.
+   * Used when a plain rename fails across devices: the downloads directory
+   * often sits on a different volume from the chosen destination (an external
+   * disk, a network share). If the copy fails the staged path is returned so
+   * playback still gets a usable file.
    *
    * @param filePath - The staged file in the downloads directory
    * @param outputPath - Absolute destination path chosen by the user
-   * @returns The destination path, or the staged path if the move failed
+   * @returns The destination path, or the staged path if the copy failed
    */
-  private moveToChosenPath(filePath: string, outputPath: string): string {
+  private async copyToChosenPath(filePath: string, outputPath: string): Promise<string> {
     try {
-      renameSync(filePath, outputPath);
+      await copyFile(filePath, outputPath);
+      await unlink(filePath);
       return outputPath;
-    } catch {
-      try {
-        copyFileSync(filePath, outputPath);
-        unlinkSync(filePath);
-        return outputPath;
-      } catch (error: unknown) {
-        downloadLogger.warn(`Could not move download to ${outputPath}: ${error instanceof Error ? error.message : error}`);
-        return filePath;
-      }
+    } catch (error: unknown) {
+      downloadLogger.warn(`Could not move download to ${outputPath}: ${error instanceof Error ? error.message : error}`);
+      return filePath;
     }
   }
 

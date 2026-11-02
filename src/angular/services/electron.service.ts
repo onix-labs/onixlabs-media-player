@@ -227,6 +227,21 @@ export class ElectronService implements OnDestroy {
   /** Callback for settings updates (registered by SettingsService) */
   private readonly settingsUpdateCallbacks: Array<(settings: AppSettings) => void> = [];
 
+  /**
+   * Durations reported by the server but not yet applied to the playlist.
+   *
+   * One event arrives per probed file, so dropping a large folder produces a
+   * burst of them; applying each one copies the whole item list and
+   * re-renders every row. They are applied together instead.
+   */
+  private readonly pendingDurations: Map<string, number> = new Map<string, number>();
+
+  /** Timer that applies pendingDurations, or null when none are queued. */
+  private durationFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** How long duration updates are gathered before being applied, in milliseconds. */
+  private readonly DURATION_FLUSH_MS: number = 100;
+
   /** Callback for dependency state updates (registered by DependencyService) */
   private readonly dependencyStateCallbacks: Array<(state: unknown) => void> = [];
 
@@ -294,6 +309,30 @@ export class ElectronService implements OnDestroy {
 
   /** Signal emitted when close button is pressed in configuration mode - increments to trigger effect */
   public readonly exitConfigurationModeRequested: ReturnType<typeof signal<number>> = signal<number>(0);
+
+  /**
+   * Queues a playlist item's corrected duration for the next batched update.
+   *
+   * @param filePath - The item's file path
+   * @param duration - Its duration in seconds
+   */
+  private queueDurationUpdate(filePath: string, duration: number): void {
+    this.pendingDurations.set(filePath, duration);
+    if (this.durationFlushTimer !== null) return;
+
+    this.durationFlushTimer = setTimeout((): void => {
+      this.durationFlushTimer = null;
+      const durations: Map<string, number> = new Map<string, number>(this.pendingDurations);
+      this.pendingDurations.clear();
+      this.playlist.update((p: PlaylistState): PlaylistState => ({
+        ...p,
+        items: p.items.map((item: PlaylistItem): PlaylistItem => {
+          const duration: number | undefined = durations.get(item.filePath);
+          return duration === undefined ? item : {...item, duration};
+        }),
+      }));
+    }, this.DURATION_FLUSH_MS);
+  }
 
   /**
    * Registers a callback to receive settings updates from SSE.
@@ -981,12 +1020,7 @@ export class ElectronService implements OnDestroy {
           payload, {filePath: '', duration: 0}
         );
         if (!data.filePath) return;
-        this.playlist.update((p: PlaylistState): PlaylistState => ({
-          ...p,
-          items: p.items.map((item: PlaylistItem): PlaylistItem =>
-            item.filePath === data.filePath ? {...item, duration: data.duration} : item
-          ),
-        }));
+        this.queueDurationUpdate(data.filePath, data.duration);
       });
     },
 

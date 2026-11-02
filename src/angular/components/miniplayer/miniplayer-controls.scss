@@ -14,7 +14,10 @@
     corner-shape: squircle;
     border: 0.0625rem solid $black-50;
     outline: 0.0625rem solid $white-15;
-    backdrop-filter: blur(16px);
+    // A solid tint rather than backdrop-filter: these controls float over the
+    // live visualization or video, and a backdrop blur re-samples and re-blurs
+    // the canvas behind them on every frame it repaints.
+    background: $black-50;
 
     @include light-mode {
       outline-color: $white-30;

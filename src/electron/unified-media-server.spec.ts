@@ -189,7 +189,11 @@ describe('UnifiedMediaServer', () => {
     const port: number = await server.start();
     baseUrl = `http://127.0.0.1:${port}`;
     authToken = server.getAuthToken();
-  });
+    // Constructing the server detects the external binaries, which on Windows
+    // falls back to a synchronous `where` lookup per binary not found on the
+    // fixed search paths. On a busy Windows runner, with other spec files
+    // running in parallel, that alone can exceed the default 10s hook timeout.
+  }, 30000);
 
   afterAll(() => {
     server.stop();

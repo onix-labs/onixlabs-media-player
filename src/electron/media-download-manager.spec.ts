@@ -27,6 +27,11 @@ vi.mock('fs', () => ({
   unlinkSync: vi.fn(),
 }));
 
+vi.mock('fs/promises', () => ({
+  copyFile: vi.fn(async (): Promise<void> => undefined),
+  unlink: vi.fn(async (): Promise<void> => undefined),
+}));
+
 vi.mock('child_process', () => ({
   spawn: vi.fn(),
   execFile: vi.fn(),
@@ -52,7 +57,8 @@ vi.mock('./logger.js', () => ({
 // Imports (after mocks)
 // ============================================================================
 
-import { copyFileSync, existsSync, readdirSync, renameSync, unlinkSync } from 'fs';
+import { existsSync, readdirSync, renameSync } from 'fs';
+import { copyFile, unlink } from 'fs/promises';
 import { spawn, execFile } from 'child_process';
 import type { ChildProcess } from 'child_process';
 import * as path from 'path';
@@ -705,45 +711,42 @@ describe('MediaDownloadManager', (): void => {
       expect(job?.filePath).not.toContain('My Video');
     });
 
-    it('falls back to copy-and-delete across volumes', (): void => {
+    it('falls back to copy-and-delete across volumes', async (): Promise<void> => {
       vi.mocked(renameSync).mockImplementationOnce((): never => {
         throw new Error('EXDEV: cross-device link not permitted');
       });
 
       const job: DownloadJob | undefined = finishWithOutputPath();
+      await vi.waitFor((): void => expect(job?.status).toBe('done'));
 
-      expect(copyFileSync).toHaveBeenCalledWith(stagedPath, OUTPUT_PATH);
-      expect(unlinkSync).toHaveBeenCalledWith(stagedPath);
+      expect(copyFile).toHaveBeenCalledWith(stagedPath, OUTPUT_PATH);
+      expect(unlink).toHaveBeenCalledWith(stagedPath);
       expect(job?.filePath).toBe(OUTPUT_PATH);
     });
 
-    it('keeps the staged file when the move cannot be completed', (): void => {
+    it('keeps the staged file when the move cannot be completed', async (): Promise<void> => {
       vi.mocked(renameSync).mockImplementationOnce((): never => {
         throw new Error('EXDEV');
       });
-      vi.mocked(copyFileSync).mockImplementationOnce((): never => {
-        throw new Error('ENOSPC');
-      });
+      vi.mocked(copyFile).mockRejectedValueOnce(new Error('ENOSPC'));
 
       const job: DownloadJob | undefined = finishWithOutputPath();
+      await vi.waitFor((): void => expect(job?.status).toBe('done'));
 
-      expect(job?.status).toBe('done');
       expect(job?.filePath).toBe(stagedPath);
     });
 
-    it('keeps the staged file when the failure is not an Error', (): void => {
+    it('keeps the staged file when the failure is not an Error', async (): Promise<void> => {
       // fs throws plain strings in some runtimes; the warning must not blow up
       // reaching for .message on something that has none.
       vi.mocked(renameSync).mockImplementationOnce((): never => {
         throw 'EXDEV';
       });
-      vi.mocked(copyFileSync).mockImplementationOnce((): never => {
-        throw 'ENOSPC';
-      });
+      vi.mocked(copyFile).mockRejectedValueOnce('ENOSPC');
 
       const job: DownloadJob | undefined = finishWithOutputPath();
+      await vi.waitFor((): void => expect(job?.status).toBe('done'));
 
-      expect(job?.status).toBe('done');
       expect(job?.filePath).toBe(stagedPath);
     });
   });

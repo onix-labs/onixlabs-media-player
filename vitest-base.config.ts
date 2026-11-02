@@ -26,5 +26,10 @@ export default defineConfig({
     // wins. Isolation costs wall-clock — a fresh environment per file — which
     // is the price of the suite meaning anything.
     isolate: true,
+
+    // Vitest 5 clears mock call history before every test by default. These
+    // suites were written against the Vitest 4 behaviour and manage their own
+    // mock state, so keep it.
+    clearMocks: false,
   },
 });

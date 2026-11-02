@@ -3,6 +3,7 @@
  *
  * Tests cover:
  * - Exact SSE wire framing produced by broadcast
+ * - Time updates skipped for clients that are not draining
  * - Client registration and automatic removal on close
  * - Heartbeat scheduling and teardown
  * - stop() ending every client and clearing the set
@@ -19,6 +20,8 @@ import { SSEManager } from './sse-manager.js';
 
 /** A ServerResponse stub that records writes and exposes its 'close' handler. */
 interface FakeClient extends ServerResponse {
+  /** Bytes buffered but not yet flushed; settable to simulate a stalled client */
+  writableLength: number;
   /** Everything written to this client, in order */
   readonly writes: string[];
   /** Fires the registered 'close' handler */
@@ -36,6 +39,7 @@ function createFakeClient(): FakeClient {
 
   const client = {
     writes,
+    writableLength: 0,
     write: vi.fn((chunk: string): boolean => {
       writes.push(chunk);
       return true;
@@ -117,6 +121,57 @@ describe('SSEManager', (): void => {
 
     it('does nothing when there are no clients', (): void => {
       expect((): void => manager.broadcast('playback:state', {})).not.toThrow();
+    });
+  });
+
+  // ==========================================================================
+  // Backpressure
+  // ==========================================================================
+
+  describe('backpressure', (): void => {
+    /** Just over the buffered-bytes limit at which a client counts as stalled. */
+    const STALLED_BYTES: number = 65537;
+
+    it('sends time updates to a client that is draining', (): void => {
+      const client: FakeClient = createFakeClient();
+      manager.addClient(client);
+
+      manager.broadcast('playback:time', { currentTime: 1 });
+
+      expect(client.writes).toHaveLength(1);
+    });
+
+    it('skips time updates for a client that is not draining', (): void => {
+      const client: FakeClient = createFakeClient();
+      client.writableLength = STALLED_BYTES;
+      manager.addClient(client);
+
+      manager.broadcast('playback:time', { currentTime: 1 });
+
+      expect(client.writes).toHaveLength(0);
+    });
+
+    it('still sends other events to a client that is not draining', (): void => {
+      const client: FakeClient = createFakeClient();
+      client.writableLength = STALLED_BYTES;
+      manager.addClient(client);
+
+      manager.broadcast('playback:state', { playing: true });
+
+      expect(client.writes).toHaveLength(1);
+    });
+
+    it('keeps sending time updates to the clients that are draining', (): void => {
+      const stalled: FakeClient = createFakeClient();
+      const draining: FakeClient = createFakeClient();
+      stalled.writableLength = STALLED_BYTES;
+      manager.addClient(stalled);
+      manager.addClient(draining);
+
+      manager.broadcast('playback:time', { currentTime: 1 });
+
+      expect(stalled.writes).toHaveLength(0);
+      expect(draining.writes).toHaveLength(1);
     });
   });
 

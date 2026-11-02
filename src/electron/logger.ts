@@ -80,6 +80,9 @@ export function initializeLogger(options: {spyRendererConsole?: boolean} = {}): 
   log.transports.file.resolvePathFn = (): string => logFilePath;
   log.transports.file.maxSize = MAX_LOG_SIZE;
   log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {scope} {text}';
+  // The default is a blocking write per line, in the process that also runs
+  // the media server and receives every renderer console line. Queue instead.
+  log.transports.file.sync = false;
 
   // Configure console transport (for development)
   log.transports.console.format = '[{h}:{i}:{s}.{ms}] [{level}] {scope} {text}';

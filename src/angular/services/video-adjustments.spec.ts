@@ -116,10 +116,12 @@ describe('buildVideoFilter', (): void => {
     expect(buildVideoFilter(values, false)).toBe('none');
   });
 
-  it('maps neutral values to an identity filter', (): void => {
-    expect(buildVideoFilter(NEUTRAL_VIDEO_ADJUSTMENTS, true)).toBe(
-      'brightness(1) contrast(1) saturate(1) hue-rotate(0deg) blur(0px) grayscale(0) sepia(0) invert(0)'
-    );
+  it('returns none for neutral values, so the video gets no filter pass', (): void => {
+    expect(buildVideoFilter(NEUTRAL_VIDEO_ADJUSTMENTS, true)).toBe('none');
+  });
+
+  it('omits functions that are at their identity value', (): void => {
+    expect(buildVideoFilter({...NEUTRAL_VIDEO_ADJUSTMENTS, contrast: 20}, true)).toBe('contrast(1.2)');
   });
 
   it('maps levels symmetrically around 1', (): void => {
@@ -153,7 +155,7 @@ describe('buildVideoFilter', (): void => {
 
   it('renders invert as a 0/1 toggle', (): void => {
     expect(buildVideoFilter({...NEUTRAL_VIDEO_ADJUSTMENTS, invert: true}, true)).toContain('invert(1)');
-    expect(buildVideoFilter(NEUTRAL_VIDEO_ADJUSTMENTS, true)).toContain('invert(0)');
+    expect(buildVideoFilter({...NEUTRAL_VIDEO_ADJUSTMENTS, brightness: 10}, true)).not.toContain('invert');
   });
 
   it('emits the filter functions in a fixed order', (): void => {

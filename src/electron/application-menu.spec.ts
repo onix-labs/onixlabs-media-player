@@ -396,7 +396,7 @@ describe('application-menu', (): void => {
 
     it('enables/disables Close items based on hasMedia', (): void => {
       const callbacks: MenuCallbacks = createMockCallbacks();
-      createApplicationMenu(callbacks, { hasMedia: false });
+      createApplicationMenu(callbacks, { hasMedia: true });
       vi.mocked(Menu.buildFromTemplate).mockClear();
 
       // Without media, Close and Close Playlist should be disabled
@@ -458,7 +458,7 @@ describe('application-menu', (): void => {
 
     it('rebuilds menu on each state update', (): void => {
       const callbacks: MenuCallbacks = createMockCallbacks();
-      createApplicationMenu(callbacks);
+      createApplicationMenu(callbacks, { shuffleEnabled: false, repeatEnabled: false, isPlaying: false });
 
       const initialCallCount: number = vi.mocked(Menu.buildFromTemplate).mock.calls.length;
 
@@ -470,6 +470,16 @@ describe('application-menu', (): void => {
 
       updateMenuState({ isPlaying: true });
       expect(vi.mocked(Menu.buildFromTemplate).mock.calls.length).toBe(initialCallCount + 3);
+    });
+
+    it('does not rebuild menu when the state has not changed', (): void => {
+      const callbacks: MenuCallbacks = createMockCallbacks();
+      createApplicationMenu(callbacks, { isPlaying: true, isVideo: false });
+
+      const initialCallCount: number = vi.mocked(Menu.buildFromTemplate).mock.calls.length;
+
+      updateMenuState({ isPlaying: true, isVideo: false });
+      expect(vi.mocked(Menu.buildFromTemplate).mock.calls.length).toBe(initialCallCount);
     });
   });
 

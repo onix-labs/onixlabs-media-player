@@ -320,6 +320,26 @@ export class PulsarVisualization extends Canvas2DVisualization {
    */
   private static readonly BLOOM_STRENGTH: number = 0.5;
 
+  /**
+   * Resolution the bloom is blurred at, as a fraction of the canvas.
+   *
+   * The bloom is a 16px blur; at half resolution it is an 8px blur over a
+   * quarter of the pixels, which is indistinguishable once scaled back up.
+   */
+  private static readonly BLOOM_SCALE: number = 0.5;
+
+  /**
+   * Most pixels the trail buffer may hold. 1280x720.
+   *
+   * The trail is redrawn from itself once per ring every frame - over sixty
+   * clipped, resampled copies - so its cost is a large multiple of its pixel
+   * count, and at 1440p or 4K that is what made this the heaviest
+   * visualization by far. Above this budget the buffer renders smaller and is
+   * scaled up; the newest strokes are then redrawn at full resolution on top
+   * so the lines stay crisp while the trail they leave is soft.
+   */
+  private static readonly TRAIL_PIXEL_BUDGET: number = 921_600;
+
   /** Saturation and lightness levels for the center-circle gradient. */
   private static readonly GRADIENT_LEVELS: ReadonlyArray<{s: number; l: number}> = [
     {s: 85, l: 12},
@@ -346,6 +366,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
   /** Temp canvas for the zoom/rotate effect (reused, not recreated each frame). */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
+
+  /** Small intermediate the bloom is blurred in. */
+  private bloom: OffscreenCanvasPair | null = null;
 
   /** Hue cycling with caching. */
   private hueOffset: number = 210;
@@ -470,10 +493,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
     }
 
     // Copy current trails to temp canvas (reused, not recreated)
-    tempCtx.clearRect(0, 0, width, height);
-    tempCtx.drawImage(trailCanvas, 0, 0);
+    this.copySurface(tempCtx, trailCanvas);
 
-    // Clear trail canvas
+    // Clear trail canvas (logical coordinates cover the whole surface)
     trailCtx.clearRect(0, 0, width, height);
 
     // Draw back previous trails with rotation, zoom, and fade.
@@ -490,11 +512,13 @@ export class PulsarVisualization extends Canvas2DVisualization {
     this.waveformAngle -= PulsarVisualization.WAVEFORM_ROTATION_SPEED * this.spinDirection;
 
     // Draw the mirrored waveforms with rotation
+    this.calculateMirroredPoints();
+    const trailScale: number = trailCanvas.width / width;
     trailCtx.save();
     trailCtx.translate(centerX, centerY);
     trailCtx.rotate(this.waveformAngle);
     trailCtx.translate(-centerX, -centerY);
-    this.drawMirroredWaveform(trailCtx);
+    this.drawMirroredWaveform(trailCtx, false, trailScale);
     trailCtx.restore();
 
     // Clear main canvas and composite the trail onto it, then add a blurred
@@ -502,14 +526,25 @@ export class PulsarVisualization extends Canvas2DVisualization {
     // content is baked into the trail buffer there is no stroke left to hang a
     // shadow on, so the halo has to come from the buffer itself.
     ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(trailCanvas, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(trailCanvas, 0, 0, width, height);
 
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.filter = `blur(${PulsarVisualization.BLOOM_BLUR}px)`;
-    ctx.globalAlpha = PulsarVisualization.BLOOM_STRENGTH;
-    ctx.drawImage(trailCanvas, 0, 0);
-    ctx.restore();
+    // A reduced trail softens this frame's strokes along with their history;
+    // laying the core and filament over again at full size keeps the lines
+    // sharp. The halo is left to the trail, where it already is.
+    if (trailScale < 1) {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(this.waveformAngle);
+      ctx.translate(-centerX, -centerY);
+      this.drawMirroredWaveform(ctx, true, 1);
+      ctx.restore();
+    }
+
+    this.drawBloom(
+      this.bloom!, trailCanvas,
+      PulsarVisualization.BLOOM_BLUR, PulsarVisualization.BLOOM_STRENGTH, PulsarVisualization.BLOOM_SCALE
+    );
 
     // The background carries the same colour as the arms, so they read as
     // negative space in the field rather than as strokes over it.
@@ -603,7 +638,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
       trailCtx.rotate(spin);
       trailCtx.scale(zoom, zoom);
       trailCtx.translate(-centerX, -centerY);
-      trailCtx.drawImage(tempCanvas, 0, 0);
+      trailCtx.drawImage(tempCanvas, 0, 0, this.width, this.height);
 
       trailCtx.restore();
     }
@@ -643,11 +678,23 @@ export class PulsarVisualization extends Canvas2DVisualization {
       this.tempCtx = offscreen.ctx;
     }
 
+    if (!this.bloom) {
+      this.bloom = this.createOffscreenCanvas();
+    }
+
+    // The trail and its working copy are held to the pixel budget, and drawn
+    // into in canvas coordinates through a transform.
+    const surface: {width: number; height: number} =
+      this.getSurfaceSize(this.width, this.height, PulsarVisualization.TRAIL_PIXEL_BUDGET);
+
     // Resize trail canvas while preserving content
-    this.resizeCanvasPreserving(this.trailCanvas, this.trailCtx!, this.width, this.height);
+    this.resizeCanvasPreserving(this.trailCanvas, this.trailCtx!, surface.width, surface.height);
+    this.applySurfaceTransform(this.trailCtx!, this.width, this.height);
     // Temp canvas doesn't need content preserved (it's just working space)
-    this.tempCanvas.width = this.width;
-    this.tempCanvas.height = this.height;
+    if (this.tempCanvas.width !== surface.width || this.tempCanvas.height !== surface.height) {
+      this.tempCanvas.width = surface.width;
+      this.tempCanvas.height = surface.height;
+    }
 
     this.ctx.clearRect(0, 0, this.width, this.height);
   }
@@ -679,7 +726,13 @@ export class PulsarVisualization extends Canvas2DVisualization {
       : PulsarVisualization.WAVEFORM_LIT;
   }
 
-  private drawMirroredWaveform(ctx: CanvasRenderingContext2D): void {
+  /**
+   * Fills the arm and centre-circle point arrays from the current waveform.
+   *
+   * Separate from drawing so the same points can be stroked twice: into the
+   * trail, and again at full size when the trail is reduced.
+   */
+  private calculateMirroredPoints(): void {
     const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
     const dataLength: number = dataArray.length;
     const height: number = this.height;
@@ -737,18 +790,32 @@ export class PulsarVisualization extends Canvas2DVisualization {
       this.rightPoints[i].y = centerY + arcRadius * Math.sin(arcAngle);
     }
 
+    this.calculateCenterCirclePoints();
+  }
+
+  /**
+   * Strokes the arms and the centre circle from the calculated points.
+   *
+   * @param ctx - Destination context
+   * @param coreOnly - Draw only the core and filament, without the halo
+   * @param shadowScale - Device pixels per canvas pixel on `ctx`; shadow blur
+   *   ignores the transform, so it has to be scaled by hand on a reduced surface
+   */
+  private drawMirroredWaveform(ctx: CanvasRenderingContext2D, coreOnly: boolean, shadowScale: number): void {
+    const numSamples: number = PulsarVisualization.WAVEFORM_SAMPLES;
     const color: {r: number; g: number; b: number} = this.waveformColor();
 
     // Draw left and right waveforms with glow
     const alpha: number = PulsarVisualization.WAVEFORM_ALPHA;
-    this.drawWaveformSegment(ctx, this.leftPoints, numSamples, color, alpha);
-    this.drawWaveformSegment(ctx, this.rightPoints, numSamples, color, alpha);
+    this.drawWaveformSegment(ctx, this.leftPoints, numSamples, color, alpha, coreOnly, shadowScale);
+    this.drawWaveformSegment(ctx, this.rightPoints, numSamples, color, alpha, coreOnly, shadowScale);
 
     // Draw center circle
-    this.drawCenterCircle(ctx);
+    this.drawCenterCircle(ctx, coreOnly, shadowScale);
   }
 
-  private drawCenterCircle(ctx: CanvasRenderingContext2D): void {
+  /** Fills the centre-circle point array from the current waveform. */
+  private calculateCenterCirclePoints(): void {
     const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
     const dataLength: number = dataArray.length;
     const height: number = this.height;
@@ -770,7 +837,17 @@ export class PulsarVisualization extends Canvas2DVisualization {
       this.centerPoints[i].x = centerX + radius * Math.cos(angle);
       this.centerPoints[i].y = centerY + radius * Math.sin(angle);
     }
+  }
 
+  /**
+   * Strokes the centre circle from the calculated points.
+   *
+   * @param ctx - Destination context
+   * @param coreOnly - Draw only the core and filament, without the halo
+   * @param shadowScale - Device pixels per canvas pixel on `ctx`
+   */
+  private drawCenterCircle(ctx: CanvasRenderingContext2D, coreOnly: boolean, shadowScale: number): void {
+    const numPoints: number = PulsarVisualization.CENTER_CIRCLE_POINTS;
     const color: {r: number; g: number; b: number} = this.cachedGradientColors[this.cachedGradientColors.length - 1];
     const points: Array<{x: number; y: number}> = this.centerPoints;
 
@@ -780,7 +857,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
       ctx.closePath();
     };
 
-    this.strokeNeon(ctx, buildPath, color, 1);
+    this.strokeNeon(ctx, buildPath, color, 1, coreOnly, shadowScale);
   }
 
   /**
@@ -798,14 +875,18 @@ export class PulsarVisualization extends Canvas2DVisualization {
    * @param buildPath - Rebuilds the path; called once per pass
    * @param color - Colour of every pass, halo included
    * @param alpha - Overall opacity applied to every pass
+   * @param coreOnly - Skip the halo and draw the core without its shadow
+   * @param shadowScale - Device pixels per canvas pixel on `ctx`
    */
   private strokeNeon(
     ctx: CanvasRenderingContext2D,
     buildPath: () => void,
     color: {r: number; g: number; b: number},
-    alpha: number
+    alpha: number,
+    coreOnly: boolean,
+    shadowScale: number
   ): void {
-    const blur: number = this.getScaledGlowBlur(PulsarVisualization.BASE_GLOW_BLUR);
+    const blur: number = this.getScaledGlowBlur(PulsarVisualization.BASE_GLOW_BLUR) * shadowScale;
     const r: number = color.r;
     const g: number = color.g;
     const b: number = color.b;
@@ -820,15 +901,17 @@ export class PulsarVisualization extends Canvas2DVisualization {
     ctx.lineJoin = 'round';
 
     // Halo.
-    ctx.shadowBlur = blur;
     ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${PulsarVisualization.NEON_HALO_SHADOW_ALPHA * alpha})`;
-    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${PulsarVisualization.NEON_HALO_ALPHA * alpha})`;
-    ctx.lineWidth = this.lineWidth + PulsarVisualization.NEON_HALO_WIDTH;
-    buildPath();
-    ctx.stroke();
+    if (!coreOnly) {
+      ctx.shadowBlur = blur;
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${PulsarVisualization.NEON_HALO_ALPHA * alpha})`;
+      ctx.lineWidth = this.lineWidth + PulsarVisualization.NEON_HALO_WIDTH;
+      buildPath();
+      ctx.stroke();
+    }
 
     // Core. Keeps the halo's shadow colour, tightened.
-    ctx.shadowBlur = blur * PulsarVisualization.NEON_CORE_BLUR_SCALE;
+    ctx.shadowBlur = coreOnly ? 0 : blur * PulsarVisualization.NEON_CORE_BLUR_SCALE;
     ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
     ctx.lineWidth = this.lineWidth;
     buildPath();
@@ -851,7 +934,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
     points: Array<{x: number; y: number}>,
     count: number,
     color: {r: number; g: number; b: number},
-    alpha: number
+    alpha: number,
+    coreOnly: boolean,
+    shadowScale: number
   ): void {
     if (count < 2) return;
 
@@ -860,7 +945,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
       this.buildSmoothPath(ctx, points, count - 1);
     };
 
-    this.strokeNeon(ctx, buildPath, color, alpha);
+    this.strokeNeon(ctx, buildPath, color, alpha, coreOnly, shadowScale);
   }
 
   public override destroy(): void {
@@ -868,5 +953,6 @@ export class PulsarVisualization extends Canvas2DVisualization {
     this.trailCtx = null;
     this.tempCanvas = null;
     this.tempCtx = null;
+    this.bloom = null;
   }
 }

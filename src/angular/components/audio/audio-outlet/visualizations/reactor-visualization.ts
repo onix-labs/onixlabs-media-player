@@ -146,6 +146,18 @@ export class ReactorVisualization extends Canvas2DVisualization {
   /** Extra trail-canvas margin beyond the outer circle, for glow (pixels). */
   private static readonly TRAIL_MARGIN: number = 16;
 
+  /**
+   * Most pixels the rings trail may hold. 1280x720.
+   *
+   * The rings trail is redrawn from itself once per slice of every band -
+   * over two hundred clipped, resampled copies a frame - on a square larger
+   * than the screen, so its cost is a large multiple of its pixel count.
+   * Above this budget it renders smaller and is scaled up when composited.
+   * The peaks it holds are soft, low-alpha fills, so the upscale does not
+   * show. The horizontal waveforms keep a full-resolution trail of their own.
+   */
+  private static readonly RINGS_PIXEL_BUDGET: number = 921_600;
+
   // --- Colour cycling -------------------------------------------------------
 
   /** Per-frame hue drift (degrees). */
@@ -252,9 +264,22 @@ export class ReactorVisualization extends Canvas2DVisualization {
   private horizontalCanvas: HTMLCanvasElement | null = null;
   private horizontalCtx: CanvasRenderingContext2D | null = null;
 
-  /** Scratch surface used while spinning the trails. */
+  /** Scratch surface used while spinning the horizontal trail. */
   private tempCanvas: HTMLCanvasElement | null = null;
   private tempCtx: CanvasRenderingContext2D | null = null;
+
+  /** Scratch surface used while spinning the rings trail, at its reduced size. */
+  private ringsTempCanvas: HTMLCanvasElement | null = null;
+  private ringsTempCtx: CanvasRenderingContext2D | null = null;
+
+  /**
+   * Whether the tower layer needs redrawing.
+   *
+   * The tower only changes when the hue moves to a new degree, which at the
+   * cycle rate is every twenty frames or so, or on resize; between those it
+   * is composited from its cached layer rather than repainted.
+   */
+  private towerDirty: boolean = true;
 
   /** Tower layer (background + circles) rendered each frame, then composited. */
   private towerCanvas: HTMLCanvasElement | null = null;
@@ -298,7 +323,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     if (width <= 0 || height <= 0) return;
 
     if (!this.ringsCanvas || !this.horizontalCanvas || !this.tempCanvas
-      || !this.towerCanvas || !this.freezeCanvas) {
+      || !this.ringsTempCanvas || !this.towerCanvas || !this.freezeCanvas) {
       this.onResize();
     }
     if (!this.ringsCtx || !this.horizontalCtx || !this.towerCtx || !this.freezeCtx) return;
@@ -308,7 +333,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     // Advance time-based state. A bass hit may flip the swirl and jump the hue.
     this.updateBassTrigger();
     this.hue = (this.hue + ReactorVisualization.HUE_CYCLE_SPEED) % 360;
-    this.updateColors();
+    if (this.updateColors()) this.towerDirty = true;
 
     this.analyser.getByteTimeDomainData(this.dataArray);
 
@@ -326,10 +351,13 @@ export class ReactorVisualization extends Canvas2DVisualization {
     // Tower (background + circles) on its own layer so a hue jump can cross-fade
     // the old colours out beneath the new ones, rather than snapping the whole
     // scene to the new hue in a single frame.
-    const towerCtx: CanvasRenderingContext2D = this.towerCtx!;
-    towerCtx.fillStyle = this.backgroundColorString;
-    towerCtx.fillRect(0, 0, width, height);
-    this.drawConcentricCircles(towerCtx);
+    if (this.towerDirty) {
+      const towerCtx: CanvasRenderingContext2D = this.towerCtx!;
+      towerCtx.fillStyle = this.backgroundColorString;
+      towerCtx.fillRect(0, 0, width, height);
+      this.drawConcentricCircles(towerCtx);
+      this.towerDirty = false;
+    }
 
     ctx.drawImage(this.towerCanvas!, 0, 0);
     if (this.hueTransition > 0) {
@@ -347,7 +375,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     const trailOffsetY: number = this.centerY - this.trailCy;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(this.ringsCanvas!, trailOffsetX, trailOffsetY);
+    ctx.drawImage(this.ringsCanvas!, trailOffsetX, trailOffsetY, this.trailSize, this.trailSize);
     ctx.drawImage(this.horizontalCanvas!, trailOffsetX, trailOffsetY);
     ctx.restore();
 
@@ -413,6 +441,11 @@ export class ReactorVisualization extends Canvas2DVisualization {
       this.tempCanvas = offscreen.canvas;
       this.tempCtx = offscreen.ctx;
     }
+    if (!this.ringsTempCanvas) {
+      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
+      this.ringsTempCanvas = offscreen.canvas;
+      this.ringsTempCtx = offscreen.ctx;
+    }
     if (!this.towerCanvas) {
       const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
       this.towerCanvas = offscreen.canvas;
@@ -425,14 +458,25 @@ export class ReactorVisualization extends Canvas2DVisualization {
     }
 
     // Size the trail surfaces to the trail square (clears them; resize is rare).
-    if (this.ringsCanvas.width !== this.trailSize) {
-      this.ringsCanvas.width = this.trailSize;
-      this.ringsCanvas.height = this.trailSize;
+    if (this.horizontalCanvas.width !== this.trailSize) {
       this.horizontalCanvas.width = this.trailSize;
       this.horizontalCanvas.height = this.trailSize;
       this.tempCanvas.width = this.trailSize;
       this.tempCanvas.height = this.trailSize;
     }
+
+    // The rings trail is held to its pixel budget and drawn into in trail
+    // coordinates through a transform.
+    const rings: {width: number; height: number} =
+      this.getSurfaceSize(this.trailSize, this.trailSize, ReactorVisualization.RINGS_PIXEL_BUDGET);
+    if (this.ringsCanvas.width !== rings.width || this.ringsCanvas.height !== rings.height) {
+      this.ringsCanvas.width = rings.width;
+      this.ringsCanvas.height = rings.height;
+      this.ringsTempCanvas.width = rings.width;
+      this.ringsTempCanvas.height = rings.height;
+    }
+    this.applySurfaceTransform(this.ringsCtx!, this.trailSize, this.trailSize);
+    this.towerDirty = true;
 
     // The tower layers match the visible canvas, not the larger trail square.
     if (this.towerCanvas.width !== width || this.towerCanvas.height !== height) {
@@ -542,8 +586,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
    * outlined (no baseline). Coloured to match the circle it sits on.
    */
   private drawFrequencyRing(ctx: CanvasRenderingContext2D, ring: number): void {
-    this.analyser.getByteFrequencyData(this.freqArray);
-
+    // freqArray was read once for the frame by updateBassTrigger.
     const binCount: number = this.freqArray.length;
     const numSamples: number = ReactorVisualization.CIRCULAR_SAMPLES;
     const sensitivityFactor: number = this.sensitivityFactor;
@@ -802,12 +845,12 @@ export class ReactorVisualization extends Canvas2DVisualization {
    */
   private spinRingsTrail(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, fadeRate: number): void {
     const size: number = this.trailSize;
-    const tempCanvas: HTMLCanvasElement = this.tempCanvas!;
-    const tempCtx: CanvasRenderingContext2D = this.tempCtx!;
+    const tempCanvas: HTMLCanvasElement = this.ringsTempCanvas!;
+    const tempCtx: CanvasRenderingContext2D = this.ringsTempCtx!;
 
-    tempCtx.clearRect(0, 0, size, size);
-    tempCtx.drawImage(canvas, 0, 0);
+    this.copySurface(tempCtx, canvas);
 
+    // Trail coordinates; the surface transform maps them onto the reduced canvas.
     ctx.clearRect(0, 0, size, size);
 
     const effectiveFade: number = fadeRate * this.getFadeMultiplier();
@@ -845,7 +888,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
         ctx.rotate(ReactorVisualization.TRAIL_ROTATION * this.trailDirection);
         ctx.scale(scale, scale);
         ctx.translate(-cx, -cy);
-        ctx.drawImage(tempCanvas, 0, 0);
+        ctx.drawImage(tempCanvas, 0, 0, size, size);
         ctx.restore();
       }
     }
@@ -882,10 +925,14 @@ export class ReactorVisualization extends Canvas2DVisualization {
     ctx.restore();
   }
 
-  /** Recomputes the cached circle, waveform and background colours on hue change. */
-  private updateColors(): void {
+  /**
+   * Recomputes the cached circle, waveform and background colours on hue change.
+   *
+   * @returns Whether the colours changed
+   */
+  private updateColors(): boolean {
     const hueInt: number = Math.floor(this.hue);
-    if (hueInt === this.cachedHue) return;
+    if (hueInt === this.cachedHue) return false;
     this.cachedHue = hueInt;
 
     const span: number = ReactorVisualization.CIRCLE_COUNT - 1;
@@ -908,6 +955,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     // Background: same hue, a shade darker than the darkest circle.
     const background: Rgb = this.hslToRgb(this.hue, ReactorVisualization.CIRCLE_SATURATION, ReactorVisualization.BACKGROUND_LIGHTNESS);
     this.backgroundColorString = `rgb(${background.r}, ${background.g}, ${background.b})`;
+    return true;
   }
 
   public override destroy(): void {
@@ -918,6 +966,8 @@ export class ReactorVisualization extends Canvas2DVisualization {
     this.horizontalCtx = null;
     this.tempCanvas = null;
     this.tempCtx = null;
+    this.ringsTempCanvas = null;
+    this.ringsTempCtx = null;
     this.towerCanvas = null;
     this.towerCtx = null;
     this.freezeCanvas = null;

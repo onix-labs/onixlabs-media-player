@@ -339,6 +339,17 @@ export class UnifiedMediaServer {
    */
   private readonly mediaInfoMtimes: Map<string, number> = new Map();
 
+  /**
+   * Extracted artwork by file path, or null for files known to have none.
+   *
+   * Each extraction spawns ffmpeg, and the visualization asks again whenever
+   * a track comes back round. Bounded, oldest first out.
+   */
+  private readonly artworkCache: Map<string, Buffer | null> = new Map();
+
+  /** Most artwork images kept in artworkCache. */
+  private static readonly ARTWORK_CACHE_LIMIT: number = 32;
+
   /** Audio codecs compatible with fragmented MP4 remuxing (can be stream-copied) */
   private static readonly REMUXABLE_AUDIO_CODECS: Set<string> = new Set(['aac', 'mp3', 'opus', 'flac']);
 
@@ -2838,6 +2849,11 @@ export class UnifiedMediaServer {
       return;
     }
 
+    if (this.artworkCache.has(filePath)) {
+      this.sendArtwork(res, this.artworkCache.get(filePath) ?? null);
+      return;
+    }
+
     const ffmpegBin: string | null = this.deps.getFfmpegPath();
     if (!ffmpegBin) {
       res.writeHead(500);
@@ -2870,22 +2886,15 @@ export class UnifiedMediaServer {
       }
     });
 
-    ffmpeg.on('close', (code: number | null): void => {
-      if (res.headersSent) return;
-
+    ffmpeg.on('close', (code: number | null, signal: NodeJS.Signals | null): void => {
       const image: Buffer = Buffer.concat(chunks);
-      if (code !== 0 || image.length === 0) {
-        res.writeHead(404);
-        res.end(JSON.stringify({ error: 'No artwork' }));
-        return;
-      }
+      const result: Buffer | null = code !== 0 || image.length === 0 ? null : image;
 
-      res.writeHead(200, {
-        'Content-Type': 'image/png',
-        'Content-Length': image.length,
-        'Cache-Control': 'public, max-age=3600',
-      });
-      res.end(image);
+      // A run killed by a client disconnect proves nothing about the file.
+      if (signal === null) this.cacheArtwork(filePath, result);
+
+      if (res.headersSent) return;
+      this.sendArtwork(res, result);
     });
 
     // Handle client disconnect (the response, not the request: a GET request
@@ -2893,6 +2902,42 @@ export class UnifiedMediaServer {
     res.on('close', (): void => {
       if (ffmpeg.exitCode === null) ffmpeg.kill('SIGTERM');
     });
+  }
+
+  /**
+   * Remembers an artwork extraction result, evicting the oldest past the limit.
+   *
+   * @param filePath - The media file the artwork came from
+   * @param image - The PNG, or null when the file has no artwork
+   */
+  private cacheArtwork(filePath: string, image: Buffer | null): void {
+    this.artworkCache.delete(filePath);
+    this.artworkCache.set(filePath, image);
+    if (this.artworkCache.size > UnifiedMediaServer.ARTWORK_CACHE_LIMIT) {
+      const oldest: string | undefined = this.artworkCache.keys().next().value;
+      if (oldest !== undefined) this.artworkCache.delete(oldest);
+    }
+  }
+
+  /**
+   * Writes an artwork response.
+   *
+   * @param res - The response to write
+   * @param image - The PNG, or null to answer that there is no artwork
+   */
+  private sendArtwork(res: Readonly<ServerResponse>, image: Readonly<Buffer> | null): void {
+    if (!image) {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: 'No artwork' }));
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'image/png',
+      'Content-Length': image.length,
+      'Cache-Control': 'public, max-age=3600',
+    });
+    res.end(image);
   }
 
   /**
@@ -3716,11 +3761,9 @@ export class UnifiedMediaServer {
     playlistLogger.info(`Adding ${items.length} item(s) to playlist`);
     const added: PlaylistItem[] = this.playlist.addItems(items);
 
-    // Add each file to recent items and notify menu
-    for (const item of added) {
-      this.settings.addRecentFile(item.filePath);
-    }
+    // Add the files to recent items in one change, then notify the menu
     if (added.length > 0) {
+      this.settings.addRecentFiles(added.map((item: PlaylistItem): string => item.filePath));
       const recentItems: RecentItemsSettings = this.settings.getRecentItems();
       this.onRecentItemsChangeCallback?.(recentItems.recentFiles, recentItems.recentPlaylists);
     }
@@ -4255,7 +4298,7 @@ export class UnifiedMediaServer {
     this.sse.broadcast('settings:updated', updatedSettings);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+    res.end(JSON.stringify({ success: true }));
   }
 
   /**
@@ -4277,7 +4320,7 @@ export class UnifiedMediaServer {
     this.sse.broadcast('settings:updated', updatedSettings);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+    res.end(JSON.stringify({ success: true }));
   }
 
   /**
@@ -4298,7 +4341,7 @@ export class UnifiedMediaServer {
     this.sse.broadcast('settings:updated', updatedSettings);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+    res.end(JSON.stringify({ success: true }));
   }
 
   /**
@@ -4319,7 +4362,7 @@ export class UnifiedMediaServer {
     this.sse.broadcast('settings:updated', updatedSettings);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+    res.end(JSON.stringify({ success: true }));
   }
 
   /**
@@ -4341,7 +4384,7 @@ export class UnifiedMediaServer {
     this.sse.broadcast('settings:updated', updatedSettings);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+    res.end(JSON.stringify({ success: true }));
   }
 
   /**
@@ -4362,7 +4405,7 @@ export class UnifiedMediaServer {
     this.sse.broadcast('settings:updated', updatedSettings);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+    res.end(JSON.stringify({ success: true }));
   }
 
   /**
@@ -4383,7 +4426,7 @@ export class UnifiedMediaServer {
     this.sse.broadcast('settings:updated', updatedSettings);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+    res.end(JSON.stringify({ success: true }));
   }
 
   /**
@@ -4404,7 +4447,7 @@ export class UnifiedMediaServer {
     this.sse.broadcast('settings:updated', updatedSettings);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, settings: updatedSettings }));
+    res.end(JSON.stringify({ success: true }));
   }
 
   // ============================================================================
