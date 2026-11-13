@@ -24,7 +24,9 @@ import type {SettingsManager} from './settings-manager.js';
 import type {DependencyState} from './dependency-manager.js';
 import {initializeLogger, mainLogger, ipcLogger, windowLogger, getLogFilePath} from './logger.js';
 import {existsSync, statSync} from 'fs';
-import {useSystemCertificates} from './bundled-resources.js';
+import {getLicenseLocations, useSystemCertificates} from './bundled-resources.js';
+import {LicenseCatalog} from './license-catalog.js';
+import type {AboutInfo} from './license-catalog.js';
 
 /**
  * Supported audio file extensions for file association handling.
@@ -146,6 +148,9 @@ class Program {
 
   /** The about window instance, null when closed */
   private aboutWindow: BrowserWindow | null = null;
+
+  /** Licences shown in the About window, read once when first asked for */
+  private licenseCatalog: LicenseCatalog | null = null;
 
   /** The "Open URL" window instance, null when closed */
   private openUrlWindow: BrowserWindow | null = null;
@@ -858,6 +863,15 @@ class Program {
    *
    * If the window already exists, it will be focused instead of creating a new one.
    */
+  private getLicenseCatalog(): LicenseCatalog {
+    this.licenseCatalog ??= new LicenseCatalog(getLicenseLocations(), {
+      application: app.getVersion(),
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+    });
+    return this.licenseCatalog;
+  }
+
   private showAboutWindow(): void {
     // If window already exists, focus it
     if (this.aboutWindow && !this.aboutWindow.isDestroyed()) {
@@ -1338,6 +1352,28 @@ class Program {
       const logPath: string = getLogFilePath();
       ipcLogger.debug(`app:getLogFilePath - ${logPath}`);
       return logPath;
+    });
+
+    // About window: version and the licences of everything shipped
+    ipcMain.handle("app:getAboutInfo", (): AboutInfo => {
+      const version: string = app.getVersion();
+      return {
+        version,
+        licenses: this.getLicenseCatalog().getNotices(),
+        sourceUrl: `https://github.com/onix-labs/onixlabs-media-player/releases/tag/${version}`,
+      };
+    });
+
+    // Opens a licence by id; the renderer never names a file
+    ipcMain.handle("app:openLicense", async (_: Readonly<Electron.IpcMainInvokeEvent>, id: unknown): Promise<boolean> => {
+      const file: string | null = this.getLicenseCatalog().getFile(id);
+      if (!file) {
+        ipcLogger.warn(`app:openLicense - unknown licence: ${String(id)}`);
+        return false;
+      }
+      const error: string = await shell.openPath(file);
+      if (error) ipcLogger.warn(`app:openLicense - ${file}: ${error}`);
+      return error === '';
     });
 
     // Fullscreen control - uses simpleFullScreen on Windows to reduce GPU spike

@@ -13,6 +13,10 @@ name: Bundled Binaries
 # A build takes the better part of an hour, so each target is cached against
 # the build script, which pins every source and flag. A cache made on main
 # serves tag and pull request runs too.
+#
+# Once every target is built, the app is packaged for each platform exactly as
+# release.yml does, without publishing, and scripts/check-package.sh checks
+# the binaries and licences landed where the packaged app looks for them.
 
 on:
   pull_request:
@@ -20,6 +24,9 @@ on:
     paths:
       - 'scripts/build-binaries.sh'
       - 'scripts/check-binaries.sh'
+      - 'scripts/check-package.sh'
+      - 'scripts/verify-bundled-resources.cjs'
+      - 'package.json'
       - '.github/workflows/binaries.yml'
   workflow_dispatch:
   # Called by Release Readiness and Release.
@@ -165,3 +172,72 @@ jobs:
           name: binaries-win-x64
           path: ${{ runner.temp }}/win-x64.tar
           if-no-files-found: error
+
+  package:
+    name: Package (${{ matrix.platform }})
+    needs: [mac, linux, windows]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: mac
+            apps: release/mac/ONIXPlayer.app release/mac-arm64/ONIXPlayer.app
+          - os: ubuntu-latest
+            platform: linux
+            apps: release/linux-unpacked
+          - os: windows-latest
+            platform: win
+            apps: release/win-unpacked
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/cache@v4
+        id: deps
+        with:
+          path: node_modules
+          key: node-modules-${{ matrix.os }}-${{ hashFiles('package-lock.json') }}
+
+      - if: steps.deps.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-${{ matrix.platform }}-*
+          path: binaries-download
+          merge-multiple: true
+
+      - name: Unpack bundled binaries
+        run: |
+          mkdir -p vendor/bin
+          for archive in binaries-download/*.tar; do
+            tar -xf "${archive}" -C vendor/bin
+          done
+
+      - name: Build application
+        run: npm run build:all
+
+      - name: Obfuscate code
+        run: npm run obfuscate
+
+      # The same targets release.yml publishes, so a packaging failure shows up
+      # here rather than on the tag. Unsigned, as releases are.
+      - name: Package
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --${{ matrix.platform }} --publish never
+
+      - name: Check packaged apps
+        run: |
+          for app in ${{ matrix.apps }}; do
+            bash scripts/check-package.sh "${app}"
+          done

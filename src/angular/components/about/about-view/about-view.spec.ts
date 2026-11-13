@@ -5,7 +5,9 @@
  * - Component creation
  * - Template data (version, versionInfo, audioExtensions, videoExtensions,
  *   dependencies, githubUrl, onixlabsUrl, currentYear)
- * - Event handlers (openExternal with and without the Electron preload bridge)
+ * - Version and licences loaded from the main process
+ * - Event handlers (openExternal and openLicense, with and without the
+ *   Electron preload bridge)
  *
  * Since AboutView reads `window.mediaPlayer?.getVersionInfo()` during class
  * field initialization, versionInfo will be null when running outside Electron.
@@ -19,6 +21,17 @@ import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {NO_ERRORS_SCHEMA} from '@angular/core';
 
 import {AboutView} from './about-view';
+import type {AboutInfo} from '../../../types/electron';
+
+const ABOUT_INFO: AboutInfo = {
+  version: '2026.11.0',
+  licenses: [
+    {id: 'onixplayer', name: 'ONIXPlayer', version: '2026.11.0', license: 'MIT'},
+    {id: 'ffmpeg', name: 'FFmpeg', version: '9.0.2', license: 'GPL-2.0-or-later'},
+    {id: 'javascript', name: 'JavaScript libraries', version: null, license: 'MIT and others'},
+  ],
+  sourceUrl: 'https://github.com/onix-labs/onixlabs-media-player/releases/tag/2026.11.0',
+};
 
 // =============================================================================
 // Test Suite
@@ -55,9 +68,9 @@ describe('AboutView', (): void => {
   // ===========================================================================
 
   describe('template data', (): void => {
-    it('version should be 2026.0.1', (): void => {
-      const value: string = component.version;
-      expect(value).toBe('2026.0.1');
+    it('version should be empty when window.mediaPlayer is not defined', (): void => {
+      expect(component.version()).toBe('');
+      expect(component.licenses()).toEqual([]);
     });
 
     it('versionInfo should be null when window.mediaPlayer is not defined', (): void => {
@@ -120,6 +133,60 @@ describe('AboutView', (): void => {
       const expectedYear: number = new Date().getFullYear();
       const year: number = component.currentYear;
       expect(year).toBe(expectedYear);
+    });
+  });
+
+  // ===========================================================================
+  // Version and Licences
+  // ===========================================================================
+
+  describe('version and licences', (): void => {
+    let openLicense: ReturnType<typeof vi.fn>;
+    let openExternal: ReturnType<typeof vi.fn>;
+
+    beforeEach(async (): Promise<void> => {
+      openLicense = vi.fn().mockResolvedValue(true);
+      openExternal = vi.fn().mockResolvedValue(undefined);
+      (window as unknown as Record<string, unknown>)['mediaPlayer'] = {
+        getVersionInfo: (): null => null,
+        getAboutInfo: vi.fn().mockResolvedValue(ABOUT_INFO),
+        openLicense,
+        openExternal,
+      };
+
+      fixture = TestBed.createComponent(AboutView);
+      component = fixture.componentInstance;
+      await fixture.whenStable();
+      fixture.detectChanges();
+    });
+
+    afterEach((): void => {
+      delete (window as unknown as Record<string, unknown>)['mediaPlayer'];
+    });
+
+    it('shows the version the main process reports', (): void => {
+      const cell: HTMLElement | null = fixture.nativeElement.querySelector('[data-testid="app-version"]');
+      expect(cell?.textContent?.trim()).toBe('2026.11.0');
+    });
+
+    it('lists each licence with its version and licence', (): void => {
+      const items: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('[data-testid="licenses"] button'));
+      expect(items).toHaveLength(3);
+      expect(items[1]?.textContent).toContain('FFmpeg');
+      expect(items[1]?.textContent).toContain('9.0.2');
+      expect(items[1]?.textContent).toContain('GPL-2.0-or-later');
+    });
+
+    it('opens a licence by id when clicked', (): void => {
+      const items: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('[data-testid="licenses"] button'));
+      items[1]?.click();
+      expect(openLicense).toHaveBeenCalledWith('ffmpeg');
+    });
+
+    it('links to the release that carries the bundled programs\' source', (): void => {
+      const link: HTMLElement | null = fixture.nativeElement.querySelector('.source-link');
+      link?.click();
+      expect(openExternal).toHaveBeenCalledWith(ABOUT_INFO.sourceUrl);
     });
   });
 

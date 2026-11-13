@@ -33,6 +33,29 @@
  *   multiSelections: true
  * };
  */
+/**
+ * One licensed component shipped with the app (mirrors electron/license-catalog).
+ */
+export interface LicenseNotice {
+  /** Identifier to pass to openLicense() */
+  readonly id: string;
+  readonly name: string;
+  /** Null where one version does not apply */
+  readonly version: string | null;
+  /** SPDX licence expression, or a short description */
+  readonly license: string;
+}
+
+/**
+ * What the About window shows about this build (mirrors electron/license-catalog).
+ */
+export interface AboutInfo {
+  readonly version: string;
+  readonly licenses: readonly LicenseNotice[];
+  /** The GitHub release for this version, which carries the bundled programs' source */
+  readonly sourceUrl: string;
+}
+
 export interface OpenDialogOptions {
   /**
    * File type filters displayed in the dialog.
@@ -700,6 +723,19 @@ export interface MediaPlayerAPI {
    * @returns Promise resolving to the absolute path of the log file
    */
   getLogFilePath: () => Promise<string>;
+
+  /**
+   * Gets ONIXPlayer's version and the licences of everything it ships.
+   * @returns Promise resolving to the About window's information
+   */
+  getAboutInfo: () => Promise<AboutInfo>;
+
+  /**
+   * Opens a licence's text in the OS's default viewer.
+   * @param id - A licence id from getAboutInfo()
+   * @returns Promise resolving to whether it was opened
+   */
+  openLicense: (id: string) => Promise<boolean>;
 
   /**
    * Registers a callback for when a file is opened from the OS.

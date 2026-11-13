@@ -10,7 +10,7 @@
       <table class="version-table">
         <tr>
           <td>ONIXPlayer</td>
-          <td>{{ version }}</td>
+          <td data-testid="app-version">{{ version() }}</td>
         </tr>
         @if (versionInfo) {
           <tr>
@@ -71,6 +71,28 @@
       </div>
     </div>
 
+    <!-- Licenses -->
+    @if (licenses().length > 0) {
+      <div class="about-section">
+        <h2>Licenses</h2>
+        <div class="dependencies-list" data-testid="licenses">
+          @for (notice of licenses(); track notice.id) {
+            <button type="button" class="dependency-item" (click)="openLicense(notice.id)">
+              <span class="dep-name">{{ notice.name }}@if (notice.version) { <span class="dep-version">{{ notice.version }}</span>}</span>
+              <span class="dep-description">{{ notice.license }}</span>
+              <i class="fa-solid fa-file-lines"></i>
+            </button>
+          }
+        </div>
+        @if (sourceUrl(); as url) {
+          <p class="source-notice">
+            The source code of the bundled FFmpeg and FluidSynth, and of the libraries built into them, is published with
+            <button type="button" class="source-link" (click)="openExternal(url)">this release on GitHub</button>.
+          </p>
+        }
+      </div>
+    }
+
     <!-- Links -->
     <div class="about-section">
       <h2>Links</h2>
@@ -90,7 +112,7 @@
 
     <!-- Copyright -->
     <div class="about-footer">
-      <p>&copy; {{ currentYear }} ONIXLabs — ALL RIGHTS RESERVED</p>
+      <p>&copy; {{ currentYear }} ONIXLabs</p>
     </div>
   </div>
 </div>

@@ -18,6 +18,7 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils, shell } from 'electron';
+import type { AboutInfo } from './license-catalog.js';
 
 /**
  * Options for the native file open dialog.
@@ -361,6 +362,21 @@ export interface MediaPlayerAPI {
   readonly getLogFilePath: () => Promise<string>;
 
   /**
+   * Gets ONIXPlayer's version and the licences of everything it ships.
+   *
+   * @returns Promise resolving to the About window's information
+   */
+  readonly getAboutInfo: () => Promise<AboutInfo>;
+
+  /**
+   * Opens a licence's text in the OS's default viewer.
+   *
+   * @param id - A licence id from getAboutInfo()
+   * @returns Promise resolving to whether it was opened
+   */
+  readonly openLicense: (id: string) => Promise<boolean>;
+
+  /**
    * Registers a callback for when a file is opened from the OS.
    * Called when a user double-clicks a media file in the file manager,
    * or when a file is passed via command line arguments.
@@ -538,6 +554,8 @@ const api: MediaPlayerAPI = {
     return (): void => { ipcRenderer.removeListener('app:exitConfigurationMode', listener); };
   },
   getLogFilePath: (): Promise<string> => ipcRenderer.invoke('app:getLogFilePath'),
+  getAboutInfo: (): Promise<AboutInfo> => ipcRenderer.invoke('app:getAboutInfo'),
+  openLicense: (id: string): Promise<boolean> => ipcRenderer.invoke('app:openLicense', id),
   onOSOpenFile: (callback: (filePath: string) => void): () => void => {
     const listener: (_event: Electron.IpcRendererEvent, filePath: string) => void = (_event: Electron.IpcRendererEvent, filePath: string): void => callback(filePath);
     ipcRenderer.on('os:openFile', listener);

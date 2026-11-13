@@ -42,6 +42,21 @@ Settings let you pick any `.sf2` file, and MIDI files can be opened as soon as o
 installed. Until then they are left out of the Open dialog and are not added to the
 playlist.
 
+### Licenses in About
+
+The About window has a **Licenses** section listing everything ONIXPlayer ships:
+ONIXPlayer itself, FFmpeg, FluidSynth and each library built into them, Electron,
+Chromium and the JavaScript libraries. Clicking one opens its license text, and a link
+leads to this release on GitHub, where the source code of the bundled programs is
+published.
+
+---
+
+## Fixes
+
+- The About window showed the version as 2026.0.1 whatever version was installed. It
+  now reports the installed version.
+
 ---
 
 ## Upgrading
@@ -70,10 +85,12 @@ playlist.
 - `npm run binaries` builds the bundled binaries into `vendor/bin/<os>-<arch>`.
   macOS builds natively, Linux in Alpine (musl, fully static) and Windows in MSYS2.
   Packaging fails if the binaries for the target are missing.
-- The new **Bundled Binaries** workflow builds and checks all four targets, and is
-  part of Release Readiness in place of the package-manager integration tests.
+- The new **Bundled Binaries** workflow builds and checks all four targets, then
+  packages the app for each platform without publishing and checks the packages. It
+  is part of Release Readiness in place of the package-manager integration tests.
 - Each release attaches the source tarballs the bundled binaries were built from, as
-  the GPL and LGPL require. Licences are in `resources/bin/licenses` inside the app.
+  the GPL and LGPL require. The licence texts ship outside `app.asar`, in
+  `resources/licenses` and `resources/bin/licenses`, and packaging fails without them.
   The Linux FFmpeg is GPL-3.0-or-later because of OpenSSL. The others are
   GPL-2.0-or-later, and FluidSynth is LGPL-2.1-or-later.
 - The repository no longer uses Git LFS.
@@ -85,13 +102,16 @@ playlist.
 | Platform               | File                                      |
 | ---------------------- | ----------------------------------------- |
 | macOS (Apple Silicon)  | ONIXPlayer-2026.11.0-arm64.dmg            |
-| macOS (Intel)          | ONIXPlayer-2026.11.0-x64.dmg              |
+| macOS (Intel)          | ONIXPlayer-2026.11.0.dmg                  |
 | macOS (Apple Silicon)  | ONIXPlayer-2026.11.0-arm64-mac.zip        |
-| macOS (Intel)          | ONIXPlayer-2026.11.0-x64-mac.zip          |
-| Windows                | ONIXPlayer Setup 2026.11.0.exe            |
-| Windows (portable)     | ONIXPlayer 2026.11.0.exe                  |
+| macOS (Intel)          | ONIXPlayer-2026.11.0-mac.zip              |
+| Windows                | ONIXPlayer-Setup-2026.11.0.exe            |
+| Windows (portable)     | ONIXPlayer-2026.11.0.exe                  |
 | Linux (AppImage)       | ONIXPlayer-2026.11.0.AppImage             |
 | Linux (deb)            | onixlabs-media-player_2026.11.0_amd64.deb |
+
+The source code of the bundled FFmpeg, FluidSynth and their libraries is attached to
+this release as source tarballs.
 
 ---
 

@@ -21,6 +21,12 @@ const OS_NAMES = {darwin: 'mac', win32: 'win', linux: 'linux'};
 
 const BINARIES = ['ffmpeg', 'ffprobe', 'fluidsynth'];
 
+/** The About window lists these; components.json names the bundled programs' licences. */
+const LICENSES = [
+  'LICENSE',
+  'dist/onixlabs-media-player/3rdpartylicenses.txt',
+];
+
 exports.default = async function verifyBundledResources(context) {
   const os = OS_NAMES[context.electronPlatformName];
   const arch = Arch[context.arch];
@@ -28,11 +34,20 @@ exports.default = async function verifyBundledResources(context) {
   const binDir = path.join(ROOT, 'vendor', 'bin', target);
   const exe = context.electronPlatformName === 'win32' ? '.exe' : '';
 
-  const missing = BINARIES.filter((name) => !existsSync(path.join(binDir, name + exe)));
+  const missing = [
+    ...BINARIES.map((name) => name + exe),
+    'licenses/components.json',
+  ].filter((name) => !existsSync(path.join(binDir, name)));
   if (missing.length > 0) {
     throw new Error(
       `Cannot package ${target}: vendor/bin/${target} is missing ${missing.join(', ')}. ` +
       `Run "npm run binaries -- ${arch}" on a ${arch} machine first.`
     );
+  }
+
+  // 3rdpartylicenses.txt comes only from a production Angular build.
+  const missingLicenses = LICENSES.filter((file) => !existsSync(path.join(ROOT, file)));
+  if (missingLicenses.length > 0) {
+    throw new Error(`Cannot package ${target}: missing ${missingLicenses.join(', ')}. Run "npm run build" first.`);
   }
 };

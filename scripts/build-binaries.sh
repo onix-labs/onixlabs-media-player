@@ -416,23 +416,44 @@ for bin in "${BINARIES[@]}"; do
 done
 
 SRC="${WORK}/src"
-cp "${SRC}/ffmpeg/COPYING.GPLv2" "${OUT}/licenses/FFmpeg-COPYING.GPLv2"
-cp "${SRC}/x264/COPYING" "${OUT}/licenses/x264-COPYING"
-cp "${SRC}/lame/COPYING" "${OUT}/licenses/LAME-COPYING"
-cp "${SRC}/libopenmpt/LICENSE" "${OUT}/licenses/libopenmpt-LICENSE"
-cp "${SRC}/libsndfile/COPYING" "${OUT}/licenses/libsndfile-COPYING"
-cp "${SRC}/fluidsynth/LICENSE" "${OUT}/licenses/FluidSynth-LICENSE"
+# .txt, so the About window can hand each one to the OS to open.
+cp "${SRC}/ffmpeg/COPYING.GPLv2" "${OUT}/licenses/FFmpeg-COPYING.GPLv2.txt"
+cp "${SRC}/x264/COPYING" "${OUT}/licenses/x264-COPYING.txt"
+cp "${SRC}/lame/COPYING" "${OUT}/licenses/LAME-COPYING.txt"
+cp "${SRC}/libopenmpt/LICENSE" "${OUT}/licenses/libopenmpt-LICENSE.txt"
+cp "${SRC}/libsndfile/COPYING" "${OUT}/licenses/libsndfile-COPYING.txt"
+cp "${SRC}/fluidsynth/LICENSE" "${OUT}/licenses/FluidSynth-LICENSE.txt"
 
 FFMPEG_CONTAINS="FFmpeg ${FFMPEG_VERSION}, x264 ${X264_REVISION:0:8}, LAME ${LAME_VERSION}, libopenmpt ${LIBOPENMPT_VERSION}"
 FFMPEG_LICENCE="GPL-2.0-or-later as a whole (FFmpeg built with --enable-gpl)"
 FFMPEG_PARTS="LAME is LGPL-2.0-or-later, libopenmpt BSD-3-Clause"
+FFMPEG_SPDX="GPL-2.0-or-later"
+FFMPEG_LICENCE_FILE="FFmpeg-COPYING.GPLv2.txt"
+OPENSSL_COMPONENT=""
 if [ "${OS}" = "linux" ]; then
-  cp "${SRC}/ffmpeg/COPYING.GPLv3" "${OUT}/licenses/FFmpeg-COPYING.GPLv3"
+  cp "${SRC}/ffmpeg/COPYING.GPLv3" "${OUT}/licenses/FFmpeg-COPYING.GPLv3.txt"
   cp "${SRC}/openssl/LICENSE.txt" "${OUT}/licenses/OpenSSL-LICENSE.txt"
   FFMPEG_CONTAINS="${FFMPEG_CONTAINS}, OpenSSL ${OPENSSL_VERSION}"
   FFMPEG_LICENCE="GPL-3.0-or-later as a whole (FFmpeg built with --enable-gpl --enable-version3, which OpenSSL's Apache-2.0 licence requires)"
   FFMPEG_PARTS="${FFMPEG_PARTS}, OpenSSL Apache-2.0"
+  FFMPEG_SPDX="GPL-3.0-or-later"
+  FFMPEG_LICENCE_FILE="FFmpeg-COPYING.GPLv3.txt"
+  OPENSSL_COMPONENT=',
+  {"id": "openssl", "name": "OpenSSL", "version": "'"${OPENSSL_VERSION}"'", "license": "Apache-2.0", "file": "OpenSSL-LICENSE.txt"}'
 fi
+
+# Read by the app's About window: every component inside the bundled programs,
+# with the licence file that covers it.
+cat > "${OUT}/licenses/components.json" <<EOF
+[
+  {"id": "ffmpeg", "name": "FFmpeg", "version": "${FFMPEG_VERSION}", "license": "${FFMPEG_SPDX}", "file": "${FFMPEG_LICENCE_FILE}"},
+  {"id": "x264", "name": "x264", "version": "${X264_REVISION:0:8}", "license": "GPL-2.0-or-later", "file": "x264-COPYING.txt"},
+  {"id": "lame", "name": "LAME", "version": "${LAME_VERSION}", "license": "LGPL-2.0-or-later", "file": "LAME-COPYING.txt"},
+  {"id": "libopenmpt", "name": "libopenmpt", "version": "${LIBOPENMPT_VERSION}", "license": "BSD-3-Clause", "file": "libopenmpt-LICENSE.txt"},
+  {"id": "fluidsynth", "name": "FluidSynth", "version": "${FLUIDSYNTH_VERSION}", "license": "LGPL-2.1-or-later", "file": "FluidSynth-LICENSE.txt"},
+  {"id": "libsndfile", "name": "libsndfile", "version": "${LIBSNDFILE_VERSION}", "license": "LGPL-2.1-or-later", "file": "libsndfile-COPYING.txt"}${OPENSSL_COMPONENT}
+]
+EOF
 
 # Read by the app to show the versions it ships.
 cat > "${OUT}/versions.json" <<EOF
