@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'fs';
+import { readFile, stat } from 'fs/promises';
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
 
 vi.mock('./logger.js', () => ({
@@ -10,13 +10,13 @@ vi.mock('./logger.js', () => ({
   },
 }));
 
-vi.mock('fs', () => ({
-  readFileSync: vi.fn(),
-  statSync: vi.fn(),
+vi.mock('fs/promises', () => ({
+  readFile: vi.fn(),
+  stat: vi.fn(),
 }));
 
-const mockedReadFileSync = vi.mocked(readFileSync);
-const mockedStatSync = vi.mocked(statSync);
+const mockedReadFile = vi.mocked(readFile);
+const mockedStat = vi.mocked(stat);
 
 /**
  * Creates a minimal valid MIDI file buffer in memory.
@@ -154,7 +154,7 @@ describe('MIDI_FORMATS', () => {
 describe('parseMidiDuration', () => {
   beforeEach(() => {
     // Default: file size under the 10 MB limit
-    mockedStatSync.mockReturnValue({ size: 1024 } as ReturnType<typeof statSync>);
+    mockedStat.mockResolvedValue({ size: 1024 } as Awaited<ReturnType<typeof stat>>);
   });
 
   afterEach(() => {
@@ -162,22 +162,22 @@ describe('parseMidiDuration', () => {
   });
 
   describe('valid MIDI files', () => {
-    it('should parse a minimal MIDI file with default tempo (120 BPM)', () => {
+    it('should parse a minimal MIDI file with default tempo (120 BPM)', async () => {
       // 960 ticks at 480 ticks/beat and 500000 us/beat (120 BPM) = 2 beats = 1 second
       const buffer = createMidiBuffer({
         ticksPerBeat: 480,
         tempo: 500000, // 120 BPM
         maxTick: 960,  // 2 beats
       });
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/file.mid');
+      const duration = await parseMidiDuration('/fake/file.mid');
 
       // 960 ticks / 480 tpb = 2 beats. At 500000 us/beat = 1.0 seconds
       expect(duration).toBeCloseTo(1.0, 5);
     });
 
-    it('should parse a MIDI file with 60 BPM tempo', () => {
+    it('should parse a MIDI file with 60 BPM tempo', async () => {
       // 60 BPM = 1000000 microseconds per beat
       // 480 ticks at 480 ticks/beat = 1 beat = 1 second
       const buffer = createMidiBuffer({
@@ -185,14 +185,14 @@ describe('parseMidiDuration', () => {
         tempo: 1000000, // 60 BPM
         maxTick: 480,   // 1 beat
       });
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/file.mid');
+      const duration = await parseMidiDuration('/fake/file.mid');
 
       expect(duration).toBeCloseTo(1.0, 5);
     });
 
-    it('should parse a MIDI file with 240 BPM tempo', () => {
+    it('should parse a MIDI file with 240 BPM tempo', async () => {
       // 240 BPM = 250000 microseconds per beat
       // 1920 ticks at 480 ticks/beat = 4 beats at 0.25 sec/beat = 1 second
       const buffer = createMidiBuffer({
@@ -200,96 +200,92 @@ describe('parseMidiDuration', () => {
         tempo: 250000, // 240 BPM
         maxTick: 1920, // 4 beats
       });
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/file.mid');
+      const duration = await parseMidiDuration('/fake/file.mid');
 
       expect(duration).toBeCloseTo(1.0, 5);
     });
 
-    it('should handle different ticks-per-beat values', () => {
+    it('should handle different ticks-per-beat values', async () => {
       // 96 ticks/beat, 500000 us/beat (120 BPM), 192 ticks = 2 beats = 1 second
       const buffer = createMidiBuffer({
         ticksPerBeat: 96,
         tempo: 500000,
         maxTick: 192,
       });
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/file.mid');
+      const duration = await parseMidiDuration('/fake/file.mid');
 
       expect(duration).toBeCloseTo(1.0, 5);
     });
 
-    it('should correctly calculate longer durations', () => {
+    it('should correctly calculate longer durations', async () => {
       // 480 ticks/beat, 500000 us/beat (120 BPM), 4800 ticks = 10 beats = 5 seconds
       const buffer = createMidiBuffer({
         ticksPerBeat: 480,
         tempo: 500000,
         maxTick: 4800,
       });
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/file.mid');
+      const duration = await parseMidiDuration('/fake/file.mid');
 
       expect(duration).toBeCloseTo(5.0, 5);
     });
 
-    it('should return duration for a file with zero-length notes (zero maxTick)', () => {
+    it('should return duration for a file with zero-length notes (zero maxTick)', async () => {
       // With maxTick=0, the only events are at tick 0, so duration should be 0
       const buffer = createMidiBuffer({
         ticksPerBeat: 480,
         tempo: 500000,
         maxTick: 0,
       });
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/file.mid');
+      const duration = await parseMidiDuration('/fake/file.mid');
 
       expect(duration).toBe(0);
     });
   });
 
   describe('invalid and edge-case files', () => {
-    it('should return 0 for a non-MIDI file (invalid header)', () => {
+    it('should return 0 for a non-MIDI file (invalid header)', async () => {
       const buffer = Buffer.from('This is not a MIDI file at all');
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/file.mid');
+      const duration = await parseMidiDuration('/fake/file.mid');
 
       expect(duration).toBe(0);
     });
 
-    it('should return 0 for an empty buffer', () => {
+    it('should return 0 for an empty buffer', async () => {
       const buffer = Buffer.alloc(0);
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/file.mid');
-
-      expect(duration).toBe(0);
-    });
-
-    it('should return 0 when readFileSync throws (non-existent file)', () => {
-      mockedReadFileSync.mockImplementation(() => {
-        throw new Error('ENOENT: no such file or directory');
-      });
-
-      const duration = parseMidiDuration('/fake/nonexistent.mid');
+      const duration = await parseMidiDuration('/fake/file.mid');
 
       expect(duration).toBe(0);
     });
 
-    it('should return 0 when readFileSync throws a generic error', () => {
-      mockedReadFileSync.mockImplementation(() => {
-        throw new Error('Permission denied');
-      });
+    it('should return 0 when the read fails (non-existent file)', async () => {
+      mockedReadFile.mockRejectedValue(new Error('ENOENT: no such file or directory'));
 
-      const duration = parseMidiDuration('/fake/no-permission.mid');
+      const duration = await parseMidiDuration('/fake/nonexistent.mid');
 
       expect(duration).toBe(0);
     });
 
-    it('should return 0 for SMPTE timing division (bit 15 set)', () => {
+    it('should return 0 when the read fails with a generic error', async () => {
+      mockedReadFile.mockRejectedValue(new Error('Permission denied'));
+
+      const duration = await parseMidiDuration('/fake/no-permission.mid');
+
+      expect(duration).toBe(0);
+    });
+
+    it('should return 0 for SMPTE timing division (bit 15 set)', async () => {
       // SMPTE division has bit 15 set (e.g., 0x8000 | value)
       // The parser should return 0 for SMPTE timing
       const buffer = createMidiBuffer({
@@ -301,14 +297,14 @@ describe('parseMidiDuration', () => {
       // Overwrite the division field (bytes 12-13) to set SMPTE bit
       buffer.writeUInt16BE(0xe728, 12); // SMPTE: -25 frames/sec, 40 ticks/frame
 
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/smpte.mid');
+      const duration = await parseMidiDuration('/fake/smpte.mid');
 
       expect(duration).toBe(0);
     });
 
-    it('should return 0 for a buffer that is only the MThd header with no tracks', () => {
+    it('should return 0 for a buffer that is only the MThd header with no tracks', async () => {
       // Just the MThd header (14 bytes) with no MTrk chunks
       const buffer = Buffer.alloc(14);
       buffer.write('MThd', 0, 'ascii');
@@ -317,54 +313,54 @@ describe('parseMidiDuration', () => {
       buffer.writeUInt16BE(1, 10);   // 1 track (but no track data)
       buffer.writeUInt16BE(480, 12); // ticks per beat
 
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/header-only.mid');
+      const duration = await parseMidiDuration('/fake/header-only.mid');
 
       // No tracks to parse, so maxTick stays 0 => duration = 0
       expect(duration).toBe(0);
     });
 
-    it('should handle a truncated MIDI header gracefully', () => {
+    it('should handle a truncated MIDI header gracefully', async () => {
       // Only 6 bytes - enough for "MThd" + 2 more bytes, but not a complete header
       const buffer = Buffer.alloc(6);
       buffer.write('MThd', 0, 'ascii');
       buffer.writeUInt16BE(6, 4);
 
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
       // This will attempt to read beyond buffer, but the while loop guard
       // (offset < buffer.length - 8) should prevent crashes
-      const duration = parseMidiDuration('/fake/truncated.mid');
+      const duration = await parseMidiDuration('/fake/truncated.mid');
 
       expect(duration).toBe(0);
     });
   });
 
   describe('file size limit', () => {
-    it('should return 0 for files exceeding the 10 MB limit', () => {
-      mockedStatSync.mockReturnValue({ size: 10 * 1024 * 1024 + 1 } as ReturnType<typeof statSync>);
+    it('should return 0 for files exceeding the 10 MB limit', async () => {
+      mockedStat.mockResolvedValue({ size: 10 * 1024 * 1024 + 1 } as Awaited<ReturnType<typeof stat>>);
 
-      const duration = parseMidiDuration('/fake/huge.mid');
+      const duration = await parseMidiDuration('/fake/huge.mid');
 
       expect(duration).toBe(0);
-      expect(mockedReadFileSync).not.toHaveBeenCalled();
+      expect(mockedReadFile).not.toHaveBeenCalled();
     });
 
-    it('should parse files at exactly the 10 MB limit', () => {
-      mockedStatSync.mockReturnValue({ size: 10 * 1024 * 1024 } as ReturnType<typeof statSync>);
+    it('should parse files at exactly the 10 MB limit', async () => {
+      mockedStat.mockResolvedValue({ size: 10 * 1024 * 1024 } as Awaited<ReturnType<typeof stat>>);
       const buffer = createMidiBuffer({ ticksPerBeat: 480, tempo: 500000, maxTick: 960 });
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/at-limit.mid');
+      const duration = await parseMidiDuration('/fake/at-limit.mid');
 
       expect(duration).toBeCloseTo(1.0, 5);
-      expect(mockedReadFileSync).toHaveBeenCalled();
+      expect(mockedReadFile).toHaveBeenCalled();
     });
   });
 
   describe('variable-length quantity encoding', () => {
-    it('should handle large delta times encoded with multiple VLQ bytes', () => {
+    it('should handle large delta times encoded with multiple VLQ bytes', async () => {
       // maxTick = 16383 (0x3FFF) requires 2 VLQ bytes: [0xFF, 0x7F]
       // 16383 ticks / 480 tpb = 34.13125 beats at 500000 us/beat = 17.065625 seconds
       const buffer = createMidiBuffer({
@@ -372,24 +368,24 @@ describe('parseMidiDuration', () => {
         tempo: 500000,
         maxTick: 16383,
       });
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/large-delta.mid');
+      const duration = await parseMidiDuration('/fake/large-delta.mid');
 
       const expected = (16383 / 480) * (500000 / 1000000);
       expect(duration).toBeCloseTo(expected, 4);
     });
 
-    it('should handle very large delta times encoded with 3 VLQ bytes', () => {
+    it('should handle very large delta times encoded with 3 VLQ bytes', async () => {
       // maxTick = 100000 requires 3 VLQ bytes
       const buffer = createMidiBuffer({
         ticksPerBeat: 480,
         tempo: 500000,
         maxTick: 100000,
       });
-      mockedReadFileSync.mockReturnValue(buffer);
+      mockedReadFile.mockResolvedValue(buffer);
 
-      const duration = parseMidiDuration('/fake/very-large-delta.mid');
+      const duration = await parseMidiDuration('/fake/very-large-delta.mid');
 
       const expected = (100000 / 480) * (500000 / 1000000);
       expect(duration).toBeCloseTo(expected, 4);

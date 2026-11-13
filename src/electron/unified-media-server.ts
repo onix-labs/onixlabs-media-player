@@ -21,8 +21,8 @@
 
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
-import { createReadStream, statSync, existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, renameSync, Stats } from 'fs';
-import { rm } from 'fs/promises';
+import { createReadStream, statSync, existsSync, mkdirSync, unlinkSync, renameSync, Stats } from 'fs';
+import { rm, stat, readFile, writeFile } from 'fs/promises';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { SettingsManager } from './settings-manager.js';
@@ -876,7 +876,7 @@ export class UnifiedMediaServer {
       if (pathname === '/events' && method === 'GET') {
         this.handleSSE(req, res);
       } else if (pathname === '/media/stream' && method === 'GET') {
-        this.handleMediaStream(req, res, url);
+        await this.handleMediaStream(req, res, url);
       } else if (pathname === '/media/info' && method === 'GET') {
         await this.handleMediaInfo(res, url);
       } else if (pathname === '/media/url/info' && method === 'POST') {
@@ -890,11 +890,11 @@ export class UnifiedMediaServer {
       } else if (pathname.startsWith('/media/url/cancel/') && method === 'POST') {
         this.handleUrlCancel(res, pathname);
       } else if (pathname === '/media/artwork' && method === 'GET') {
-        this.handleArtwork(res, url);
+        await this.handleArtwork(res, url);
       } else if (pathname === '/media/subtitles' && method === 'GET') {
-        this.handleSubtitles(req, res, url);
+        await this.handleSubtitles(req, res, url);
       } else if (pathname === '/media/subtitles/external' && method === 'GET') {
-        this.handleExternalSubtitles(req, res, url);
+        await this.handleExternalSubtitles(req, res, url);
       } else if (pathname === '/player/play' && method === 'POST') {
         await this.handlePlay(res);
       } else if (pathname === '/player/pause' && method === 'POST') {
@@ -971,7 +971,7 @@ export class UnifiedMediaServer {
         this.handleDependenciesRefresh(res);
       } else if (this.staticPath) {
         // Serve static files for Angular app in production
-        this.serveStaticFile(req, res, pathname);
+        await this.serveStaticFile(req, res, pathname);
       } else {
         res.writeHead(404);
         res.end(JSON.stringify({ error: 'Not found' }));
@@ -1105,7 +1105,26 @@ export class UnifiedMediaServer {
     return { valid: true, normalizedPath: filePath };
   }
 
-  private validateFilePath(filePath: string): { valid: boolean; error?: string } {
+  /**
+   * Stats a path without blocking the main process.
+   *
+   * Everything on the request path goes through this rather than
+   * existsSync/statSync: media commonly lives on a network mount, where a
+   * synchronous stat stalls the whole main process (menus, IPC, every other
+   * request) for as long as the share takes to answer.
+   *
+   * @param filePath - Path to stat
+   * @returns The file's stats, or undefined if it cannot be read
+   */
+  private static async statIfReadable(filePath: string): Promise<Stats | undefined> {
+    try {
+      return await stat(filePath);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async validateFilePath(filePath: string): Promise<{ valid: boolean; error?: string }> {
     // Remote http(s) sources (resolved via yt-dlp) are valid as-is — they are
     // consumed by ffprobe/ffmpeg, not the local filesystem. Skip path checks.
     if (UnifiedMediaServer.isRemoteUrl(filePath)) {
@@ -1131,18 +1150,14 @@ export class UnifiedMediaServer {
     }
 
     // Check file exists
-    if (!existsSync(filePath)) {
+    const stats: Stats | undefined = await UnifiedMediaServer.statIfReadable(filePath);
+    if (!stats) {
       return { valid: false, error: 'File not found' };
     }
 
     // Verify it's a regular file (not directory, symlink to sensitive location, etc.)
-    try {
-      const stats: Stats = statSync(filePath);
-      if (!stats.isFile()) {
-        return { valid: false, error: 'Path is not a regular file' };
-      }
-    } catch {
-      return { valid: false, error: 'Cannot access file' };
+    if (!stats.isFile()) {
+      return { valid: false, error: 'Path is not a regular file' };
     }
 
     return { valid: true };
@@ -1163,7 +1178,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    * @param url - Parsed URL with path parameter
    */
-  private handleMediaStream(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): void {
+  private async handleMediaStream(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): Promise<void> {
     const filePath: string | null = url.searchParams.get('path');
     if (!filePath) {
       res.writeHead(400);
@@ -1172,7 +1187,7 @@ export class UnifiedMediaServer {
     }
 
     // Validate file path for security
-    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    const validation: { valid: boolean; error?: string } = await this.validateFilePath(filePath);
     if (!validation.valid) {
       res.writeHead(validation.error === 'File not found' ? 404 : 400);
       res.end(JSON.stringify({ error: validation.error }));
@@ -1205,12 +1220,12 @@ export class UnifiedMediaServer {
     const isTracker: boolean = TRACKER_FORMATS.has(ext);
 
     if (isMidi) {
-      this.serveMidiFile(req, res, filePath);
+      await this.serveMidiFile(req, res, filePath);
       return;
     }
 
     if (isTracker) {
-      this.serveTrackerFile(req, res, filePath);
+      await this.serveTrackerFile(req, res, filePath);
       return;
     }
 
@@ -1229,7 +1244,7 @@ export class UnifiedMediaServer {
     }
 
     if (isNativeVideo || isNativeAudio) {
-      this.serveDirectFile(req, res, filePath, ext);
+      await this.serveDirectFile(req, res, filePath, ext);
     } else {
       this.serveTranscodedFile(req, res, filePath, url).catch(this.failStream(res, 'Transcoded stream'));
     }
@@ -1249,16 +1264,15 @@ export class UnifiedMediaServer {
    * @param ext - File extension (for MIME type lookup)
    * @param options - Optional settings (noCache: disable browser caching)
    */
-  private serveDirectFile(
+  private async serveDirectFile(
     req: Readonly<IncomingMessage>,
     res: Readonly<ServerResponse>,
     filePath: string,
     ext: string,
     options?: {noCache?: boolean}
-  ): void {
+  ): Promise<void> {
     try {
-      const stat: ReturnType<typeof statSync> = statSync(filePath);
-      const fileSize: number = stat.size;
+      const fileSize: number = (await stat(filePath)).size;
       const mimeType: string = MIME_TYPES[ext] || 'application/octet-stream';
       const range: string | undefined = req.headers.range;
 
@@ -1297,7 +1311,7 @@ export class UnifiedMediaServer {
   /**
    * Serves static files for the Angular application in production.
    */
-  private serveStaticFile(_req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, pathname: string): void {
+  private async serveStaticFile(_req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, pathname: string): Promise<void> {
     if (!this.staticPath) {
       res.writeHead(404);
       res.end(JSON.stringify({ error: 'Not found' }));
@@ -1318,23 +1332,20 @@ export class UnifiedMediaServer {
       return;
     }
 
-    if (!existsSync(filePath)) {
+    let fileStats: Stats | undefined = await UnifiedMediaServer.statIfReadable(filePath);
+    if (!fileStats) {
       // SPA fallback: serve index.html for unknown routes
       filePath = path.join(this.staticPath, 'index.html');
-      if (!existsSync(filePath)) {
-        res.writeHead(404);
-        res.end(JSON.stringify({ error: 'Not found' }));
-        return;
-      }
+      fileStats = await UnifiedMediaServer.statIfReadable(filePath);
+    }
+
+    if (!fileStats?.isFile()) {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: 'Not found' }));
+      return;
     }
 
     try {
-      const stat: Stats = statSync(filePath);
-      if (!stat.isFile()) {
-        res.writeHead(404);
-        res.end(JSON.stringify({ error: 'Not found' }));
-        return;
-      }
 
       const ext: string = path.extname(filePath).toLowerCase();
       const mimeTypes: Record<string, string> = {
@@ -1353,7 +1364,7 @@ export class UnifiedMediaServer {
 
       res.writeHead(200, {
         'Content-Type': mimeType,
-        'Content-Length': stat.size,
+        'Content-Length': fileStats.size,
       });
       createReadStream(filePath).pipe(res);
     } catch (err) {
@@ -2307,10 +2318,10 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    * @param filePath - Absolute path to the MIDI file
    */
-  private serveMidiFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string): void {
+  private async serveMidiFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string): Promise<void> {
     // Serve pre-rendered file if available (supports range requests for seeking)
     const cached: {readonly tempFile: string; readonly duration: number} | undefined = this.midiRenderCache.get(filePath);
-    if (cached && existsSync(cached.tempFile)) {
+    if (cached && await UnifiedMediaServer.statIfReadable(cached.tempFile)) {
       // Inline duration correction (safety net for edge case: render finished
       // after probeMedia returned but before playback started)
       if (cached.duration > 0 && Math.abs(cached.duration - this.playback.duration) > 1) {
@@ -2318,20 +2329,20 @@ export class UnifiedMediaServer {
         this.broadcastTime();
       }
       midiLogger.info(`Serving pre-rendered MIDI: ${path.basename(cached.tempFile)}`);
-      this.serveDirectFile(req, res, cached.tempFile, '.mp3', {noCache: true});
+      await this.serveDirectFile(req, res, cached.tempFile, '.mp3', {noCache: true});
       return;
     }
 
     // Render to temp file on demand, then serve with range request support.
     // The HTTP response is held open until the render completes.
     midiLogger.info(`Rendering MIDI on demand: ${path.basename(filePath)}`);
-    this.renderMidiToFile(filePath).then((tempFile: string): void => {
+    this.renderMidiToFile(filePath).then((tempFile: string): Promise<void> => {
       const entry: {readonly tempFile: string; readonly duration: number} | undefined = this.midiRenderCache.get(filePath);
       if (entry && entry.duration > 0 && Math.abs(entry.duration - this.playback.duration) > 1) {
         this.playback.duration = entry.duration;
         this.broadcastTime();
       }
-      this.serveDirectFile(req, res, tempFile, '.mp3', {noCache: true});
+      return this.serveDirectFile(req, res, tempFile, '.mp3', {noCache: true});
     }).catch((err: Error): void => {
       midiLogger.error(`MIDI render failed: ${err.message}`);
       if (!res.headersSent) {
@@ -2563,26 +2574,26 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    * @param filePath - Absolute path to the tracker module
    */
-  private serveTrackerFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string): void {
+  private async serveTrackerFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string): Promise<void> {
     const cached: {readonly tempFile: string; readonly duration: number} | undefined = this.trackerRenderCache.get(filePath);
-    if (cached && existsSync(cached.tempFile)) {
+    if (cached && await UnifiedMediaServer.statIfReadable(cached.tempFile)) {
       if (cached.duration > 0 && Math.abs(cached.duration - this.playback.duration) > 1) {
         this.playback.duration = cached.duration;
         this.broadcastTime();
       }
       midiLogger.info(`Serving pre-rendered tracker: ${path.basename(cached.tempFile)}`);
-      this.serveDirectFile(req, res, cached.tempFile, '.mp3', {noCache: true});
+      await this.serveDirectFile(req, res, cached.tempFile, '.mp3', {noCache: true});
       return;
     }
 
     midiLogger.info(`Rendering tracker on demand: ${path.basename(filePath)}`);
-    this.renderTrackerToFile(filePath).then((tempFile: string): void => {
+    this.renderTrackerToFile(filePath).then((tempFile: string): Promise<void> => {
       const entry: {readonly tempFile: string; readonly duration: number} | undefined = this.trackerRenderCache.get(filePath);
       if (entry && entry.duration > 0 && Math.abs(entry.duration - this.playback.duration) > 1) {
         this.playback.duration = entry.duration;
         this.broadcastTime();
       }
-      this.serveDirectFile(req, res, tempFile, '.mp3', {noCache: true});
+      return this.serveDirectFile(req, res, tempFile, '.mp3', {noCache: true});
     }).catch((err: Error): void => {
       midiLogger.error(`Tracker render failed: ${err.message}`);
       if (!res.headersSent) {
@@ -2611,7 +2622,7 @@ export class UnifiedMediaServer {
     }
 
     // Validate file path for security
-    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    const validation: { valid: boolean; error?: string } = await this.validateFilePath(filePath);
     if (!validation.valid) {
       res.writeHead(validation.error === 'File not found' ? 404 : 400);
       res.end(JSON.stringify({ error: validation.error }));
@@ -2794,7 +2805,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response
    * @param url - Parsed URL with query parameters
    */
-  private handleArtwork(res: Readonly<ServerResponse>, url: Readonly<URL>): void {
+  private async handleArtwork(res: Readonly<ServerResponse>, url: Readonly<URL>): Promise<void> {
     const filePath: string | null = url.searchParams.get('path');
 
     if (!filePath) {
@@ -2810,7 +2821,7 @@ export class UnifiedMediaServer {
       return;
     }
 
-    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    const validation: { valid: boolean; error?: string } = await this.validateFilePath(filePath);
     if (!validation.valid) {
       res.writeHead(validation.error === 'File not found' ? 404 : 400);
       res.end(JSON.stringify({ error: validation.error }));
@@ -2920,7 +2931,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response
    * @param url - Parsed URL with query parameters
    */
-  private handleSubtitles(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): void {
+  private async handleSubtitles(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): Promise<void> {
     const filePath: string | null = url.searchParams.get('path');
     const trackIndex: string | null = url.searchParams.get('track');
 
@@ -2944,7 +2955,7 @@ export class UnifiedMediaServer {
     }
 
     // Validate file path for security
-    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    const validation: { valid: boolean; error?: string } = await this.validateFilePath(filePath);
     if (!validation.valid) {
       res.writeHead(validation.error === 'File not found' ? 404 : 400);
       res.end(JSON.stringify({ error: validation.error }));
@@ -3020,7 +3031,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response
    * @param url - Parsed URL with query parameters
    */
-  private handleExternalSubtitles(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): void {
+  private async handleExternalSubtitles(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): Promise<void> {
     const filePath: string | null = url.searchParams.get('path');
 
     if (!filePath) {
@@ -3030,7 +3041,7 @@ export class UnifiedMediaServer {
     }
 
     // Validate file path for security
-    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    const validation: { valid: boolean; error?: string } = await this.validateFilePath(filePath);
     if (!validation.valid) {
       res.writeHead(validation.error === 'File not found' ? 404 : 400);
       res.end(JSON.stringify({ error: validation.error }));
@@ -3117,7 +3128,7 @@ export class UnifiedMediaServer {
    * @returns Promise resolving to media information
    * @throws Error if probing fails
    */
-  private probeMedia(filePath: string): Promise<MediaInfo> {
+  private async probeMedia(filePath: string): Promise<MediaInfo> {
     // MIDI files cannot be probed by ffprobe - use cached render duration
     // if available, otherwise fall back to parseMidiDuration and start
     // a background render.
@@ -3127,25 +3138,25 @@ export class UnifiedMediaServer {
       const cached: {readonly tempFile: string; readonly duration: number} | undefined =
         this.midiRenderCache.get(filePath);
       if (cached) {
-        return Promise.resolve({
+        return {
           duration: cached.duration,
           type: 'audio' as const,
           title: path.basename(filePath, ext),
           filePath,
-        });
+        };
       }
 
       // Not cached yet — queue a background render and return the approximate
       // duration meanwhile. Queued rather than fired immediately so a bulk add
       // does not start one decode pipeline per file.
       this.enqueueRender((): Promise<void> => this.renderMidiToFile(filePath).then((): void => undefined));
-      const duration: number = parseMidiDuration(filePath);
-      return Promise.resolve({
+      const duration: number = await parseMidiDuration(filePath);
+      return {
         duration,
         type: 'audio' as const,
         title: path.basename(filePath, ext),
         filePath,
-      });
+      };
     }
 
     // Tracker modules cannot be probed by ffprobe either — their accurate
@@ -3156,21 +3167,21 @@ export class UnifiedMediaServer {
       const cached: {readonly tempFile: string; readonly duration: number} | undefined =
         this.trackerRenderCache.get(filePath);
       if (cached) {
-        return Promise.resolve({
+        return {
           duration: cached.duration,
           type: 'audio' as const,
           title: path.basename(filePath, ext),
           filePath,
-        });
+        };
       }
 
       this.enqueueRender((): Promise<void> => this.renderTrackerToFile(filePath).then((): void => undefined));
-      return Promise.resolve({
+      return {
         duration: 0,
         type: 'audio' as const,
         title: path.basename(filePath, ext),
         filePath,
-      });
+      };
     }
 
     // Reuse the cached probe when the file is unchanged. Files are probed once
@@ -3179,17 +3190,16 @@ export class UnifiedMediaServer {
     if (!UnifiedMediaServer.isRemoteUrl(filePath)) {
       const cachedInfo: MediaInfo | undefined = this.mediaInfoCache.get(filePath);
       if (cachedInfo) {
-        try {
-          if (this.mediaInfoMtimes.get(filePath) === statSync(filePath).mtimeMs) {
-            return Promise.resolve(cachedInfo);
-          }
-        } catch {
-          // Unreadable now — fall through and let ffprobe report the failure.
+        // Unreadable now means no stats — fall through and let ffprobe report
+        // the failure.
+        const stats: Stats | undefined = await UnifiedMediaServer.statIfReadable(filePath);
+        if (stats && this.mediaInfoMtimes.get(filePath) === stats.mtimeMs) {
+          return cachedInfo;
         }
       }
     }
 
-    return new Promise((resolve: (value: Readonly<MediaInfo>) => void, reject: (reason: Readonly<Error>) => void): void => {
+    const probedInfo: MediaInfo = await new Promise((resolve: (value: Readonly<MediaInfo>) => void, reject: (reason: Readonly<Error>) => void): void => {
       const ffprobeBin: string | null = this.deps.getFfprobePath();
       if (!ffprobeBin) {
         ffmpegLogger.error('ffprobe binary not found');
@@ -3315,14 +3325,8 @@ export class UnifiedMediaServer {
             subtitleTracks: subtitleTracks && subtitleTracks.length > 0 ? subtitleTracks : undefined,
           };
 
-          // Cache MediaInfo for stream handler codec lookup, stamped with the
-          // file's mtime so a re-probe happens only when the file changes.
+          // Cache MediaInfo for stream handler codec lookup.
           this.mediaInfoCache.set(filePath, mediaInfo);
-          try {
-            this.mediaInfoMtimes.set(filePath, statSync(filePath).mtimeMs);
-          } catch {
-            // Remote sources have no mtime; the entry simply never validates.
-          }
 
           resolve(mediaInfo);
         } catch (e) {
@@ -3334,6 +3338,18 @@ export class UnifiedMediaServer {
         reject(new Error(`ffprobe error: ${err.message}`));
       });
     });
+
+    // Stamp the cached entry with the file's mtime so a re-probe happens only
+    // when the file changes. Remote sources have no mtime; their entry simply
+    // never validates.
+    if (!UnifiedMediaServer.isRemoteUrl(filePath)) {
+      const stats: Stats | undefined = await UnifiedMediaServer.statIfReadable(filePath);
+      if (stats) {
+        this.mediaInfoMtimes.set(filePath, stats.mtimeMs);
+      }
+    }
+
+    return probedInfo;
   }
 
   // ============================================================================
@@ -4141,7 +4157,7 @@ export class UnifiedMediaServer {
     };
 
     try {
-      writeFileSync(targetPath, JSON.stringify(oppData, null, 2), 'utf-8');
+      await writeFile(targetPath, JSON.stringify(oppData, null, 2), 'utf-8');
       this.playlist.setSourceFilePath(targetPath);
       playlistLogger.info(`Playlist saved to: ${targetPath}`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -4171,14 +4187,14 @@ export class UnifiedMediaServer {
     }
 
     // Validate file exists
-    if (!existsSync(filePath)) {
+    if (!await UnifiedMediaServer.statIfReadable(filePath)) {
       res.writeHead(404);
       res.end(JSON.stringify({ error: 'File not found' }));
       return;
     }
 
     try {
-      const content: string = readFileSync(filePath, 'utf-8');
+      const content: string = await readFile(filePath, 'utf-8');
       const data: unknown = JSON.parse(content);
 
       // Validate format

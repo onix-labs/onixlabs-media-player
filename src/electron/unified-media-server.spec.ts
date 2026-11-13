@@ -917,6 +917,146 @@ describe('UnifiedMediaServer', () => {
   });
 
   // ==========================================================================
+  // GET /media/stream — direct serving of native formats
+  // ==========================================================================
+
+  describe('GET /media/stream (direct serving)', () => {
+    const content: Buffer = Buffer.from('0123456789abcdefghijklmnopqrstuvwxyz', 'utf-8');
+    let mediaDir: string = '';
+    let mediaFile: string = '';
+
+    /** Fetches the stream endpoint and returns the raw response. */
+    function stream(filePath: string, headers: Record<string, string> = {}): Promise<Response> {
+      return fetch(`${baseUrl}/media/stream?path=${encodeURIComponent(filePath)}`, {
+        headers: { 'X-Onix-Token': authToken, ...headers },
+      });
+    }
+
+    beforeAll(() => {
+      mediaDir = path.join(mockUserDataPath, 'direct-media');
+      fs.mkdirSync(mediaDir, { recursive: true });
+      mediaFile = path.join(mediaDir, 'clip.mp3');
+      fs.writeFileSync(mediaFile, content);
+    });
+
+    it('serves a native file whole, advertising its size and range support', async () => {
+      const res: Response = await stream(mediaFile);
+      const served: Buffer = Buffer.from(await res.arrayBuffer());
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('audio/mpeg');
+      expect(res.headers.get('content-length')).toBe(String(content.length));
+      expect(res.headers.get('accept-ranges')).toBe('bytes');
+      expect(served.equals(content)).toBe(true);
+    });
+
+    it('serves exactly the requested byte range', async () => {
+      const res: Response = await stream(mediaFile, { Range: 'bytes=10-15' });
+      const served: string = await res.text();
+
+      expect(res.status).toBe(206);
+      expect(res.headers.get('content-range')).toBe(`bytes 10-15/${content.length}`);
+      expect(res.headers.get('content-length')).toBe('6');
+      expect(served).toBe('abcdef');
+    });
+
+    it('serves an open-ended range through to the last byte', async () => {
+      const res: Response = await stream(mediaFile, { Range: 'bytes=30-' });
+      const served: string = await res.text();
+
+      expect(res.status).toBe(206);
+      expect(res.headers.get('content-range')).toBe(`bytes 30-${content.length - 1}/${content.length}`);
+      expect(served).toBe('uvwxyz');
+    });
+
+    it('rejects a directory even when it is named like a media file', async () => {
+      const directory: string = path.join(mediaDir, 'folder.mp3');
+      fs.mkdirSync(directory, { recursive: true });
+
+      const res: Response = await stream(directory);
+      const body: Record<string, unknown> = await res.json() as Record<string, unknown>;
+
+      expect(res.status).toBe(400);
+      expect(body.error).toBe('Path is not a regular file');
+    });
+  });
+
+  // ==========================================================================
+  // Static file serving (packaged Angular app)
+  // ==========================================================================
+
+  describe('static file serving', () => {
+    let staticServer: UnifiedMediaServer;
+    let staticUrl: string = '';
+    let staticDir: string = '';
+
+    beforeAll(async () => {
+      staticDir = path.join(mockUserDataPath, 'static-root');
+      fs.mkdirSync(path.join(staticDir, 'assets'), { recursive: true });
+      fs.writeFileSync(path.join(staticDir, 'index.html'), '<html>app</html>', 'utf-8');
+      fs.writeFileSync(path.join(staticDir, 'main.js'), 'console.log(1);', 'utf-8');
+      fs.writeFileSync(path.join(staticDir, 'data.bin'), 'binary', 'utf-8');
+
+      staticServer = new UnifiedMediaServer(staticDir);
+      const port: number = await staticServer.start();
+      staticUrl = `http://127.0.0.1:${port}`;
+    }, 30000);
+
+    afterAll(() => {
+      staticServer.stop();
+    });
+
+    it('serves index.html for the root path', async () => {
+      const res: Response = await fetch(`${staticUrl}/`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('text/html');
+      expect(await res.text()).toBe('<html>app</html>');
+    });
+
+    it('serves an asset with its MIME type and length', async () => {
+      const res: Response = await fetch(`${staticUrl}/main.js`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('application/javascript');
+      expect(res.headers.get('content-length')).toBe('15');
+      expect(await res.text()).toBe('console.log(1);');
+    });
+
+    it('serves unknown extensions as an opaque download type', async () => {
+      const res: Response = await fetch(`${staticUrl}/data.bin`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('application/octet-stream');
+    });
+
+    it('falls back to index.html for an unknown route so the SPA can handle it', async () => {
+      const res: Response = await fetch(`${staticUrl}/some/client/route`);
+
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe('<html>app</html>');
+    });
+
+    it('does not serve a directory', async () => {
+      const res: Response = await fetch(`${staticUrl}/assets`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 404 when there is no index.html to fall back to', async () => {
+      const emptyDir: string = path.join(mockUserDataPath, 'static-empty');
+      fs.mkdirSync(emptyDir, { recursive: true });
+      const emptyServer: UnifiedMediaServer = new UnifiedMediaServer(emptyDir);
+      const port: number = await emptyServer.start();
+
+      const res: Response = await fetch(`http://127.0.0.1:${port}/missing.js`);
+      emptyServer.stop();
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ==========================================================================
   // GET /media/info — validation
   // ==========================================================================
 
