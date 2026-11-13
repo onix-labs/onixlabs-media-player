@@ -29,12 +29,20 @@ const MANIFEST: string = JSON.stringify([
   {id: 'fluidsynth', name: 'FluidSynth', version: '2.6.2', license: 'LGPL-2.1-or-later', file: 'FluidSynth-LICENSE.txt'},
 ]);
 
-/** A file system holding the given files, with their contents. */
+/**
+ * A file system holding the given files, with their contents.
+ *
+ * Paths are normalised on both sides, because the catalog builds them with
+ * path.join, which uses backslashes on Windows.
+ */
 function fileSystem(files: Readonly<Record<string, string>>): LicenseFileSystem {
+  const byPath: Map<string, string> = new Map<string, string>(
+    Object.entries(files).map(([file, text]: [string, string]): [string, string] => [path.normalize(file), text]),
+  );
   return {
-    exists: (file: string): boolean => file in files,
+    exists: (file: string): boolean => byPath.has(path.normalize(file)),
     readText: (file: string): string => {
-      const text: string | undefined = files[file];
+      const text: string | undefined = byPath.get(path.normalize(file));
       if (text === undefined) throw new Error(`ENOENT: ${file}`);
       return text;
     },
