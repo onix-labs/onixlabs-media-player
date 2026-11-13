@@ -349,7 +349,9 @@ case "${OS}" in
     FFMPEG_ARGS=(--extra-libs="-lstdc++ -lpthread" --enable-pthreads --enable-version3 --enable-openssl)
     ;;
   win)
-    FFMPEG_ARGS=(--extra-libs="-lstdc++ -lpthread" --enable-w32threads --enable-schannel)
+    # MinGW's iconv.h renames iconv() to libiconv(), which configure finds
+    # without adding the library that defines it.
+    FFMPEG_ARGS=(--extra-libs="-lstdc++ -lpthread -liconv" --enable-w32threads --enable-schannel)
     ;;
 esac
 
@@ -494,9 +496,13 @@ for bin in "${BINARIES[@]}"; do
   esac
 done
 
-"${OUT}/ffmpeg${EXE}" -hide_banner -demuxers | grep -q libopenmpt
-"${OUT}/ffmpeg${EXE}" -hide_banner -protocols | grep -q https
-"${OUT}/fluidsynth${EXE}" --version | head -1
+# Output is captured before it is searched: with pipefail, `| grep -q` stops
+# reading at the first match and the writer's SIGPIPE fails the pipeline.
+demuxers="$("${OUT}/ffmpeg${EXE}" -hide_banner -demuxers)"
+protocols="$("${OUT}/ffmpeg${EXE}" -hide_banner -protocols)"
+grep -q libopenmpt <<<"${demuxers}" || { echo "error: ffmpeg has no libopenmpt demuxer" >&2; exit 1; }
+grep -q https <<<"${protocols}" || { echo "error: ffmpeg has no https protocol" >&2; exit 1; }
+"${OUT}/fluidsynth${EXE}" --version | sed -n 1p
 
 log "Done: ${OUT}"
 ls -la "${OUT}"

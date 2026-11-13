@@ -31,9 +31,9 @@ UNTRUSTED_URL="https://self-signed.badssl.com/"
 
 fail() { echo "error: $*" >&2; exit 1; }
 
-"${FFMPEG}" -hide_banner -version | head -1
-"${FFPROBE}" -hide_banner -version | head -1
-"${FLUIDSYNTH}" --version | head -1
+"${FFMPEG}" -hide_banner -version | sed -n 1p
+"${FFPROBE}" -hide_banner -version | sed -n 1p
+"${FLUIDSYNTH}" --version | sed -n 1p
 
 demuxers="$("${FFMPEG}" -hide_banner -demuxers)"
 grep -q libopenmpt <<<"${demuxers}" || fail "ffmpeg has no libopenmpt demuxer"
