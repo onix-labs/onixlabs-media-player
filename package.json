@@ -120,6 +120,14 @@
       {
         "from": "vendor/bin/${os}-${arch}",
         "to": "bin"
+      },
+      {
+        "from": "LICENSE",
+        "to": "licenses/ONIXPlayer-LICENSE.txt"
+      },
+      {
+        "from": "dist/onixlabs-media-player/3rdpartylicenses.txt",
+        "to": "licenses/JavaScript-libraries.txt"
       }
     ],
     "beforePack": "scripts/verify-bundled-resources.cjs",

@@ -6,17 +6,14 @@
  * - License information (MIT)
  * - Supported media formats
  * - External dependencies (FFmpeg, FluidSynth)
+ * - The licences of everything shipped, and where the bundled programs' source is
  * - Links to GitHub and onixlabs.io
  *
  * @module app/components/about/about-view
  */
 
-import {Component, ChangeDetectionStrategy} from '@angular/core';
-
-/**
- * Application version (CalVer format).
- */
-const APP_VERSION: string = '2026.0.1';
+import {Component, ChangeDetectionStrategy, OnInit, Signal, WritableSignal, computed, signal} from '@angular/core';
+import type {AboutInfo, LicenseNotice} from '../../../types/electron';
 
 /**
  * Version information for Electron and its components.
@@ -80,6 +77,7 @@ const DEPENDENCIES: readonly Dependency[] = [
  * - MIT license notice
  * - Supported audio and video formats
  * - External dependency credits
+ * - Third-party licences, each opened in the OS's viewer
  * - Links to project resources
  *
  * @example
@@ -93,13 +91,22 @@ const DEPENDENCIES: readonly Dependency[] = [
   styleUrl: './about-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AboutView {
+export class AboutView implements OnInit {
   // ============================================================================
   // Template Data
   // ============================================================================
 
-  /** Application version */
-  public readonly version: string = APP_VERSION;
+  /** Version and licences from the main process; null until loaded, or outside Electron */
+  private readonly aboutInfo: WritableSignal<AboutInfo | null> = signal<AboutInfo | null>(null);
+
+  /** Application version, from package.json */
+  public readonly version: Signal<string> = computed<string>((): string => this.aboutInfo()?.version ?? '');
+
+  /** Licences of everything shipped */
+  public readonly licenses: Signal<readonly LicenseNotice[]> = computed<readonly LicenseNotice[]>((): readonly LicenseNotice[] => this.aboutInfo()?.licenses ?? []);
+
+  /** The GitHub release carrying the bundled programs' source */
+  public readonly sourceUrl: Signal<string | null> = computed<string | null>((): string | null => this.aboutInfo()?.sourceUrl ?? null);
 
   /** Version info for Electron and components */
   public readonly versionInfo: VersionInfo | null = window.mediaPlayer?.getVersionInfo() ?? null;
@@ -123,8 +130,26 @@ export class AboutView {
   public readonly currentYear: number = new Date().getFullYear();
 
   // ============================================================================
+  // Lifecycle
+  // ============================================================================
+
+  public async ngOnInit(): Promise<void> {
+    const info: AboutInfo | undefined = await window.mediaPlayer?.getAboutInfo();
+    if (info) this.aboutInfo.set(info);
+  }
+
+  // ============================================================================
   // Event Handlers
   // ============================================================================
+
+  /**
+   * Opens a licence's text in the OS's default viewer.
+   *
+   * @param id - The licence id
+   */
+  public openLicense(id: string): void {
+    void window.mediaPlayer?.openLicense(id);
+  }
 
   /**
    * Opens an external URL in the default system browser.

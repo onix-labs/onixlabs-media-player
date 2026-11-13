@@ -1,10 +1,12 @@
 /**
- * @fileoverview Location of the binaries ONIXPlayer ships outside its asar.
+ * @fileoverview Location of the binaries and licences ONIXPlayer ships outside
+ * its asar.
  *
  * External programs cannot be run from inside app.asar, so the bundled
  * binaries are packaged as electron-builder extraResources:
  *
  *   <resources>/bin/  ffmpeg, ffprobe, fluidsynth (scripts/build-binaries.sh)
+ *   <resources>/licenses/  ONIXPlayer's licence and its JavaScript libraries'
  *
  * In development they are read from vendor/bin/<os>-<arch> in the repository
  * instead (named as electron-builder's ${os}-${arch}).
@@ -47,6 +49,53 @@ export function getBundledBinDir(): string | null {
   }
   const os: string | undefined = BUILDER_OS_NAMES[process.platform];
   return os ? path.join(getRepositoryRoot(), 'vendor', 'bin', `${os}-${process.arch}`) : null;
+}
+
+/**
+ * Where the licence texts ONIXPlayer ships are found.
+ *
+ * Every one of them is outside app.asar, because the About window hands them
+ * to the OS to open, and no other program can read inside an asar.
+ */
+export interface LicenseLocations {
+  /** ONIXPlayer's own LICENSE */
+  readonly application: string;
+  /** Licences of the JavaScript libraries bundled into the renderer (production builds only) */
+  readonly javascript: string;
+  /** Directory with the bundled programs' licences and components.json */
+  readonly bundled: string | null;
+  /** Directory with Electron's LICENSE and Chromium's LICENSES.chromium.html */
+  readonly electron: string;
+}
+
+/**
+ * Gets the locations of the licence texts.
+ *
+ * Packaged, ONIXPlayer's and the JavaScript licences are extraResources under
+ * <resources>/licenses (see package.json). electron-builder puts Electron's
+ * own next to the executable, except on macOS, where they are in Resources.
+ */
+export function getLicenseLocations(): LicenseLocations {
+  const binDir: string | null = getBundledBinDir();
+  const bundled: string | null = binDir ? path.join(binDir, 'licenses') : null;
+
+  if (app.isPackaged) {
+    const licenses: string = path.join(process.resourcesPath, 'licenses');
+    return {
+      application: path.join(licenses, 'ONIXPlayer-LICENSE.txt'),
+      javascript: path.join(licenses, 'JavaScript-libraries.txt'),
+      bundled,
+      electron: process.platform === 'darwin' ? process.resourcesPath : path.dirname(process.execPath),
+    };
+  }
+
+  const root: string = getRepositoryRoot();
+  return {
+    application: path.join(root, 'LICENSE'),
+    javascript: path.join(root, 'dist', 'onixlabs-media-player', '3rdpartylicenses.txt'),
+    bundled,
+    electron: path.join(root, 'node_modules', 'electron', 'dist'),
+  };
 }
 
 /**
