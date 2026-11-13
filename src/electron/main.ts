@@ -24,6 +24,7 @@ import type {SettingsManager} from './settings-manager.js';
 import type {DependencyState} from './dependency-manager.js';
 import {initializeLogger, mainLogger, ipcLogger, windowLogger, getLogFilePath} from './logger.js';
 import {existsSync, statSync} from 'fs';
+import {useSystemCertificates} from './bundled-resources.js';
 
 /**
  * Supported audio file extensions for file association handling.
@@ -283,6 +284,10 @@ class Program {
 
     this.registerContentSecurityPolicy();
 
+    // Before anything spawns FFmpeg, which inherits this process's environment
+    const caBundle: string | null = useSystemCertificates();
+    if (caBundle) mainLogger.debug(`CA certificates: ${caBundle}`);
+
     // Start the unified media server (HTTP API + SSE)
     // In production, also serve the Angular app via HTTP to avoid file:// CORS issues
     const staticPath: string | undefined = Program.IS_DEVELOPMENT
@@ -328,9 +333,9 @@ class Program {
     });
 
     // Register callback to update menu when dependency state changes (enables/disables Open)
-    this.mediaServer.onDependencyStateChange((ffmpeg: boolean, fluidsynth: boolean, openmpt123: boolean): void => {
-      mainLogger.debug(`Dependency state changed: ffmpeg=${ffmpeg}, fluidsynth=${fluidsynth}, openmpt123=${openmpt123}`);
-      updateMenuState({openEnabled: ffmpeg || fluidsynth || openmpt123});
+    this.mediaServer.onDependencyStateChange((ffmpeg: boolean, fluidsynth: boolean, trackers: boolean): void => {
+      mainLogger.debug(`Dependency state changed: ffmpeg=${ffmpeg}, fluidsynth=${fluidsynth}, trackers=${trackers}`);
+      updateMenuState({openEnabled: ffmpeg || fluidsynth});
     });
 
     // Register callback to update menu when recent items change
@@ -341,7 +346,7 @@ class Program {
 
     // Set initial openEnabled state based on current dependency detection
     const depState: DependencyState = this.mediaServer.getDependencyManager().getState();
-    updateMenuState({openEnabled: depState.ffmpeg.installed || depState.fluidsynth.installed || depState.openmpt123.installed});
+    updateMenuState({openEnabled: depState.ffmpeg.installed || depState.fluidsynth.installed});
 
     // Setup core IPC handlers needed by any window (including setup wizard)
     this.setupCoreIpcHandlers();
@@ -1618,37 +1623,6 @@ class Program {
       ipcLogger.info('Setup wizard skipped');
       this.setupWizardClosedLegitimately = true;
       this.setupWizardWindow?.close();
-    });
-
-    // Install the bundled OPL3 soundfont
-    ipcMain.handle("setup:installBundledSoundFont", async (): Promise<boolean> => {
-      ipcLogger.info('Installing bundled OPL3 soundfont');
-      try {
-        const depManager: import('./dependency-manager.js').DependencyManager | undefined = this.mediaServer?.getDependencyManager();
-        if (!depManager) {
-          ipcLogger.error('DependencyManager not available');
-          return false;
-        }
-
-        // Get the path to the bundled soundfont
-        const bundledPath: string = path.join(Program.getProjectRoot(), 'dist', 'onixlabs-media-player', 'browser', 'soundfonts', 'OPL3-FM-128M.sf2');
-
-        // Check if the bundled soundfont exists
-        if (!existsSync(bundledPath)) {
-          ipcLogger.error(`Bundled soundfont not found at: ${bundledPath}`);
-          return false;
-        }
-
-        // Install it using the dependency manager
-        const soundFontInfo: import('./dependency-manager.js').SoundFontInfo = depManager.installSoundFont(bundledPath);
-        ipcLogger.info(`Bundled OPL3 soundfont installed successfully: ${soundFontInfo.fileName}`);
-        // Broadcast the updated state
-        this.mediaServer?.broadcastDependencyState();
-        return true;
-      } catch (error) {
-        ipcLogger.error(`Failed to install bundled soundfont: ${error}`);
-        return false;
-      }
     });
   }
 

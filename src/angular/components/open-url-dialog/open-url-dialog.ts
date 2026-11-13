@@ -18,7 +18,7 @@
 import {Component, ChangeDetectionStrategy, HostBinding, inject, signal, computed, effect, ElementRef, type AfterViewInit, type OnDestroy, type WritableSignal, type Signal} from '@angular/core';
 import {FormsModule} from '@angular/forms';
 import {ElectronService, type UrlMediaInfo, type UrlMediaFormat, type DownloadJob} from '../../services/electron.service';
-import {DependencyService} from '../../services/dependency.service';
+import {DependencyService, type InstallProgress} from '../../services/dependency.service';
 
 /** Playback strategy for a URL: download to disk, or stream a direct URL. */
 type UrlPlaybackMode = 'download' | 'stream';
@@ -90,6 +90,15 @@ export class OpenUrlDialog implements AfterViewInit, OnDestroy {
 
   /** Whether yt-dlp is installed; gating message shown when false. */
   public readonly ytdlpInstalled: Signal<boolean> = this.deps.ytdlpInstalled;
+
+  /** Whether a yt-dlp download is running. */
+  public readonly ytdlpDownloading: Signal<boolean> = this.deps.isOperationInProgress;
+
+  /** The yt-dlp download's latest progress message, or null when there is none to show. */
+  public readonly ytdlpDownloadMessage: Signal<string | null> = computed((): string | null => {
+    const progress: InstallProgress | null = this.deps.installProgress();
+    return progress?.dependencyId === 'yt-dlp' && progress.status !== 'success' ? progress.message : null;
+  });
 
   /** Download progress (0..1) of the active job, or null when unknown. */
   public readonly progress: Signal<number | null> = computed((): number | null => {
@@ -241,9 +250,9 @@ export class OpenUrlDialog implements AfterViewInit, OnDestroy {
     window.close();
   }
 
-  /** Opens the dependency settings so the user can install yt-dlp. */
-  public openDependencySettings(): void {
-    void this.electron.showConfigurationWindow('dependencies');
+  /** Downloads yt-dlp in place; the dialog switches to URL entry once it lands. */
+  public downloadYtDlp(): void {
+    void this.deps.installDependency('yt-dlp');
   }
 
   /** Sets the requested output format (MP4/MP3) from the select value. */

@@ -46,6 +46,9 @@ Thumbs.db
 src/electron/dist/*.js
 .studio/*.user.json
 
+# Bundled media binaries, their sources and build trees (scripts/build-binaries.sh)
+/vendor
+
 # Third-party binaries and archives - never commit.
 *.dll
 *.exe

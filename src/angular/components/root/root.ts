@@ -332,8 +332,8 @@ export class Root implements OnDestroy {
 
     const filters: {name: string; extensions: string[]}[] = buildFileDialogFilters(
       this.deps.ffmpegInstalled(),
-      this.deps.fluidsynthInstalled(),
-      this.deps.openmpt123Installed()
+      this.deps.midiSupported(),
+      this.deps.trackerSupported()
     );
     const files: string[] = await this.electron.openFileDialog(true, filters);
     if (files.length === 0) return;

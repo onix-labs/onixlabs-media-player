@@ -1,20 +1,31 @@
 /**
- * @fileoverview Dependency management module for external binary detection and installation.
+ * @fileoverview Dependency management for the external programs ONIXPlayer runs.
  *
- * This module manages the lifecycle of external dependencies (FFmpeg, FluidSynth)
- * required for media playback. It provides:
- * - Cross-platform binary detection (macOS, Windows, Linux)
- * - Platform-specific installation and uninstallation via package managers
- * - SoundFont file management for MIDI playback
- * - Dynamic binary path resolution (re-scans after install/uninstall)
+ * ONIXPlayer never asks a package manager for anything. Its dependencies reach
+ * the user in one of two ways:
+ * - Bundled: FFmpeg, ffprobe and FluidSynth ship inside the app (built by
+ *   scripts/build-binaries.sh). FFmpeg is built with libopenmpt, which is what
+ *   plays tracker modules.
+ * - Downloaded: yt-dlp changes more often than ONIXPlayer is released, so it is
+ *   downloaded on request from its official GitHub releases into the app's
+ *   user data folder, verified against the release's SHA-256 sums.
+ *
+ * A copy found on the system is used as a fallback, which keeps development
+ * runs working before scripts/build-binaries.sh has been run.
+ *
+ * This module also manages the SoundFont files the user installs for MIDI
+ * playback (none ship with the app), and detects the hardware video encoders
+ * FFmpeg offers.
  *
  * @module electron/dependency-manager
  */
 
-import {existsSync, mkdirSync, copyFileSync, unlinkSync, readdirSync, statSync} from 'fs';
-import {spawn, ChildProcess, execSync} from 'child_process';
+import {existsSync, mkdirSync, copyFileSync, unlinkSync, readdirSync, statSync, readFileSync, writeFileSync, chmodSync, createWriteStream, WriteStream} from 'fs';
+import {rm, rename} from 'fs/promises';
+import {spawn, ChildProcess, execFileSync, execFile} from 'child_process';
+import {createHash, Hash} from 'crypto';
 import * as path from 'path';
-import {createScopedLogger, logProcessSpawn, logProcessOutput, logProcessExit} from './logger.js';
+import {createScopedLogger, logProcessSpawn} from './logger.js';
 
 // ============================================================================
 // Types
@@ -23,7 +34,15 @@ import {createScopedLogger, logProcessSpawn, logProcessOutput, logProcessExit} f
 /**
  * Identifier for a managed dependency.
  */
-export type DependencyId = 'ffmpeg' | 'fluidsynth' | 'openmpt123' | 'yt-dlp';
+export type DependencyId = 'ffmpeg' | 'fluidsynth' | 'yt-dlp';
+
+/**
+ * Where a dependency's binary was found.
+ * - bundled: shipped inside ONIXPlayer
+ * - downloaded: fetched by ONIXPlayer into its user data folder
+ * - system: installed on the machine by some other means
+ */
+export type DependencySource = 'bundled' | 'downloaded' | 'system';
 
 /**
  * Status of a single dependency.
@@ -33,14 +52,20 @@ export interface DependencyStatus {
   readonly id: DependencyId;
   /** Human-readable name */
   readonly name: string;
-  /** Whether the binary was found on the system */
+  /** Whether the binary was found */
   readonly installed: boolean;
   /** Absolute path to the binary, or null if not found */
   readonly path: string | null;
+  /** Where the binary came from, or null if not found */
+  readonly source: DependencySource | null;
+  /** Version, when known (bundled and downloaded binaries record theirs) */
+  readonly version: string | null;
+  /** Whether ONIXPlayer can download, update and remove this dependency itself */
+  readonly managed: boolean;
   /** Description of what this dependency enables */
   readonly description: string;
-  /** URL for manual download and installation */
-  readonly manualInstallUrl: string;
+  /** Project website */
+  readonly websiteUrl: string;
 }
 
 /**
@@ -51,13 +76,15 @@ export interface DependencyState {
   readonly ffmpeg: DependencyStatus;
   /** FluidSynth status (required for MIDI playback) */
   readonly fluidsynth: DependencyStatus;
-  /** openmpt123 status (required for tracker module playback) */
-  readonly openmpt123: DependencyStatus;
   /** yt-dlp status (required for playing media from internet URLs) */
   readonly ytdlp: DependencyStatus;
+  /** Whether the FFmpeg in use can decode tracker modules (built with libopenmpt) */
+  readonly trackerSupport: boolean;
+  /** Whether MIDI can be played: FluidSynth is present and a SoundFont is installed */
+  readonly midiSupport: boolean;
   /** Installed SoundFont files in the app data directory */
   readonly soundfonts: SoundFontInfo[];
-  /** Path to the active SoundFont (first available) */
+  /** Path to the active SoundFont */
   readonly activeSoundFont: string | null;
   /** Available hardware video encoders */
   readonly hardwareEncoders: HardwareEncoderInfo;
@@ -86,17 +113,52 @@ export interface HardwareEncoderInfo {
 }
 
 /**
- * Progress update during dependency installation or uninstallation.
+ * Progress update while a dependency is downloaded, updated or removed.
  */
 export interface InstallProgress {
-  /** Which dependency is being installed/uninstalled */
+  /** Which dependency is being operated on */
   readonly dependencyId: DependencyId;
   /** Current operation status */
   readonly status: 'installing' | 'uninstalling' | 'updating' | 'success' | 'error';
   /** Human-readable status message */
   readonly message: string;
-  /** Terminal output (stdout/stderr) */
+  /** Detail output (errors, checksums) */
   readonly output?: string;
+  /** Download progress from 0 to 100, when known */
+  readonly percent?: number;
+}
+
+/**
+ * The subset of the Fetch API the downloader needs. Injected so the app can
+ * route requests through Electron's network stack (which honours the system
+ * proxy) and so tests can stub the network.
+ */
+export type FetchFunction = (input: string, init?: {readonly headers?: Record<string, string>}) => Promise<Response>;
+
+/**
+ * Optional collaborators and locations for a DependencyManager.
+ */
+export interface DependencyManagerOptions {
+  /** CPU architecture (process.arch); selects the yt-dlp build */
+  readonly arch?: string;
+  /** Directory holding the bundled ffmpeg, ffprobe and fluidsynth, or null */
+  readonly bundledBinDir?: string | null;
+  /** Fetch implementation for downloads (defaults to the global fetch) */
+  readonly fetch?: FetchFunction;
+  /** Node-compatible executable yt-dlp may use as its JavaScript runtime */
+  readonly jsRuntimePath?: string | null;
+}
+
+/**
+ * A yt-dlp release asset for one platform.
+ */
+interface YtDlpAsset {
+  /** Asset file name on the GitHub release */
+  readonly asset: string;
+  /** Whether the asset is a zip to extract rather than the executable itself */
+  readonly archive: boolean;
+  /** Executable name inside the install directory */
+  readonly executable: string;
 }
 
 // ============================================================================
@@ -108,97 +170,90 @@ const depsLogger: ReturnType<typeof createScopedLogger> = createScopedLogger('De
 
 /** Descriptions for each dependency */
 const DEPENDENCY_DESCRIPTIONS: Readonly<Record<DependencyId, string>> = {
-  ffmpeg: 'Required for audio and video playback',
-  fluidsynth: 'Required for MIDI playback',
-  openmpt123: 'Required for tracker module playback (MOD, XM, IT, Oktalyzer, etc.)',
-  'yt-dlp': 'Required for playing video and audio from internet URLs',
+  ffmpeg: 'Audio, video and tracker module playback',
+  fluidsynth: 'MIDI playback',
+  'yt-dlp': 'Playing video and audio from internet URLs',
 };
 
-/** Manual download URLs */
-const MANUAL_INSTALL_URLS: Readonly<Record<DependencyId, string>> = {
-  ffmpeg: 'https://ffmpeg.org/download.html',
-  fluidsynth: 'https://www.fluidsynth.org/download/',
-  openmpt123: 'https://lib.openmpt.org/libopenmpt/',
-  'yt-dlp': 'https://github.com/yt-dlp/yt-dlp#installation',
+/** Project websites */
+const WEBSITE_URLS: Readonly<Record<DependencyId, string>> = {
+  ffmpeg: 'https://ffmpeg.org/',
+  fluidsynth: 'https://www.fluidsynth.org/',
+  'yt-dlp': 'https://github.com/yt-dlp/yt-dlp',
 };
 
 /** Display names */
 const DEPENDENCY_NAMES: Readonly<Record<DependencyId, string>> = {
   ffmpeg: 'FFmpeg',
   fluidsynth: 'FluidSynth',
-  openmpt123: 'openmpt123',
   'yt-dlp': 'yt-dlp',
 };
 
-/**
- * System paths where SoundFont files may be installed by package managers.
- * Checked as fallback when no user-installed SoundFonts are found.
- */
-const SYSTEM_SOUNDFONT_PATHS: readonly string[] = [
-  '/usr/local/Cellar/fluid-synth/2.5.1/share/fluid-synth/sf2/VintageDreamsWaves-v2.sf2',
-  '/usr/share/sounds/sf2/FluidR3_GM.sf2',
-  '/usr/share/soundfonts/FluidR3_GM.sf2',
-  '/usr/local/share/soundfonts/default.sf2',
-];
+/** GitHub API endpoint for yt-dlp's latest release */
+const YTDLP_LATEST_RELEASE_URL: string = 'https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest';
 
-/**
- * Absolute paths to the Homebrew binary, in preference order (Apple Silicon
- * prefix first, then Intel).
- *
- * Homebrew cannot be spawned as a bare `brew`. A macOS app launched from Finder
- * inherits launchd's PATH — `/usr/bin:/bin:/usr/sbin:/sbin` — which contains
- * neither prefix, so the spawn fails with ENOENT before the package manager
- * ever runs. Only a run started from a terminal, inheriting the shell's PATH,
- * ever found it.
- */
-const HOMEBREW_PATHS: readonly string[] = [
-  '/opt/homebrew/bin/brew',  // Apple Silicon
-  '/usr/local/bin/brew',     // Intel
-];
+/** Base URL for a yt-dlp release's assets; the tag is appended */
+const YTDLP_DOWNLOAD_BASE_URL: string = 'https://github.com/yt-dlp/yt-dlp/releases/download';
 
-/**
- * Windows-specific constants for Chocolatey package manager.
- */
-const CHOCOLATEY_WINGET_ID: string = 'Chocolatey.Chocolatey';
-const CHOCOLATEY_EXE_PATH: string = 'C:\\ProgramData\\chocolatey\\bin\\choco.exe';
+/** Checksum file published with every yt-dlp release */
+const YTDLP_CHECKSUMS_ASSET: string = 'SHA2-256SUMS';
+
+/** File in an install directory recording the version it holds */
+const VERSION_FILE: string = 'version.txt';
+
+/** File the build script writes beside the bundled binaries, naming their versions */
+const BUNDLED_VERSIONS_FILE: string = 'versions.json';
+
+/** Permissions for a downloaded executable: rwxr-xr-x */
+const EXECUTABLE_MODE: number = 0o755;
 
 // ============================================================================
 // DependencyManager Class
 // ============================================================================
 
 /**
- * Manages external dependency detection, installation, and SoundFont files.
- *
- * This class provides:
- * - Cross-platform binary path resolution (macOS, Windows, Linux)
- * - Platform-specific install/uninstall via package managers
- * - SoundFont file management (copy to app data, list, remove)
- * - Dynamic re-detection after install/uninstall (no app restart needed)
+ * Locates ONIXPlayer's external programs, downloads yt-dlp, and manages
+ * SoundFont files.
  */
 export class DependencyManager {
   /** Current platform */
   private readonly platform: NodeJS.Platform;
 
+  /** Current CPU architecture */
+  private readonly arch: string;
+
   /** Path to the soundfonts directory in user data */
   private readonly soundFontDir: string;
 
-  /** Resolved path to ffmpeg binary (mutable, refreshed after install) */
+  /** Directory yt-dlp is downloaded into */
+  private readonly ytdlpDir: string;
+
+  /** Directory holding the bundled binaries, or null if there is none */
+  private readonly bundledBinDir: string | null;
+
+  /** Fetch implementation for downloads */
+  private readonly fetchFn: FetchFunction;
+
+  /** Executable yt-dlp may run JavaScript with, or null */
+  private readonly jsRuntimePath: string | null;
+
+  /** Versions of the bundled binaries, read from versions.json */
+  private readonly bundledVersions: Readonly<Record<string, string>>;
+
+  /** Resolved paths (mutable, refreshed after a download or removal) */
   private ffmpegPath: string | null = null;
-
-  /** Resolved path to ffprobe binary (mutable, refreshed after install) */
   private ffprobePath: string | null = null;
-
-  /** Resolved path to fluidsynth binary (mutable, refreshed after install) */
   private fluidsynthPath: string | null = null;
-
-  /** Resolved path to openmpt123 binary (mutable, refreshed after install) */
-  private openmpt123Path: string | null = null;
-
-  /** Resolved path to yt-dlp binary (mutable, refreshed after install) */
   private ytdlpPath: string | null = null;
+
+  /** Whether the FFmpeg in use has the libopenmpt demuxer */
+  private trackerSupport: boolean = false;
 
   /** Detected hardware video encoders (populated asynchronously after detectBinaries) */
   private hardwareEncoders: HardwareEncoderInfo = {available: false, encoders: []};
+
+  /** Whether a yt-dlp download or removal is running */
+  private operationInProgress: boolean = false;
 
   /** How long to let the `ffmpeg -encoders` probe run before giving up on it. */
   private static readonly HW_ENCODER_TIMEOUT_MS: number = 10000;
@@ -208,10 +263,17 @@ export class DependencyManager {
    *
    * @param platform - The current platform (process.platform)
    * @param userDataPath - Path to the app's userData directory (app.getPath('userData'))
+   * @param options - Bundled resource locations and collaborators
    */
-  public constructor(platform: NodeJS.Platform, userDataPath: string) {
+  public constructor(platform: NodeJS.Platform, userDataPath: string, options: DependencyManagerOptions = {}) {
     this.platform = platform;
+    this.arch = options.arch ?? process.arch;
     this.soundFontDir = path.join(userDataPath, 'soundfonts');
+    this.ytdlpDir = path.join(userDataPath, 'yt-dlp');
+    this.bundledBinDir = options.bundledBinDir ?? null;
+    this.fetchFn = options.fetch ?? ((input: string, init?: {readonly headers?: Record<string, string>}): Promise<Response> => fetch(input, init));
+    this.jsRuntimePath = options.jsRuntimePath ?? null;
+    this.bundledVersions = this.readBundledVersions();
 
     // Ensure soundfonts directory exists
     if (!existsSync(this.soundFontDir)) {
@@ -228,24 +290,47 @@ export class DependencyManager {
   // ============================================================================
 
   /**
-   * Re-scans the system for all managed binaries.
-   * Called at startup and after install/uninstall operations.
+   * Re-scans for all binaries.
+   * Called at startup and after yt-dlp is downloaded or removed.
    */
   public detectBinaries(): void {
     this.ffmpegPath = this.findBinary('ffmpeg');
     this.ffprobePath = this.findBinary('ffprobe');
     this.fluidsynthPath = this.findBinary('fluidsynth');
-    this.openmpt123Path = this.findBinary('openmpt123');
-    this.ytdlpPath = this.findBinary('yt-dlp');
+    this.ytdlpPath = this.findYtDlp();
+    this.trackerSupport = this.detectTrackerSupport();
 
     depsLogger.info(`FFmpeg: ${this.ffmpegPath ?? 'not found'}`);
     depsLogger.info(`FFprobe: ${this.ffprobePath ?? 'not found'}`);
     depsLogger.info(`FluidSynth: ${this.fluidsynthPath ?? 'not found'}`);
-    depsLogger.info(`openmpt123: ${this.openmpt123Path ?? 'not found'}`);
     depsLogger.info(`yt-dlp: ${this.ytdlpPath ?? 'not found'}`);
+    depsLogger.info(`Tracker modules: ${this.trackerSupport ? 'supported' : 'unsupported (FFmpeg lacks libopenmpt)'}`);
 
     // Re-detect hardware encoders when binaries are re-scanned
     this.detectHardwareEncoders();
+  }
+
+  /**
+   * Determines whether the FFmpeg in use can decode tracker modules.
+   *
+   * The bundled FFmpeg is always built with libopenmpt, so it is not probed;
+   * that keeps startup free of a synchronous spawn in the packaged app. A
+   * system FFmpeg (development runs) may or may not have it, so it is asked.
+   */
+  private detectTrackerSupport(): boolean {
+    if (!this.ffmpegPath) return false;
+    if (this.getSource(this.ffmpegPath) === 'bundled') return true;
+
+    try {
+      const output: string = execFileSync(this.ffmpegPath, ['-hide_banner', '-demuxers'], {
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      return /\blibopenmpt\b/.test(output);
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -301,9 +386,8 @@ export class DependencyManager {
       const args: string[] = ['-encoders'];
       logProcessSpawn(depsLogger, ffmpegPath, args);
 
-      // No shell: the binary path may contain spaces, and the old command
-      // suppressed the banner with a `2>/dev/null` redirect that means nothing
-      // to cmd.exe. Ignoring stderr outright does the same job everywhere.
+      // No shell: the binary path may contain spaces. Ignoring stderr drops the
+      // banner on every platform.
       const child: ChildProcess = spawn(ffmpegPath, args, {stdio: ['ignore', 'pipe', 'ignore']});
 
       timer = setTimeout((): void => {
@@ -355,19 +439,41 @@ export class DependencyManager {
   }
 
   /**
-   * Gets the resolved path to the openmpt123 binary.
-   * @returns Absolute path or null if not found
-   */
-  public getOpenmpt123Path(): string | null {
-    return this.openmpt123Path;
-  }
-
-  /**
    * Gets the resolved path to the yt-dlp binary.
    * @returns Absolute path or null if not found
    */
   public getYtDlpPath(): string | null {
     return this.ytdlpPath;
+  }
+
+  /**
+   * Gets the executable yt-dlp should use as its JavaScript runtime.
+   *
+   * YouTube extraction needs a JavaScript runtime. Electron is one: started
+   * with ELECTRON_RUN_AS_NODE=1 it behaves as Node, so yt-dlp needs nothing
+   * else installed.
+   *
+   * @returns Absolute path, or null if none was configured
+   */
+  public getJsRuntimePath(): string | null {
+    return this.jsRuntimePath;
+  }
+
+  /**
+   * Whether the FFmpeg in use can decode tracker modules.
+   */
+  public hasTrackerSupport(): boolean {
+    return this.trackerSupport;
+  }
+
+  /**
+   * Whether MIDI can be played. No SoundFont ships with the app, so MIDI stays
+   * off until the user installs one, even though FluidSynth is always present.
+   *
+   * @param preferredSoundFont - Optional preferred SoundFont file name from settings
+   */
+  public hasMidiSupport(preferredSoundFont?: string | null): boolean {
+    return this.fluidsynthPath !== null && this.findSoundFont(preferredSoundFont) !== undefined;
   }
 
   /**
@@ -378,13 +484,15 @@ export class DependencyManager {
   public getState(preferredSoundFont?: string | null): DependencyState {
     // Scanned once and shared, rather than once here and again in findSoundFont.
     const soundfonts: SoundFontInfo[] = this.getSoundFonts();
+    const activeSoundFont: string | null = this.selectSoundFont(soundfonts, preferredSoundFont) ?? null;
     return {
       ffmpeg: this.getDependencyStatus('ffmpeg'),
       fluidsynth: this.getDependencyStatus('fluidsynth'),
-      openmpt123: this.getDependencyStatus('openmpt123'),
       ytdlp: this.getDependencyStatus('yt-dlp'),
+      trackerSupport: this.trackerSupport,
+      midiSupport: this.fluidsynthPath !== null && activeSoundFont !== null,
       soundfonts,
-      activeSoundFont: this.selectSoundFont(soundfonts, preferredSoundFont) ?? null,
+      activeSoundFont,
       hardwareEncoders: this.hardwareEncoders,
     };
   }
@@ -398,186 +506,328 @@ export class DependencyManager {
   }
 
   // ============================================================================
-  // Install / Uninstall
+  // Download / Update / Remove (yt-dlp only)
   // ============================================================================
 
   /**
-   * Installs a dependency using the platform-specific package manager.
+   * Downloads a dependency. Only yt-dlp can be downloaded: FFmpeg and
+   * FluidSynth are part of ONIXPlayer.
    *
-   * On Windows, FluidSynth requires Chocolatey. If Chocolatey is not installed
-   * but winget is available, this method will automatically install Chocolatey
-   * first via winget, then install FluidSynth.
-   *
-   * @param id - The dependency to install
+   * @param id - The dependency to download
    * @param onProgress - Callback for progress updates (streamed to SSE)
-   * @returns True if installation succeeded
+   * @returns True if the download succeeded
    */
-  public async installDependency(
-    id: DependencyId,
-    onProgress: (progress: InstallProgress) => void
-  ): Promise<boolean> {
-    const name: string = DEPENDENCY_NAMES[id];
-    depsLogger.info(`Installing ${name}...`);
-
-    // Windows FluidSynth: chain install Chocolatey via winget if needed
-    if (this.platform === 'win32' && id === 'fluidsynth' && !this.isChocoAvailable()) {
-      return this.installFluidSynthWithChocolateyChain(onProgress);
+  public async installDependency(id: DependencyId, onProgress: (progress: InstallProgress) => void): Promise<boolean> {
+    if (id !== 'yt-dlp') {
+      return this.rejectBundled(id, 'installed', onProgress);
     }
-
-    const cmd: {command: string; args: string[]} | null = this.getInstallCommand(id);
-    if (!cmd) {
-      const errorMsg: string = this.getPackageManagerErrorMessage(id, 'install');
-      depsLogger.error(errorMsg);
-      onProgress({dependencyId: id, status: 'error', message: errorMsg});
-      return false;
-    }
-
-    onProgress({
-      dependencyId: id,
-      status: 'installing',
-      message: `Installing ${name}...`,
-    });
-
-    return this.runCommand(cmd.command, cmd.args, id, 'installing', onProgress);
+    return this.downloadYtDlp('installing', onProgress);
   }
 
   /**
-   * Installs FluidSynth on Windows by first installing Chocolatey via winget,
-   * then installing FluidSynth via Chocolatey.
+   * Updates a dependency to its latest release. Only yt-dlp can be updated.
    *
-   * This handles the case where Chocolatey is not yet installed. After winget
-   * installs Chocolatey, we use the full path to choco.exe since it won't be
-   * in the current session's PATH yet.
-   *
-   * @param onProgress - Callback for progress updates
-   * @returns True if both installations succeeded
-   */
-  private async installFluidSynthWithChocolateyChain(
-    onProgress: (progress: InstallProgress) => void
-  ): Promise<boolean> {
-    // Check if winget is available for installing Chocolatey
-    if (!this.isWingetAvailable()) {
-      const errorMsg: string = 'Cannot install FluidSynth: Neither Chocolatey nor winget is available. ' +
-        'Please install "App Installer" from the Microsoft Store, or install Chocolatey manually.';
-      depsLogger.error(errorMsg);
-      onProgress({dependencyId: 'fluidsynth', status: 'error', message: errorMsg});
-      return false;
-    }
-
-    depsLogger.info('Chocolatey not found. Installing via winget first...');
-
-    // Step 1: Install Chocolatey via winget
-    onProgress({
-      dependencyId: 'fluidsynth',
-      status: 'installing',
-      message: 'Installing Chocolatey (required for FluidSynth)...',
-    });
-
-    const chocoInstallSuccess: boolean = await this.runCommand(
-      'winget',
-      ['install', CHOCOLATEY_WINGET_ID, '--accept-source-agreements', '--accept-package-agreements'],
-      'fluidsynth',
-      'installing',
-      (progress: InstallProgress): void => {
-        // Override the message to indicate we're installing Chocolatey
-        onProgress({
-          ...progress,
-          message: progress.status === 'success'
-            ? 'Chocolatey installed successfully. Now installing FluidSynth...'
-            : 'Installing Chocolatey (required for FluidSynth)...',
-        });
-      }
-    );
-
-    if (!chocoInstallSuccess) {
-      const errorMsg: string = 'Failed to install Chocolatey via winget. Please install Chocolatey manually.';
-      depsLogger.error(errorMsg);
-      onProgress({dependencyId: 'fluidsynth', status: 'error', message: errorMsg});
-      return false;
-    }
-
-    depsLogger.info('Chocolatey installed. Now installing FluidSynth...');
-
-    // Step 2: Install FluidSynth using the full path to choco.exe
-    // (PATH won't be updated in the current session)
-    onProgress({
-      dependencyId: 'fluidsynth',
-      status: 'installing',
-      message: 'Installing FluidSynth...',
-    });
-
-    return this.runCommand(
-      CHOCOLATEY_EXE_PATH,
-      ['install', 'fluidsynth', '-y'],
-      'fluidsynth',
-      'installing',
-      onProgress
-    );
-  }
-
-  /**
-   * Uninstalls a dependency using the platform-specific package manager.
-   *
-   * @param id - The dependency to uninstall
-   * @param onProgress - Callback for progress updates (streamed to SSE)
-   * @returns True if uninstallation succeeded
-   */
-  public async uninstallDependency(
-    id: DependencyId,
-    onProgress: (progress: InstallProgress) => void
-  ): Promise<boolean> {
-    const name: string = DEPENDENCY_NAMES[id];
-    depsLogger.info(`Uninstalling ${name}...`);
-
-    const cmd: {command: string; args: string[]} | null = this.getUninstallCommand(id);
-    if (!cmd) {
-      const errorMsg: string = this.getPackageManagerErrorMessage(id, 'uninstall');
-      depsLogger.error(errorMsg);
-      onProgress({dependencyId: id, status: 'error', message: errorMsg});
-      return false;
-    }
-
-    onProgress({
-      dependencyId: id,
-      status: 'uninstalling',
-      message: `Uninstalling ${name}...`,
-    });
-
-    return this.runCommand(cmd.command, cmd.args, id, 'uninstalling', onProgress);
-  }
-
-  /**
-   * Updates a dependency to the latest version via the platform package manager.
-   *
-   * Primarily for yt-dlp, which must be updated frequently to keep working
-   * against sites like YouTube as their extraction changes.
+   * yt-dlp must be updated frequently to keep working against sites like
+   * YouTube as their extraction changes.
    *
    * @param id - The dependency to update
    * @param onProgress - Callback for progress updates (streamed to SSE)
-   * @returns True if the update succeeded
+   * @returns True if the update succeeded, or yt-dlp was already current
    */
-  public async updateDependency(
-    id: DependencyId,
-    onProgress: (progress: InstallProgress) => void
-  ): Promise<boolean> {
-    const name: string = DEPENDENCY_NAMES[id];
-    depsLogger.info(`Updating ${name}...`);
+  public async updateDependency(id: DependencyId, onProgress: (progress: InstallProgress) => void): Promise<boolean> {
+    if (id !== 'yt-dlp') {
+      return this.rejectBundled(id, 'updated', onProgress);
+    }
+    return this.downloadYtDlp('updating', onProgress);
+  }
 
-    const cmd: {command: string; args: string[]} | null = this.getUpdateCommand(id);
-    if (!cmd) {
-      const errorMsg: string = this.getPackageManagerErrorMessage(id, 'update');
-      depsLogger.error(errorMsg);
-      onProgress({dependencyId: id, status: 'error', message: errorMsg});
-      return false;
+  /**
+   * Removes a downloaded dependency. Only a yt-dlp that ONIXPlayer downloaded
+   * can be removed; a system copy belongs to whatever installed it.
+   *
+   * @param id - The dependency to remove
+   * @param onProgress - Callback for progress updates (streamed to SSE)
+   * @returns True if the dependency was removed
+   */
+  public async uninstallDependency(id: DependencyId, onProgress: (progress: InstallProgress) => void): Promise<boolean> {
+    if (id !== 'yt-dlp') {
+      return this.rejectBundled(id, 'removed', onProgress);
     }
 
-    onProgress({
-      dependencyId: id,
-      status: 'updating',
-      message: `Updating ${name}...`,
-    });
+    if (!existsSync(this.ytdlpDir)) {
+      return this.fail(id, 'yt-dlp was not downloaded by ONIXPlayer, so there is nothing to remove.', onProgress);
+    }
 
-    return this.runCommand(cmd.command, cmd.args, id, 'updating', onProgress);
+    if (this.operationInProgress) {
+      return this.fail(id, 'Another yt-dlp operation is already running.', onProgress);
+    }
+
+    this.operationInProgress = true;
+    try {
+      onProgress({dependencyId: id, status: 'uninstalling', message: 'Removing yt-dlp...'});
+      await rm(this.ytdlpDir, {recursive: true, force: true});
+      this.detectBinaries();
+      depsLogger.info('yt-dlp removed');
+      onProgress({dependencyId: id, status: 'success', message: 'yt-dlp removed.'});
+      return true;
+    } catch (error: unknown) {
+      return this.fail(id, `Could not remove yt-dlp: ${DependencyManager.describeError(error)}`, onProgress);
+    } finally {
+      this.operationInProgress = false;
+    }
+  }
+
+  /**
+   * Downloads the latest yt-dlp release for this platform into the user data
+   * folder, replacing any earlier download only once the new one is verified.
+   *
+   * @param operation - Whether this is a first install or an update
+   * @param onProgress - Progress callback
+   * @returns True on success
+   */
+  private async downloadYtDlp(
+    operation: 'installing' | 'updating',
+    onProgress: (progress: InstallProgress) => void
+  ): Promise<boolean> {
+    const id: DependencyId = 'yt-dlp';
+    const asset: YtDlpAsset | null = this.getYtDlpAsset();
+    if (!asset) {
+      return this.fail(id, `yt-dlp does not publish a build for ${this.platform} (${this.arch}).`, onProgress);
+    }
+
+    if (this.operationInProgress) {
+      return this.fail(id, 'Another yt-dlp operation is already running.', onProgress);
+    }
+
+    this.operationInProgress = true;
+    const staging: string = `${this.ytdlpDir}.download`;
+
+    try {
+      onProgress({dependencyId: id, status: operation, message: 'Finding the latest yt-dlp release...'});
+      const tag: string = await this.fetchLatestYtDlpTag();
+
+      const installedVersion: string | null = this.readVersionFile(this.ytdlpDir);
+      if (operation === 'updating' && installedVersion === tag && this.ytdlpPath !== null) {
+        depsLogger.info(`yt-dlp ${tag} is already the latest release`);
+        onProgress({dependencyId: id, status: 'success', message: `yt-dlp ${tag} is already the latest version.`});
+        return true;
+      }
+
+      const expectedSha256: string = await this.fetchYtDlpChecksum(tag, asset.asset);
+
+      await rm(staging, {recursive: true, force: true});
+      mkdirSync(staging, {recursive: true});
+
+      const downloadPath: string = path.join(staging, asset.asset);
+      const actualSha256: string = await this.downloadFile(
+        `${YTDLP_DOWNLOAD_BASE_URL}/${tag}/${asset.asset}`,
+        downloadPath,
+        (percent: number | undefined): void => {
+          onProgress({
+            dependencyId: id,
+            status: operation,
+            message: percent === undefined ? `Downloading yt-dlp ${tag}...` : `Downloading yt-dlp ${tag}... ${percent}%`,
+            percent,
+          });
+        }
+      );
+
+      if (actualSha256 !== expectedSha256) {
+        throw new Error(`checksum mismatch for ${asset.asset} (expected ${expectedSha256}, got ${actualSha256})`);
+      }
+
+      const installRoot: string = path.join(staging, 'yt-dlp');
+      mkdirSync(installRoot, {recursive: true});
+
+      if (asset.archive) {
+        onProgress({dependencyId: id, status: operation, message: `Unpacking yt-dlp ${tag}...`});
+        await this.extractZip(downloadPath, installRoot);
+        unlinkSync(downloadPath);
+      } else {
+        await rename(downloadPath, path.join(installRoot, asset.executable));
+      }
+
+      const executable: string = path.join(installRoot, asset.executable);
+      if (!existsSync(executable)) {
+        throw new Error(`the download did not contain ${asset.executable}`);
+      }
+      if (this.platform !== 'win32') {
+        chmodSync(executable, EXECUTABLE_MODE);
+      }
+      writeFileSync(path.join(installRoot, VERSION_FILE), `${tag}\n`);
+
+      // Swap in the verified download.
+      await rm(this.ytdlpDir, {recursive: true, force: true});
+      await rename(installRoot, this.ytdlpDir);
+
+      this.detectBinaries();
+      const verb: string = operation === 'updating' ? 'updated to' : 'installed:';
+      depsLogger.info(`yt-dlp ${verb} ${tag}`);
+      onProgress({dependencyId: id, status: 'success', message: `yt-dlp ${verb} ${tag}.`});
+      return true;
+    } catch (error: unknown) {
+      return this.fail(id, `Could not download yt-dlp: ${DependencyManager.describeError(error)}`, onProgress);
+    } finally {
+      await rm(staging, {recursive: true, force: true}).catch((): void => undefined);
+      this.operationInProgress = false;
+    }
+  }
+
+  /**
+   * Asks GitHub for yt-dlp's latest release tag.
+   */
+  private async fetchLatestYtDlpTag(): Promise<string> {
+    const response: Response = await this.fetchFn(YTDLP_LATEST_RELEASE_URL, {
+      headers: {Accept: 'application/vnd.github+json'},
+    });
+    if (!response.ok) {
+      throw new Error(`GitHub returned ${response.status} for the latest release`);
+    }
+    const release: {readonly tag_name?: unknown} = await response.json() as {readonly tag_name?: unknown};
+    if (typeof release.tag_name !== 'string' || !/^[\w.-]+$/.test(release.tag_name)) {
+      throw new Error('GitHub did not report a release tag');
+    }
+    return release.tag_name;
+  }
+
+  /**
+   * Reads one asset's SHA-256 from a release's SHA2-256SUMS file.
+   */
+  private async fetchYtDlpChecksum(tag: string, asset: string): Promise<string> {
+    const response: Response = await this.fetchFn(`${YTDLP_DOWNLOAD_BASE_URL}/${tag}/${YTDLP_CHECKSUMS_ASSET}`);
+    if (!response.ok) {
+      throw new Error(`GitHub returned ${response.status} for ${YTDLP_CHECKSUMS_ASSET}`);
+    }
+    const sums: string = await response.text();
+    for (const line of sums.split('\n')) {
+      const [sha, name]: string[] = line.trim().split(/\s+/);
+      if (name === asset && /^[0-9a-f]{64}$/.test(sha)) {
+        return sha;
+      }
+    }
+    throw new Error(`${YTDLP_CHECKSUMS_ASSET} has no entry for ${asset}`);
+  }
+
+  /**
+   * Streams a URL to a file, reporting progress and hashing as it goes.
+   *
+   * @param url - What to download
+   * @param destination - File to write
+   * @param onPercent - Called as data arrives (undefined when the size is unknown)
+   * @returns Hex SHA-256 of what was written
+   */
+  private async downloadFile(url: string, destination: string, onPercent: (percent: number | undefined) => void): Promise<string> {
+    const response: Response = await this.fetchFn(url);
+    if (!response.ok || !response.body) {
+      throw new Error(`the download returned ${response.status}`);
+    }
+
+    const total: number = Number(response.headers.get('content-length') ?? 0);
+    const hash: Hash = createHash('sha256');
+    const file: WriteStream = createWriteStream(destination);
+    const reader: ReadableStreamDefaultReader<Uint8Array> = response.body.getReader();
+
+    let received: number = 0;
+    let lastPercent: number = -1;
+
+    try {
+      for (;;) {
+        const {done, value}: ReadableStreamReadResult<Uint8Array> = await reader.read();
+        if (done) break;
+
+        hash.update(value);
+        received += value.length;
+        if (!file.write(value)) {
+          await new Promise<void>((resolve: () => void): void => {
+            file.once('drain', resolve);
+          });
+        }
+
+        const percent: number | undefined = total > 0 ? Math.floor((received / total) * 100) : undefined;
+        if (percent === undefined || percent !== lastPercent) {
+          lastPercent = percent ?? lastPercent;
+          onPercent(percent);
+        }
+      }
+    } finally {
+      await new Promise<void>((resolve: () => void, reject: (error: Error) => void): void => {
+        file.end((error?: Error | null): void => (error ? reject(error) : resolve()));
+      });
+    }
+
+    return hash.digest('hex');
+  }
+
+  /**
+   * Extracts a zip with the OS's own tools: ditto on macOS (which keeps the
+   * executable bits and symlinks the yt-dlp bundle relies on), tar elsewhere
+   * (bsdtar, which reads zips, ships with Windows 10 and later).
+   */
+  private extractZip(zipPath: string, destination: string): Promise<void> {
+    const [command, args]: [string, string[]] = this.platform === 'darwin'
+      ? ['/usr/bin/ditto', ['-x', '-k', zipPath, destination]]
+      : ['tar', ['-xf', zipPath, '-C', destination]];
+
+    return new Promise<void>((resolve: () => void, reject: (error: Error) => void): void => {
+      logProcessSpawn(depsLogger, command, args);
+      execFile(command, args, (error: Error | null, _stdout: string, stderr: string): void => {
+        if (error) {
+          reject(new Error(`could not unpack the download: ${stderr.trim() || error.message}`));
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * Picks the yt-dlp release asset for this platform.
+   *
+   * On macOS the zip ("onedir") build is used rather than the single-file one:
+   * the single file unpacks itself to a fresh temporary folder on every run,
+   * which macOS then scans, and that cost 17-21 seconds per invocation on an
+   * Intel Mac. The unpacked build starts in about a second.
+   */
+  private getYtDlpAsset(): YtDlpAsset | null {
+    switch (this.platform) {
+      case 'darwin':
+        return {asset: 'yt-dlp_macos.zip', archive: true, executable: 'yt-dlp_macos'};
+      case 'win32': {
+        const assets: Readonly<Record<string, string>> = {x64: 'yt-dlp.exe', arm64: 'yt-dlp_arm64.exe', ia32: 'yt-dlp_x86.exe'};
+        const asset: string | undefined = assets[this.arch];
+        return asset ? {asset, archive: false, executable: 'yt-dlp.exe'} : null;
+      }
+      case 'linux': {
+        const assets: Readonly<Record<string, string>> = {x64: 'yt-dlp_linux', arm64: 'yt-dlp_linux_aarch64'};
+        const asset: string | undefined = assets[this.arch];
+        return asset ? {asset, archive: false, executable: 'yt-dlp'} : null;
+      }
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Reports that a bundled dependency cannot be managed.
+   */
+  private rejectBundled(id: DependencyId, verb: string, onProgress: (progress: InstallProgress) => void): boolean {
+    return this.fail(id, `${DEPENDENCY_NAMES[id]} is built into ONIXPlayer and is not ${verb} separately.`, onProgress);
+  }
+
+  /**
+   * Logs and reports a failed operation.
+   */
+  private fail(id: DependencyId, message: string, onProgress: (progress: InstallProgress) => void): boolean {
+    depsLogger.error(message);
+    onProgress({dependencyId: id, status: 'error', message});
+    return false;
+  }
+
+  /**
+   * Turns a caught value into a message.
+   */
+  private static describeError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   // ============================================================================
@@ -620,7 +870,7 @@ export class DependencyManager {
   /**
    * Finds the active SoundFont file.
    * If a preferred file name is provided and exists, uses that.
-   * Otherwise, checks user-installed SoundFonts first, then system paths.
+   * Otherwise, uses the first installed SoundFont.
    *
    * @param preferredFileName - Optional preferred SoundFont file name
    * @returns Path to a SoundFont file, or undefined if none found
@@ -653,13 +903,6 @@ export class DependencyManager {
     // Auto-select: use first user-installed SoundFont
     if (userSoundFonts.length > 0) {
       return userSoundFonts[0].filePath;
-    }
-
-    // Fall back to system paths
-    for (const sfPath of SYSTEM_SOUNDFONT_PATHS) {
-      if (existsSync(sfPath)) {
-        return sfPath;
-      }
     }
 
     return undefined;
@@ -732,16 +975,16 @@ export class DependencyManager {
    * Gets the status of a single dependency.
    */
   private getDependencyStatus(id: DependencyId): DependencyStatus {
-    let binaryPath: string | null = null;
+    const binaryPath: string | null = id === 'ffmpeg'
+      ? this.ffmpegPath
+      : id === 'fluidsynth' ? this.fluidsynthPath : this.ytdlpPath;
+    const source: DependencySource | null = binaryPath ? this.getSource(binaryPath) : null;
 
-    if (id === 'ffmpeg') {
-      binaryPath = this.ffmpegPath;
-    } else if (id === 'fluidsynth') {
-      binaryPath = this.fluidsynthPath;
-    } else if (id === 'openmpt123') {
-      binaryPath = this.openmpt123Path;
-    } else if (id === 'yt-dlp') {
-      binaryPath = this.ytdlpPath;
+    let version: string | null = null;
+    if (source === 'bundled') {
+      version = this.bundledVersions[id] ?? null;
+    } else if (source === 'downloaded') {
+      version = this.readVersionFile(this.ytdlpDir);
     }
 
     return {
@@ -749,21 +992,93 @@ export class DependencyManager {
       name: DEPENDENCY_NAMES[id],
       installed: binaryPath !== null,
       path: binaryPath,
+      source,
+      version,
+      managed: id === 'yt-dlp',
       description: DEPENDENCY_DESCRIPTIONS[id],
-      manualInstallUrl: MANUAL_INSTALL_URLS[id],
+      websiteUrl: WEBSITE_URLS[id],
     };
   }
 
   /**
-   * Finds a binary by checking platform-specific search paths.
+   * Classifies a resolved binary path by where it lives.
+   */
+  private getSource(binaryPath: string): DependencySource {
+    if (this.bundledBinDir && DependencyManager.isInside(binaryPath, this.bundledBinDir)) return 'bundled';
+    if (DependencyManager.isInside(binaryPath, this.ytdlpDir)) return 'downloaded';
+    return 'system';
+  }
+
+  /**
+   * Whether a path lies inside a directory.
+   */
+  private static isInside(filePath: string, dir: string): boolean {
+    const relative: string = path.relative(dir, filePath);
+    return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+  }
+
+  /**
+   * Reads versions.json from the bundled binary directory, if present.
+   */
+  private readBundledVersions(): Readonly<Record<string, string>> {
+    if (!this.bundledBinDir) return {};
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(path.join(this.bundledBinDir, BUNDLED_VERSIONS_FILE), 'utf-8'));
+      return parsed && typeof parsed === 'object' ? parsed as Record<string, string> : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Reads the version recorded in an install directory.
+   */
+  private readVersionFile(dir: string): string | null {
+    try {
+      return readFileSync(path.join(dir, VERSION_FILE), 'utf-8').trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Finds yt-dlp: ONIXPlayer's own download first, then a system copy.
+   */
+  private findYtDlp(): string | null {
+    const asset: YtDlpAsset | null = this.getYtDlpAsset();
+    if (asset) {
+      const downloaded: string = path.join(this.ytdlpDir, asset.executable);
+      if (existsSync(downloaded)) {
+        return downloaded;
+      }
+    }
+    return this.findSystemBinary('yt-dlp');
+  }
+
+  /**
+   * Finds a binary: the bundled copy first, then a system copy.
    *
    * @param binary - The binary name (e.g., 'ffmpeg', 'ffprobe', 'fluidsynth')
    * @returns Absolute path to the binary, or null if not found
    */
   private findBinary(binary: string): string | null {
-    const searchPaths: string[] = this.getSearchPaths(binary);
+    if (this.bundledBinDir) {
+      const bundled: string = path.join(this.bundledBinDir, this.platform === 'win32' ? `${binary}.exe` : binary);
+      if (existsSync(bundled)) {
+        return bundled;
+      }
+    }
+    return this.findSystemBinary(binary);
+  }
 
-    for (const p of searchPaths) {
+  /**
+   * Finds a binary somewhere on the system.
+   *
+   * @param binary - Binary name to search for
+   * @returns Absolute path to the binary, or null if not found
+   */
+  private findSystemBinary(binary: string): string | null {
+    for (const p of this.getSearchPaths(binary)) {
       if (existsSync(p)) {
         return p;
       }
@@ -778,14 +1093,17 @@ export class DependencyManager {
   }
 
   /**
-   * Gets platform-specific search paths for a binary.
+   * Gets platform-specific system search paths for a binary.
+   *
+   * These are absolute because a macOS app launched from Finder inherits
+   * launchd's PATH (/usr/bin:/bin:/usr/sbin:/sbin), which contains none of them.
    */
   private getSearchPaths(binary: string): string[] {
     switch (this.platform) {
       case 'darwin':
         return [
           `/opt/homebrew/bin/${binary}`,    // Homebrew Apple Silicon
-          `/usr/local/bin/${binary}`,       // Homebrew Intel
+          `/usr/local/bin/${binary}`,       // Homebrew Intel, manual installs
           `/usr/bin/${binary}`,             // System
         ];
 
@@ -799,17 +1117,11 @@ export class DependencyManager {
       case 'win32': {
         const localAppData: string = process.env['LOCALAPPDATA'] ?? '';
         const programFiles: string = process.env['ProgramFiles'] ?? 'C:\\Program Files';
-        const programFilesX86: string = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
-        const chocoToolsDir: string = process.env['ChocolateyToolsLocation'] ?? path.join(programFiles, 'Tools');
         const exe: string = `${binary}.exe`;
 
         return [
-          // FFmpeg paths (winget and manual installs)
           path.join(programFiles, 'FFmpeg', 'bin', exe),
-          path.join(programFilesX86, 'FFmpeg', 'bin', exe),
           path.join(localAppData, 'Microsoft', 'WinGet', 'Links', exe),
-          // FluidSynth paths (Chocolatey installs to tools directory)
-          path.join(chocoToolsDir, 'fluidsynth', 'bin', exe),
           path.join(programFiles, 'FluidSynth', 'bin', exe),
         ];
       }
@@ -827,7 +1139,7 @@ export class DependencyManager {
    */
   private findBinaryViaWhere(binary: string): string | null {
     try {
-      const result: string = execSync(`where ${binary}`, {encoding: 'utf-8', timeout: 5000}).trim();
+      const result: string = execFileSync('where', [binary], {encoding: 'utf-8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore']}).trim();
       const firstLine: string = result.split('\n')[0].trim();
       if (firstLine && existsSync(firstLine)) {
         return firstLine;
@@ -836,454 +1148,5 @@ export class DependencyManager {
       // 'where' returns exit code 1 if not found
     }
     return null;
-  }
-
-  /**
-   * Gets the install command for a dependency on the current platform.
-   *
-   * @returns Command and args, or null if no package manager is available
-   */
-  private getInstallCommand(id: DependencyId): {command: string; args: string[]} | null {
-    const packageName: string = this.getPackageName(id);
-
-    switch (this.platform) {
-      case 'darwin':
-        return this.getBrewCommand(['install', packageName]);
-
-      case 'linux':
-        return this.getLinuxInstallCommand(id);
-
-      case 'win32':
-        return this.getWindowsInstallCommand(id);
-
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Gets the uninstall command for a dependency on the current platform.
-   *
-   * @returns Command and args, or null if no package manager is available
-   */
-  private getUninstallCommand(id: DependencyId): {command: string; args: string[]} | null {
-    const packageName: string = this.getPackageName(id);
-
-    switch (this.platform) {
-      case 'darwin':
-        return this.getBrewCommand(['uninstall', packageName]);
-
-      case 'linux':
-        return this.getLinuxUninstallCommand(id);
-
-      case 'win32':
-        return this.getWindowsUninstallCommand(id);
-
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Gets the update command for a dependency on the current platform.
-   *
-   * On Linux, reinstalling via the package manager pulls the latest available
-   * version. On Windows, winget upgrade is used.
-   *
-   * @returns Command and args, or null if no package manager is available
-   */
-  private getUpdateCommand(id: DependencyId): {command: string; args: string[]} | null {
-    const packageName: string = this.getPackageName(id);
-
-    switch (this.platform) {
-      case 'darwin':
-        return this.getBrewCommand(['upgrade', packageName]);
-
-      case 'linux':
-        // Re-running the install command upgrades to the latest available version.
-        return this.getLinuxInstallCommand(id);
-
-      case 'win32':
-        // openmpt123 is not on winget — no automated update path on Windows.
-        if (id === 'openmpt123' || !this.isWingetAvailable()) {
-          return null;
-        }
-        return {
-          command: 'winget',
-          args: ['upgrade', this.getWingetId(id), '--accept-source-agreements', '--accept-package-agreements'],
-        };
-
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Gets the package name for a dependency (used by brew/apt/dnf/pacman).
-   */
-  private getPackageName(id: DependencyId): string {
-    switch (id) {
-      case 'ffmpeg': return 'ffmpeg';
-      case 'fluidsynth': return this.platform === 'darwin' ? 'fluid-synth' : 'fluidsynth';
-      // Homebrew ships openmpt123 in the 'libopenmpt' formula; most Linux
-      // distros package the CLI as 'openmpt123' (pacman uses 'libopenmpt',
-      // handled in getLinuxPackageName).
-      case 'openmpt123': return this.platform === 'darwin' ? 'libopenmpt' : 'openmpt123';
-      case 'yt-dlp': return 'yt-dlp';
-    }
-  }
-
-  /**
-   * Resolves the Linux package name for a dependency, accounting for
-   * distro-specific naming differences.
-   */
-  private getLinuxPackageName(id: DependencyId, pkgMgr: 'apt' | 'dnf' | 'pacman'): string {
-    // Arch packages the openmpt123 CLI inside 'libopenmpt'.
-    if (id === 'openmpt123' && pkgMgr === 'pacman') {
-      return 'libopenmpt';
-    }
-    return this.getPackageName(id);
-  }
-
-  /**
-   * Gets the winget package ID for Windows installation.
-   * openmpt123 is not distributed via winget (install is manual on Windows).
-   */
-  private getWingetId(id: DependencyId): string {
-    switch (id) {
-      case 'ffmpeg': return 'Gyan.FFmpeg';
-      case 'fluidsynth': return 'FluidSynth.FluidSynth';
-      case 'openmpt123': return '';
-      case 'yt-dlp': return 'yt-dlp.yt-dlp';
-    }
-  }
-
-  /**
-   * Gets the Windows install command for a dependency.
-   * FFmpeg uses winget, FluidSynth uses Chocolatey (not available on winget).
-   */
-  private getWindowsInstallCommand(id: DependencyId): {command: string; args: string[]} | null {
-    if (id === 'openmpt123') {
-      // openmpt123 is not available via winget or Chocolatey — manual install only.
-      return null;
-    }
-    if (id === 'fluidsynth') {
-      // FluidSynth is not available on winget, use Chocolatey
-      if (!this.isChocoAvailable()) {
-        return null; // Will trigger error with helpful message
-      }
-      return {command: 'choco', args: ['install', 'fluidsynth', '-y']};
-    }
-    // FFmpeg uses winget
-    if (!this.isWingetAvailable()) {
-      return null; // Will trigger error with helpful message
-    }
-    return {
-      command: 'winget',
-      args: ['install', this.getWingetId(id), '--accept-source-agreements', '--accept-package-agreements'],
-    };
-  }
-
-  /**
-   * Finds the Homebrew binary by absolute path.
-   *
-   * @returns Absolute path to brew, or null if Homebrew is not installed
-   */
-  private findBrew(): string | null {
-    for (const p of HOMEBREW_PATHS) {
-      if (existsSync(p)) {
-        return p;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Builds a Homebrew command with the binary resolved to an absolute path.
-   *
-   * @param args - Arguments to pass to brew (e.g. ['install', 'yt-dlp'])
-   * @returns Command and args, or null if Homebrew is not installed
-   */
-  private getBrewCommand(args: string[]): {command: string; args: string[]} | null {
-    const brew: string | null = this.findBrew();
-    return brew ? {command: brew, args} : null;
-  }
-
-  /**
-   * Checks if Chocolatey is available on the system.
-   */
-  private isChocoAvailable(): boolean {
-    try {
-      execSync('where choco', {encoding: 'utf-8', timeout: 5000});
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Checks if winget (Windows Package Manager) is available on the system.
-   * winget is built into Windows 11 and Windows 10 (1809+) via App Installer.
-   */
-  private isWingetAvailable(): boolean {
-    try {
-      execSync('where winget', {encoding: 'utf-8', timeout: 5000});
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Gets a helpful error message when no package manager is available.
-   */
-  private getPackageManagerErrorMessage(id: DependencyId, operation: 'install' | 'uninstall' | 'update'): string {
-    // macOS: everything goes through Homebrew
-    if (this.platform === 'darwin' && !this.findBrew()) {
-      return `Cannot ${operation} ${DEPENDENCY_NAMES[id]}: Homebrew is required but was not found. ` +
-        'Install Homebrew from https://brew.sh, or use the Manual Download link.';
-    }
-
-    // Windows: FFmpeg requires winget
-    if (this.platform === 'win32' && id === 'ffmpeg' && !this.isWingetAvailable()) {
-      return `Cannot ${operation} FFmpeg: winget (Windows Package Manager) is required but not installed. ` +
-        'Please install "App Installer" from the Microsoft Store or use the Manual Download link.';
-    }
-
-    // Windows: FluidSynth requires Chocolatey (for uninstall only - install can chain via winget)
-    if (this.platform === 'win32' && id === 'fluidsynth' && !this.isChocoAvailable() && operation === 'uninstall') {
-      return `Cannot ${operation} FluidSynth: Chocolatey is required but not installed. ` +
-        'FluidSynth may have been installed manually. Please uninstall via Control Panel or use the Manual Download link.';
-    }
-
-    // Linux: requires pkexec for GUI privilege elevation
-    if (this.platform === 'linux') {
-      const pkgMgr: 'apt' | 'dnf' | 'pacman' | null = this.detectLinuxPackageManager();
-      if (pkgMgr && !this.isPkexecAvailable()) {
-        return `Cannot ${operation} ${DEPENDENCY_NAMES[id]}: pkexec is required for graphical authentication. ` +
-          `Please install via terminal: sudo ${pkgMgr} ${operation === 'uninstall' ? 'remove' : 'install'} -y ${this.getPackageName(id)}`;
-      }
-    }
-
-    return `No package manager found for ${this.platform}`;
-  }
-
-  /**
-   * Gets the Windows uninstall command for a dependency.
-   * FFmpeg uses winget, FluidSynth uses Chocolatey.
-   */
-  private getWindowsUninstallCommand(id: DependencyId): {command: string; args: string[]} | null {
-    if (id === 'openmpt123') {
-      // openmpt123 is installed manually on Windows — nothing to uninstall via a package manager.
-      return null;
-    }
-    if (id === 'fluidsynth') {
-      // FluidSynth installed via Chocolatey
-      if (!this.isChocoAvailable()) {
-        return null;
-      }
-      return {command: 'choco', args: ['uninstall', 'fluidsynth', '-y']};
-    }
-    // FFmpeg uses winget
-    if (!this.isWingetAvailable()) {
-      return null;
-    }
-    return {
-      command: 'winget',
-      args: ['uninstall', this.getWingetId(id)],
-    };
-  }
-
-  /**
-   * Gets the Linux install command using the detected package manager.
-   * Uses pkexec for graphical privilege elevation (shows native password dialog).
-   */
-  private getLinuxInstallCommand(id: DependencyId): {command: string; args: string[]} | null {
-    const pkgMgr: 'apt' | 'dnf' | 'pacman' | null = this.detectLinuxPackageManager();
-    if (!pkgMgr) return null;
-
-    // Require pkexec for GUI privilege elevation
-    if (!this.isPkexecAvailable()) return null;
-
-    const packageName: string = this.getLinuxPackageName(id, pkgMgr);
-
-    switch (pkgMgr) {
-      case 'apt':
-        return {command: 'pkexec', args: ['apt', 'install', '-y', packageName]};
-      case 'dnf':
-        return {command: 'pkexec', args: ['dnf', 'install', '-y', packageName]};
-      case 'pacman':
-        return {command: 'pkexec', args: ['pacman', '-S', '--noconfirm', packageName]};
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Gets the Linux uninstall command using the detected package manager.
-   * Uses pkexec for graphical privilege elevation (shows native password dialog).
-   */
-  private getLinuxUninstallCommand(id: DependencyId): {command: string; args: string[]} | null {
-    const pkgMgr: 'apt' | 'dnf' | 'pacman' | null = this.detectLinuxPackageManager();
-    if (!pkgMgr) return null;
-
-    // Require pkexec for GUI privilege elevation
-    if (!this.isPkexecAvailable()) return null;
-
-    const packageName: string = this.getLinuxPackageName(id, pkgMgr);
-
-    switch (pkgMgr) {
-      case 'apt':
-        return {command: 'pkexec', args: ['apt', 'remove', '-y', packageName]};
-      case 'dnf':
-        return {command: 'pkexec', args: ['dnf', 'remove', '-y', packageName]};
-      case 'pacman':
-        return {command: 'pkexec', args: ['pacman', '-R', '--noconfirm', packageName]};
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Detects which Linux package manager is available.
-   * Checks for apt, dnf, and pacman in order.
-   */
-  private detectLinuxPackageManager(): 'apt' | 'dnf' | 'pacman' | null {
-    if (existsSync('/usr/bin/apt')) return 'apt';
-    if (existsSync('/usr/bin/dnf')) return 'dnf';
-    if (existsSync('/usr/bin/pacman')) return 'pacman';
-    return null;
-  }
-
-  /**
-   * Checks if pkexec is available for graphical privilege elevation on Linux.
-   * pkexec is part of PolicyKit and provides a native password dialog.
-   *
-   * @returns True if pkexec is available
-   */
-  private isPkexecAvailable(): boolean {
-    return existsSync('/usr/bin/pkexec');
-  }
-
-  /**
-   * Builds the environment for a package manager run, putting the manager's own
-   * directory on PATH.
-   *
-   * Resolving the binary absolutely is enough to start it, but not enough for
-   * what it starts in turn: Homebrew shells out to its own prefix, and under
-   * launchd's PATH those lookups would miss for the same reason the `brew`
-   * lookup did.
-   *
-   * Left alone on Windows, where a GUI process already inherits the user's full
-   * environment and `process.env` is case-insensitive in a way that spreading it
-   * into a new object would break.
-   *
-   * @param command - The command about to be spawned
-   * @returns Environment for the child process
-   */
-  private getCommandEnv(command: string): NodeJS.ProcessEnv {
-    if (this.platform === 'win32' || !path.isAbsolute(command)) {
-      return process.env;
-    }
-
-    const dir: string = path.dirname(command);
-    const currentPath: string = process.env['PATH'] ?? '';
-
-    if (currentPath.split(path.delimiter).includes(dir)) {
-      return process.env;
-    }
-
-    return {
-      ...process.env,
-      PATH: currentPath ? `${dir}${path.delimiter}${currentPath}` : dir,
-    };
-  }
-
-  /**
-   * Runs a command and streams output via the progress callback.
-   * Re-detects binaries after completion.
-   *
-   * @param command - The command to run
-   * @param args - Command arguments
-   * @param id - The dependency being operated on
-   * @param operation - 'installing', 'uninstalling', or 'updating'
-   * @param onProgress - Progress callback
-   * @returns True if the command succeeded (exit code 0)
-   */
-  private runCommand(
-    command: string,
-    args: string[],
-    id: DependencyId,
-    operation: 'installing' | 'uninstalling' | 'updating',
-    onProgress: (progress: InstallProgress) => void
-  ): Promise<boolean> {
-    const presentVerb: string = operation === 'installing' ? 'Installing' : operation === 'uninstalling' ? 'Uninstalling' : 'Updating';
-    const pastVerb: string = operation === 'installing' ? 'installed' : operation === 'uninstalling' ? 'uninstalled' : 'updated';
-
-    return new Promise<boolean>((resolve: (value: boolean) => void): void => {
-      logProcessSpawn(depsLogger, command, args);
-
-      const child: ChildProcess = spawn(command, args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: this.getCommandEnv(command),
-      });
-
-      let outputBuffer: string = '';
-
-      const appendOutput: (data: Buffer) => void = (data: Buffer): void => {
-        const text: string = data.toString();
-        outputBuffer += text;
-        logProcessOutput(depsLogger, 'stdout', text);
-        onProgress({
-          dependencyId: id,
-          status: operation,
-          message: `${presentVerb} ${DEPENDENCY_NAMES[id]}...`,
-          output: outputBuffer,
-        });
-      };
-
-      child.stdout?.on('data', appendOutput);
-      child.stderr?.on('data', appendOutput);
-
-      child.on('close', (code: number | null, signal: string | null): void => {
-        logProcessExit(depsLogger, command, code, signal);
-
-        // Re-detect binaries after install/uninstall/update
-        this.detectBinaries();
-
-        if (code === 0) {
-          depsLogger.info(`${DEPENDENCY_NAMES[id]} ${pastVerb} successfully`);
-          onProgress({
-            dependencyId: id,
-            status: 'success',
-            message: `${DEPENDENCY_NAMES[id]} ${pastVerb} successfully.`,
-            output: outputBuffer,
-          });
-          resolve(true);
-        } else {
-          const errorMsg: string = `${DEPENDENCY_NAMES[id]} ${operation} failed (exit code ${code})`;
-          depsLogger.error(errorMsg);
-          onProgress({
-            dependencyId: id,
-            status: 'error',
-            message: errorMsg,
-            output: outputBuffer,
-          });
-          resolve(false);
-        }
-      });
-
-      child.on('error', (error: Error): void => {
-        const errorMsg: string = `Failed to run ${command}: ${error.message}`;
-        depsLogger.error(errorMsg);
-        onProgress({
-          dependencyId: id,
-          status: 'error',
-          message: errorMsg,
-          output: outputBuffer,
-        });
-        resolve(false);
-      });
-    });
   }
 }

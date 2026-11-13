@@ -588,31 +588,6 @@
     line-height: 1.4;
   }
 
-  .manual-install {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    background: var(--text-5);
-    border-radius: 6px;
-
-    @include light-mode {
-      background: var(--text-8);
-    }
-
-    .manual-label {
-      font-size: 0.75rem;
-      color: var(--text-40);
-      flex-shrink: 0;
-    }
-
-    code {
-      font-size: 0.75rem;
-      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-      color: var(--text-70);
-    }
-  }
-
   // Install progress
   .install-progress {
     padding: 0.75rem;
@@ -655,6 +630,25 @@
 
       @include light-mode {
         color: rgb(59, 130, 246);
+      }
+    }
+  }
+
+  // Download progress bar
+  .install-progress-bar {
+    height: 4px;
+    margin-top: 0.5rem;
+    background: var(--text-10);
+    border-radius: 2px;
+    overflow: hidden;
+
+    .install-progress-fill {
+      height: 100%;
+      background: rgb(96, 165, 250);
+      transition: width 0.2s ease;
+
+      @include light-mode {
+        background: rgb(59, 130, 246);
       }
     }
   }

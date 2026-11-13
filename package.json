@@ -1,6 +1,6 @@
 {
   "name": "onixlabs-media-player",
-  "version": "2026.10.0",
+  "version": "2026.11.0",
   "description": "Cross-platform media player with real-time audio visualizations, video playback, and MIDI synthesis",
   "author": {
     "name": "ONIXLabs",
@@ -33,7 +33,9 @@
     "package:mac": "npm run build:all && npm run obfuscate && electron-builder --mac",
     "package:win": "npm run build:all && npm run obfuscate && electron-builder --win",
     "package:linux": "npm run build:all && npm run obfuscate && electron-builder --linux",
-    "package:all": "npm run build:all && npm run obfuscate && electron-builder -mwl"
+    "package:all": "npm run build:all && npm run obfuscate && electron-builder -mwl",
+    "binaries": "bash scripts/build-binaries.sh",
+    "package:mac:local": "npm run build:all && npm run obfuscate && electron-builder --mac dmg --publish never --$(node -p process.arch)"
   },
   "prettier": {
     "printWidth": 100,
@@ -114,6 +116,13 @@
       "public/icon-file.png",
       "node_modules/electron-log/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "vendor/bin/${os}-${arch}",
+        "to": "bin"
+      }
+    ],
+    "beforePack": "scripts/verify-bundled-resources.cjs",
     "mac": {
       "category": "public.app-category.entertainment",
       "icon": "public/icon-macos.png",

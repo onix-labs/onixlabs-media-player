@@ -1,0 +1,167 @@
+name: Bundled Binaries
+
+# Builds the ffmpeg, ffprobe and fluidsynth that ONIXPlayer ships for every
+# packaged target, with scripts/build-binaries.sh, and checks each one on a
+# clean machine with scripts/check-binaries.sh.
+#
+# Each target is uploaded as an artifact named binaries-<os>-<arch> holding
+# <os>-<arch>.tar (a tarball, because artifacts drop the executable bit), and
+# the sources they were built from as binaries-sources. release.yml unpacks
+# them into vendor/bin and attaches the sources to the release, as the GPL and
+# LGPL require.
+#
+# A build takes the better part of an hour, so each target is cached against
+# the build script, which pins every source and flag. A cache made on main
+# serves tag and pull request runs too.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/build-binaries.sh'
+      - 'scripts/check-binaries.sh'
+      - '.github/workflows/binaries.yml'
+  workflow_dispatch:
+  # Called by Release Readiness and Release.
+  workflow_call:
+
+jobs:
+  sources:
+    name: Sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify the sources
+        run: FETCH_ONLY=1 bash scripts/build-binaries.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-sources
+          path: vendor/cache/*
+          if-no-files-found: error
+
+  mac:
+    name: macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: macos-15-intel
+          - arch: arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: vendor/bin/mac-${{ matrix.arch }}
+          key: binaries-mac-${{ matrix.arch }}-${{ hashFiles('scripts/build-binaries.sh') }}
+
+      # Build-time tools only; nothing from Homebrew is linked (the build
+      # script fails if anything outside the OS is).
+      - name: Install build tools
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: brew install nasm pkgconf
+
+      - name: Build
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-binaries.sh ${{ matrix.arch }}
+
+      - name: Check
+        run: bash scripts/check-binaries.sh mac-${{ matrix.arch }}
+
+      - name: Pack
+        run: tar -C vendor/bin -cf "${RUNNER_TEMP}/mac-${{ matrix.arch }}.tar" mac-${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-mac-${{ matrix.arch }}
+          path: ${{ runner.temp }}/mac-${{ matrix.arch }}.tar
+          if-no-files-found: error
+
+  linux:
+    name: Linux (x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: vendor/bin/linux-x64
+          key: binaries-linux-x64-${{ hashFiles('scripts/build-binaries.sh') }}
+
+      # Alpine's musl links fully statically, so the result runs on any
+      # distribution; the check below runs it on this Ubuntu host to prove it.
+      - name: Build (Alpine)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          docker run --rm -v "${PWD}:/src" -w /src alpine:3.22 sh -euc '
+            apk add --no-cache bash build-base cmake curl linux-headers nasm perl pkgconf tar xz \
+              bzip2-dev bzip2-static zlib-dev zlib-static
+            bash scripts/build-binaries.sh x64
+          '
+          sudo chown -R "$(id -u):$(id -g)" vendor
+
+      - name: Check (Ubuntu)
+        run: bash scripts/check-binaries.sh linux-x64
+
+      - name: Pack
+        run: tar -C vendor/bin -cf "${RUNNER_TEMP}/linux-x64.tar" linux-x64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-linux-x64
+          path: ${{ runner.temp }}/linux-x64.tar
+          if-no-files-found: error
+
+  windows:
+    name: Windows (x64)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: vendor/bin/win-x64
+          key: binaries-win-x64-${{ hashFiles('scripts/build-binaries.sh') }}
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make curl tar xz
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-bzip2
+            mingw-w64-ucrt-x86_64-libiconv
+
+      - name: Build
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-binaries.sh x64
+
+      - name: Check
+        run: bash scripts/check-binaries.sh win-x64
+
+      - name: Pack
+        run: tar -C vendor/bin -cf "$(cygpath -u '${{ runner.temp }}')/win-x64.tar" win-x64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-win-x64
+          path: ${{ runner.temp }}/win-x64.tar
+          if-no-files-found: error

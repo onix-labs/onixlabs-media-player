@@ -38,7 +38,6 @@
               <div class="topic-section">
                 <h3>Quick Start</h3>
                 <ol class="help-list numbered">
-                  <li><strong>Install dependencies</strong> &mdash; Open Settings (Cmd/Ctrl + ,) and navigate to Dependencies to install FFmpeg and optionally FluidSynth for MIDI support.</li>
                   <li><strong>Open media files</strong> &mdash; Use File &gt; Open (Cmd/Ctrl + O) or drag and drop files onto the player window.</li>
                   <li><strong>Control playback</strong> &mdash; Use the transport controls at the bottom of the window or keyboard shortcuts (Space to play/pause).</li>
                   <li><strong>Explore visualizations</strong> &mdash; Audio files display real-time visualizations. Switch between modes via View &gt; Visualizations in the menu.</li>
@@ -46,15 +45,15 @@
               </div>
               <div class="topic-section">
                 <h3>First-Time Setup</h3>
-                <p>ONIXPlayer requires FFmpeg for audio and video playback. Without it, no media files can be opened. Navigate to Settings &gt; Dependencies and click "Install" next to FFmpeg.</p>
-                <p>For MIDI file playback, you also need FluidSynth and at least one SoundFont (.sf2) file. Install FluidSynth from Settings &gt; Dependencies, then install a SoundFont file.</p>
+                <p>There is nothing to install. ONIXPlayer comes with FFmpeg for audio, video and tracker modules, and with FluidSynth for MIDI.</p>
+                <p>MIDI also needs a SoundFont (.sf2) file of your choice, which the setup wizard asks for. To play media from internet URLs, download yt-dlp. Both can be added later from Settings &gt; Dependencies.</p>
               </div>
             }
 
             @case ('supported-formats') {
               <div class="topic-section">
                 <h3>Audio Formats</h3>
-                <p>The following audio formats are supported when FFmpeg is installed:</p>
+                <p>The following audio formats are supported:</p>
                 <div class="format-tags">
                   <span class="format-tag">MP3</span>
                   <span class="format-tag">FLAC</span>
@@ -67,14 +66,14 @@
               </div>
               <div class="topic-section">
                 <h3>MIDI Format</h3>
-                <p>MIDI files (.mid, .midi) require both FluidSynth and a SoundFont (.sf2) file to be installed. FluidSynth synthesizes audio from MIDI data using SoundFont instrument samples.</p>
+                <p>MIDI files (.mid, .midi) are synthesized by the built-in FluidSynth using the instrument samples in a SoundFont (.sf2) file, which you choose in the setup wizard or in Settings &gt; Dependencies.</p>
                 <div class="format-tags">
                   <span class="format-tag">MIDI</span>
                 </div>
               </div>
               <div class="topic-section">
                 <h3>Video Formats</h3>
-                <p>The following video formats are supported when FFmpeg is installed:</p>
+                <p>The following video formats are supported:</p>
                 <div class="format-tags">
                   <span class="format-tag">MP4</span>
                   <span class="format-tag">M4V</span>
@@ -276,7 +275,7 @@
             @case ('dependencies') {
               <div class="topic-section">
                 <h3>About Dependencies</h3>
-                <p>ONIXPlayer relies on external tools for media processing. These are managed through the Settings &gt; Dependencies panel, which can automatically install and uninstall them via your system package manager (Homebrew on macOS).</p>
+                <p>ONIXPlayer relies on external tools for media processing. FFmpeg and FluidSynth are built into the app. yt-dlp, which changes too often to ship with each release, is downloaded on request from its official releases. Settings &gt; Dependencies shows each one and where it comes from.</p>
               </div>
               <div class="topic-section">
                 <h3>FFmpeg</h3>
@@ -285,7 +284,8 @@
                   <li>Required for all audio formats (MP3, FLAC, WAV, OGG, M4A, AAC, WMA)</li>
                   <li>Required for all video formats (MP4, M4V, MKV, AVI, WebM, MOV)</li>
                   <li>Handles real-time transcoding for non-native browser formats</li>
-                  <li>Install via Settings &gt; Dependencies</li>
+                  <li>Plays tracker modules (MOD, XM, S3M, IT, Oktalyzer and more) through libopenmpt</li>
+                  <li>Built into ONIXPlayer</li>
                 </ul>
               </div>
               <div class="topic-section">
@@ -294,12 +294,21 @@
                 <ul class="help-list">
                   <li>Required only for MIDI (.mid, .midi) files</li>
                   <li>Requires at least one SoundFont (.sf2) file to produce sound</li>
-                  <li>Install via Settings &gt; Dependencies</li>
+                  <li>Built into ONIXPlayer</li>
+                </ul>
+              </div>
+              <div class="topic-section">
+                <h3>yt-dlp</h3>
+                <p>yt-dlp resolves video and audio from internet URLs, including YouTube. It is optional.</p>
+                <ul class="help-list">
+                  <li>Download, update and remove it from Settings &gt; Dependencies</li>
+                  <li>Downloaded from yt-dlp's GitHub releases and checked against their published SHA-256 sums</li>
+                  <li>Update it when a site stops working: yt-dlp releases fixes as sites change</li>
                 </ul>
               </div>
               <div class="topic-section">
                 <h3>SoundFonts</h3>
-                <p>SoundFont (.sf2) files contain instrument samples used by FluidSynth to synthesize MIDI audio. You need at least one SoundFont installed for MIDI playback to produce sound.</p>
+                <p>SoundFont (.sf2) files contain instrument samples used by FluidSynth to synthesize MIDI audio. None ships with ONIXPlayer: you need at least one installed for MIDI playback to produce sound.</p>
                 <ul class="help-list">
                   <li>Install SoundFonts via Settings &gt; Dependencies (under the FluidSynth section)</li>
                   <li>Popular free SoundFonts include FluidR3, GeneralUser GS, and Arachno</li>
@@ -360,7 +369,7 @@
                 <ul class="help-list">
                   <li><strong>Application</strong> &mdash; Server port configuration, controls auto-hide delay</li>
                   <li><strong>Appearance</strong> &mdash; Glass effect (window transparency), background color, and window tint controls with HSL/HSLA sliders</li>
-                  <li><strong>Dependencies</strong> &mdash; Install/uninstall FFmpeg, FluidSynth, and SoundFont files</li>
+                  <li><strong>Dependencies</strong> &mdash; See the built-in components, download yt-dlp, and manage SoundFont files</li>
                   <li><strong>Playback</strong> &mdash; Default volume, crossfade duration, previous track threshold, skip duration, and video aspect ratio</li>
                   <li><strong>Transcoding</strong> &mdash; Video quality preset and audio bitrate for transcoded formats</li>
                   <li><strong>Visualizations</strong> &mdash; Default visualization type, max frame rate, FFT size, and per-visualization customization</li>

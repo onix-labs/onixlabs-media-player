@@ -1,12 +1,12 @@
 /**
  * @fileoverview Angular service for managing external dependency state.
  *
- * This service provides reactive state for the dependency management UI,
- * including binary detection status, install/uninstall progress, and
- * SoundFont file management.
+ * This service provides reactive state for the dependency management UI:
+ * the bundled FFmpeg and FluidSynth, the downloadable yt-dlp, download
+ * progress, and SoundFont file management.
  *
  * State is synchronized via SSE events from the unified media server.
- * Commands (install, uninstall, etc.) are sent via HTTP POST requests.
+ * Commands (download, update, remove, etc.) are sent via HTTP POST requests.
  *
  * @module app/services/dependency.service
  */
@@ -22,7 +22,13 @@ import {FFMPEG_EXTENSIONS, MIDI_EXTENSIONS, TRACKER_EXTENSIONS} from '../constan
 /**
  * Identifier for a managed dependency.
  */
-export type DependencyId = 'ffmpeg' | 'fluidsynth' | 'openmpt123' | 'yt-dlp';
+export type DependencyId = 'ffmpeg' | 'fluidsynth' | 'yt-dlp';
+
+/**
+ * Where a dependency's binary was found: shipped inside ONIXPlayer,
+ * downloaded by it, or installed on the system by other means.
+ */
+export type DependencySource = 'bundled' | 'downloaded' | 'system';
 
 /**
  * Status of a single dependency.
@@ -32,8 +38,12 @@ export interface DependencyStatus {
   readonly name: string;
   readonly installed: boolean;
   readonly path: string | null;
+  readonly source: DependencySource | null;
+  readonly version: string | null;
+  /** Whether ONIXPlayer can download, update and remove it (yt-dlp only) */
+  readonly managed: boolean;
   readonly description: string;
-  readonly manualInstallUrl: string;
+  readonly websiteUrl: string;
 }
 
 /**
@@ -42,8 +52,11 @@ export interface DependencyStatus {
 export interface DependencyState {
   readonly ffmpeg: DependencyStatus;
   readonly fluidsynth: DependencyStatus;
-  readonly openmpt123: DependencyStatus;
   readonly ytdlp: DependencyStatus;
+  /** Whether the FFmpeg in use can decode tracker modules (built with libopenmpt) */
+  readonly trackerSupport: boolean;
+  /** Whether MIDI can be played: FluidSynth is present and a SoundFont is installed */
+  readonly midiSupport: boolean;
   readonly soundfonts: SoundFontInfo[];
   readonly activeSoundFont: string | null;
   readonly hardwareEncoders: HardwareEncoderInfo;
@@ -67,13 +80,15 @@ export interface HardwareEncoderInfo {
 }
 
 /**
- * Progress update during dependency installation or uninstallation.
+ * Progress update while a dependency is downloaded, updated or removed.
  */
 export interface InstallProgress {
   readonly dependencyId: DependencyId;
   readonly status: 'installing' | 'uninstalling' | 'updating' | 'success' | 'error';
   readonly message: string;
   readonly output?: string;
+  /** Download progress from 0 to 100, when known */
+  readonly percent?: number;
 }
 
 // ============================================================================
@@ -81,11 +96,11 @@ export interface InstallProgress {
 // ============================================================================
 
 /**
- * Service that manages external dependency state and installation.
+ * Service that manages external dependency state and the yt-dlp download.
  *
  * Provides reactive signals for:
- * - FFmpeg and FluidSynth installation status
- * - Install/uninstall progress with terminal output
+ * - FFmpeg, FluidSynth and yt-dlp availability
+ * - Download/update/remove progress
  * - SoundFont file management
  *
  * @example
@@ -147,9 +162,17 @@ export class DependencyService implements OnDestroy {
     (): boolean => this.dependencyState()?.fluidsynth.installed ?? false
   );
 
-  /** Whether openmpt123 is installed (required for tracker module playback) */
-  public readonly openmpt123Installed: ReturnType<typeof computed<boolean>> = computed(
-    (): boolean => this.dependencyState()?.openmpt123.installed ?? false
+  /**
+   * Whether MIDI files can be played. FluidSynth is always bundled, but no
+   * SoundFont is, so MIDI stays off until the user installs one.
+   */
+  public readonly midiSupported: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.dependencyState()?.midiSupport ?? false
+  );
+
+  /** Whether tracker modules can be played (FFmpeg built with libopenmpt) */
+  public readonly trackerSupported: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.dependencyState()?.trackerSupport ?? false
   );
 
   /** Whether yt-dlp is installed (required for internet URL playback) */
@@ -159,7 +182,7 @@ export class DependencyService implements OnDestroy {
 
   /** Whether all dependencies are installed */
   public readonly allDependenciesInstalled: ReturnType<typeof computed<boolean>> = computed(
-    (): boolean => this.ffmpegInstalled() && this.fluidsynthInstalled() && this.openmpt123Installed()
+    (): boolean => this.ffmpegInstalled() && this.fluidsynthInstalled()
   );
 
   /** Whether any dependencies are missing */
@@ -175,7 +198,6 @@ export class DependencyService implements OnDestroy {
       const missing: DependencyStatus[] = [];
       if (!state.ffmpeg.installed) missing.push(state.ffmpeg);
       if (!state.fluidsynth.installed) missing.push(state.fluidsynth);
-      if (!state.openmpt123.installed) missing.push(state.openmpt123);
       return missing;
     }
   );
@@ -197,7 +219,7 @@ export class DependencyService implements OnDestroy {
 
   /** Whether at least one dependency is installed */
   public readonly anyDependencyInstalled: ReturnType<typeof computed<boolean>> = computed(
-    (): boolean => this.ffmpegInstalled() || this.fluidsynthInstalled() || this.openmpt123Installed()
+    (): boolean => this.ffmpegInstalled() || this.fluidsynthInstalled()
   );
 
   /** Whether zero dependencies are installed (only true after state is loaded) */
@@ -210,8 +232,8 @@ export class DependencyService implements OnDestroy {
     (): ReadonlySet<string> => {
       const allowed: Set<string> = new Set<string>();
       if (this.ffmpegInstalled()) FFMPEG_EXTENSIONS.forEach((ext: string): Set<string> => allowed.add(ext));
-      if (this.fluidsynthInstalled()) MIDI_EXTENSIONS.forEach((ext: string): Set<string> => allowed.add(ext));
-      if (this.openmpt123Installed()) TRACKER_EXTENSIONS.forEach((ext: string): Set<string> => allowed.add(ext));
+      if (this.midiSupported()) MIDI_EXTENSIONS.forEach((ext: string): Set<string> => allowed.add(ext));
+      if (this.trackerSupported()) TRACKER_EXTENSIONS.forEach((ext: string): Set<string> => allowed.add(ext));
       return allowed;
     }
   );
@@ -259,7 +281,7 @@ export class DependencyService implements OnDestroy {
   // ============================================================================
 
   /**
-   * Installs a dependency using the platform package manager.
+   * Downloads a dependency (yt-dlp; the others are bundled).
    * Progress is streamed via SSE events.
    */
   public async installDependency(id: DependencyId): Promise<void> {
@@ -267,7 +289,7 @@ export class DependencyService implements OnDestroy {
   }
 
   /**
-   * Uninstalls a dependency using the platform package manager.
+   * Removes a downloaded dependency (yt-dlp).
    * Progress is streamed via SSE events.
    */
   public async uninstallDependency(id: DependencyId): Promise<void> {
@@ -275,8 +297,8 @@ export class DependencyService implements OnDestroy {
   }
 
   /**
-   * Updates a dependency to the latest version via the platform package manager.
-   * Progress is streamed via SSE events. Primarily for yt-dlp.
+   * Updates a downloaded dependency (yt-dlp) to its latest release.
+   * Progress is streamed via SSE events.
    */
   public async updateDependency(id: DependencyId): Promise<void> {
     await this.runDependencyCommand(id, 'update', 'update');

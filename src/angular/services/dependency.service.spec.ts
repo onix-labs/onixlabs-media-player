@@ -53,7 +53,6 @@ function createDependencyStatus(
   const names: Record<DependencyId, string> = {
     ffmpeg: 'FFmpeg',
     fluidsynth: 'FluidSynth',
-    openmpt123: 'openmpt123',
     'yt-dlp': 'yt-dlp',
   };
   return {
@@ -61,8 +60,11 @@ function createDependencyStatus(
     name: names[id],
     installed,
     path: installed ? `/usr/local/bin/${id}` : null,
+    source: installed ? 'system' : null,
+    version: null,
+    managed: id === 'yt-dlp',
     description: `${id} dependency`,
-    manualInstallUrl: `https://example.com/${id}`,
+    websiteUrl: `https://example.com/${id}`,
   };
 }
 
@@ -73,13 +75,15 @@ function createDependencyState(
   ffmpegInstalled: boolean,
   fluidsynthInstalled: boolean,
   ytdlpInstalled: boolean = false,
-  openmpt123Installed: boolean = false,
+  trackerSupport: boolean = false,
+  midiSupport: boolean = fluidsynthInstalled,
 ): DependencyState {
   return {
     ffmpeg: createDependencyStatus('ffmpeg', ffmpegInstalled),
     fluidsynth: createDependencyStatus('fluidsynth', fluidsynthInstalled),
-    openmpt123: createDependencyStatus('openmpt123', openmpt123Installed),
     ytdlp: createDependencyStatus('yt-dlp', ytdlpInstalled),
+    trackerSupport,
+    midiSupport,
     soundfonts: [],
     activeSoundFont: null,
     hardwareEncoders: {available: false, encoders: []},
@@ -150,7 +154,7 @@ describe('DependencyService', (): void => {
   describe('computed signals with all installed', (): void => {
     beforeEach((): void => {
       // Named "both" when there were only two dependencies; yt-dlp and
-      // openmpt123 have since joined them.
+      // tracker support have since joined them.
       const state: DependencyState = createDependencyState(true, true, true, true);
       service.dependencyState.set(state);
       service.isLoaded.set(true);
@@ -238,6 +242,37 @@ describe('DependencyService', (): void => {
     it('allowedExtensions returns MIDI_EXTENSIONS', (): void => {
       const result: ReadonlySet<string> = service.allowedExtensions();
       expect(result).toEqual(MIDI_EXTENSIONS);
+    });
+  });
+
+  // ==========================================================================
+  // MIDI needs a SoundFont
+  // ==========================================================================
+
+  describe('MIDI without a SoundFont', (): void => {
+    beforeEach((): void => {
+      // FluidSynth is bundled, but no SoundFont has been installed yet
+      const state: DependencyState = createDependencyState(true, true, false, false, false);
+      service.dependencyState.set(state);
+      service.isLoaded.set(true);
+    });
+
+    it('midiSupported is false', (): void => {
+      expect(service.midiSupported()).toBe(false);
+    });
+
+    it('allowedExtensions offers no MIDI extension', (): void => {
+      const result: ReadonlySet<string> = service.allowedExtensions();
+      for (const ext of MIDI_EXTENSIONS) {
+        expect(result.has(ext)).toBe(false);
+      }
+    });
+
+    it('allows MIDI once a SoundFont makes it playable', (): void => {
+      service.dependencyState.set(createDependencyState(true, true, false, false, true));
+
+      expect(service.midiSupported()).toBe(true);
+      expect(service.allowedExtensions().has('.mid')).toBe(true);
     });
   });
 

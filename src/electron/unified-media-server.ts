@@ -27,8 +27,9 @@ import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { SettingsManager } from './settings-manager.js';
 import { serverLogger, playlistLogger, playbackLogger, ffmpegLogger, midiLogger, logHttpRequest, logProcessSpawn, logProcessOutput, logProcessExit } from './logger.js';
-import { app } from 'electron';
+import { app, net } from 'electron';
 import { DependencyManager } from './dependency-manager.js';
+import { getBundledBinDir } from './bundled-resources.js';
 import type { DependencyId, DependencyState, InstallProgress, SoundFontInfo, HardwareEncoderInfo } from './dependency-manager.js';
 import type { AppSettings, VisualizationSettingsUpdate, ApplicationSettingsUpdate, PlaybackSettingsUpdate, TranscodingSettingsUpdate, AppearanceSettingsUpdate, SubtitleSettingsUpdate, EqualizerSettingsUpdate, VideoAdjustmentsSettingsUpdate, RecentItemsSettings, HardwareAcceleration } from './settings-manager.js';
 import { parseMidiDuration, MIDI_FORMATS } from './midi-parser.js';
@@ -200,8 +201,18 @@ export class UnifiedMediaServer {
   /** Settings manager for persistent user preferences */
   private readonly settings: SettingsManager = new SettingsManager();
 
-  /** Dependency manager for external binary detection and installation */
-  private readonly deps: DependencyManager = new DependencyManager(process.platform, app.getPath('userData'));
+  /**
+   * Dependency manager for the bundled binaries and the downloaded yt-dlp.
+   *
+   * Downloads go through Electron's network stack so they honour the system
+   * proxy. The app's own executable doubles as yt-dlp's JavaScript runtime.
+   */
+  private readonly deps: DependencyManager = new DependencyManager(process.platform, app.getPath('userData'), {
+    arch: process.arch,
+    bundledBinDir: getBundledBinDir(),
+    fetch: (input: string, init?: {readonly headers?: Record<string, string>}): Promise<Response> => net.fetch(input, init),
+    jsRuntimePath: process.execPath,
+  });
 
   /** Playlist manager instance */
   private readonly playlist: PlaylistManager;
@@ -303,7 +314,7 @@ export class UnifiedMediaServer {
   private onPlaybackStateChangeCallback: ((isPlaying: boolean) => void) | null = null;
 
   /** Callback for dependency state changes (for menu open enabled state) */
-  private onDependencyStateChangeCallback: ((ffmpegInstalled: boolean, fluidsynthInstalled: boolean, openmpt123Installed: boolean) => void) | null = null;
+  private onDependencyStateChangeCallback: ((ffmpegInstalled: boolean, fluidsynthInstalled: boolean, trackerSupport: boolean) => void) | null = null;
 
   /** Callback for media type changes (for menu aspect ratio enabled state) */
   private onMediaTypeChangeCallback: ((isVideo: boolean) => void) | null = null;
@@ -471,7 +482,8 @@ export class UnifiedMediaServer {
     this.download = new MediaDownloadManager(
       (): string | null => this.deps.getYtDlpPath(),
       (): string | null => this.deps.getFfmpegPath(),
-      path.join(app.getPath('userData'), 'downloads')
+      path.join(app.getPath('userData'), 'downloads'),
+      (): string | null => this.deps.getJsRuntimePath()
     );
     this.staticPath = staticPath ?? null;
   }
@@ -508,7 +520,7 @@ export class UnifiedMediaServer {
    *
    * @param callback - Function called when dependency install state changes
    */
-  public onDependencyStateChange(callback: (ffmpegInstalled: boolean, fluidsynthInstalled: boolean, openmpt123Installed: boolean) => void): void {
+  public onDependencyStateChange(callback: (ffmpegInstalled: boolean, fluidsynthInstalled: boolean, trackerSupport: boolean) => void): void {
     this.onDependencyStateChangeCallback = callback;
   }
 
@@ -537,7 +549,7 @@ export class UnifiedMediaServer {
     const preferredSoundFont: string | null = this.settings.getActiveSoundFontFileName();
     const state: DependencyState = this.deps.getState(preferredSoundFont);
     this.sse.broadcast('dependencies:state', state);
-    this.onDependencyStateChangeCallback?.(state.ffmpeg.installed, state.fluidsynth.installed, state.openmpt123.installed);
+    this.onDependencyStateChangeCallback?.(state.ffmpeg.installed, state.fluidsynth.installed, state.trackerSupport);
   }
 
   /**
@@ -2166,7 +2178,11 @@ export class UnifiedMediaServer {
       const fluidsynthBin: string | null = this.deps.getFluidsynthPath();
       const ffmpegBin: string | null = this.deps.getFfmpegPath();
 
-      if (!soundfont || !fluidsynthBin || !ffmpegBin) {
+      if (!soundfont) {
+        reject(new Error('No SoundFont is installed. Choose one in Settings > Dependencies to play MIDI files.'));
+        return;
+      }
+      if (!fluidsynthBin || !ffmpegBin) {
         reject(new Error('Missing dependencies for MIDI rendering'));
         return;
       }
@@ -2340,7 +2356,7 @@ export class UnifiedMediaServer {
   }
 
   // ============================================================================
-  // Tracker Modules (openmpt123)
+  // Tracker Modules (FFmpeg + libopenmpt)
   // ============================================================================
 
   /**
@@ -2350,10 +2366,10 @@ export class UnifiedMediaServer {
    * @returns 16-character hex hash string
    */
   private hashTrackerFile(filePath: string): Promise<string> {
-    // The version tag ('v2') is part of the cache key so that changes to the
-    // render pipeline invalidate stale on-disk renders (e.g. the empty files
-    // produced before the openmpt123 --batch fix) without manual cleanup.
-    return UnifiedMediaServer.hashFileContents(filePath, 'tracker-v2');
+    // The version tag is part of the cache key so that changes to the render
+    // pipeline invalidate stale on-disk renders without manual cleanup. v3 is
+    // the move from openmpt123 to FFmpeg's libopenmpt demuxer.
+    return UnifiedMediaServer.hashFileContents(filePath, 'tracker-v3');
   }
 
   /**
@@ -2372,15 +2388,15 @@ export class UnifiedMediaServer {
   /**
    * Pre-renders a tracker module to a temporary MP3 file for seekable playback.
    *
-   * Tracker modules (Oktalyzer, MOD, XM, IT, ...) are decoded to PCM by
-   * openmpt123 (libopenmpt) and encoded to MP3 by FFmpeg. Pre-rendering to a
+   * Tracker modules (Oktalyzer, MOD, XM, IT, ...) are decoded by FFmpeg's
+   * libopenmpt demuxer and encoded to MP3 in the same process. Pre-rendering to a
    * temp file lets the audio element seek natively via HTTP range requests,
    * exactly like the MIDI pipeline.
    *
    * Results are cached (in-memory + content-hashed on disk) and concurrent
    * renders of the same file are deduplicated.
    *
-   * Pipeline: module → openmpt123 (raw PCM via stdout) → FFmpeg (MP3) → temp file
+   * Pipeline: module → FFmpeg (libopenmpt → MP3) → temp file
    *
    * @param filePath - Absolute path to the tracker module
    * @returns Promise resolving to the temp MP3 file path
@@ -2454,13 +2470,12 @@ export class UnifiedMediaServer {
       }
     }
 
-    // 5. Full render: openmpt123 (raw PCM via stdout) → FFmpeg (MP3) → tempFile
+    // 5. Full render: FFmpeg's libopenmpt demuxer (module → PCM) → MP3 → tempFile
     const promise: Promise<string> = new Promise<string>((resolve: (value: string) => void, reject: (reason: Error) => void): void => {
-      const openmptBin: string | null = this.deps.getOpenmpt123Path();
       const ffmpegBin: string | null = this.deps.getFfmpegPath();
 
-      if (!openmptBin || !ffmpegBin) {
-        reject(new Error('Missing dependencies for tracker rendering'));
+      if (!ffmpegBin || !this.deps.hasTrackerSupport()) {
+        reject(new Error('Tracker rendering needs an FFmpeg built with libopenmpt'));
         return;
       }
 
@@ -2468,80 +2483,43 @@ export class UnifiedMediaServer {
 
       midiLogger.info(`Pre-rendering tracker: ${path.basename(filePath)} → ${path.basename(tempFile)}`);
 
-      // openmpt123: module → raw PCM on stdout, piped to FFmpeg (same shape as
-      // the FluidSynth MIDI pipeline). Notes on the flags:
-      // - --batch is required: the default mode is the interactive --ui, which
-      //   needs a terminal and exits non-zero when stdout is a pipe. --batch
-      //   decodes non-interactively.
-      // - --stdout streams raw PCM to stdout (openmpt123's -o/--output and
-      //   --output-type only apply to --ui/--batch-to-file and --render).
-      // - --no-float forces 16-bit signed PCM (openmpt123 defaults to 32-bit float).
-      // - '--' terminates option parsing so paths starting with '-' are safe.
-      const openmptArgs: string[] = [
-        '--batch',
-        '--stdout',
-        '--quiet',
-        '--no-float',
-        '--samplerate', '44100',
-        '--channels', '2',
-        '--',
-        filePath,
-      ];
-      midiLogger.info(`openmpt123 command: ${openmptBin} ${openmptArgs.join(' ')}`);
-      logProcessSpawn(midiLogger, 'openmpt123 (pre-render)', openmptArgs);
-      const openmpt: ChildProcess = spawn(openmptBin, openmptArgs);
-
-      // FFmpeg: raw PCM (s16le, 44.1kHz, stereo) → MP3 file.
+      // One process: FFmpeg decodes the module itself through libopenmpt.
+      // - -f libopenmpt is forced rather than probed, so the demuxer options
+      //   below always have a demuxer to apply to.
+      // - -subsong all plays every subsong in sequence, as openmpt123 did.
+      //   The default (auto) plays only the first, which cuts many modules short.
+      // - -sample_rate is the demuxer's own output rate (it defaults to 48 kHz).
       const ffmpegArgs: string[] = [
         '-hide_banner',
         '-loglevel', 'warning',
-        '-f', 's16le',
-        '-ar', '44100',
+        '-f', 'libopenmpt',
+        '-subsong', 'all',
+        '-sample_rate', '44100',
+        '-i', filePath,
         '-ac', '2',
-        '-i', 'pipe:0',
         '-c:a', 'libmp3lame',
         '-b:a', `${audioBitrate}k`,
         '-f', 'mp3',
+        '-y',
         tempFile,
       ];
       logProcessSpawn(ffmpegLogger, 'ffmpeg (tracker pre-render)', ffmpegArgs);
       const ffmpeg: ChildProcess = spawn(ffmpegBin, ffmpegArgs);
 
-      // Connect pipeline: openmpt123 stdout → FFmpeg stdin
-      openmpt.stdout?.pipe(ffmpeg.stdin!);
-
-      // openmpt123's exit code is the source of truth: FFmpeg will happily
-      // encode a truncated/empty PCM stream and exit 0, so we must not treat
-      // that as success.
-      let openmptExitCode: number | null = null;
-
-      openmpt.stderr?.on('data', (data: Readonly<Buffer>): void => {
-        const msg: string = data.toString().trim();
-        if (msg) {
-          logProcessOutput(midiLogger, 'stderr', msg);
-        }
-      });
-
       ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
         logProcessOutput(ffmpegLogger, 'stderr', data.toString());
       });
 
-      // Close FFmpeg stdin when openmpt123 finishes producing PCM.
-      openmpt.on('close', (code: number | null): void => {
-        openmptExitCode = code;
-        logProcessExit(midiLogger, 'openmpt123 (pre-render)', code, null);
-        ffmpeg.stdin?.end();
-      });
-
       // Resolve when FFmpeg finishes writing the MP3, probing for duration.
-      // Require BOTH processes to have succeeded and a non-empty output file.
+      // A module libopenmpt cannot decode makes FFmpeg exit non-zero; an empty
+      // output file is treated as a failure too.
       ffmpeg.on('close', (code: number | null): void => {
         logProcessExit(ffmpegLogger, 'ffmpeg (tracker pre-render)', code, null);
         this.trackerRenderInProgress.delete(filePath);
 
         const outputValid: boolean = existsSync(tempFile) && statSync(tempFile).size > 0;
 
-        if (openmptExitCode === 0 && code === 0 && outputValid) {
+        if (code === 0 && outputValid) {
           this.probeMedia(tempFile).then((info: MediaInfo): void => {
             this.setTrackerRenderCache(filePath, {tempFile, duration: info.duration});
             this.playlist.updateItemDurations(filePath, info.duration);
@@ -2556,18 +2534,8 @@ export class UnifiedMediaServer {
           if (existsSync(tempFile)) {
             try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
           }
-          reject(new Error(`Tracker pre-render failed (openmpt123 exit ${openmptExitCode}, ffmpeg exit ${code})`));
+          reject(new Error(`Tracker pre-render failed (ffmpeg exit ${code})`));
         }
-      });
-
-      openmpt.on('error', (err: Readonly<Error>): void => {
-        midiLogger.error(`openmpt123 pre-render error: ${err.message}`);
-        this.trackerRenderInProgress.delete(filePath);
-        ffmpeg.kill();
-        if (existsSync(tempFile)) {
-          try { unlinkSync(tempFile); } catch { /* ignore cleanup errors */ }
-        }
-        reject(err);
       });
 
       ffmpeg.on('error', (err: Readonly<Error>): void => {
@@ -3717,6 +3685,31 @@ export class UnifiedMediaServer {
    * @param req - Incoming HTTP request with { paths: string[] } body
    * @param res - HTTP response to write to
    */
+  /**
+   * Drops paths the app cannot currently play: MIDI files while no SoundFont
+   * is installed, and tracker modules when FFmpeg lacks libopenmpt.
+   *
+   * @param paths - Candidate file paths
+   * @returns The paths that can be played
+   */
+  private filterPlayablePaths(paths: readonly string[]): string[] {
+    const midi: boolean = this.deps.hasMidiSupport(this.settings.getActiveSoundFontFileName());
+    const trackers: boolean = this.deps.hasTrackerSupport();
+
+    return paths.filter((filePath: string): boolean => {
+      const ext: string = path.extname(filePath).toLowerCase();
+      if (!midi && MIDI_FORMATS.has(ext)) {
+        playlistLogger.warn(`Skipping ${path.basename(filePath)}: no SoundFont is installed for MIDI playback`);
+        return false;
+      }
+      if (!trackers && TRACKER_FORMATS.has(ext)) {
+        playlistLogger.warn(`Skipping ${path.basename(filePath)}: FFmpeg was built without libopenmpt`);
+        return false;
+      }
+      return true;
+    });
+  }
+
   private async handlePlaylistAdd(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { paths }: { paths: unknown } = JSON.parse(body);
@@ -3727,10 +3720,15 @@ export class UnifiedMediaServer {
       return;
     }
 
+    // The renderer already filters what it offers, but files can arrive by
+    // other routes; MIDI without a SoundFont and trackers without libopenmpt
+    // would only fail later, at playback.
+    const playable: string[] = this.filterPlayablePaths(paths as string[]);
+
     // Probe with bounded concurrency: one ffprobe per file all at once is a
     // process storm when a folder of hundreds of files is dropped in.
     const results: PromiseSettledResult<MediaInfo>[] = await UnifiedMediaServer.mapWithConcurrency(
-      paths as string[],
+      playable,
       UnifiedMediaServer.MAX_CONCURRENT_PROBES,
       (filePath: string): Promise<MediaInfo> => this.probeMedia(filePath)
     );
@@ -3754,7 +3752,7 @@ export class UnifiedMediaServer {
           canRemux: info.canRemux,
         });
       } else {
-        playlistLogger.error(`Failed to probe ${(paths as string[])[i]}: ${result.reason}`);
+        playlistLogger.error(`Failed to probe ${playable[i]}: ${result.reason}`);
       }
     }
 
@@ -4472,14 +4470,14 @@ export class UnifiedMediaServer {
   }
 
   /**
-   * Installs a dependency asynchronously, streaming progress via SSE.
+   * Downloads a dependency (yt-dlp) asynchronously, streaming progress via SSE.
    * Returns 202 Accepted immediately, then broadcasts progress events.
    */
   private async handleDependenciesInstall(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
 
-    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'openmpt123' && id !== 'yt-dlp') {
+    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'yt-dlp') {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Invalid dependency id' }));
       return;
@@ -4496,14 +4494,14 @@ export class UnifiedMediaServer {
   }
 
   /**
-   * Uninstalls a dependency asynchronously, streaming progress via SSE.
+   * Removes a downloaded dependency (yt-dlp) asynchronously, streaming progress via SSE.
    * Returns 202 Accepted immediately, then broadcasts progress events.
    */
   private async handleDependenciesUninstall(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
 
-    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'openmpt123' && id !== 'yt-dlp') {
+    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'yt-dlp') {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Invalid dependency id' }));
       return;
@@ -4521,13 +4519,13 @@ export class UnifiedMediaServer {
 
   /**
    * Updates a dependency to the latest version asynchronously, streaming
-   * progress via SSE. Returns 202 Accepted immediately. Primarily for yt-dlp.
+   * progress via SSE. Returns 202 Accepted immediately. Only yt-dlp updates.
    */
   private async handleDependenciesUpdate(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
     const body: string = await this.readBody(req);
     const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
 
-    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'openmpt123' && id !== 'yt-dlp') {
+    if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'yt-dlp') {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'Invalid dependency id' }));
       return;

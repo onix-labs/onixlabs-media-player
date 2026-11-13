@@ -814,14 +814,22 @@ export class ConfigurationView {
     (): DependencyStatus | null => this.depState()?.fluidsynth ?? null
   );
 
-  /** openmpt123 dependency status (required for tracker module playback) */
-  public readonly openmpt123Status: ReturnType<typeof computed<DependencyStatus | null>> = computed(
-    (): DependencyStatus | null => this.depState()?.openmpt123 ?? null
+  /** Whether the FFmpeg in use can play tracker modules */
+  public readonly trackerSupported: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => this.depState()?.trackerSupport ?? false
   );
 
   /** yt-dlp dependency status (required for internet URL playback) */
   public readonly ytdlpStatus: ReturnType<typeof computed<DependencyStatus | null>> = computed(
     (): DependencyStatus | null => this.depState()?.ytdlp ?? null
+  );
+
+  /** Every dependency, in display order */
+  public readonly dependencyRows: ReturnType<typeof computed<DependencyStatus[]>> = computed(
+    (): DependencyStatus[] => {
+      const state: DependencyState | null = this.depState();
+      return state ? [state.ffmpeg, state.fluidsynth, state.ytdlp] : [];
+    }
   );
 
   /** Installed SoundFont files */
@@ -1462,14 +1470,36 @@ export class ConfigurationView {
   // ============================================================================
 
   /**
-   * Installs a dependency using the platform package manager.
+   * Describes where a dependency comes from, for the line under its name.
+   *
+   * @param dep - The dependency to describe
+   * @returns e.g. "Built in · 9.0.2" or "Not downloaded"
+   */
+  public describeDependencySource(dep: DependencyStatus): string {
+    const version: string = dep.version ? ` · ${dep.version}` : '';
+    switch (dep.source) {
+      case 'bundled':
+        return `Built in${version}`;
+      case 'downloaded':
+        return `Downloaded${version}`;
+      case 'system': {
+        const trackers: string = dep.id === 'ffmpeg' && !this.trackerSupported() ? ' (no tracker module support)' : '';
+        return `Using ${dep.path}${trackers}`;
+      }
+      default:
+        return dep.managed ? 'Not downloaded' : 'Missing from this build of ONIXPlayer';
+    }
+  }
+
+  /**
+   * Downloads a dependency (yt-dlp).
    */
   public async onInstallDependency(id: DependencyId): Promise<void> {
     await this.dependencyService.installDependency(id);
   }
 
   /**
-   * Uninstalls a dependency using the platform package manager.
+   * Removes a downloaded dependency (yt-dlp).
    */
   public async onUninstallDependency(id: DependencyId): Promise<void> {
     await this.dependencyService.uninstallDependency(id);

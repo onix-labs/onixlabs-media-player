@@ -72,129 +72,40 @@
           @switch (selectedCategory()) {
             @case ('dependencies') {
               <div class="setting-group">
-                <!-- FFmpeg -->
-                @if (ffmpegStatus(); as ffmpeg) {
+                <!-- FFmpeg and FluidSynth ship with the app; yt-dlp is downloaded on request -->
+                @for (dep of dependencyRows(); track dep.id) {
                   <div class="dependency-row">
-                    <div class="dependency-indicator" [class.installed]="ffmpeg.installed" [class.missing]="!ffmpeg.installed">
-                      <i [class]="ffmpeg.installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
+                    <div class="dependency-indicator" [class.installed]="dep.installed" [class.missing]="!dep.installed">
+                      <i [class]="dep.installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
                     </div>
                     <div class="dependency-info">
-                      <span class="dependency-name">{{ ffmpeg.name }}</span>
-                      <span class="dependency-description">{{ ffmpeg.description }}</span>
-                      @if (ffmpeg.installed && ffmpeg.path) {
-                        <span class="dependency-path">{{ ffmpeg.path }}</span>
-                      }
+                      <span class="dependency-name">{{ dep.name }}</span>
+                      <span class="dependency-description">{{ dep.description }}</span>
+                      <span class="dependency-path" [title]="dep.path ?? ''">{{ describeDependencySource(dep) }}</span>
                     </div>
                     <div class="dependency-actions">
-                      @if (ffmpeg.installed) {
-                        <button class="dependency-button uninstall" [disabled]="isDepOperationInProgress()" (click)="onUninstallDependency('ffmpeg')" (mouseup)="$any($event.currentTarget).blur()">
-                          Uninstall
-                        </button>
-                      } @else {
-                        <button class="dependency-button install" [disabled]="isDepOperationInProgress()" (click)="onInstallDependency('ffmpeg')" (mouseup)="$any($event.currentTarget).blur()">
-                          Install
-                        </button>
+                      @if (dep.managed) {
+                        @if (dep.source === 'downloaded') {
+                          <button class="dependency-button update" [disabled]="isDepOperationInProgress()" (click)="onUpdateDependency(dep.id)" (mouseup)="$any($event.currentTarget).blur()" title="Update {{ dep.name }} to its latest release">
+                            Update
+                          </button>
+                          <button class="dependency-button uninstall" [disabled]="isDepOperationInProgress()" (click)="onUninstallDependency(dep.id)" (mouseup)="$any($event.currentTarget).blur()">
+                            Remove
+                          </button>
+                        } @else {
+                          <button class="dependency-button install" [disabled]="isDepOperationInProgress()" (click)="onInstallDependency(dep.id)" (mouseup)="$any($event.currentTarget).blur()" title="Download {{ dep.name }} from its official releases">
+                            Download
+                          </button>
+                        }
                       }
-                      <button class="dependency-link" (click)="onOpenManualDownload(ffmpeg.manualInstallUrl)" (mouseup)="$any($event.currentTarget).blur()" title="Manual download">
+                      <button class="dependency-link" (click)="onOpenManualDownload(dep.websiteUrl)" (mouseup)="$any($event.currentTarget).blur()" title="{{ dep.name }} website">
                         <i class="fa-solid fa-external-link-alt"></i>
                       </button>
                     </div>
                   </div>
                 }
 
-                <!-- FluidSynth -->
-                @if (fluidsynthStatus(); as fluidsynth) {
-                  <div class="dependency-row">
-                    <div class="dependency-indicator" [class.installed]="fluidsynth.installed" [class.missing]="!fluidsynth.installed">
-                      <i [class]="fluidsynth.installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
-                    </div>
-                    <div class="dependency-info">
-                      <span class="dependency-name">{{ fluidsynth.name }}</span>
-                      <span class="dependency-description">{{ fluidsynth.description }}</span>
-                      @if (fluidsynth.installed && fluidsynth.path) {
-                        <span class="dependency-path">{{ fluidsynth.path }}</span>
-                      }
-                    </div>
-                    <div class="dependency-actions">
-                      @if (fluidsynth.installed) {
-                        <button class="dependency-button uninstall" [disabled]="isDepOperationInProgress()" (click)="onUninstallDependency('fluidsynth')" (mouseup)="$any($event.currentTarget).blur()">
-                          Uninstall
-                        </button>
-                      } @else {
-                        <button class="dependency-button install" [disabled]="isDepOperationInProgress()" (click)="onInstallDependency('fluidsynth')" (mouseup)="$any($event.currentTarget).blur()">
-                          Install
-                        </button>
-                      }
-                      <button class="dependency-link" (click)="onOpenManualDownload(fluidsynth.manualInstallUrl)" (mouseup)="$any($event.currentTarget).blur()" title="Manual download">
-                        <i class="fa-solid fa-external-link-alt"></i>
-                      </button>
-                    </div>
-                  </div>
-                }
-
-                <!-- openmpt123 -->
-                @if (openmpt123Status(); as openmpt) {
-                  <div class="dependency-row">
-                    <div class="dependency-indicator" [class.installed]="openmpt.installed" [class.missing]="!openmpt.installed">
-                      <i [class]="openmpt.installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
-                    </div>
-                    <div class="dependency-info">
-                      <span class="dependency-name">{{ openmpt.name }}</span>
-                      <span class="dependency-description">{{ openmpt.description }}</span>
-                      @if (openmpt.installed && openmpt.path) {
-                        <span class="dependency-path">{{ openmpt.path }}</span>
-                      }
-                    </div>
-                    <div class="dependency-actions">
-                      @if (openmpt.installed) {
-                        <button class="dependency-button uninstall" [disabled]="isDepOperationInProgress()" (click)="onUninstallDependency('openmpt123')" (mouseup)="$any($event.currentTarget).blur()">
-                          Uninstall
-                        </button>
-                      } @else {
-                        <button class="dependency-button install" [disabled]="isDepOperationInProgress()" (click)="onInstallDependency('openmpt123')" (mouseup)="$any($event.currentTarget).blur()">
-                          Install
-                        </button>
-                      }
-                      <button class="dependency-link" (click)="onOpenManualDownload(openmpt.manualInstallUrl)" (mouseup)="$any($event.currentTarget).blur()" title="Manual download">
-                        <i class="fa-solid fa-external-link-alt"></i>
-                      </button>
-                    </div>
-                  </div>
-                }
-
-                @if (ytdlpStatus(); as ytdlp) {
-                  <div class="dependency-row">
-                    <div class="dependency-indicator" [class.installed]="ytdlp.installed" [class.missing]="!ytdlp.installed">
-                      <i [class]="ytdlp.installed ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'"></i>
-                    </div>
-                    <div class="dependency-info">
-                      <span class="dependency-name">{{ ytdlp.name }}</span>
-                      <span class="dependency-description">{{ ytdlp.description }}</span>
-                      @if (ytdlp.installed && ytdlp.path) {
-                        <span class="dependency-path">{{ ytdlp.path }}</span>
-                      }
-                    </div>
-                    <div class="dependency-actions">
-                      @if (ytdlp.installed) {
-                        <button class="dependency-button update" [disabled]="isDepOperationInProgress()" (click)="onUpdateDependency('yt-dlp')" (mouseup)="$any($event.currentTarget).blur()" title="Update yt-dlp to the latest version">
-                          Update
-                        </button>
-                        <button class="dependency-button uninstall" [disabled]="isDepOperationInProgress()" (click)="onUninstallDependency('yt-dlp')" (mouseup)="$any($event.currentTarget).blur()">
-                          Uninstall
-                        </button>
-                      } @else {
-                        <button class="dependency-button install" [disabled]="isDepOperationInProgress()" (click)="onInstallDependency('yt-dlp')" (mouseup)="$any($event.currentTarget).blur()">
-                          Install
-                        </button>
-                      }
-                      <button class="dependency-link" (click)="onOpenManualDownload(ytdlp.manualInstallUrl)" (mouseup)="$any($event.currentTarget).blur()" title="Manual download">
-                        <i class="fa-solid fa-external-link-alt"></i>
-                      </button>
-                    </div>
-                  </div>
-                }
-
-                <!-- Install/Uninstall Progress -->
+                <!-- Download/Update/Remove Progress -->
                 @if (depProgress(); as progress) {
                   @if (progress.status === 'installing' || progress.status === 'uninstalling' || progress.status === 'updating') {
                     <div class="install-progress">

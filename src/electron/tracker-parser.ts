@@ -2,9 +2,9 @@
  * @fileoverview Tracker module format definitions.
  *
  * Tracker modules (Amiga Oktalyzer, ProTracker MOD, FastTracker XM, Impulse
- * Tracker IT, etc.) are not PCM audio and cannot be probed or decoded by
- * ffprobe/FFmpeg directly. They are rendered to PCM by libopenmpt's
- * `openmpt123` binary and then encoded like any other audio stream.
+ * Tracker IT, etc.) are not PCM audio. The bundled FFmpeg is built with
+ * libopenmpt, whose demuxer renders them to PCM, which FFmpeg then encodes
+ * like any other audio stream.
  *
  * This module defines the set of recognised tracker file extensions. Duration
  * is obtained from the rendered output (probed as MP3), so — unlike MIDI — no

@@ -29,14 +29,14 @@ export const FFMPEG_EXTENSIONS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * File extensions requiring FluidSynth (MIDI formats).
+ * File extensions requiring FluidSynth and an installed SoundFont (MIDI formats).
  */
 export const MIDI_EXTENSIONS: ReadonlySet<string> = new Set([
   '.mid', '.midi',
 ]);
 
 /**
- * File extensions requiring openmpt123 (tracker module formats).
+ * File extensions decoded by FFmpeg's libopenmpt demuxer (tracker module formats).
  * Headlined by Amiga Oktalyzer (.okt). Kept in sync with TRACKER_FORMATS
  * in src/electron/tracker-parser.ts.
  */
@@ -74,21 +74,21 @@ function bareExtensions(set: ReadonlySet<string>): string[] {
  * dialog only offers formats the app can actually open.
  *
  * @param ffmpeg - Whether FFmpeg is installed (audio + video formats)
- * @param fluidsynth - Whether FluidSynth is installed (MIDI formats)
- * @param openmpt - Whether openmpt123 is installed (tracker module formats)
+ * @param midi - Whether MIDI can be played (FluidSynth and a SoundFont)
+ * @param trackers - Whether tracker modules can be played (FFmpeg built with libopenmpt)
  * @returns Array of file dialog filter groups
  */
-export function buildFileDialogFilters(ffmpeg: boolean, fluidsynth: boolean, openmpt: boolean): FileDialogFilter[] {
+export function buildFileDialogFilters(ffmpeg: boolean, midi: boolean, trackers: boolean): FileDialogFilter[] {
   const ffmpegAudio: string[] = bareExtensions(FFMPEG_AUDIO_EXTENSIONS);
   const video: string[] = bareExtensions(FFMPEG_VIDEO_EXTENSIONS);
-  const midi: string[] = bareExtensions(MIDI_EXTENSIONS);
+  const midiExtensions: string[] = bareExtensions(MIDI_EXTENSIONS);
   const tracker: string[] = bareExtensions(TRACKER_EXTENSIONS);
 
   // Audio-playable types across all installed dependencies.
   const audio: string[] = [
     ...(ffmpeg ? ffmpegAudio : []),
-    ...(fluidsynth ? midi : []),
-    ...(openmpt ? tracker : []),
+    ...(midi ? midiExtensions : []),
+    ...(trackers ? tracker : []),
   ];
   const allMedia: string[] = [...audio, ...(ffmpeg ? video : [])];
 
@@ -103,7 +103,7 @@ export function buildFileDialogFilters(ffmpeg: boolean, fluidsynth: boolean, ope
   if (ffmpeg) {
     filters.push({name: 'Video', extensions: video});
   }
-  if (openmpt) {
+  if (trackers) {
     filters.push({name: 'Tracker Modules', extensions: tracker});
   }
   return filters;

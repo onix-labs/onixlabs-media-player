@@ -113,18 +113,13 @@ Fine-tune your experience with extensive settings:
 
 ## Requirements
 
-ONIXPlayer requires the following to be installed on your system:
+Nothing to install. ONIXPlayer ships with its own copies of:
 
-* **FFmpeg** — For media transcoding and metadata extraction
+* **FFmpeg** — For media transcoding, metadata extraction and tracker modules
 
-* **FluidSynth** — For MIDI playback (optional)
+* **FluidSynth** — For MIDI playback
 
-### macOS Installation
-
-```bash
-brew install ffmpeg
-brew install fluid-synth  # Optional, for MIDI support
-```
+**yt-dlp**, for playing media from websites, is downloaded on demand from its official releases when you first need it. MIDI playback needs a SoundFont, which you choose during setup or later in Settings.
 
 ***
 
@@ -132,8 +127,11 @@ brew install fluid-synth  # Optional, for MIDI support
 
 ```bash
 npm install
+npm run binaries   # once: builds FFmpeg and FluidSynth into vendor/bin
 npm run dev
 ```
+
+`npm run binaries` builds from pinned, checksummed sources and takes a while the first time. It needs a C/C++ toolchain, make, cmake, pkg-config and nasm. On Linux it must run in Alpine, and on Windows in an MSYS2 UCRT64 shell; see `.github/workflows/binaries.yml` for the exact setup.
 
 ## Building for Distribution
 
@@ -148,7 +146,7 @@ npm run package:win
 npm run package:linux
 ```
 
-Build outputs are placed in the `release/` directory.
+Build outputs are placed in the `release/` directory. Packaging fails unless `vendor/bin` holds the binaries for the target being packaged.
 
 ***
 
