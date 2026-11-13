@@ -61,9 +61,35 @@ jobs:
                  --title "Release ${GITHUB_REF_NAME}" \
                  --generate-notes
 
+  # Every packaged app carries ffmpeg, ffprobe and fluidsynth for its target;
+  # electron-builder's beforePack hook refuses to package without them.
+  binaries:
+    name: Bundled Binaries
+    needs: verify-readiness
+    uses: ./.github/workflows/binaries.yml
+
+  # The GPL and LGPL require the corresponding source of the bundled binaries
+  # to be offered alongside them.
+  publish-sources:
+    name: Publish Binary Sources
+    needs: [create-release, binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: binaries-sources
+          path: sources
+
+      - name: Attach the sources to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" sources/* --clobber --repo "${GITHUB_REPOSITORY}"
+
   release:
     name: Build & Release (${{ matrix.os }})
-    needs: create-release
+    needs: [create-release, binaries]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -97,6 +123,21 @@ jobs:
       - name: Install dependencies
         if: steps.deps.outputs.cache-hit != 'true'
         run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-${{ matrix.platform }}-*
+          path: binaries-download
+          merge-multiple: true
+
+      - name: Unpack bundled binaries
+        shell: bash
+        run: |
+          mkdir -p vendor/bin
+          for archive in binaries-download/*.tar; do
+            tar -xf "${archive}" -C vendor/bin
+          done
+          ls vendor/bin
 
       - name: Build application
         run: npm run build:all

@@ -113,6 +113,9 @@ export class MediaDownloadManager {
   /** Resolves the current ffmpeg binary path, passed to yt-dlp for merging */
   private readonly getFfmpegPath: () => string | null;
 
+  /** Resolves the executable yt-dlp runs JavaScript with (null to let yt-dlp look for one) */
+  private readonly getJsRuntimePath: () => string | null;
+
   /** Directory where downloaded files are written */
   private readonly downloadsDir: string;
 
@@ -129,14 +132,19 @@ export class MediaDownloadManager {
    *   so install/uninstall is picked up without reconstructing the manager)
    * @param getFfmpegPath - Accessor for the ffmpeg binary path
    * @param downloadsDir - Absolute path to the downloads directory (created if absent)
+   * @param getJsRuntimePath - Accessor for a Node-compatible executable yt-dlp can
+   *   solve YouTube's JavaScript challenges with. ONIXPlayer passes its own
+   *   executable, which acts as Node when started with ELECTRON_RUN_AS_NODE=1.
    */
   public constructor(
     getYtDlpPath: () => string | null,
     getFfmpegPath: () => string | null,
-    downloadsDir: string
+    downloadsDir: string,
+    getJsRuntimePath: () => string | null = (): null => null
   ) {
     this.getYtDlpPath = getYtDlpPath;
     this.getFfmpegPath = getFfmpegPath;
+    this.getJsRuntimePath = getJsRuntimePath;
     this.downloadsDir = downloadsDir;
 
     if (!existsSync(this.downloadsDir)) {
@@ -176,13 +184,13 @@ export class MediaDownloadManager {
 
       // '--' terminates option parsing: without it a URL beginning with '-'
       // is interpreted by yt-dlp as a flag.
-      const args: string[] = ['--no-playlist', '-j', '--', url];
+      const args: string[] = [...this.jsRuntimeArgs(), '--no-playlist', '-j', '--', url];
       logProcessSpawn(downloadLogger, 'yt-dlp', args);
 
       execFile(
         ytdlp,
         args,
-        {timeout: INFO_TIMEOUT_MS, maxBuffer: INFO_MAX_BUFFER},
+        {timeout: INFO_TIMEOUT_MS, maxBuffer: INFO_MAX_BUFFER, ...this.jsRuntimeEnv()},
         (error: Error | null, stdout: string, stderr: string): void => {
           if (error) {
             const message: string = this.lastErrorLine(stderr) || error.message;
@@ -297,7 +305,7 @@ export class MediaDownloadManager {
     }
 
     const outputTemplate: string = path.join(this.downloadsDir, `${id}.%(ext)s`);
-    const args: string[] = ['--no-playlist', '--newline', '-o', outputTemplate];
+    const args: string[] = [...this.jsRuntimeArgs(), '--no-playlist', '--newline', '-o', outputTemplate];
 
     const ffmpeg: string | null = this.getFfmpegPath();
     if (ffmpeg) {
@@ -315,7 +323,7 @@ export class MediaDownloadManager {
     args.push('--', url);
 
     logProcessSpawn(downloadLogger, 'yt-dlp', args);
-    const child: ChildProcess = spawn(ytdlp, args);
+    const child: ChildProcess = spawn(ytdlp, args, this.jsRuntimeEnv());
     this.processes.set(id, child);
 
     let stderrTail: string = '';
@@ -548,13 +556,13 @@ export class MediaDownloadManager {
       }
 
       // '--' terminates option parsing (see assertSupportedUrl / getInfo).
-      const args: string[] = ['--no-playlist', '-f', selector, '-g', '--', url];
+      const args: string[] = [...this.jsRuntimeArgs(), '--no-playlist', '-f', selector, '-g', '--', url];
       logProcessSpawn(downloadLogger, 'yt-dlp', args);
 
       execFile(
         ytdlp,
         args,
-        {timeout: RESOLVE_TIMEOUT_MS},
+        {timeout: RESOLVE_TIMEOUT_MS, ...this.jsRuntimeEnv()},
         (error: Error | null, stdout: string, stderr: string): void => {
           if (error) {
             const message: string = this.lastErrorLine(stderr) || error.message;
@@ -584,6 +592,27 @@ export class MediaDownloadManager {
   // ==========================================================================
   // Helpers
   // ==========================================================================
+
+  /**
+   * yt-dlp arguments naming the JavaScript runtime, or none when there is none.
+   *
+   * yt-dlp only enables deno by default, so a Node runtime must be named.
+   */
+  private jsRuntimeArgs(): string[] {
+    const runtime: string | null = this.getJsRuntimePath();
+    return runtime ? ['--js-runtimes', `node:${runtime}`] : [];
+  }
+
+  /**
+   * Spawn options that make the JavaScript runtime behave as Node.
+   *
+   * ELECTRON_RUN_AS_NODE is inherited by yt-dlp and passed on to the runtime
+   * it starts; yt-dlp itself ignores it. Empty when there is no runtime, so the
+   * child inherits the environment unchanged.
+   */
+  private jsRuntimeEnv(): {env?: NodeJS.ProcessEnv} {
+    return this.getJsRuntimePath() ? {env: {...process.env, ELECTRON_RUN_AS_NODE: '1'}} : {};
+  }
 
   /** Marks a job as failed and notifies the caller. */
   private failJob(job: DownloadJob, message: string, onUpdate: (job: Readonly<DownloadJob>) => void): void {

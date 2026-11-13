@@ -80,6 +80,9 @@ function createMockElectron(): Record<string, unknown> {
 function createMockDeps(): Record<string, unknown> {
   return {
     ytdlpInstalled: signal(true),
+    isOperationInProgress: signal(false),
+    installProgress: signal(null),
+    installDependency: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -551,10 +554,20 @@ describe('OpenUrlDialog', (): void => {
       expect(component.mode()).toBe('download');
     });
 
-    it('opens the dependency settings on the right pane', (): void => {
-      component.openDependencySettings();
+    it('downloads yt-dlp in place', (): void => {
+      component.downloadYtDlp();
 
-      expect(mockElectron['showConfigurationWindow']).toHaveBeenCalledWith('dependencies');
+      expect(mockDeps['installDependency']).toHaveBeenCalledWith('yt-dlp');
+    });
+
+    it('shows yt-dlp download progress but not its success', (): void => {
+      const progress: WritableSignal<unknown> = mockDeps['installProgress'] as WritableSignal<unknown>;
+
+      progress.set({dependencyId: 'yt-dlp', status: 'installing', message: 'Downloading yt-dlp 2026.10.26... 40%'});
+      expect(component.ytdlpDownloadMessage()).toBe('Downloading yt-dlp 2026.10.26... 40%');
+
+      progress.set({dependencyId: 'yt-dlp', status: 'success', message: 'yt-dlp installed: 2026.10.26.'});
+      expect(component.ytdlpDownloadMessage()).toBeNull();
     });
   });
 });

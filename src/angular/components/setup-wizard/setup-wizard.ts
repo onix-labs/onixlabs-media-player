@@ -4,10 +4,10 @@
  * This wizard guides users through initial application setup including:
  * 1. Welcome - Introduction to ONIXPlayer
  * 2. Server Port - Configure the media server port
- * 3. FFmpeg - Install the required media engine
- * 4. FluidSynth - Install MIDI synthesis and manage SoundFonts
- * 5. yt-dlp - Install the internet streaming downloader
- * 6. Complete - Summary and finish
+ * 3. Components - Confirms the built-in media engines, lets the user choose a
+ *    SoundFont for MIDI (none ships with the app), and offers to download
+ *    yt-dlp for internet URLs
+ * 4. Complete - Summary and finish
  *
  * The wizard appears on first launch or when launched with --first-run flag.
  *
@@ -16,11 +16,12 @@
 
 import {Component, inject, signal, computed, ChangeDetectionStrategy, WritableSignal, Signal} from '@angular/core';
 import {ElectronService} from '../../services/electron.service';
-import {DependencyService, DependencyId} from '../../services/dependency.service';
+import {DependencyService} from '../../services/dependency.service';
+import type {DependencyStatus, InstallProgress, SoundFontInfo} from '../../services/dependency.service';
 import type {MediaPlayerAPI} from '../../types/electron';
 
 /** Wizard step identifiers */
-type WizardStep = 'welcome' | 'port' | 'ffmpeg' | 'fluidsynth' | 'openmpt' | 'ytdlp' | 'complete';
+type WizardStep = 'welcome' | 'port' | 'components' | 'complete';
 
 /**
  * Setup wizard component for first-run configuration.
@@ -54,7 +55,7 @@ export class SetupWizard {
   public readonly currentStep: WritableSignal<WizardStep> = signal<WizardStep>('welcome');
 
   /** All wizard steps in order */
-  public readonly steps: readonly WizardStep[] = ['welcome', 'port', 'ffmpeg', 'fluidsynth', 'openmpt', 'ytdlp', 'complete'];
+  public readonly steps: readonly WizardStep[] = ['welcome', 'port', 'components', 'complete'];
 
   /** Server port value */
   public readonly serverPort: WritableSignal<number> = signal<number>(0);
@@ -92,41 +93,31 @@ export class SetupWizard {
     return this.electron.platformInfo().platform;
   }
 
-  /** FFmpeg status from dependency service */
-  public readonly ffmpegStatus: Signal<{installed: boolean; path: string | null}> = computed((): {installed: boolean; path: string | null} => {
+  /** The built-in components, in display order */
+  public readonly builtInComponents: Signal<DependencyStatus[]> = computed((): DependencyStatus[] => {
     const state: ReturnType<typeof this.deps.dependencyState> = this.deps.dependencyState();
-    return state ? {installed: state.ffmpeg.installed, path: state.ffmpeg.path} : {installed: false, path: null};
+    return state ? [state.ffmpeg, state.fluidsynth] : [];
   });
 
-  /** FluidSynth status from dependency service */
-  public readonly fluidsynthStatus: Signal<{installed: boolean; path: string | null}> = computed((): {installed: boolean; path: string | null} => {
-    const state: ReturnType<typeof this.deps.dependencyState> = this.deps.dependencyState();
-    return state ? {installed: state.fluidsynth.installed, path: state.fluidsynth.path} : {installed: false, path: null};
+  /** SoundFonts the user has installed (MIDI needs at least one) */
+  public readonly soundFonts: Signal<SoundFontInfo[]> = this.deps.soundFonts;
+
+  /** Why the last SoundFont operation failed, or null */
+  public readonly soundFontError: Signal<string | null> = this.deps.soundFontError;
+
+  /** yt-dlp status, or null before the state has loaded */
+  public readonly ytdlpStatus: Signal<DependencyStatus | null> = computed(
+    (): DependencyStatus | null => this.deps.dependencyState()?.ytdlp ?? null
+  );
+
+  /** Whether a yt-dlp download is running */
+  public readonly isOperationInProgress: Signal<boolean> = this.deps.isOperationInProgress;
+
+  /** Progress of the yt-dlp download, or null when there is nothing to show */
+  public readonly ytdlpProgress: Signal<InstallProgress | null> = computed((): InstallProgress | null => {
+    const progress: InstallProgress | null = this.deps.installProgress();
+    return progress?.dependencyId === 'yt-dlp' ? progress : null;
   });
-
-  /** openmpt123 status from dependency service */
-  public readonly openmpt123Status: Signal<{installed: boolean; path: string | null}> = computed((): {installed: boolean; path: string | null} => {
-    const state: ReturnType<typeof this.deps.dependencyState> = this.deps.dependencyState();
-    return state ? {installed: state.openmpt123.installed, path: state.openmpt123.path} : {installed: false, path: null};
-  });
-
-  /** yt-dlp status from dependency service */
-  public readonly ytdlpStatus: Signal<{installed: boolean; path: string | null}> = computed((): {installed: boolean; path: string | null} => {
-    const state: ReturnType<typeof this.deps.dependencyState> = this.deps.dependencyState();
-    return state ? {installed: state.ytdlp.installed, path: state.ytdlp.path} : {installed: false, path: null};
-  });
-
-  /** Whether a dependency operation is in progress */
-  public readonly isOperationInProgress: Signal<boolean> = computed((): boolean => {
-    const progress: ReturnType<typeof this.deps.installProgress> = this.deps.installProgress();
-    return progress !== null && (progress.status === 'installing' || progress.status === 'uninstalling');
-  });
-
-  /** Current install progress */
-  public readonly installProgress: typeof this.deps.installProgress = this.deps.installProgress;
-
-  /** SoundFonts from dependency service */
-  public readonly soundFonts: typeof this.deps.soundFonts = this.deps.soundFonts;
 
   // ============================================================================
   // Constructor
@@ -287,14 +278,37 @@ export class SetupWizard {
   }
 
   // ============================================================================
-  // Dependency Installation
+  // Components
   // ============================================================================
 
   /**
-   * Installs a dependency (FFmpeg or FluidSynth).
+   * Downloads yt-dlp from its official releases.
    */
-  public async installDependency(id: DependencyId): Promise<void> {
-    await this.deps.installDependency(id);
+  public async downloadYtDlp(): Promise<void> {
+    await this.deps.installDependency('yt-dlp');
+  }
+
+  /**
+   * Opens a file picker and installs the chosen SoundFont.
+   */
+  public async chooseSoundFont(): Promise<void> {
+    await this.deps.installSoundFont();
+  }
+
+  /**
+   * Removes an installed SoundFont.
+   */
+  public async removeSoundFont(fileName: string): Promise<void> {
+    await this.deps.removeSoundFont(fileName);
+  }
+
+  /**
+   * Formats a file size for display.
+   */
+  public formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   /**
@@ -305,73 +319,5 @@ export class SetupWizard {
     if (api) {
       void api.openExternal(url);
     }
-  }
-
-  /**
-   * Opens a SoundFont file picker and installs the selected file.
-   */
-  public async installSoundFont(): Promise<void> {
-    await this.deps.installSoundFont();
-  }
-
-  /**
-   * Removes an installed SoundFont file.
-   */
-  public async removeSoundFont(fileName: string): Promise<void> {
-    await this.deps.removeSoundFont(fileName);
-  }
-
-  /**
-   * Installs the bundled OPL3 SoundFont.
-   */
-  public async installBundledSoundFont(): Promise<void> {
-    const api: MediaPlayerAPI | undefined = window.mediaPlayer;
-    if (api) {
-      const success: boolean = await api.setupInstallBundledSoundFont();
-      if (!success) {
-        console.error('Failed to install bundled soundfont');
-      }
-    }
-  }
-
-  /**
-   * Gets the manual install command for a dependency based on platform.
-   */
-  public getManualInstallCommand(id: DependencyId): string {
-    const platform: string = this.platform;
-    if (id === 'ffmpeg') {
-      switch (platform) {
-        case 'darwin': return 'brew install ffmpeg';
-        case 'win32': return 'winget install Gyan.FFmpeg';
-        default: return 'sudo apt install ffmpeg';
-      }
-    } else if (id === 'yt-dlp') {
-      switch (platform) {
-        case 'darwin': return 'brew install yt-dlp';
-        case 'win32': return 'winget install yt-dlp.yt-dlp';
-        default: return 'sudo apt install yt-dlp';
-      }
-    } else if (id === 'openmpt123') {
-      switch (platform) {
-        case 'darwin': return 'brew install libopenmpt';
-        case 'win32': return 'Download from lib.openmpt.org';
-        default: return 'sudo apt install openmpt123';
-      }
-    } else {
-      switch (platform) {
-        case 'darwin': return 'brew install fluid-synth';
-        case 'win32': return 'choco install fluidsynth';
-        default: return 'sudo apt install fluidsynth';
-      }
-    }
-  }
-
-  /**
-   * Formats file size in human-readable format.
-   */
-  public formatFileSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 }

@@ -125,7 +125,6 @@ const mockApi: {
   setupGetPlatform: ReturnType<typeof vi.fn>;
   setupComplete: ReturnType<typeof vi.fn>;
   setupSkip: ReturnType<typeof vi.fn>;
-  setupInstallBundledSoundFont: ReturnType<typeof vi.fn>;
 } = {
   getServerPort: vi.fn().mockResolvedValue(12345),
   getServerToken: vi.fn().mockResolvedValue('test-session-token'),
@@ -172,7 +171,6 @@ const mockApi: {
   setupGetPlatform: vi.fn().mockResolvedValue('darwin'),
   setupComplete: vi.fn().mockResolvedValue(undefined),
   setupSkip: vi.fn().mockResolvedValue(undefined),
-  setupInstallBundledSoundFont: vi.fn().mockResolvedValue(true),
 };
 
 /**

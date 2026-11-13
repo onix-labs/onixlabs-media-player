@@ -241,6 +241,7 @@ export type SSEEventType =
   | 'playback:loaded'     // New media loaded
   | 'playback:ended'      // Playback reached end of playlist
   | 'playback:volume'     // Volume or mute state changed
+  | 'playback:seek:aligned' // A seek landed on a keyframe other than the one requested
   | 'playlist:updated'    // Full playlist state (initial sync)
   | 'playlist:items:added'   // Delta: items added to playlist
   | 'playlist:items:removed' // Delta: items removed from playlist

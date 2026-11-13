@@ -258,8 +258,11 @@ describe('LayoutOutlet', (): void => {
         name: 'FFmpeg',
         installed: false,
         path: null,
+        source: null,
+        version: null,
+        managed: false,
         description: 'FFmpeg dependency',
-        manualInstallUrl: 'https://example.com/ffmpeg',
+        websiteUrl: 'https://example.com/ffmpeg',
       };
       missing.set([dep]);
 

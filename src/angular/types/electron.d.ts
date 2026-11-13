@@ -777,13 +777,6 @@ export interface MediaPlayerAPI {
    * Closes the wizard without marking complete (will show again next launch).
    */
   setupSkip: () => Promise<void>;
-
-  /**
-   * Installs the bundled OPL3 soundfont.
-   * Copies the bundled OPL3-FM-128M.sf2 to the user's soundfont directory.
-   * @returns true if installation succeeded, false otherwise
-   */
-  setupInstallBundledSoundFont: () => Promise<boolean>;
 }
 
 /**

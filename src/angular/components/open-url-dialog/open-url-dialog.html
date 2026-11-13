@@ -7,10 +7,13 @@
       <!-- yt-dlp missing: gate the whole flow -->
       <div class="url-dialog-body">
         <p class="url-dialog-notice">
-          Playing media from internet URLs requires <strong>yt-dlp</strong>, which isn't installed yet.
+          Playing media from internet URLs needs <strong>yt-dlp</strong>, a free download from its official releases.
         </p>
-        <button type="button" class="url-btn url-btn-primary" (click)="openDependencySettings()">
-          Open Dependency Settings
+        @if (ytdlpDownloadMessage(); as message) {
+          <p class="url-dialog-notice">{{ message }}</p>
+        }
+        <button type="button" class="url-btn url-btn-primary" [disabled]="ytdlpDownloading()" (click)="downloadYtDlp()">
+          Download yt-dlp
         </button>
       </div>
     } @else {

@@ -231,6 +231,68 @@ describe('MediaDownloadManager', (): void => {
   });
 
   // ==========================================================================
+  // JavaScript runtime
+  // ==========================================================================
+
+  describe('JavaScript runtime', (): void => {
+    const RUNTIME: string = '/Applications/ONIXPlayer.app/Contents/MacOS/ONIXPlayer';
+
+    /** Returns the options passed to the most recent execFile call. */
+    function lastExecFileOptions(): {env?: NodeJS.ProcessEnv} {
+      const calls = vi.mocked(execFile).mock.calls;
+      return calls[calls.length - 1][2] as {env?: NodeJS.ProcessEnv};
+    }
+
+    beforeEach((): void => {
+      manager = new MediaDownloadManager(
+        (): string | null => ytdlpPath,
+        (): string | null => ffmpegPath,
+        DOWNLOADS_DIR,
+        (): string | null => RUNTIME
+      );
+    });
+
+    it('names the runtime and runs it as Node when resolving metadata', async (): Promise<void> => {
+      stubExecFile(null, JSON.stringify({formats: []}), '');
+
+      await manager.getInfo('https://example.com/v');
+
+      expect(lastExecFileArgs().slice(0, 2)).toEqual(['--js-runtimes', `node:${RUNTIME}`]);
+      expect(lastExecFileOptions().env?.['ELECTRON_RUN_AS_NODE']).toBe('1');
+    });
+
+    it('names the runtime when resolving stream URLs', async (): Promise<void> => {
+      stubExecFile(null, 'https://cdn/v\n');
+
+      await manager.resolveStreamSources('https://example.com/v', 'video', null);
+
+      expect(lastExecFileArgs().slice(0, 2)).toEqual(['--js-runtimes', `node:${RUNTIME}`]);
+      expect(lastExecFileOptions().env?.['ELECTRON_RUN_AS_NODE']).toBe('1');
+    });
+
+    it('names the runtime when downloading', (): void => {
+      vi.mocked(spawn).mockReturnValue(createFakeChild());
+
+      manager.startDownload('https://example.com/v', 'video', null, 'T', null, vi.fn());
+
+      const calls = vi.mocked(spawn).mock.calls;
+      const options: {env?: NodeJS.ProcessEnv} = calls[calls.length - 1][2] as {env?: NodeJS.ProcessEnv};
+      expect(lastSpawnArgs().slice(0, 2)).toEqual(['--js-runtimes', `node:${RUNTIME}`]);
+      expect(options.env?.['ELECTRON_RUN_AS_NODE']).toBe('1');
+    });
+
+    it('leaves the arguments and environment alone without a runtime', async (): Promise<void> => {
+      manager = new MediaDownloadManager((): string | null => ytdlpPath, (): string | null => ffmpegPath, DOWNLOADS_DIR);
+      stubExecFile(null, JSON.stringify({formats: []}), '');
+
+      await manager.getInfo('https://example.com/v');
+
+      expect(lastExecFileArgs()).not.toContain('--js-runtimes');
+      expect(lastExecFileOptions().env).toBeUndefined();
+    });
+  });
+
+  // ==========================================================================
   // getInfo
   // ==========================================================================
 

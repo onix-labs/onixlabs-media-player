@@ -11,7 +11,7 @@
  */
 
 import {TestBed} from '@angular/core/testing';
-import {signal} from '@angular/core';
+import {signal, type WritableSignal} from '@angular/core';
 import {SetupWizard} from './setup-wizard';
 import {ElectronService} from '../../services/electron.service';
 import {DependencyService} from '../../services/dependency.service';
@@ -58,12 +58,12 @@ function createMockDeps(): Record<string, unknown> {
   return {
     dependencyState: signal(null),
     installProgress: signal(null),
-    soundFonts: signal([]),
     isOperationInProgress: signal(false),
     ffmpegInstalled: signal(false),
     fluidsynthInstalled: signal(false),
-    openmpt123Installed: signal(false),
     ytdlpInstalled: signal(false),
+    soundFonts: signal([]),
+    soundFontError: signal(null),
     installDependency: vi.fn().mockResolvedValue(undefined),
     installSoundFont: vi.fn().mockResolvedValue(undefined),
     removeSoundFont: vi.fn().mockResolvedValue(undefined),
@@ -166,10 +166,10 @@ describe('SetupWizard', (): void => {
       await component.next();
       await component.next();
 
-      expect(component.currentStep()).toBe('ffmpeg');
+      expect(component.currentStep()).toBe('components');
       expect(component.isStepCompleted('welcome')).toBe(true);
       expect(component.isStepCompleted('port')).toBe(true);
-      expect(component.isStepCompleted('ffmpeg')).toBe(false);
+      expect(component.isStepCompleted('components')).toBe(false);
       expect(component.isStepCompleted('complete')).toBe(false);
     });
 
@@ -279,7 +279,7 @@ describe('SetupWizard', (): void => {
       await component.next();
 
       expect(api.setupSetPort).toHaveBeenCalledWith(8080);
-      expect(component.currentStep()).toBe('ffmpeg');
+      expect(component.currentStep()).toBe('components');
     });
 
     it('does not save an invalid port, but still advances', async (): Promise<void> => {
@@ -289,7 +289,7 @@ describe('SetupWizard', (): void => {
       await component.next();
 
       expect(api.setupSetPort).not.toHaveBeenCalled();
-      expect(component.currentStep()).toBe('ffmpeg');
+      expect(component.currentStep()).toBe('components');
     });
 
     it('does not save when leaving any other step', async (): Promise<void> => {
@@ -327,6 +327,67 @@ describe('SetupWizard', (): void => {
   // Missing Preload API
   // ==========================================================================
 
+  describe('components', (): void => {
+    /** The DependencyService stub the wizard was given. */
+    function deps(): Record<string, unknown> {
+      return TestBed.inject(DependencyService) as unknown as Record<string, unknown>;
+    }
+
+    /** A dependency status as the server reports it. */
+    function status(id: string, source: string | null): Record<string, unknown> {
+      return {id, name: id, installed: source !== null, path: source ? `/bin/${id}` : null, source, version: null, managed: id === 'yt-dlp', description: '', websiteUrl: ''};
+    }
+
+    it('has a single components step between port and complete', (): void => {
+      expect(component.steps).toEqual(['welcome', 'port', 'components', 'complete']);
+    });
+
+    it('lists FFmpeg and FluidSynth as the built-in components', (): void => {
+      (deps()['dependencyState'] as WritableSignal<unknown>).set({
+        ffmpeg: status('ffmpeg', 'bundled'),
+        fluidsynth: status('fluidsynth', 'bundled'),
+        ytdlp: status('yt-dlp', null),
+      });
+
+      expect(component.builtInComponents().map((d: {id: string}): string => d.id)).toEqual(['ffmpeg', 'fluidsynth']);
+      expect(component.ytdlpStatus()?.id).toBe('yt-dlp');
+    });
+
+    it('downloads yt-dlp through the dependency service', async (): Promise<void> => {
+      await component.downloadYtDlp();
+
+      expect(deps()['installDependency']).toHaveBeenCalledWith('yt-dlp');
+    });
+
+    it('chooses a SoundFont through the dependency service', async (): Promise<void> => {
+      await component.chooseSoundFont();
+
+      expect(deps()['installSoundFont']).toHaveBeenCalled();
+    });
+
+    it('removes a SoundFont through the dependency service', async (): Promise<void> => {
+      await component.removeSoundFont('GeneralUser.sf2');
+
+      expect(deps()['removeSoundFont']).toHaveBeenCalledWith('GeneralUser.sf2');
+    });
+
+    it('formats SoundFont sizes', (): void => {
+      expect(component.formatFileSize(512)).toBe('512 B');
+      expect(component.formatFileSize(2048)).toBe('2.0 KB');
+      expect(component.formatFileSize(31 * 1024 * 1024)).toBe('31.0 MB');
+    });
+
+    it('shows only yt-dlp progress', (): void => {
+      const progress: WritableSignal<unknown> = deps()['installProgress'] as WritableSignal<unknown>;
+
+      progress.set({dependencyId: 'yt-dlp', status: 'installing', message: 'Downloading', percent: 40});
+      expect(component.ytdlpProgress()?.percent).toBe(40);
+
+      progress.set({dependencyId: 'ffmpeg', status: 'error', message: 'FFmpeg is built into ONIXPlayer'});
+      expect(component.ytdlpProgress()).toBeNull();
+    });
+  });
+
   describe('without the preload API', (): void => {
     beforeEach((): void => {
       removeApi();
@@ -352,7 +413,7 @@ describe('SetupWizard', (): void => {
 
       await component.next();
 
-      expect(component.currentStep()).toBe('ffmpeg');
+      expect(component.currentStep()).toBe('components');
     });
 
     it('does not throw opening an external URL', (): void => {
