@@ -357,9 +357,11 @@ FFMPEG_SRC="${WORK}/src/ffmpeg"
 if ! built "ffmpeg-${FFMPEG_VERSION}"; then
   log "Building FFmpeg ${FFMPEG_VERSION}"
   unpack "ffmpeg-${FFMPEG_VERSION}.tar.xz" ffmpeg
+  # LAME has no pkg-config file, so configure finds it only through these
+  # paths; without them it finds whatever copy the build machine has, or none.
   ./configure --prefix="${PREFIX}" \
     --pkg-config-flags=--static \
-    --extra-cflags="${CFLAGS}" --extra-ldflags="${LDFLAGS}" \
+    --extra-cflags="${CFLAGS} -I${PREFIX}/include" --extra-ldflags="${LDFLAGS} -L${PREFIX}/lib" \
     --disable-autodetect --disable-doc --disable-ffplay --disable-debug \
     --enable-gpl \
     --enable-libx264 --enable-libmp3lame --enable-libopenmpt \
