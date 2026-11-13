@@ -1,6 +1,7 @@
 {
   "name": "onixlabs-media-player",
   "version": "2026.11.0",
+  "license": "MIT",
   "description": "Cross-platform media player with real-time audio visualizations, video playback, and MIDI synthesis",
   "author": {
     "name": "ONIXLabs",
