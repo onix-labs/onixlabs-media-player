@@ -151,10 +151,10 @@
   --pebble-field-border: #858b92;      // AA: Stride uses #494d52
 
   --pebble-edge-light: rgba(255, 255, 255, 0.08);
-  // A raised panel's bottom edge, halfway between the page (#212529) and the
-  // surface (#343a40). Stride and the website use black, which reads as a hard
-  // line on the dark page rather than a soft fall-off.
-  --pebble-edge-dark: color-mix(in srgb, #212529, #343a40);
+  // A raised panel's bottom edge: a step darker than the page (#212529), so
+  // the panel still reads as standing off it. Stride and the website use
+  // black, which is a hard line on the dark page rather than a soft fall-off.
+  --pebble-edge-dark: color-mix(in srgb, #212529, black 20%);
   --pebble-edge-button: #14171a;       // softer than the surfaces' black edge at a button's size
 
   --pebble-text: #e9ecef;
