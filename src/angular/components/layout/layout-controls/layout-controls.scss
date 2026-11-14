@@ -253,9 +253,10 @@
 // Pebble player theme
 // =============================================================================
 //
-// The bar sits on the window's page, seamless with it; each button group is a
-// raised segmented button whose segments are ghost buttons split by hairlines,
-// play/pause marked only by its icon in the accent; the tracks are Pebble
+// The bar sits on the window's page, seamless with it. Button groups draw
+// nothing themselves: each button is a raised Pebble button with its own light
+// top and dark bottom edge, split from its neighbour by a hairline, and
+// play/pause is marked only by its icon in the accent. The tracks are Pebble
 // ranges filled with the accent. Every
 // size, gap and border width is today's (borders go transparent rather than
 // away), so nothing moves between themes. Colours come from the --pebble-*
@@ -298,32 +299,38 @@
     }
   }
 
+  // No border, fill or shadow of its own: the buttons draw the edges.
   .button-group {
-    --pebble-edge-top: var(--pebble-edge-light);
-    --pebble-edge-bottom: var(--pebble-edge-button);
     border-color: transparent;
     outline: none;
     backdrop-filter: none;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  // Each button raised on its own, and the volume slider's section with them.
+  button,
+  .volume-container {
+    --pebble-edge-top: var(--pebble-edge-light);
+    --pebble-edge-bottom: var(--pebble-edge-button);
     background: var(--pebble-button-surface);
     box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-sm);
   }
 
-  // Transparent, so the group's raised edges show through.
   button {
     color: var(--pebble-primary);
-    background: transparent;
     border-left-color: transparent;
     border-right-color: var(--pebble-border);
 
     &:hover:not(:disabled) {
       color: var(--pebble-heading);
-      background: color-mix(in srgb, var(--pebble-heading) 8%, transparent);
+      background: color-mix(in srgb, var(--pebble-button-surface), var(--pebble-heading) 8%);
     }
 
     // !important only to match the base rules for these states.
     &.active {
       color: var(--pebble-heading);
-      background: color-mix(in srgb, var(--pebble-primary) 16%, transparent) !important;
+      background: color-mix(in srgb, var(--pebble-button-surface), var(--pebble-primary) 16%) !important;
     }
 
     &.muted {
@@ -347,8 +354,6 @@
   }
 
   .volume-container {
-    background: transparent;
-
     .volume-slider {
       progress {
         border-color: transparent;

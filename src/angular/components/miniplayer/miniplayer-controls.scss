@@ -81,58 +81,48 @@
 // Pebble player theme
 // =============================================================================
 //
-// The group is a raised Pebble segmented button floating over the media, its
-// segments ghost buttons split by hairlines and play/pause the one primary, as
-// in the main controls. It stays nearly opaque, without a backdrop blur (see
-// above), so it reads over any frame in light and dark. Sizes and borders are
+// As in the main controls, the group draws nothing itself: each button is a
+// raised Pebble button with its own edges, split from its neighbour by a
+// hairline, and play/pause is marked only by its icon in the accent. Over the
+// media the buttons stay nearly opaque, without a backdrop blur (see above),
+// so they read over any frame in light and dark. Sizes and borders are
 // today's; borders go transparent rather than away.
 @include player-theme.pebble {
   .button-group {
-    --pebble-edge-top: var(--pebble-edge-light);
-    --pebble-edge-bottom: var(--pebble-edge-button);
     border-color: transparent;
     outline: none;
-    background: color-mix(in srgb, var(--pebble-button-surface) 92%, transparent);
-    box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-md);
+    background: transparent;
+    box-shadow: none;
   }
 
   button {
+    --pebble-edge-top: var(--pebble-edge-light);
+    --pebble-edge-bottom: var(--pebble-edge-button);
     color: var(--pebble-primary);
-    background: transparent;
+    background: color-mix(in srgb, var(--pebble-button-surface) 92%, transparent);
+    box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-md);
     border-left-color: transparent;
     border-right-color: var(--pebble-border);
 
     &:hover:not(:disabled) {
       color: var(--pebble-heading);
-      background: color-mix(in srgb, var(--pebble-heading) 8%, transparent);
+      background: color-mix(in srgb, var(--pebble-button-surface), var(--pebble-heading) 8%);
     }
 
     &.active {
       color: var(--pebble-heading);
-      background: color-mix(in srgb, var(--pebble-primary) 16%, transparent);
+      background: color-mix(in srgb, var(--pebble-button-surface), var(--pebble-primary) 16%);
     }
 
     &:disabled {
       color: color-mix(in srgb, var(--pebble-text-muted) 55%, transparent);
     }
 
-    // Play/pause: the primary button, with the primary's own lit edges.
-    &:nth-of-type(2) {
-      --pebble-edge-top: color-mix(in srgb, var(--pebble-primary), white 25%);
-      --pebble-edge-bottom: color-mix(in srgb, var(--pebble-primary), black 25%);
-      color: var(--pebble-primary-contrast);
-      background: var(--pebble-primary);
-      box-shadow: var(--pebble-edge-shadow);
-
-      &:hover:not(:disabled) {
-        color: var(--pebble-primary-contrast);
-        background: color-mix(in srgb, var(--pebble-primary), var(--pebble-surface) 15%);
-      }
-
-      &:disabled {
-        color: var(--pebble-primary-contrast);
-        opacity: 0.55;
-      }
+    // Play/pause: a segment like its neighbours, told apart only by its icon
+    // in the accent.
+    &:nth-of-type(2),
+    &:nth-of-type(2):hover:not(:disabled) {
+      color: var(--player-accent);
     }
   }
 }
