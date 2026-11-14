@@ -87,6 +87,7 @@
 
   // Surfaces: a mid-grey page, so surfaces read as raised.
   --pebble-bg: #d8dde2;
+  --pebble-well: color-mix(in srgb, #d8dde2, black 5%);  // a shade below the page, for a sunken area
   --pebble-surface: #e9ecef;
   --pebble-surface-alt: #dee2e6;
   // A secondary button: a step above the surface, so it still reads as raised
@@ -145,6 +146,8 @@
   color-scheme: dark;
 
   --pebble-bg: #212529;
+  // Not as deep as the page's black 20% edge, so a well's dark top edge shows.
+  --pebble-well: color-mix(in srgb, #212529, black 12%);
   --pebble-surface: #343a40;
   --pebble-surface-alt: #2b3036;
   --pebble-button-surface: #3f464d;

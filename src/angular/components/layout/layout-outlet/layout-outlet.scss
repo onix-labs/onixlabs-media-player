@@ -259,6 +259,8 @@
 @include player-theme.pebble {
   div.container {
     @include pebble.recessed(md);
+    // A shade darker than the window, as a sunken area should be.
+    background: var(--pebble-well);
     // The base border's width, as padding: the content box is today's, and the
     // well's inset edges show in it.
     padding: 0.0625rem;
