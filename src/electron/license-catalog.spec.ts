@@ -4,7 +4,9 @@
  * @module electron/license-catalog.spec
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 import { LicenseCatalog } from './license-catalog.js';
@@ -139,5 +141,73 @@ describe('LicenseCatalog', () => {
     const catalog: LicenseCatalog = new LicenseCatalog({...LOCATIONS, bundled: null}, VERSIONS, fileSystem(PACKAGED));
 
     expect(catalog.getFile('ffmpeg')).toBeNull();
+  });
+
+  it('still lists everything else on a platform without bundled programs', () => {
+    const catalog: LicenseCatalog = new LicenseCatalog({...LOCATIONS, bundled: null}, VERSIONS, fileSystem(PACKAGED));
+
+    const ids: string[] = catalog.getNotices().map((notice: LicenseNotice): string => notice.id);
+    expect(ids).toEqual(['onixplayer', 'electron', 'chromium', 'javascript']);
+  });
+
+  it('prefers Electron\'s packaged licence name when both names are present', () => {
+    const files: Record<string, string> = {...PACKAGED, [path.join('/app', 'LICENSE')]: 'MIT'};
+    const catalog: LicenseCatalog = new LicenseCatalog(LOCATIONS, VERSIONS, fileSystem(files));
+
+    expect(catalog.getFile('electron')).toBe(path.join('/app', 'LICENSE.electron.txt'));
+  });
+
+  it('skips a malformed manifest entry but keeps the well-formed ones beside it', () => {
+    const manifest: string = JSON.stringify([
+      null,
+      'ffmpeg',
+      {id: 'ffmpeg', name: 'FFmpeg', version: 9, license: 'GPL-2.0-or-later', file: 'FFmpeg-COPYING.GPLv2.txt'},
+      {id: 'fluidsynth', name: 'FluidSynth', version: '2.6.2', license: 'LGPL-2.1-or-later'},
+      {id: 'fluidsynth', name: 'FluidSynth', version: '2.6.2', license: 'LGPL-2.1-or-later', file: 'FluidSynth-LICENSE.txt'},
+    ]);
+    const catalog: LicenseCatalog = new LicenseCatalog(LOCATIONS, VERSIONS, fileSystem({...PACKAGED, '/app/bin/licenses/components.json': manifest}));
+
+    const ids: string[] = catalog.getNotices().map((notice: LicenseNotice): string => notice.id);
+    expect(ids).toEqual(['onixplayer', 'fluidsynth', 'electron', 'chromium', 'javascript']);
+  });
+
+  it('does not expose where a licence file is in the notices it hands out', () => {
+    const catalog: LicenseCatalog = new LicenseCatalog(LOCATIONS, VERSIONS, fileSystem(PACKAGED));
+
+    for (const notice of catalog.getNotices()) {
+      expect(Object.keys(notice).sort()).toEqual(['id', 'license', 'name', 'version']);
+    }
+  });
+
+  describe('on the real file system', () => {
+    let root: string;
+
+    beforeEach(() => {
+      root = mkdtempSync(path.join(os.tmpdir(), 'onixplayer-licenses-'));
+    });
+
+    afterEach(() => {
+      rmSync(root, {recursive: true, force: true});
+    });
+
+    it('reads the manifest and finds the licence files when no file system is supplied', () => {
+      const bundled: string = path.join(root, 'bin', 'licenses');
+      mkdirSync(bundled, {recursive: true});
+      writeFileSync(path.join(bundled, 'components.json'), MANIFEST);
+      writeFileSync(path.join(bundled, 'FFmpeg-COPYING.GPLv2.txt'), 'GPL');
+      writeFileSync(path.join(root, 'LICENSE'), 'MIT');
+      const locations: LicenseLocations = {
+        application: path.join(root, 'LICENSE'),
+        javascript: path.join(root, 'missing', '3rdpartylicenses.txt'),
+        bundled,
+        electron: root,
+      };
+
+      const catalog: LicenseCatalog = new LicenseCatalog(locations, VERSIONS);
+
+      // FluidSynth's licence, Chromium's and the JavaScript libraries' are not on disk.
+      expect(catalog.getNotices().map((notice: LicenseNotice): string => notice.id)).toEqual(['onixplayer', 'ffmpeg', 'electron']);
+      expect(catalog.getFile('ffmpeg')).toBe(path.join(bundled, 'FFmpeg-COPYING.GPLv2.txt'));
+    });
   });
 });

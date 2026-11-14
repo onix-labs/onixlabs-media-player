@@ -7,11 +7,17 @@
  *
  * Architecture:
  * - SSE connection for real-time state updates (playback, playlist, volume)
- * - HTTP API for commands (play, pause, seek, add tracks)
- * - IPC for native operations (file dialogs, fullscreen)
+ * - HTTP API for commands (play, pause, seek, add tracks) — {@link PlayerApi}
+ * - IPC for native operations (file dialogs, fullscreen) — {@link WindowIpc}
+ * - Application menu events — {@link MenuEvents}
  *
  * State management uses Angular signals, updated reactively via SSE events.
  * The server is the single source of truth; this service just reflects its state.
+ *
+ * This service is the facade the rest of the app injects. It owns the player
+ * state and what each server event means; the transports it is built from are
+ * separate services, and their members are re-exposed here unchanged so that
+ * consumers depend on one thing.
  *
  * @module app/services/electron.service
  */
@@ -21,7 +27,11 @@ import type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack, AudioTrack, 
 import type {AppSettings} from './settings.service';
 import {TrackSelectionCache} from './track-selection-cache.service';
 import {SseClient} from './sse-client.service';
-import {buildFileDialogFilters} from '../constants/media.constants';
+import {MediaServerClient} from './media-server-client.service';
+import {PlayerApi} from './player-api.service';
+import {WindowIpc} from './window-ipc.service';
+import {MenuEvents} from './menu-events.service';
+import type {MenuActions} from './menu-events.service';
 
 /**
  * Re-export types for consumers that import from this service.
@@ -57,33 +67,38 @@ export type {MediaInfo, PlaylistItem, PlaylistState, SubtitleTrack, AudioTrack, 
 @Injectable({providedIn: 'root'})
 export class ElectronService implements OnDestroy {
   // ============================================================================
-  // Private State
+  // Collaborators
   // ============================================================================
 
-  /** Port number of the media server (obtained via IPC at startup) */
-  private serverPort: number = 0;
+  /** Where the media server is, and requests that carry its session token. */
+  private readonly server: MediaServerClient = inject(MediaServerClient);
 
-  /** Active SSE connection for receiving state updates */
+  /** The media server's HTTP commands. */
+  private readonly playerApi: PlayerApi = inject(PlayerApi);
 
-  /** Counter for exponential backoff on SSE reconnection */
+  /** Native dialogs, window control and window state over IPC. */
+  private readonly windowIpc: WindowIpc = inject(WindowIpc);
 
-  /** Maximum delay between reconnection attempts (30 seconds) */
+  /** Application menu selections. */
+  private readonly menuEvents: MenuEvents = inject(MenuEvents);
+
+  /**
+   * Per-file subtitle/audio track selections.
+   *
+   * Kept behind this service's existing accessors so the many components that
+   * read them are unaffected by where the state actually lives.
+   */
+  private readonly trackSelections: TrackSelectionCache = inject(TrackSelectionCache);
+
+  /** The SSE transport; this service supplies the meaning of each event. */
+  private readonly sse: SseClient = inject(SseClient);
 
   // ============================================================================
   // Public Signals - Reactive State (updated via SSE)
   // ============================================================================
 
   /** Base URL of the media server (e.g., "http://127.0.0.1:54545") */
-  public readonly serverUrl: ReturnType<typeof signal<string>> = signal<string>('');
-
-  /**
-   * Session token the media server requires on every API request, obtained
-   * over IPC at startup.
-   *
-   * Always populated before {@link serverUrl}, so anything reacting to the
-   * server URL becoming available already has a usable token.
-   */
-  private readonly serverToken: ReturnType<typeof signal<string>> = signal<string>('');
+  public readonly serverUrl: ReturnType<typeof signal<string>> = this.server.serverUrl;
 
   /** Current playback state: idle, loading, playing, paused, stopped, or error */
   public readonly playbackState: ReturnType<typeof signal<string>> = signal<string>('idle');
@@ -163,66 +178,25 @@ export class ElectronService implements OnDestroy {
   public readonly forceReloadCounter: ReturnType<typeof signal<number>> = signal<number>(0);
 
   /** Whether the application is in fullscreen mode */
-  public readonly isFullscreen: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+  public readonly isFullscreen: ReturnType<typeof signal<boolean>> = this.windowIpc.isFullscreen;
 
   /** Signal that increments when fullscreen transition starts (pause rendering) */
-  public readonly fullscreenTransitionStart: ReturnType<typeof signal<number>> = signal<number>(0);
+  public readonly fullscreenTransitionStart: ReturnType<typeof signal<number>> = this.windowIpc.fullscreenTransitionStart;
 
   /** Signal that increments when fullscreen transition ends (resume rendering) */
-  public readonly fullscreenTransitionEnd: ReturnType<typeof signal<number>> = signal<number>(0);
+  public readonly fullscreenTransitionEnd: ReturnType<typeof signal<number>> = this.windowIpc.fullscreenTransitionEnd;
 
   /** Current view mode: desktop, miniplayer, or fullscreen */
-  public readonly viewMode: ReturnType<typeof signal<'desktop' | 'miniplayer' | 'fullscreen'>> = signal<'desktop' | 'miniplayer' | 'fullscreen'>('desktop');
+  public readonly viewMode: ReturnType<typeof signal<'desktop' | 'miniplayer' | 'fullscreen'>> = this.windowIpc.viewMode;
 
   /** Whether the settings (configuration) window is currently open */
-  public readonly isConfigOpen: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
+  public readonly isConfigOpen: ReturnType<typeof signal<boolean>> = this.windowIpc.isConfigOpen;
 
   /** Platform information including glass effect support */
-  public readonly platformInfo: ReturnType<typeof signal<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}>> = signal<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}>({
-    platform: 'unknown',
-    supportsGlass: false,
-    systemTheme: 'dark'
-  });
-
-  /** Cleanup function for fullscreen change listener */
-  private fullscreenCleanup: (() => void) | null = null;
-
-  /** Cleanup function for fullscreen transition start listener */
-  private fullscreenTransitionStartCleanup: (() => void) | null = null;
-
-  /** Cleanup function for fullscreen transition end listener */
-  private fullscreenTransitionEndCleanup: (() => void) | null = null;
-
-  /** Cleanup function for view mode change listener */
-  private viewModeCleanup: (() => void) | null = null;
-
-  /** Cleanup function for config (settings) open-change listener */
-  private configOpenCleanup: (() => void) | null = null;
-
-  /** Previous view mode for restoring after fullscreen (miniplayer or desktop) */
-  private previousViewMode: 'desktop' | 'miniplayer' = 'desktop';
-
-  /**
-   * Per-file subtitle/audio track selections.
-   *
-   * Kept behind this service's existing accessors so the many components that
-   * read them are unaffected by where the state actually lives.
-   */
-  private readonly trackSelections: TrackSelectionCache = inject(TrackSelectionCache);
-
-  /** The SSE transport; this service supplies the meaning of each event. */
-  private readonly sse: SseClient = inject(SseClient);
-
-  /** Timeout ID for SSE reconnection (for cleanup) */
+  public readonly platformInfo: ReturnType<typeof signal<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}>> = this.windowIpc.platformInfo;
 
   /** Timeout ID for mediaEnded signal reset (for cleanup) */
   private mediaEndedTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  /** Timeout ID for the post-fade close notification (for cleanup) */
-  private fadeOutCompleteTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  /** Cleanup functions for menu event listeners */
-  private readonly menuCleanupFunctions: Array<() => void> = [];
 
   /** Callback for settings updates (registered by SettingsService) */
   private readonly settingsUpdateCallbacks: Array<(settings: AppSettings) => void> = [];
@@ -248,18 +222,6 @@ export class ElectronService implements OnDestroy {
   /** Callback for dependency install progress updates (registered by DependencyService) */
   private readonly dependencyProgressCallbacks: Array<(progress: unknown) => void> = [];
 
-  /** Cleanup function for prepare-for-close listener */
-  private prepareForCloseCleanup: (() => void) | null = null;
-
-  /** Cached subtitle track selections per file path (persists across view mode changes) */
-  private readonly subtitleSelections: Map<string, number> = new Map();
-
-  /** Cached audio track selections per file path (persists across view mode changes) */
-  private readonly audioSelections: Map<string, number> = new Map();
-
-  /** Cleanup function for exit-configuration-mode listener */
-  private exitConfigurationModeCleanup: (() => void) | null = null;
-
   /** Cleanup function for OS file open listener */
   private osOpenFileCleanup: (() => void) | null = null;
 
@@ -271,10 +233,10 @@ export class ElectronService implements OnDestroy {
   // ============================================================================
 
   /** Signal emitted when "Show Config" menu item is selected */
-  public readonly menuShowConfig: ReturnType<typeof signal<number>> = signal<number>(0);
+  public readonly menuShowConfig: ReturnType<typeof signal<number>> = this.menuEvents.menuShowConfig;
 
   /** Signal emitted when "Open File" menu item is selected */
-  public readonly menuOpenFile: ReturnType<typeof signal<number>> = signal<number>(0);
+  public readonly menuOpenFile: ReturnType<typeof signal<number>> = this.menuEvents.menuOpenFile;
 
   /** Latest URL download job update (progress/complete/error), null when idle */
   public readonly downloadJob: ReturnType<typeof signal<DownloadJob | null>> = signal<DownloadJob | null>(null);
@@ -287,28 +249,28 @@ export class ElectronService implements OnDestroy {
   private readonly isMainWindow: boolean = !new URLSearchParams(window.location.search).has('window');
 
   /** Signal emitted when "Show Help" menu item is selected */
-  public readonly menuShowHelp: ReturnType<typeof signal<number>> = signal<number>(0);
+  public readonly menuShowHelp: ReturnType<typeof signal<number>> = this.menuEvents.menuShowHelp;
 
   /** Signal emitted when "Open Playlist" menu item is selected */
-  public readonly menuOpenPlaylist: ReturnType<typeof signal<number>> = signal<number>(0);
+  public readonly menuOpenPlaylist: ReturnType<typeof signal<number>> = this.menuEvents.menuOpenPlaylist;
 
   /** Signal emitted when "Save Playlist" menu item is selected */
-  public readonly menuSavePlaylist: ReturnType<typeof signal<number>> = signal<number>(0);
+  public readonly menuSavePlaylist: ReturnType<typeof signal<number>> = this.menuEvents.menuSavePlaylist;
 
   /** Signal emitted when "Save Playlist As" menu item is selected */
-  public readonly menuSavePlaylistAs: ReturnType<typeof signal<number>> = signal<number>(0);
+  public readonly menuSavePlaylistAs: ReturnType<typeof signal<number>> = this.menuEvents.menuSavePlaylistAs;
 
   /** Signal emitted when a visualization is selected from the menu */
-  public readonly menuSelectVisualization: ReturnType<typeof signal<string>> = signal<string>('');
+  public readonly menuSelectVisualization: ReturnType<typeof signal<string>> = this.menuEvents.menuSelectVisualization;
 
   /** Signal emitted when an aspect mode is selected from the menu */
-  public readonly menuSelectAspectMode: ReturnType<typeof signal<string>> = signal<string>('');
+  public readonly menuSelectAspectMode: ReturnType<typeof signal<string>> = this.menuEvents.menuSelectAspectMode;
 
   /** Signal emitted when window is about to close - value is fade duration in ms (0 = no fade requested) */
-  public readonly fadeOutRequested: ReturnType<typeof signal<number>> = signal<number>(0);
+  public readonly fadeOutRequested: ReturnType<typeof signal<number>> = this.windowIpc.fadeOutRequested;
 
   /** Signal emitted when close button is pressed in configuration mode - increments to trigger effect */
-  public readonly exitConfigurationModeRequested: ReturnType<typeof signal<number>> = signal<number>(0);
+  public readonly exitConfigurationModeRequested: ReturnType<typeof signal<number>> = this.windowIpc.exitConfigurationModeRequested;
 
   /**
    * Queues a playlist item's corrected duration for the next batched update.
@@ -412,7 +374,11 @@ export class ElectronService implements OnDestroy {
    *                 (required because SSE callbacks run outside Angular)
    */
   public constructor(private readonly ngZone: NgZone) {
-    void this.initialize();
+    // Nothing can await a constructor, so a failed IPC read during start-up
+    // would otherwise leave the service half-initialised without a trace.
+    void this.initialize().catch((error: unknown): void => {
+      console.error('[ElectronService] Initialization failed:', error);
+    });
   }
 
   // ============================================================================
@@ -448,312 +414,91 @@ export class ElectronService implements OnDestroy {
    *
    * Sequence:
    * 1. Check if running in Electron
-   * 2. Get server port via IPC
-   * 3. Construct server URL
+   * 2. Get server port and session token via IPC
+   * 3. Read the platform information
    * 4. Open SSE connection for state updates
-   * 5. Setup fullscreen state listener
+   * 5. Start listening for window, menu and OS file-open events
    */
   private async initialize(): Promise<void> {
     if (!this.isElectron || !this.api) return;
 
-    // Get server port and session token via IPC. The token is published first
-    // so that consumers reacting to serverUrl can immediately build authorized
-    // URLs.
     const [port, token]: [number, string] = await Promise.all([
       this.api.getServerPort(),
       this.api.getServerToken(),
     ]);
-    this.serverToken.set(token);
-    this.serverPort = port;
-    this.serverUrl.set(`http://127.0.0.1:${port}`);
+    this.server.configure(port, token);
     console.log(`Connected to media server at ${this.serverUrl()}`);
 
-    // Get platform info via IPC
-    const platformInfo: {platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'} = await this.api.getPlatformInfo();
-    this.ngZone.run((): void => {
-      this.platformInfo.set(platformInfo);
-    });
-    console.log(`Platform: ${platformInfo.platform}, Glass supported: ${platformInfo.supportsGlass}, Theme: ${platformInfo.systemTheme}`);
+    await this.windowIpc.loadPlatformInfo();
 
     // Connect to SSE for real-time updates
     this.connectSSE();
 
-    // Setup fullscreen listener
-    this.setupFullscreenListener();
+    this.windowIpc.watchFullscreen();
+    this.windowIpc.watchViewMode();
+    this.menuEvents.listen(this.menuActions());
 
-    // Setup view mode listener
-    this.setupViewModeListener();
-
-    // Setup menu event listeners
-    this.setupMenuListeners();
-
-    // Setup prepare-for-close listener (for graceful audio fade-out)
-    this.setupPrepareForCloseListener();
-
-    // Setup exit-configuration-mode listener (for close button in config mode)
-    this.setupExitConfigurationModeListener();
+    // Prepare-for-close (graceful audio fade-out) and the close button in
+    // configuration mode
+    this.windowIpc.watchCloseRequests();
 
     // Setup OS file open listeners (for double-click from file manager)
     this.setupOSFileOpenListeners();
   }
 
   /**
-   * Sets up fullscreen state tracking via IPC.
+   * Runs a server command that nothing awaits, logging it if it fails.
    *
-   * Gets the initial state and registers a listener for changes.
-   * Also sets up transition event listeners for pausing rendering.
-   * All updates run through NgZone to trigger Angular change detection.
+   * Menu selections, OS file opens and SSE events have no caller to hand a
+   * failure to, so a rejected request would otherwise surface only as an
+   * unhandled promise rejection.
+   *
+   * @param description - What the command does, as it should read in the log
+   * @param command - The command's promise
    */
-  private setupFullscreenListener(): void {
-    if (!this.isElectron || !this.api) return;
-
-    // Get initial fullscreen state. The listener below keeps it current, so a
-    // failed initial read costs a stale value until the first change event.
-    this.api.isFullscreen().then((isFullscreen: boolean): void => {
-      this.ngZone.run((): void => {
-        this.isFullscreen.set(isFullscreen);
-      });
-    }).catch((error: unknown): void => {
-      console.error('[ElectronService] Failed to read initial fullscreen state:', error);
-    });
-
-    // Listen for fullscreen changes
-    this.fullscreenCleanup = this.api.onFullscreenChange((isFullscreen: boolean): void => {
-      this.ngZone.run((): void => {
-        this.isFullscreen.set(isFullscreen);
-      });
-    });
-
-    // Listen for fullscreen transition events (for pausing rendering)
-    this.fullscreenTransitionStartCleanup = this.api.onFullscreenTransitionStart((): void => {
-      this.ngZone.run((): void => {
-        this.fullscreenTransitionStart.update((v: number): number => v + 1);
-      });
-    });
-
-    this.fullscreenTransitionEndCleanup = this.api.onFullscreenTransitionEnd((): void => {
-      this.ngZone.run((): void => {
-        this.fullscreenTransitionEnd.update((v: number): number => v + 1);
-      });
+  private runInBackground(description: string, command: Promise<unknown>): void {
+    void command.catch((error: unknown): void => {
+      console.error(`[ElectronService] ${description} failed:`, error);
     });
   }
 
   /**
-   * Sets up view mode state tracking via IPC.
+   * Supplies what each command-style menu selection does to the player.
    *
-   * Gets the initial view mode and registers a listener for changes.
-   * All updates run through NgZone to trigger Angular change detection.
+   * @returns The actions the menu drives
    */
-  private setupViewModeListener(): void {
-    if (!this.isElectron || !this.api) return;
-
-    // Get initial view mode. As above, the change listener corrects a failed
-    // initial read on the next transition.
-    this.api.getViewMode().then((mode: 'desktop' | 'miniplayer' | 'fullscreen'): void => {
-      this.ngZone.run((): void => {
-        this.viewMode.set(mode);
-        if (mode !== 'fullscreen') {
-          this.previousViewMode = mode;
-        }
-      });
-    }).catch((error: unknown): void => {
-      console.error('[ElectronService] Failed to read initial view mode:', error);
-    });
-
-    // Listen for view mode changes
-    this.viewModeCleanup = this.api.onViewModeChange((mode: 'desktop' | 'miniplayer' | 'fullscreen'): void => {
-      this.ngZone.run((): void => {
-        this.viewMode.set(mode);
-        if (mode !== 'fullscreen') {
-          this.previousViewMode = mode;
-        }
-      });
-    });
-
-    // Listen for settings window open/close to disable fullscreen/miniplayer controls
-    this.configOpenCleanup = this.api.onConfigOpenChange((open: boolean): void => {
-      this.ngZone.run((): void => {
-        this.isConfigOpen.set(open);
-      });
-    });
-  }
-
-  /**
-   * Sets up listeners for application menu events.
-   *
-   * Menu events handled:
-   * - showConfig: Opens the configuration/settings view
-   * - openFile: Opens file dialog and adds files to playlist
-   * - togglePlayPause: Toggles playback state
-   * - toggleShuffle: Toggles shuffle mode
-   * - toggleRepeat: Toggles repeat mode
-   * - selectVisualization: Changes the active visualization
-   */
-  private setupMenuListeners(): void {
-    if (!this.isElectron || !this.api) return;
-
-    // Show config menu item
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('showConfig', (): void => {
-        this.ngZone.run((): void => {
-          this.menuShowConfig.update((v: number): number => v + 1);
-        });
-      })
-    );
-
-    // Open file menu item
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('openFile', (): void => {
-        this.ngZone.run((): void => {
-          this.menuOpenFile.update((v: number): number => v + 1);
-        });
-      })
-    );
-
-    // Toggle play/pause
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('togglePlayPause', (): void => {
-        this.ngZone.run((): void => {
-          const state: string = this.playbackState();
-          if (state === 'playing') {
-            void this.pause();
-          } else {
-            void this.play();
-          }
-        });
-      })
-    );
-
-    // Stop playback
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('stop', (): void => {
-        this.ngZone.run((): void => {
-          void this.stop();
-        });
-      })
-    );
-
-    // Toggle shuffle
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('toggleShuffle', (): void => {
-        this.ngZone.run((): void => {
-          const current: boolean = this.playlist().shuffleEnabled;
-          void this.setShuffle(!current);
-        });
-      })
-    );
-
-    // Toggle repeat
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('toggleRepeat', (): void => {
-        this.ngZone.run((): void => {
-          const current: boolean = this.playlist().repeatEnabled;
-          void this.setRepeat(!current);
-        });
-      })
-    );
-
-    // Select visualization
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('selectVisualization', (id: unknown): void => {
-        this.ngZone.run((): void => {
-          if (typeof id === 'string') {
-            this.menuSelectVisualization.set(id);
-          }
-        });
-      })
-    );
-
-    // Select aspect mode
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('selectAspectMode', (mode: unknown): void => {
-        this.ngZone.run((): void => {
-          if (typeof mode === 'string') {
-            this.menuSelectAspectMode.set(mode);
-          }
-        });
-      })
-    );
-
-    // Close media (stop, remove current, move to next)
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('closeMedia', (): void => {
-        this.ngZone.run((): void => {
-          void this.closeCurrentMedia();
-        });
-      })
-    );
-
-    // Close all (stop playback and clear playlist)
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('closeAll', (): void => {
-        this.ngZone.run((): void => {
-          void this.stop()
-            .then((): Promise<void> => this.clearPlaylist())
-            .catch((error: unknown): void => {
-              console.error('[ElectronService] Close all failed:', error);
-            });
-        });
-      })
-    );
-
-    // Show help menu item
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('showHelp', (): void => {
-        this.ngZone.run((): void => {
-          this.menuShowHelp.update((v: number): number => v + 1);
-        });
-      })
-    );
-
-    // Open playlist menu item
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('openPlaylist', (): void => {
-        this.ngZone.run((): void => {
-          this.menuOpenPlaylist.update((v: number): number => v + 1);
-        });
-      })
-    );
-
-    // Save playlist menu item
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('savePlaylist', (): void => {
-        this.ngZone.run((): void => {
-          this.menuSavePlaylist.update((v: number): number => v + 1);
-        });
-      })
-    );
-
-    // Save playlist as menu item
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('savePlaylistAs', (): void => {
-        this.ngZone.run((): void => {
-          this.menuSavePlaylistAs.update((v: number): number => v + 1);
-        });
-      })
-    );
-
-    // Open recent file menu item
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('openRecentFile', (filePath: unknown): void => {
-        this.ngZone.run((): void => {
-          if (typeof filePath === 'string') {
-            void this.addFilesWithAutoPlay([filePath]);
-          }
-        });
-      })
-    );
-
-    // Open recent playlist menu item
-    this.menuCleanupFunctions.push(
-      this.api.onMenuEvent('openRecentPlaylist', (playlistPath: unknown): void => {
-        this.ngZone.run((): void => {
-          if (typeof playlistPath === 'string') {
-            void this.loadPlaylistFromFile(playlistPath);
-          }
-        });
-      })
-    );
+  private menuActions(): MenuActions {
+    return {
+      togglePlayPause: (): void => {
+        const state: string = this.playbackState();
+        this.runInBackground('Play/pause', state === 'playing' ? this.pause() : this.play());
+      },
+      stop: (): void => {
+        this.runInBackground('Stop', this.stop());
+      },
+      toggleShuffle: (): void => {
+        const current: boolean = this.playlist().shuffleEnabled;
+        this.runInBackground('Toggle shuffle', this.setShuffle(!current));
+      },
+      toggleRepeat: (): void => {
+        const current: boolean = this.playlist().repeatEnabled;
+        this.runInBackground('Toggle repeat', this.setRepeat(!current));
+      },
+      // Close media (stop, remove current, move to next)
+      closeMedia: (): void => {
+        this.runInBackground('Close media', this.closeCurrentMedia());
+      },
+      // Close all (stop playback and clear playlist)
+      closeAll: (): void => {
+        this.runInBackground('Close all', this.stop().then((): Promise<void> => this.clearPlaylist()));
+      },
+      openRecentFile: (filePath: string): void => {
+        this.runInBackground('Open recent file', this.addFilesWithAutoPlay([filePath]));
+      },
+      openRecentPlaylist: (playlistPath: string): void => {
+        this.runInBackground('Open recent playlist', this.loadPlaylistFromFile(playlistPath));
+      },
+    };
   }
 
   /**
@@ -766,58 +511,18 @@ export class ElectronService implements OnDestroy {
       return;
     }
 
-    const currentItem: PlaylistItem = currentPlaylist.items[currentPlaylist.currentIndex];
+    // The index arrives separately from the items, so it can briefly point
+    // past the end of a list that has just shrunk.
+    const currentItem: PlaylistItem | undefined = currentPlaylist.items[currentPlaylist.currentIndex];
+    if (!currentItem) {
+      return;
+    }
 
     // Stop playback
     await this.stop();
 
     // Remove from playlist (server will auto-advance to next if available)
     await this.removeFromPlaylist(currentItem.id);
-  }
-
-  /**
-   * Sets up the prepare-for-close listener for graceful audio fade-out.
-   *
-   * When the window is about to close, the main process sends an event
-   * with the fade duration. This sets the fadeOutRequested signal which
-   * components (audio-outlet, video-outlet) watch to perform the fade.
-   * After the fade duration, we notify the main process to proceed with close.
-   */
-  private setupPrepareForCloseListener(): void {
-    if (!this.isElectron || !this.api) return;
-
-    this.prepareForCloseCleanup = this.api.onPrepareForClose((fadeDuration: number): void => {
-      this.ngZone.run((): void => {
-        // Signal components to fade out
-        this.fadeOutRequested.set(fadeDuration);
-
-        // After fade duration, notify main process that fade is complete
-        if (this.fadeOutCompleteTimeoutId !== null) {
-          clearTimeout(this.fadeOutCompleteTimeoutId);
-        }
-        this.fadeOutCompleteTimeoutId = setTimeout((): void => {
-          this.fadeOutCompleteTimeoutId = null;
-          this.api?.notifyFadeOutComplete();
-        }, fadeDuration);
-      });
-    });
-  }
-
-  /**
-   * Sets up the exit-configuration-mode listener.
-   *
-   * When the close button is pressed while in configuration mode, the main
-   * process intercepts it and sends an event to tell the renderer to exit
-   * configuration mode instead of closing the window.
-   */
-  private setupExitConfigurationModeListener(): void {
-    if (!this.isElectron || !this.api) return;
-
-    this.exitConfigurationModeCleanup = this.api.onExitConfigurationMode((): void => {
-      this.ngZone.run((): void => {
-        this.exitConfigurationModeRequested.update((v: number): number => v + 1);
-      });
-    });
   }
 
   /**
@@ -835,14 +540,14 @@ export class ElectronService implements OnDestroy {
     // Handle media files opened from OS
     this.osOpenFileCleanup = this.api.onOSOpenFile((filePath: string): void => {
       this.ngZone.run((): void => {
-        void this.addFilesWithAutoPlay([filePath]);
+        this.runInBackground('Open file from the OS', this.addFilesWithAutoPlay([filePath]));
       });
     });
 
     // Handle playlist files opened from OS
     this.osOpenPlaylistCleanup = this.api.onOSOpenPlaylist((playlistPath: string): void => {
       this.ngZone.run((): void => {
-        void this.loadPlaylistFromFile(playlistPath);
+        this.runInBackground('Open playlist from the OS', this.loadPlaylistFromFile(playlistPath));
       });
     });
   }
@@ -1082,7 +787,7 @@ export class ElectronService implements OnDestroy {
         if (job) {
           this.downloadJob.set(job);
           if (job.filePath && this.isMainWindow) {
-            void this.addFilesWithAutoPlay([job.filePath]);
+            this.runInBackground('Add downloaded file', this.addFilesWithAutoPlay([job.filePath]));
           }
         }
       });
@@ -1109,7 +814,7 @@ export class ElectronService implements OnDestroy {
           // the event itself is the completion signal — there is nothing left
           // to wait for. This used to be a 100ms guess that guaranteed
           // nothing: a recursive delete can outlast it.
-          void this.play();
+          this.runInBackground('Restart after SoundFont change', this.play());
         }
       });
     },
@@ -1117,19 +822,11 @@ export class ElectronService implements OnDestroy {
   }
 
   // ============================================================================
-  // IPC Methods (file operations only)
+  // Native Dialogs and Window Control (delegated to WindowIpc)
   // ============================================================================
 
   /**
    * Opens the native file picker dialog for selecting media files.
-   *
-   * Uses IPC because native dialogs must be shown from the main process.
-   *
-   * Callers that know which dependencies are installed should pass filters
-   * built by buildFileDialogFilters, as both in-app open paths do. The
-   * fallback comes from the same builder rather than a hand-written list:
-   * the list that used to live here had drifted, silently omitting every
-   * tracker-module extension.
    *
    * @param multiSelect - Whether to allow selecting multiple files (default: true)
    * @param filters - Dialog filters; defaults to every supported format
@@ -1141,284 +838,177 @@ export class ElectronService implements OnDestroy {
    *   await electron.addToPlaylist(files);
    * }
    */
-  public async openFileDialog(multiSelect: boolean = true, filters?: readonly {name: string; extensions: string[]}[]): Promise<string[]> {
-    if (!this.isElectron || !this.api) return [];
+  public openFileDialog(multiSelect: boolean = true, filters?: readonly {name: string; extensions: string[]}[]): Promise<string[]> {
+    return this.windowIpc.openFileDialog(multiSelect, filters);
+  }
 
-    return this.api.openFileDialog({
-      filters: (filters ?? buildFileDialogFilters(true, true, true)) as {name: string; extensions: string[]}[],
-      multiSelections: multiSelect
-    });
+  /** Opens the native file picker for SoundFont (.sf2) files; empty if cancelled. */
+  public openSoundFontDialog(): Promise<string[]> {
+    return this.windowIpc.openSoundFontDialog();
+  }
+
+  /** Opens the native file picker for external subtitle files; null if cancelled. */
+  public openSubtitleDialog(): Promise<string | null> {
+    return this.windowIpc.openSubtitleDialog();
+  }
+
+  /** Opens a native dialog to select a .opp playlist file; null if cancelled. */
+  public openPlaylistDialog(): Promise<string | null> {
+    return this.windowIpc.openPlaylistDialog();
+  }
+
+  /** Opens a native save dialog for a .opp playlist file; null if cancelled. */
+  public savePlaylistDialog(): Promise<string | null> {
+    return this.windowIpc.savePlaylistDialog();
   }
 
   /**
-   * Opens the native file picker dialog for selecting SoundFont (.sf2) files.
+   * Opens a native save dialog for a media file about to be downloaded from a
+   * URL, letting the user choose where it is written before yt-dlp starts.
    *
-   * @returns Promise resolving to array of selected file paths, empty if cancelled
+   * @param title - Media title, offered as the suggested filename
+   * @param format - 'video' (suggests .mp4) or 'audio' (suggests .mp3)
+   * @returns Promise resolving to the chosen file path, or null if cancelled
    */
-  public async openSoundFontDialog(): Promise<string[]> {
-    if (!this.isElectron || !this.api) return [];
-    return this.api.openSoundFontDialog();
+  public saveMediaDialog(title: string, format: UrlMediaFormat): Promise<string | null> {
+    return this.windowIpc.saveMediaDialog(title, format);
   }
 
   /**
-   * Opens the native file picker dialog for selecting external subtitle files.
-   *
-   * Supports common subtitle formats: .srt, .vtt, .ass, .ssa
-   *
-   * @returns Promise resolving to selected file path, or null if cancelled
-   */
-  public async openSubtitleDialog(): Promise<string | null> {
-    if (!this.isElectron || !this.api) return null;
-    return this.api.openSubtitleDialog();
-  }
-
-  /**
-   * Gets the absolute file system path for a File object.
-   *
-   * Used for drag-and-drop where browser provides File objects but
-   * the server needs absolute paths to access files.
+   * Gets the absolute file system path for a File object from a drag-and-drop.
    *
    * @param file - File object from a drag-and-drop DataTransfer
    * @returns The absolute path to the file
    * @throws Error if not running in Electron
-   *
-   * @example
-   * onDrop(event: DragEvent) {
-   *   const file = event.dataTransfer.files[0];
-   *   const path = this.electron.getPathForFile(file);
-   *   await this.electron.addToPlaylist([path]);
-   * }
    */
   public getPathForFile(file: File): string {
-    if (!this.isElectron || !this.api) {
-      throw new Error('Not running in Electron');
-    }
-    return this.api.getPathForFile(file);
+    return this.windowIpc.getPathForFile(file);
   }
 
-  // ============================================================================
-  // IPC Methods - Fullscreen Control
-  // ============================================================================
-
-  /**
-   * Enters native fullscreen mode.
-   *
-   * Uses Electron's BrowserWindow fullscreen (not HTML5 fullscreen API)
-   * for better OS integration and keyboard shortcut handling.
-   */
-  public async enterFullscreen(): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.enterFullscreen();
+  /** Enters native fullscreen mode. */
+  public enterFullscreen(): Promise<void> {
+    return this.windowIpc.enterFullscreen();
   }
 
-  /**
-   * Exits native fullscreen mode.
-   */
-  public async exitFullscreen(): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.exitFullscreen();
+  /** Exits native fullscreen mode. */
+  public exitFullscreen(): Promise<void> {
+    return this.windowIpc.exitFullscreen();
   }
 
-  /**
-   * Toggles fullscreen mode based on current state.
-   *
-   * @example
-   * // In a component
-   * onDoubleClick() {
-   *   this.electron.toggleFullscreen();
-   * }
-   */
-  public async toggleFullscreen(): Promise<void> {
-    if (this.isFullscreen()) {
-      await this.exitFullscreen();
-    } else {
-      await this.enterFullscreen();
-    }
+  /** Toggles fullscreen mode based on current state. */
+  public toggleFullscreen(): Promise<void> {
+    return this.windowIpc.toggleFullscreen();
   }
 
-  // ============================================================================
-  // IPC Methods - Miniplayer Control
-  // ============================================================================
-
-  /**
-   * Enters miniplayer mode.
-   *
-   * Resizes the window to compact size (320x200), positions in bottom-right corner,
-   * sets always-on-top, and applies miniplayer size constraints (max 640x400).
-   */
-  public async enterMiniplayer(): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.enterMiniplayer();
+  /** Enters miniplayer mode. */
+  public enterMiniplayer(): Promise<void> {
+    return this.windowIpc.enterMiniplayer();
   }
 
-  /**
-   * Exits miniplayer mode and returns to desktop mode.
-   *
-   * Restores the previous window size and position, removes always-on-top,
-   * and restores desktop size constraints (min 800x600, no max).
-   */
-  public async exitMiniplayer(): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.exitMiniplayer();
+  /** Exits miniplayer mode and returns to desktop mode. */
+  public exitMiniplayer(): Promise<void> {
+    return this.windowIpc.exitMiniplayer();
   }
 
   /**
    * Sets the window position with magnetic edge snapping.
    *
-   * Used during window dragging in miniplayer mode. When the position
-   * is near screen edges (~40px), the window snaps to the edge.
-   *
    * @param position - The desired window position {x, y}
    * @returns Promise resolving to the actual position after snapping
    */
-  public async setWindowPosition(position: {x: number; y: number}): Promise<{x: number; y: number}> {
-    if (!this.isElectron || !this.api) return position;
-    return this.api.setWindowPosition(position);
+  public setWindowPosition(position: {x: number; y: number}): Promise<{x: number; y: number}> {
+    return this.windowIpc.setWindowPosition(position);
   }
 
   /**
-   * Resizes the current window's content area to the given height (keeping its
-   * width). Used by the Open URL window to grow/shrink to fit its content.
+   * Resizes the current window's content area to the given height.
    *
    * @param height - Desired content height in pixels
    */
-  public async setContentHeight(height: number): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.setContentHeight(height);
+  public setContentHeight(height: number): Promise<void> {
+    return this.windowIpc.setContentHeight(height);
   }
 
-  /**
-   * Gets the current window position.
-   *
-   * Used to get starting position for window dragging in miniplayer mode.
-   *
-   * @returns Promise resolving to the current window position {x, y}
-   */
-  public async getWindowPosition(): Promise<{x: number; y: number}> {
-    if (!this.isElectron || !this.api) return {x: 0, y: 0};
-    return this.api.getWindowPosition();
+  /** Gets the current window position. */
+  public getWindowPosition(): Promise<{x: number; y: number}> {
+    return this.windowIpc.getWindowPosition();
   }
 
   /**
    * Sets the visibility of macOS traffic light buttons.
    *
-   * Used in miniplayer mode to hide traffic lights when controls are hidden.
-   * Only affects macOS; no-op on other platforms.
-   *
    * @param visible - Whether the traffic lights should be visible
    */
-  public async setTrafficLightVisibility(visible: boolean): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.setTrafficLightVisibility(visible);
+  public setTrafficLightVisibility(visible: boolean): Promise<void> {
+    return this.windowIpc.setTrafficLightVisibility(visible);
   }
 
-  /**
-   * Saves the current miniplayer bounds to settings.
-   *
-   * Called after drag ends or resize completes in miniplayer mode.
-   * The bounds are persisted to the settings file so the miniplayer
-   * position and size are restored on next entry.
-   */
-  public async saveMiniplayerBounds(): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.saveMiniplayerBounds();
+  /** Saves the current miniplayer bounds to settings. */
+  public saveMiniplayerBounds(): Promise<void> {
+    return this.windowIpc.saveMiniplayerBounds();
   }
 
   /**
    * Sets the configuration mode state in the main process.
    *
-   * Used to track whether the renderer is showing the settings view.
-   * When in configuration mode, the close button returns to the media
-   * player instead of closing the window.
-   *
    * @param enabled - Whether configuration mode is active
    */
-  public async setConfigurationMode(enabled: boolean): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.setConfigurationMode(enabled);
+  public setConfigurationMode(enabled: boolean): Promise<void> {
+    return this.windowIpc.setConfigurationMode(enabled);
   }
 
   /**
    * Opens the configuration window with an optional initial category.
-   * If the window is already open, it will be focused.
    *
    * @param initialCategory - Optional category ID to select on open (e.g., 'dependencies')
    */
-  public async showConfigurationWindow(initialCategory?: string): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.showConfigurationWindow(initialCategory);
+  public showConfigurationWindow(initialCategory?: string): Promise<void> {
+    return this.windowIpc.showConfigurationWindow(initialCategory);
   }
 
-  /**
-   * Opens the standalone Open URL window for playing internet media.
-   * If the window is already open, it will be focused.
-   */
-  public async showOpenUrlWindow(): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.showOpenUrlWindow();
+  /** Opens the standalone Open URL window for playing internet media. */
+  public showOpenUrlWindow(): Promise<void> {
+    return this.windowIpc.showOpenUrlWindow();
   }
 
-  /**
-   * Minimizes the window to the taskbar/dock.
-   */
-  public async minimizeWindow(): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.minimizeWindow();
+  /** Minimizes the window to the taskbar/dock. */
+  public minimizeWindow(): Promise<void> {
+    return this.windowIpc.minimizeWindow();
   }
 
-  /**
-   * Closes the main window.
-   */
-  public async closeWindow(): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.closeWindow();
+  /** Closes the main window. */
+  public closeWindow(): Promise<void> {
+    return this.windowIpc.closeWindow();
   }
 
-  /**
-   * Clears the recent files and recent playlists lists.
-   */
-  public async clearRecentItems(): Promise<void> {
-    if (!this.isElectron || !this.api) return;
-    await this.api.clearRecentItems();
+  /** Clears the recent files and recent playlists lists. */
+  public clearRecentItems(): Promise<void> {
+    return this.windowIpc.clearRecentItems();
   }
 
   // ============================================================================
-  // HTTP API Methods - Playback Control
+  // Playback Control (delegated to PlayerApi)
   // ============================================================================
 
-  /**
-   * Starts or resumes playback.
-   * If a track is selected, plays from current position.
-   */
-  public async play(): Promise<void> {
-    await this.post('/player/play');
+  /** Starts or resumes playback. */
+  public play(): Promise<void> {
+    return this.playerApi.play();
   }
 
-  /**
-   * Pauses playback at the current position.
-   */
-  public async pause(): Promise<void> {
-    await this.post('/player/pause');
+  /** Pauses playback at the current position. */
+  public pause(): Promise<void> {
+    return this.playerApi.pause();
   }
 
-  /**
-   * Stops playback and resets position to the beginning.
-   */
-  public async stop(): Promise<void> {
-    await this.post('/player/stop');
+  /** Stops playback and resets position to the beginning. */
+  public stop(): Promise<void> {
+    return this.playerApi.stop();
   }
 
-  /**
-   * Signals that audio playback has actually started.
-   * Called by the audio outlet when the audio element fires the 'playing' event.
-   * This starts time tracking on the server.
-   */
-  public async signalPlaybackStarted(): Promise<void> {
-    await this.post('/player/started');
+  /** Signals that audio playback has actually started, starting server time tracking. */
+  public signalPlaybackStarted(): Promise<void> {
+    return this.playerApi.signalPlaybackStarted();
   }
-
-  /** Timestamp (ms epoch) of the last user-initiated seek request */
-  private lastSeekRequestAt: number = 0;
 
   /**
    * Gets the timestamp (ms epoch) of the last user-initiated seek request.
@@ -1426,7 +1016,7 @@ export class ElectronService implements OnDestroy {
    * element position never overrides the seek target.
    */
   public get lastSeekAt(): number {
-    return this.lastSeekRequestAt;
+    return this.playerApi.lastSeekAt;
   }
 
   /**
@@ -1434,22 +1024,18 @@ export class ElectronService implements OnDestroy {
    *
    * @param timeSeconds - Target position in seconds
    */
-  public async seek(timeSeconds: number): Promise<void> {
-    this.lastSeekRequestAt = Date.now();
-    await this.post('/player/seek', {time: timeSeconds});
+  public seek(timeSeconds: number): Promise<void> {
+    return this.playerApi.seek(timeSeconds);
   }
 
   /**
-   * Reports the media element's actual playback position so the server can
-   * re-anchor its wall-clock time tracking. Fire-and-forget; errors are
-   * logged but never disrupt playback.
+   * Reports the media element's actual playback position to the server.
+   * Fire-and-forget; errors are logged but never disrupt playback.
    *
    * @param timeSeconds - The element's actual position in seconds
    */
   public syncPlaybackTime(timeSeconds: number): void {
-    void this.post('/player/sync', {time: timeSeconds}).catch((err: unknown): void => {
-      console.warn('Failed to sync playback time:', err);
-    });
+    this.playerApi.syncPlaybackTime(timeSeconds);
   }
 
   /**
@@ -1458,52 +1044,32 @@ export class ElectronService implements OnDestroy {
    * @param volume - Volume level from 0.0 to 1.0
    * @param muted - Optional mute state
    */
-  public async setVolume(volume: number, muted?: boolean): Promise<void> {
-    const body: {volume?: number; muted?: boolean} = {};
-    if (typeof volume === 'number') body.volume = volume;
-    if (typeof muted === 'boolean') body.muted = muted;
-    await this.post('/player/volume', body);
+  public setVolume(volume: number, muted?: boolean): Promise<void> {
+    return this.playerApi.setVolume(volume, muted);
   }
 
-  /**
-   * Gets the current player state from the server.
-   * Primarily used for debugging; normal state comes via SSE.
-   *
-   * @returns Promise resolving to the current player state
-   */
-  public async getPlayerState(): Promise<unknown> {
-    return this.get('/player/state');
+  /** Gets the current player state from the server (normal state comes via SSE). */
+  public getPlayerState(): Promise<unknown> {
+    return this.playerApi.getPlayerState();
   }
 
   // ============================================================================
-  // HTTP API Methods - Playlist
+  // Playlist (delegated to PlayerApi)
   // ============================================================================
 
-  /**
-   * Gets the current playlist state from the server.
-   * Primarily used for initial sync; updates come via SSE.
-   *
-   * @returns Promise resolving to the playlist state
-   */
-  public async getPlaylist(): Promise<PlaylistState> {
-    return this.get('/playlist');
+  /** Gets the current playlist state from the server (updates come via SSE). */
+  public getPlaylist(): Promise<PlaylistState> {
+    return this.playerApi.getPlaylist();
   }
 
   /**
    * Adds media files to the playlist.
    *
-   * The server probes each file for metadata (duration, type, title, etc.)
-   * and adds valid media files to the playlist.
-   *
    * @param paths - Array of absolute file paths to add
    * @returns Promise resolving to object with array of added items
-   *
-   * @example
-   * const result = await electron.addToPlaylist(['/path/to/song.mp3']);
-   * console.log(`Added ${result.added.length} tracks`);
    */
-  public async addToPlaylist(paths: string[]): Promise<{added: PlaylistItem[]}> {
-    return this.post('/playlist/add', {paths});
+  public addToPlaylist(paths: string[]): Promise<{added: PlaylistItem[]}> {
+    return this.playerApi.addToPlaylist(paths);
   }
 
   /**
@@ -1551,6 +1117,81 @@ export class ElectronService implements OnDestroy {
     return result;
   }
 
+  /**
+   * Removes a track from the playlist by its ID.
+   *
+   * @param id - The unique ID of the track to remove
+   */
+  public removeFromPlaylist(id: string): Promise<void> {
+    return this.playerApi.removeFromPlaylist(id);
+  }
+
+  /** Clears all tracks from the playlist, stopping playback if anything is playing. */
+  public clearPlaylist(): Promise<void> {
+    return this.playerApi.clearPlaylist();
+  }
+
+  /**
+   * Selects and plays a specific track by its ID.
+   *
+   * @param id - The unique ID of the track to select
+   */
+  public selectTrack(id: string): Promise<void> {
+    return this.playerApi.selectTrack(id);
+  }
+
+  /** Advances to the next track in the playlist. */
+  public nextTrack(): Promise<void> {
+    return this.playerApi.nextTrack();
+  }
+
+  /** Returns to the previous track in the playlist. */
+  public previousTrack(): Promise<void> {
+    return this.playerApi.previousTrack();
+  }
+
+  /**
+   * Enables or disables shuffle mode.
+   *
+   * @param enabled - Whether shuffle should be enabled
+   */
+  public setShuffle(enabled: boolean): Promise<void> {
+    return this.playerApi.setShuffle(enabled);
+  }
+
+  /**
+   * Enables or disables repeat mode.
+   *
+   * @param enabled - Whether repeat should be enabled
+   */
+  public setRepeat(enabled: boolean): Promise<void> {
+    return this.playerApi.setRepeat(enabled);
+  }
+
+  /**
+   * Saves the current playlist to a .opp file at the given path.
+   *
+   * @param filePath - Absolute path to save the playlist
+   */
+  public savePlaylistToFile(filePath: string): Promise<void> {
+    return this.playerApi.savePlaylistToFile(filePath);
+  }
+
+  /**
+   * Loads a playlist from a .opp file, replacing the current playlist.
+   *
+   * @param filePath - Absolute path to the .opp file
+   * @returns The number of items loaded
+   */
+  public loadPlaylistFromFile(filePath: string): Promise<{count: number; filePath: string}> {
+    return this.playerApi.loadPlaylistFromFile(filePath);
+  }
+
+  /** Gets the source .opp file path of the current playlist, or null. */
+  public getPlaylistSourcePath(): Promise<string | null> {
+    return this.playerApi.getPlaylistSourcePath();
+  }
+
   // ============================================================================
   // Internet URL Media (yt-dlp)
   // ============================================================================
@@ -1562,8 +1203,8 @@ export class ElectronService implements OnDestroy {
    * @returns Title, thumbnail, duration, uploader, and quality options
    * @throws Error with the yt-dlp failure message if the URL is unsupported
    */
-  public async getUrlInfo(url: string): Promise<UrlMediaInfo> {
-    return this.postExpectingMessage<UrlMediaInfo>('/media/url/info', {url});
+  public getUrlInfo(url: string): Promise<UrlMediaInfo> {
+    return this.playerApi.getUrlInfo(url);
   }
 
   /**
@@ -1579,9 +1220,9 @@ export class ElectronService implements OnDestroy {
    *   finished file is moved to
    * @returns The created job id
    */
-  public async downloadUrl(url: string, format: UrlMediaFormat, formatId: string | null, title: string, outputPath: string): Promise<{jobId: string}> {
+  public downloadUrl(url: string, format: UrlMediaFormat, formatId: string | null, title: string, outputPath: string): Promise<{jobId: string}> {
     this.downloadJob.set(null);
-    return this.postExpectingMessage<{jobId: string}>('/media/url/download', {url, format, formatId, title, outputPath});
+    return this.playerApi.downloadUrl(url, format, formatId, title, outputPath);
   }
 
   /**
@@ -1594,7 +1235,7 @@ export class ElectronService implements OnDestroy {
    * @returns The added playlist items
    */
   public async streamUrl(url: string, format: UrlMediaFormat, maxHeight: number | null): Promise<{added: PlaylistItem[]}> {
-    const resolved: {url: string} = await this.postExpectingMessage<{url: string}>('/media/url/resolve', {url, format, maxHeight});
+    const resolved: {url: string} = await this.playerApi.resolveStreamUrl(url, format, maxHeight);
     return this.addFilesWithAutoPlay([resolved.url]);
   }
 
@@ -1603,163 +1244,12 @@ export class ElectronService implements OnDestroy {
    *
    * @param jobId - The download job id to cancel
    */
-  public async cancelDownload(jobId: string): Promise<{cancelled: boolean}> {
-    return this.post<{cancelled: boolean}>(`/media/url/cancel/${encodeURIComponent(jobId)}`);
-  }
-
-  /**
-   * POSTs JSON and, on a non-2xx response, throws an Error carrying the server's
-   * `{ error }` message (yt-dlp failures are surfaced this way). Unlike the
-   * generic {@link post} helper, this preserves the human-readable reason.
-   */
-  private async postExpectingMessage<T>(endpoint: string, body: unknown): Promise<T> {
-    const response: Response = await this.authFetch(`${this.serverUrl()}${endpoint}`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body),
-    });
-    const data: unknown = await response.json().catch((): null => null);
-    if (!response.ok) {
-      const message: string = (data as {error?: string} | null)?.error ?? `HTTP ${response.status}`;
-      throw new Error(message);
-    }
-    return data as T;
-  }
-
-  /**
-   * Removes a track from the playlist by its ID.
-   *
-   * @param id - The unique ID of the track to remove
-   */
-  public async removeFromPlaylist(id: string): Promise<void> {
-    await this.delete(`/playlist/remove/${id}`);
-  }
-
-  /**
-   * Clears all tracks from the playlist.
-   * Also stops playback if anything is playing.
-   */
-  public async clearPlaylist(): Promise<void> {
-    await this.delete('/playlist/clear');
-  }
-
-  /**
-   * Selects and plays a specific track by its ID.
-   *
-   * @param id - The unique ID of the track to select
-   */
-  public async selectTrack(id: string): Promise<void> {
-    await this.post(`/playlist/select/${id}`);
-  }
-
-  /**
-   * Advances to the next track in the playlist.
-   * Respects shuffle mode if enabled.
-   */
-  public async nextTrack(): Promise<void> {
-    await this.post('/playlist/next');
-  }
-
-  /**
-   * Returns to the previous track in the playlist.
-   * Respects shuffle mode if enabled.
-   */
-  public async previousTrack(): Promise<void> {
-    await this.post('/playlist/previous');
-  }
-
-  /**
-   * Enables or disables shuffle mode.
-   *
-   * When shuffle is enabled, next/previous use a randomized order
-   * (Fisher-Yates shuffle) instead of the display order.
-   *
-   * @param enabled - Whether shuffle should be enabled
-   */
-  public async setShuffle(enabled: boolean): Promise<void> {
-    await this.post('/playlist/shuffle', {enabled});
-  }
-
-  /**
-   * Enables or disables repeat mode.
-   *
-   * When repeat is enabled, the playlist loops; otherwise playback
-   * stops after the last track.
-   *
-   * @param enabled - Whether repeat should be enabled
-   */
-  public async setRepeat(enabled: boolean): Promise<void> {
-    await this.post('/playlist/repeat', {enabled});
+  public cancelDownload(jobId: string): Promise<{cancelled: boolean}> {
+    return this.playerApi.cancelDownload(jobId);
   }
 
   // ============================================================================
-  // HTTP API Methods - Playlist File Operations
-  // ============================================================================
-
-  /**
-   * Opens a native dialog to select a .opp playlist file.
-   *
-   * @returns Promise resolving to the chosen file path, or null if cancelled
-   */
-  public async openPlaylistDialog(): Promise<string | null> {
-    if (!this.isElectron || !this.api) return null;
-    return this.api.openPlaylistDialog();
-  }
-
-  /**
-   * Opens a native save dialog for a .opp playlist file.
-   *
-   * @returns Promise resolving to the chosen file path, or null if cancelled
-   */
-  public async savePlaylistDialog(): Promise<string | null> {
-    if (!this.isElectron || !this.api) return null;
-    return this.api.savePlaylistDialog();
-  }
-
-  /**
-   * Opens a native save dialog for a media file about to be downloaded from a
-   * URL, letting the user choose where it is written before yt-dlp starts.
-   *
-   * @param title - Media title, offered as the suggested filename
-   * @param format - 'video' (suggests .mp4) or 'audio' (suggests .mp3)
-   * @returns Promise resolving to the chosen file path, or null if cancelled
-   */
-  public async saveMediaDialog(title: string, format: UrlMediaFormat): Promise<string | null> {
-    if (!this.isElectron || !this.api) return null;
-    return this.api.saveMediaDialog({title, format});
-  }
-
-  /**
-   * Saves the current playlist to a .opp file at the given path.
-   *
-   * @param filePath - Absolute path to save the playlist
-   */
-  public async savePlaylistToFile(filePath: string): Promise<void> {
-    await this.post('/playlist/save', {filePath});
-  }
-
-  /**
-   * Loads a playlist from a .opp file, replacing the current playlist.
-   *
-   * @param filePath - Absolute path to the .opp file
-   * @returns The number of items loaded
-   */
-  public async loadPlaylistFromFile(filePath: string): Promise<{count: number; filePath: string}> {
-    return this.post('/playlist/load', {filePath});
-  }
-
-  /**
-   * Gets the source .opp file path of the current playlist (if loaded from file).
-   *
-   * @returns The file path or null
-   */
-  public async getPlaylistSourcePath(): Promise<string | null> {
-    const result: {filePath: string | null} = await this.get('/playlist/source');
-    return result.filePath;
-  }
-
-  // ============================================================================
-  // HTTP API Methods - Media Info
+  // Media Server Access (delegated)
   // ============================================================================
 
   /**
@@ -1768,68 +1258,42 @@ export class ElectronService implements OnDestroy {
    * @param filePath - Absolute path to the media file
    * @returns Promise resolving to the media metadata
    */
-  public async getMediaInfo(filePath: string): Promise<MediaInfo> {
-    return this.get(`/media/info?path=${encodeURIComponent(filePath)}`);
+  public getMediaInfo(filePath: string): Promise<MediaInfo> {
+    return this.playerApi.getMediaInfo(filePath);
   }
 
   /**
    * Constructs a streaming URL for a media file.
    *
-   * The URL points to the server's /media/stream endpoint which handles
-   * format transcoding (for non-native formats) and range requests.
-   *
    * @param filePath - Absolute path to the media file
    * @param seekTime - Optional start time in seconds (for transcoded seek)
    * @returns The complete streaming URL
-   *
-   * @example
-   * const url = electron.getStreamUrl('/path/to/video.mkv', 30);
-   * videoElement.src = url;  // Starts 30 seconds in
    */
   public getStreamUrl(filePath: string, seekTime?: number): string {
-    let url: string = `${this.serverUrl()}/media/stream?path=${encodeURIComponent(filePath)}`;
-    if (seekTime !== undefined && seekTime > 0) {
-      url += `&t=${seekTime}`;
-    }
-    return this.appendAuth(url);
+    return this.playerApi.getStreamUrl(filePath, seekTime);
   }
 
   /**
-   * Appends the session token to a media server URL as a query parameter.
-   *
-   * Use this for URLs consumed by things that cannot send headers — media
-   * element `src` attributes and `EventSource`. Prefer {@link authFetch} for
-   * anything issued via `fetch`.
+   * Appends the session token to a media server URL as a query parameter, for
+   * URLs consumed by things that cannot send headers. Prefer {@link authFetch}
+   * for anything issued via `fetch`.
    *
    * @param url - A fully-qualified media server URL
    * @returns The URL carrying the session token
    */
   public appendAuth(url: string): string {
-    const token: string = this.serverToken();
-    if (!token) return url;
-
-    const separator: string = url.includes('?') ? '&' : '?';
-    return `${url}${separator}token=${encodeURIComponent(token)}`;
+    return this.server.appendAuth(url);
   }
 
   /**
    * Issues a fetch against the media server with the session token attached.
-   *
-   * A drop-in replacement for `fetch` at any call site targeting the local
-   * server; the token travels in a header rather than the URL.
    *
    * @param url - A fully-qualified media server URL
    * @param init - Standard fetch options
    * @returns The fetch response
    */
   public authFetch(url: string, init?: Readonly<RequestInit>): Promise<Response> {
-    return fetch(url, {
-      ...init,
-      headers: {
-        ...(init?.headers as Record<string, string> | undefined),
-        'X-Onix-Token': this.serverToken(),
-      },
-    });
+    return this.server.authFetch(url, init);
   }
 
   // ============================================================================
@@ -1895,94 +1359,30 @@ export class ElectronService implements OnDestroy {
   }
 
   // ============================================================================
-  // HTTP Helpers
-  // ============================================================================
-
-  /**
-   * Makes a GET request to the media server.
-   *
-   * @typeParam T - Expected response type
-   * @param endpoint - API endpoint path (e.g., '/player/state')
-   * @returns Promise resolving to the parsed JSON response
-   * @throws Error if the request fails
-   */
-  private async get<T>(endpoint: string): Promise<T> {
-    const response: Response = await this.authFetch(`${this.serverUrl()}${endpoint}`);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    return response.json();
-  }
-
-  /**
-   * Makes a POST request to the media server.
-   *
-   * @typeParam T - Expected response type
-   * @param endpoint - API endpoint path
-   * @param body - Optional request body (will be JSON stringified)
-   * @returns Promise resolving to the parsed JSON response
-   * @throws Error if the request fails
-   */
-  private async post<T>(endpoint: string, body?: unknown): Promise<T> {
-    const response: Response = await this.authFetch(`${this.serverUrl()}${endpoint}`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    return response.json();
-  }
-
-  /**
-   * Makes a DELETE request to the media server.
-   *
-   * @typeParam T - Expected response type
-   * @param endpoint - API endpoint path
-   * @returns Promise resolving to the parsed JSON response
-   * @throws Error if the request fails
-   */
-  private async delete<T>(endpoint: string): Promise<T> {
-    const response: Response = await this.authFetch(`${this.serverUrl()}${endpoint}`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    return response.json();
-  }
-
-  // ============================================================================
   // Lifecycle
   // ============================================================================
 
   /**
    * Cleanup when the service is destroyed.
    *
-   * Closes the SSE connection and removes the fullscreen and menu listeners
-   * to prevent memory leaks.
+   * Closes the SSE connection, removes the window, menu and OS file-open
+   * listeners, and cancels pending timers to prevent memory leaks.
    */
   public ngOnDestroy(): void {
     this.sse.disconnect();
-    this.fullscreenCleanup?.();
-    this.fullscreenTransitionStartCleanup?.();
-    this.fullscreenTransitionEndCleanup?.();
-    this.viewModeCleanup?.();
-    this.configOpenCleanup?.();
-    this.prepareForCloseCleanup?.();
-    this.exitConfigurationModeCleanup?.();
+    this.windowIpc.stopWatching();
     this.osOpenFileCleanup?.();
     this.osOpenPlaylistCleanup?.();
-    this.menuCleanupFunctions.forEach((cleanup: () => void): void => cleanup());
+    this.menuEvents.stopListening();
     if (this.mediaEndedTimeoutId) {
       clearTimeout(this.mediaEndedTimeoutId);
     }
     if (this.streamingBusyTimeoutId) {
       clearTimeout(this.streamingBusyTimeoutId);
     }
-    if (this.fadeOutCompleteTimeoutId) {
-      clearTimeout(this.fadeOutCompleteTimeoutId);
+    if (this.durationFlushTimer !== null) {
+      clearTimeout(this.durationFlushTimer);
+      this.durationFlushTimer = null;
     }
   }
 }

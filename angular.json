@@ -104,6 +104,7 @@
             ],
             "coverageExclude": [
               "src/angular/**/*.spec.ts",
+              "src/angular/**/*-test-fakes.*.ts",
               "src/angular/**/*.d.ts",
               "src/angular/main.ts",
               "src/angular/app.config.ts",
@@ -118,10 +119,10 @@
             "coverage": {
               "coverage": true,
               "coverageThresholds": {
-                "statements": 31,
-                "branches": 37,
-                "functions": 34,
-                "lines": 30
+                "statements": 97,
+                "branches": 93,
+                "functions": 97,
+                "lines": 97
               }
             }
           }

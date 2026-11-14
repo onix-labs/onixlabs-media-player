@@ -734,7 +734,7 @@ export class ConfigurationView {
   /** Supported video extensions for file associations display */
   public readonly supportedVideoExtensions: typeof SUPPORTED_VIDEO_EXTENSIONS = SUPPORTED_VIDEO_EXTENSIONS;
 
-  /** Current subtitle font size (50-200) */
+  /** Current subtitle font size (50-300) */
   public readonly currentSubtitleFontSize: ReturnType<typeof computed<number>> = computed(
     (): number => this.settingsService.subtitleFontSize()
   );
@@ -1426,7 +1426,7 @@ export class ConfigurationView {
    */
   public async onSubtitleShadowColorChange(event: Event): Promise<void> {
     const color: string = getInputValue(event);
-    await this.settingsService.setSubtitleShadowColor(color);
+    if (color) await this.settingsService.setSubtitleShadowColor(color);
   }
 
   /**
@@ -1596,16 +1596,18 @@ export class ConfigurationView {
 
   /**
    * Checks if a visualization has a custom value for a setting.
-   * Uses currentVizSettings to ensure reactive updates.
+   * Reads the settings signal directly to ensure reactive updates.
    *
    * @param vizId - The visualization ID
    * @param setting - The setting key
    * @returns True if the setting has a custom value
    */
   public hasCustomSetting(vizId: string, setting: LocalSettingKey): boolean {
-    // Read from currentVizSettings() to establish reactive dependency
-    const vizSettings: Record<string, number | string | undefined> = this.currentVizSettings();
-    return vizSettings[setting] !== undefined;
+    // Read from perVisualizationSettings() to establish reactive dependency.
+    // Not currentVizSettings(): that is the selected visualization's, which
+    // need not be the one being asked about.
+    const allSettings: PerVisualizationSettings = this.settingsService.perVisualizationSettings();
+    return allSettings[vizId]?.[setting] !== undefined;
   }
 
   /**

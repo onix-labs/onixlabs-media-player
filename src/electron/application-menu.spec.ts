@@ -21,6 +21,7 @@ vi.mock('electron', () => ({
   app: {
     getPath: (): string => '/tmp/onixplayer-test',
     name: 'ONIXPlayer',
+    quit: vi.fn(),
   },
   Menu: {
     buildFromTemplate: vi.fn().mockReturnValue({}),
@@ -32,9 +33,10 @@ vi.mock('electron', () => ({
 // Import under test (after mocks are set up)
 // ---------------------------------------------------------------------------
 
-import { Menu } from 'electron';
+import { app, Menu } from 'electron';
 import { createApplicationMenu, updateMenuState } from './application-menu.js';
 import type { MenuCallbacks, MenuState } from './application-menu.js';
+import type { RecentItem } from './settings-manager.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -45,9 +47,17 @@ function createMockCallbacks(): MenuCallbacks {
   return {
     onShowConfig: vi.fn(),
     onShowAbout: vi.fn(),
+    onShowHelp: vi.fn(),
     onOpenFile: vi.fn(),
+    onOpenUrl: vi.fn(),
+    onOpenPlaylist: vi.fn(),
+    onOpenRecentFile: vi.fn(),
+    onOpenRecentPlaylist: vi.fn(),
+    onClearRecent: vi.fn(),
+    onSavePlaylist: vi.fn(),
+    onSavePlaylistAs: vi.fn(),
     onCloseMedia: vi.fn(),
-    onCloseAll: vi.fn(),
+    onClosePlaylist: vi.fn(),
     onToggleFullscreen: vi.fn(),
     onTogglePlayPause: vi.fn(),
     onStop: vi.fn(),
@@ -83,17 +93,99 @@ function findSubmenuItem(submenu: Record<string, unknown>[], label: string): Rec
   return submenu.find((item: Record<string, unknown>): boolean => item['label'] === label);
 }
 
+/** The state a freshly loaded menu module starts with. */
+const INITIAL_STATE: MenuState = {
+  shuffleEnabled: false,
+  repeatEnabled: false,
+  hasMedia: false,
+  isPlaying: false,
+  isVideo: false,
+  openEnabled: true,
+  windowModeDefault: true,
+  configOpen: false,
+  developerToolsEnabled: false,
+  recentFiles: [],
+  recentPlaylists: [],
+};
+
+/**
+ * A complete menu state with media loaded, which the tests of individual
+ * items build from so that each states everything it depends on.
+ */
+const BASE_STATE: MenuState = {...INITIAL_STATE, hasMedia: true};
+
+/**
+ * Builds the menu from a complete state and returns the captured template.
+ *
+ * @param callbacks - The callbacks to wire into the menu
+ * @param overrides - State that differs from BASE_STATE
+ */
+function buildWith(callbacks: MenuCallbacks, overrides: Partial<MenuState> = {}): Record<string, unknown>[] {
+  createApplicationMenu(callbacks, {...BASE_STATE, ...overrides});
+  return getCapturedTemplate();
+}
+
+/**
+ * Finds an item by the labels leading to it, e.g. ['File', 'Recent Items', 'Clear Recent'].
+ *
+ * @param template - The captured menu template
+ * @param labels - The label of each menu on the way down, ending with the item's own
+ */
+function findItem(template: Record<string, unknown>[], labels: readonly string[]): Record<string, unknown> | undefined {
+  let level: Record<string, unknown>[] = template;
+  let found: Record<string, unknown> | undefined;
+  for (const label of labels) {
+    found = findSubmenuItem(level, label);
+    if (!found) return undefined;
+    level = getSubmenu(found);
+  }
+  return found;
+}
+
+/** Invokes an item's click handler the way Electron would on selection. */
+function click(item: Record<string, unknown> | undefined): void {
+  (item?.['click'] as (() => void) | undefined)?.();
+}
+
+/** The labels of a submenu, with separators shown as '---'. */
+function labelsOf(submenu: Record<string, unknown>[]): string[] {
+  return submenu.map((item: Record<string, unknown>): string =>
+    item['type'] === 'separator' ? '---' : String(item['label'] ?? item['role'])
+  );
+}
+
+/** Names of the callbacks that have been invoked at least once. */
+function invoked(callbacks: MenuCallbacks): string[] {
+  return (Object.keys(callbacks) as (keyof MenuCallbacks)[]).filter(
+    (name: keyof MenuCallbacks): boolean => vi.mocked(callbacks[name]).mock.calls.length > 0
+  );
+}
+
+const ORIGINAL_PLATFORM_DESCRIPTOR: PropertyDescriptor | undefined = Object.getOwnPropertyDescriptor(process, 'platform');
+
+/** Makes process.platform report the given platform until restorePlatform(). */
+function stubPlatform(platform: NodeJS.Platform): void {
+  Object.defineProperty(process, 'platform', { ...ORIGINAL_PLATFORM_DESCRIPTOR, value: platform });
+}
+
+/** Puts the real process.platform back. */
+function restorePlatform(): void {
+  if (ORIGINAL_PLATFORM_DESCRIPTOR) {
+    Object.defineProperty(process, 'platform', ORIGINAL_PLATFORM_DESCRIPTOR);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Test suites
 // ---------------------------------------------------------------------------
 
 describe('application-menu', (): void => {
   beforeEach((): void => {
+    // The module keeps its menu state between tests. Put it back to what a
+    // freshly loaded module starts with, so that no test inherits state from
+    // whichever test happened to run before it.
+    createApplicationMenu(createMockCallbacks(), INITIAL_STATE);
     vi.clearAllMocks();
-    // Reset module-level state by re-importing would be ideal, but instead
-    // we rely on createApplicationMenu to re-initialise storedCallbacks and
-    // currentState each test. We avoid calling updateMenuState before
-    // createApplicationMenu unless that is specifically under test.
   });
 
   // ========================================================================
@@ -422,38 +514,30 @@ describe('application-menu', (): void => {
       expect(closePlaylistItem!['enabled']).toBe(true);
     });
 
-    it('does not rebuild menu if createApplicationMenu was not called first', (): void => {
-      // Reset module state by importing fresh -- since we cannot easily do that,
-      // we test indirectly: clear mocks, then call updateMenuState without
-      // having called createApplicationMenu in this test's scope.
-      // Note: storedCallbacks may carry over from prior tests in the same module
-      // instance. To work around this, we check that no *new* call was made
-      // beyond what createApplicationMenu already triggered.
-      vi.mocked(Menu.buildFromTemplate).mockClear();
-      vi.mocked(Menu.setApplicationMenu).mockClear();
+    it('does not build a menu before createApplicationMenu has supplied the callbacks', async (): Promise<void> => {
+      // A fresh copy of the module (and of the electron mock it imports), so
+      // that no earlier test has already stored callbacks in it.
+      vi.resetModules();
+      const electron: typeof import('electron') = await import('electron');
+      const fresh: typeof import('./application-menu.js') = await import('./application-menu.js');
 
-      // We need to ensure storedCallbacks is null. Since module state persists,
-      // we call createApplicationMenu to reset it, then simulate the "not called"
-      // scenario by checking a fresh module would not rebuild. Instead, we verify
-      // the guard: if storedCallbacks is set, buildMenu IS called; the only way
-      // to have storedCallbacks null is before the first createApplicationMenu call.
-      // We can verify the logic by confirming updateMenuState without prior
-      // createApplicationMenu does not call buildFromTemplate by using
-      // resetModules.
+      fresh.updateMenuState({ shuffleEnabled: true });
 
-      // Since vi.resetModules would change the module reference, we instead test
-      // the behavior: after createApplicationMenu, updateMenuState DOES rebuild.
-      // This test verifies the complement: the count stays at 0 if we only
-      // call updateMenuState with a module that had storedCallbacks cleared.
-      // Due to module-level state sharing, the best we can verify is the
-      // the positive path (tested in "rebuilds menu on each state update").
-      // Here we at least confirm that no error is thrown.
-      updateMenuState({ shuffleEnabled: true });
+      expect(electron.Menu.buildFromTemplate).not.toHaveBeenCalled();
+      expect(electron.Menu.setApplicationMenu).not.toHaveBeenCalled();
+    });
 
-      // If storedCallbacks was null, buildFromTemplate would not have been called
-      // by the updateMenuState path. But since prior tests may have set it,
-      // we just verify no error was thrown.
-      expect(true).toBe(true);
+    it('applies state reported before the menu existed once it is created', async (): Promise<void> => {
+      vi.resetModules();
+      const electron: typeof import('electron') = await import('electron');
+      const fresh: typeof import('./application-menu.js') = await import('./application-menu.js');
+      fresh.updateMenuState({ shuffleEnabled: true });
+
+      fresh.createApplicationMenu(createMockCallbacks());
+
+      const calls: unknown[][] = vi.mocked(electron.Menu.buildFromTemplate).mock.calls;
+      const template: Record<string, unknown>[] = calls[calls.length - 1][0] as Record<string, unknown>[];
+      expect(findItem(template, ['Playback', 'Shuffle'])?.['checked']).toBe(true);
     });
 
     it('rebuilds menu on each state update', (): void => {
@@ -540,6 +624,352 @@ describe('application-menu', (): void => {
       const neonClick = neonItem!['click'] as (() => void);
       neonClick();
       expect(callbacks.onSelectVisualization).toHaveBeenCalledWith('neon');
+    });
+  });
+
+  // ========================================================================
+  // 5. Callback wiring
+  // ========================================================================
+
+  describe('callback wiring', (): void => {
+    it.each<{path: string[]; callback: keyof MenuCallbacks}>([
+      {path: ['File', 'Open'], callback: 'onOpenFile'},
+      {path: ['File', 'Open URL...'], callback: 'onOpenUrl'},
+      {path: ['File', 'Open Playlist'], callback: 'onOpenPlaylist'},
+      {path: ['File', 'Save Playlist As...'], callback: 'onSavePlaylistAs'},
+      {path: ['File', 'Save Playlist'], callback: 'onSavePlaylist'},
+      {path: ['File', 'Close'], callback: 'onCloseMedia'},
+      {path: ['File', 'Close Playlist'], callback: 'onClosePlaylist'},
+      {path: ['View', 'Full Screen'], callback: 'onToggleFullscreen'},
+      {path: ['View', 'Options'], callback: 'onShowConfig'},
+      {path: ['Playback', 'Play'], callback: 'onTogglePlayPause'},
+      {path: ['Playback', 'Stop'], callback: 'onStop'},
+      {path: ['Playback', 'Shuffle'], callback: 'onToggleShuffle'},
+      {path: ['Playback', 'Repeat'], callback: 'onToggleRepeat'},
+      {path: ['Help', 'Help Topics'], callback: 'onShowHelp'},
+      {path: ['Help', 'About ONIXPlayer'], callback: 'onShowAbout'},
+    ])('$path invokes $callback and nothing else', ({path, callback}: {path: string[]; callback: keyof MenuCallbacks}): void => {
+      const callbacks: MenuCallbacks = createMockCallbacks();
+      const template: Record<string, unknown>[] = buildWith(callbacks);
+
+      click(findItem(template, path));
+
+      expect(invoked(callbacks)).toEqual([callback]);
+    });
+
+    it('Pause invokes the same play/pause toggle as Play', (): void => {
+      const callbacks: MenuCallbacks = createMockCallbacks();
+      const template: Record<string, unknown>[] = buildWith(callbacks, {isPlaying: true});
+
+      click(findItem(template, ['Playback', 'Pause']));
+
+      expect(invoked(callbacks)).toEqual(['onTogglePlayPause']);
+    });
+
+    it.each([
+      {label: 'Default', mode: 'default'},
+      {label: 'Forced (4:3)', mode: '4:3'},
+      {label: 'Forced (16:9)', mode: '16:9'},
+      {label: 'Fit to Screen', mode: 'fit'},
+    ])('Aspect Ratio > $label selects the $mode aspect mode', ({label, mode}: {label: string; mode: string}): void => {
+      const callbacks: MenuCallbacks = createMockCallbacks();
+      const template: Record<string, unknown>[] = buildWith(callbacks, {isVideo: true});
+
+      click(findItem(template, ['Playback', 'Aspect Ratio', label]));
+
+      expect(callbacks.onSelectAspectMode).toHaveBeenCalledTimes(1);
+      expect(callbacks.onSelectAspectMode).toHaveBeenCalledWith(mode);
+    });
+
+    it.each([
+      {path: ['Signature', 'Reactor'], id: 'water'},
+      {path: ['Nostalgia', 'Twirl'], id: 'ambience-zoom'},
+      {path: ['Simple', 'Album Art'], id: 'album-art'},
+    ])('Visualizations > $path selects the $id visualization', ({path, id}: {path: string[]; id: string}): void => {
+      const callbacks: MenuCallbacks = createMockCallbacks();
+      const template: Record<string, unknown>[] = buildWith(callbacks);
+
+      click(findItem(template, ['View', 'Visualizations', ...path]));
+
+      expect(callbacks.onSelectVisualization).toHaveBeenCalledTimes(1);
+      expect(callbacks.onSelectVisualization).toHaveBeenCalledWith(id);
+    });
+  });
+
+  // ========================================================================
+  // 6. Enabled state
+  // ========================================================================
+
+  describe('enabled state', (): void => {
+    const OPEN_ITEMS: readonly string[] = ['Open', 'Open URL...', 'Open Playlist'];
+    const MEDIA_ITEMS: readonly (readonly string[])[] = [
+      ['File', 'Save Playlist As...'],
+      ['File', 'Save Playlist'],
+      ['File', 'Close'],
+      ['File', 'Close Playlist'],
+      ['Playback', 'Play'],
+      ['Playback', 'Stop'],
+      ['Playback', 'Shuffle'],
+      ['Playback', 'Repeat'],
+    ];
+
+    /** The enabled flag of each item, in the order given. */
+    function enabledFlags(template: Record<string, unknown>[], paths: readonly (readonly string[])[]): unknown[] {
+      return paths.map((path: readonly string[]): unknown => findItem(template, path)?.['enabled']);
+    }
+
+    it.each([true, false])('the Open items follow openEnabled = %s', (openEnabled: boolean): void => {
+      const template: Record<string, unknown>[] = buildWith(createMockCallbacks(), {openEnabled});
+
+      const flags: unknown[] = enabledFlags(template, OPEN_ITEMS.map((label: string): string[] => ['File', label]));
+
+      expect(flags).toEqual([openEnabled, openEnabled, openEnabled]);
+    });
+
+    it.each([true, false])('the save, close and playback items follow hasMedia = %s', (hasMedia: boolean): void => {
+      const template: Record<string, unknown>[] = buildWith(createMockCallbacks(), {hasMedia});
+
+      const flags: unknown[] = enabledFlags(template, MEDIA_ITEMS);
+
+      expect(flags).toEqual(MEDIA_ITEMS.map((): boolean => hasMedia));
+    });
+
+    it.each([
+      {hasMedia: true, configOpen: false, expected: true},
+      {hasMedia: false, configOpen: false, expected: false},
+      {hasMedia: true, configOpen: true, expected: false},
+      {hasMedia: false, configOpen: true, expected: false},
+    ])('Full Screen is enabled = $expected with hasMedia = $hasMedia and configOpen = $configOpen', (
+      {hasMedia, configOpen, expected}: {hasMedia: boolean; configOpen: boolean; expected: boolean}
+    ): void => {
+      const template: Record<string, unknown>[] = buildWith(createMockCallbacks(), {hasMedia, configOpen});
+
+      expect(findItem(template, ['View', 'Full Screen'])?.['enabled']).toBe(expected);
+    });
+
+    it.each([true, false])('Aspect Ratio follows isVideo = %s', (isVideo: boolean): void => {
+      const template: Record<string, unknown>[] = buildWith(createMockCallbacks(), {isVideo});
+
+      expect(findItem(template, ['Playback', 'Aspect Ratio'])?.['enabled']).toBe(isVideo);
+    });
+
+    it('Shuffle and Repeat are checkboxes reflecting their modes independently', (): void => {
+      const template: Record<string, unknown>[] = buildWith(createMockCallbacks(), {shuffleEnabled: false, repeatEnabled: true});
+
+      const shuffle: Record<string, unknown> | undefined = findItem(template, ['Playback', 'Shuffle']);
+      const repeat: Record<string, unknown> | undefined = findItem(template, ['Playback', 'Repeat']);
+
+      expect([shuffle?.['type'], shuffle?.['checked']]).toEqual(['checkbox', false]);
+      expect([repeat?.['type'], repeat?.['checked']]).toEqual(['checkbox', true]);
+    });
+
+    it('Mini Player is not selectable', (): void => {
+      const template: Record<string, unknown>[] = buildWith(createMockCallbacks());
+
+      expect(findItem(template, ['View', 'Mini Player'])?.['enabled']).toBe(false);
+    });
+  });
+
+  // ========================================================================
+  // 7. Recent items
+  // ========================================================================
+
+  describe('recent items', (): void => {
+    const FILES: readonly RecentItem[] = [
+      {path: '/music/first.mp3', displayName: 'first.mp3', timestamp: '2026-11-02T10:00:00.000Z', type: 'file'},
+      {path: '/music/second.flac', displayName: 'second.flac', timestamp: '2026-11-01T10:00:00.000Z', type: 'file'},
+    ];
+    const PLAYLISTS: readonly RecentItem[] = [
+      {path: '/lists/road trip.opp', displayName: 'road trip.opp', timestamp: '2026-11-03T10:00:00.000Z', type: 'playlist'},
+    ];
+
+    /** The Recent Items submenu built from the given recent lists. */
+    function recentSubmenu(callbacks: MenuCallbacks, recentFiles: readonly RecentItem[], recentPlaylists: readonly RecentItem[]): Record<string, unknown>[] {
+      const recent: Record<string, unknown> | undefined = findItem(buildWith(callbacks, {recentFiles, recentPlaylists}), ['File', 'Recent Items']);
+      return getSubmenu(recent ?? {});
+    }
+
+    it('shows disabled placeholders and a disabled Clear Recent when there is nothing recent', (): void => {
+      const submenu: Record<string, unknown>[] = recentSubmenu(createMockCallbacks(), [], []);
+
+      expect(labelsOf(submenu)).toEqual(['No Recent Files', '---', 'No Recent Playlists', '---', 'Clear Recent']);
+      expect(submenu.filter((item: Record<string, unknown>): boolean => item['type'] !== 'separator')
+        .map((item: Record<string, unknown>): unknown => item['enabled'])).toEqual([false, false, false]);
+    });
+
+    it('lists files, then playlists, in the order given, by display name', (): void => {
+      const submenu: Record<string, unknown>[] = recentSubmenu(createMockCallbacks(), FILES, PLAYLISTS);
+
+      expect(labelsOf(submenu)).toEqual(['first.mp3', 'second.flac', '---', 'road trip.opp', '---', 'Clear Recent']);
+    });
+
+    it('keeps the placeholder for the list that is empty', (): void => {
+      const submenu: Record<string, unknown>[] = recentSubmenu(createMockCallbacks(), [], PLAYLISTS);
+
+      expect(labelsOf(submenu)).toEqual(['No Recent Files', '---', 'road trip.opp', '---', 'Clear Recent']);
+    });
+
+    it('opens the full path of the recent file that was clicked', (): void => {
+      const callbacks: MenuCallbacks = createMockCallbacks();
+      const submenu: Record<string, unknown>[] = recentSubmenu(callbacks, FILES, PLAYLISTS);
+
+      click(findSubmenuItem(submenu, 'second.flac'));
+
+      expect(callbacks.onOpenRecentFile).toHaveBeenCalledTimes(1);
+      expect(callbacks.onOpenRecentFile).toHaveBeenCalledWith('/music/second.flac');
+      expect(callbacks.onOpenRecentPlaylist).not.toHaveBeenCalled();
+    });
+
+    it('opens the full path of the recent playlist that was clicked', (): void => {
+      const callbacks: MenuCallbacks = createMockCallbacks();
+      const submenu: Record<string, unknown>[] = recentSubmenu(callbacks, FILES, PLAYLISTS);
+
+      click(findSubmenuItem(submenu, 'road trip.opp'));
+
+      expect(callbacks.onOpenRecentPlaylist).toHaveBeenCalledTimes(1);
+      expect(callbacks.onOpenRecentPlaylist).toHaveBeenCalledWith('/lists/road trip.opp');
+      expect(callbacks.onOpenRecentFile).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      {name: 'only files', files: FILES, playlists: []},
+      {name: 'only playlists', files: [], playlists: PLAYLISTS},
+    ])('enables Clear Recent with $name', ({files, playlists}: {files: readonly RecentItem[]; playlists: readonly RecentItem[]}): void => {
+      const submenu: Record<string, unknown>[] = recentSubmenu(createMockCallbacks(), files, playlists);
+
+      expect(findSubmenuItem(submenu, 'Clear Recent')?.['enabled']).toBe(true);
+    });
+
+    it('Clear Recent invokes onClearRecent', (): void => {
+      const callbacks: MenuCallbacks = createMockCallbacks();
+      const submenu: Record<string, unknown>[] = recentSubmenu(callbacks, FILES, PLAYLISTS);
+
+      click(findSubmenuItem(submenu, 'Clear Recent'));
+
+      expect(invoked(callbacks)).toEqual(['onClearRecent']);
+    });
+
+    it('rebuilds with the new list when the recent files change', (): void => {
+      buildWith(createMockCallbacks(), {recentFiles: FILES});
+
+      updateMenuState({recentFiles: [FILES[1]]});
+
+      const recent: Record<string, unknown> | undefined = findItem(getCapturedTemplate(), ['File', 'Recent Items']);
+      expect(labelsOf(getSubmenu(recent ?? {})).slice(0, 2)).toEqual(['second.flac', '---']);
+    });
+  });
+
+  // ========================================================================
+  // 8. Platform differences
+  // ========================================================================
+
+  describe('platform differences', (): void => {
+    afterEach((): void => {
+      restorePlatform();
+    });
+
+    describe('on macOS', (): void => {
+      beforeEach((): void => {
+        stubPlatform('darwin');
+      });
+
+      it('leads with the application menu', (): void => {
+        const template: Record<string, unknown>[] = buildWith(createMockCallbacks());
+
+        expect(labelsOf(template)).toEqual(['ONIXPlayer', 'File', 'Edit', 'View', 'Playback', 'Help']);
+      });
+
+      it('offers Settings on Cmd+, in the application menu, opening the configuration', (): void => {
+        const callbacks: MenuCallbacks = createMockCallbacks();
+        const settings: Record<string, unknown> | undefined = findItem(buildWith(callbacks), ['ONIXPlayer', 'Settings']);
+
+        click(settings);
+
+        expect(settings?.['accelerator']).toBe('Cmd+,');
+        expect(invoked(callbacks)).toEqual(['onShowConfig']);
+      });
+
+      it.each([true, false])('enables Settings only in the default window mode (windowModeDefault = %s)', (windowModeDefault: boolean): void => {
+        const template: Record<string, unknown>[] = buildWith(createMockCallbacks(), {windowModeDefault});
+
+        expect(findItem(template, ['ONIXPlayer', 'Settings'])?.['enabled']).toBe(windowModeDefault);
+      });
+
+      it('leaves quitting to the application menu rather than File > Exit', (): void => {
+        const template: Record<string, unknown>[] = buildWith(createMockCallbacks());
+
+        expect(findItem(template, ['File', 'Exit'])).toBeUndefined();
+        expect(labelsOf(getSubmenu(findMenu(template, 'ONIXPlayer') ?? {}))).toContain('quit');
+      });
+
+      it('uses the macOS full screen shortcut', (): void => {
+        const template: Record<string, unknown>[] = buildWith(createMockCallbacks());
+
+        expect(findItem(template, ['View', 'Full Screen'])?.['accelerator']).toBe('Ctrl+Cmd+F');
+      });
+
+      it('gives View > Options no shortcut, since Settings already owns Cmd+,', (): void => {
+        const template: Record<string, unknown>[] = buildWith(createMockCallbacks());
+
+        expect(findItem(template, ['View', 'Options'])?.['accelerator']).toBeUndefined();
+      });
+    });
+
+    describe.each<NodeJS.Platform>(['win32', 'linux'])('on %s', (platform: NodeJS.Platform): void => {
+      beforeEach((): void => {
+        stubPlatform(platform);
+      });
+
+      it('has no application menu', (): void => {
+        const template: Record<string, unknown>[] = buildWith(createMockCallbacks());
+
+        expect(labelsOf(template)).toEqual(['File', 'Edit', 'View', 'Playback', 'Help']);
+      });
+
+      it('ends the File menu with Exit on Alt+F4', (): void => {
+        const fileItems: Record<string, unknown>[] = getSubmenu(findMenu(buildWith(createMockCallbacks()), 'File') ?? {});
+
+        expect(labelsOf(fileItems).slice(-2)).toEqual(['---', 'Exit']);
+        expect(fileItems[fileItems.length - 1]['accelerator']).toBe('Alt+F4');
+      });
+
+      it('quits the application from File > Exit', (): void => {
+        const callbacks: MenuCallbacks = createMockCallbacks();
+        const template: Record<string, unknown>[] = buildWith(callbacks);
+
+        click(findItem(template, ['File', 'Exit']));
+
+        expect(app.quit).toHaveBeenCalledTimes(1);
+        expect(invoked(callbacks)).toEqual([]);
+      });
+
+      it('uses F11 for full screen', (): void => {
+        const template: Record<string, unknown>[] = buildWith(createMockCallbacks());
+
+        expect(findItem(template, ['View', 'Full Screen'])?.['accelerator']).toBe('F11');
+      });
+
+      it('puts the options shortcut on View > Options', (): void => {
+        const template: Record<string, unknown>[] = buildWith(createMockCallbacks());
+
+        expect(findItem(template, ['View', 'Options'])?.['accelerator']).toBe('Ctrl+,');
+      });
+    });
+  });
+
+  // ========================================================================
+  // 9. Edit menu
+  // ========================================================================
+
+  describe('Edit menu', (): void => {
+    it('provides the standard clipboard roles so their shortcuts reach text fields', (): void => {
+      const template: Record<string, unknown>[] = buildWith(createMockCallbacks());
+
+      const roles: unknown[] = getSubmenu(findMenu(template, 'Edit') ?? {})
+        .map((item: Record<string, unknown>): unknown => item['role'])
+        .filter((role: unknown): boolean => role !== undefined);
+
+      expect(roles).toEqual(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll']);
     });
   });
 });

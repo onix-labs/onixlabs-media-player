@@ -497,6 +497,9 @@ export class HalluciaVisualization extends WebGLVisualization {
   private surfaceTextures: (WebGLTexture | null)[] = [null, null];
   private surfaceBuffers: (WebGLFramebuffer | null)[] = [null, null];
 
+  /** Set once destroy() runs so a trailing frame cannot touch the released context. */
+  private destroyed: boolean = false;
+
   private fieldUniforms: Record<string, WebGLUniformLocation | null> = {};
   private presentUniforms: Record<string, WebGLUniformLocation | null> = {};
 
@@ -705,6 +708,7 @@ export class HalluciaVisualization extends WebGLVisualization {
   // ==========================================================================
 
   public draw(): void {
+    if (this.destroyed) return;
     this.updateFade();
 
     if (this.width <= 0 || this.height <= 0) return;
@@ -870,6 +874,7 @@ export class HalluciaVisualization extends WebGLVisualization {
   }
 
   public override destroy(): void {
+    this.destroyed = true;
     const gl: WebGLRenderingContext = this.gl;
     this.deleteSurfaces();
     if (this.sourceTexture) gl.deleteTexture(this.sourceTexture);

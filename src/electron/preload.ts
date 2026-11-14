@@ -525,7 +525,14 @@ const api: MediaPlayerAPI = {
     return (): void => { ipcRenderer.removeListener('config:openChanged', listener); };
   },
   openExternal: (url: string): Promise<void> => {
-    const parsed: URL = new URL(url);
+    // new URL() throws on text that is not a URL. Callers expect a promise, so
+    // that has to reach them as a rejection their .catch() can see.
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return Promise.reject(new Error(`Blocked openExternal with invalid URL: ${url}`));
+    }
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
       return Promise.reject(new Error(`Blocked openExternal with disallowed protocol: ${parsed.protocol}`));
     }
@@ -543,7 +550,11 @@ const api: MediaPlayerAPI = {
     return (): void => { ipcRenderer.removeListener('app:prepareForClose', listener); };
   },
   notifyFadeOutComplete: (): void => {
-    ipcRenderer.invoke('app:fadeOutComplete');
+    // Nothing is returned to the caller, so a failure has to be handled here
+    // or it surfaces as an unhandled rejection in the renderer.
+    ipcRenderer.invoke('app:fadeOutComplete').catch((error: unknown): void => {
+      console.error('Failed to notify fade-out completion:', error);
+    });
   },
   setConfigurationMode: (enabled: boolean): Promise<void> => ipcRenderer.invoke('app:setConfigurationMode', enabled),
   showConfigurationWindow: (initialCategory?: string): Promise<void> => ipcRenderer.invoke('window:showConfigurationWindow', initialCategory),

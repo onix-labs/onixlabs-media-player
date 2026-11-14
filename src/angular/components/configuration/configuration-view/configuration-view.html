@@ -17,12 +17,18 @@
           @if (category.id === 'visualisations') {
             <!-- Visualisations with accordion -->
             <div class="accordion-category">
-              <button
+              <!-- A row, not a button: it holds the toggle button, and a button may not contain another -->
+              <div
                 class="category-item has-accordion"
                 [class.active]="selectedCategory() === 'visualisations' && selectedVisualization() === null"
                 (click)="onSelectCategory('visualisations')"
               >
-                <span>{{ category.name }}</span>
+                <span
+                  role="button"
+                  tabindex="0"
+                  (keydown.enter)="onSelectCategory('visualisations')"
+                  (keydown.space)="onSelectCategory('visualisations'); $event.preventDefault()"
+                >{{ category.name }}</span>
                 <button
                   class="accordion-toggle"
                   [class.expanded]="isVisualisationsExpanded()"
@@ -31,7 +37,7 @@
                 >
                   <i class="fa-solid fa-chevron-right"></i>
                 </button>
-              </button>
+              </div>
               @if (isVisualisationsExpanded()) {
                 <div class="accordion-children">
                   @for (viz of visualizationMetadata; track viz.id) {
@@ -319,14 +325,14 @@
 
                   <div class="setting-row">
                     <div class="setting-label">
-                      <label for="crossfade-duration">Crossfade Duration</label>
+                      <label for="visualization-crossfade-duration">Crossfade Duration</label>
                       <p class="setting-description">
                         How long visualizations take to crossfade when switching between them.
                       </p>
                     </div>
                     <div class="setting-control">
                       <select
-                        id="crossfade-duration"
+                        id="visualization-crossfade-duration"
                         (change)="onVisualizationCrossfadeDurationChange($event)"
                       >
                         @for (option of visualizationCrossfadeDurationOptions; track option.value) {
@@ -357,7 +363,7 @@
 
                   <div class="info-notice">
                     <i class="fa-solid fa-info-circle"></i>
-                    <span>Expand "Visualisations" in the sidebar to configure individual visualization settings.</span>
+                    <span>Expand "Audio Visualizations" in the sidebar to configure individual visualization settings.</span>
                   </div>
                 </div>
               }

@@ -24,6 +24,8 @@ import type {SettingsManager} from './settings-manager.js';
 import type {DependencyState} from './dependency-manager.js';
 import {initializeLogger, mainLogger, ipcLogger, windowLogger, getLogFilePath} from './logger.js';
 import {existsSync, statSync} from 'fs';
+import {createServer as createTcpServer} from 'net';
+import type {Server as TcpServer} from 'net';
 import {getLicenseLocations, useSystemCertificates} from './bundled-resources.js';
 import {LicenseCatalog} from './license-catalog.js';
 import type {AboutInfo} from './license-catalog.js';
@@ -423,8 +425,10 @@ class Program {
       // Convert media://path to file path
       const filePath: string = decodeURIComponent(request.url.replace('media://', ''));
 
-      // Validate path to prevent directory traversal
-      if (filePath.includes('..')) {
+      // Validate path to prevent directory traversal. Only a whole segment
+      // climbs a directory; a name that merely contains two dots (song..mp3)
+      // is an ordinary file. Both separators count, whatever the platform.
+      if (filePath.split(/[\\/]/).includes('..')) {
         return new Response('Forbidden', {status: 403});
       }
 
@@ -821,7 +825,9 @@ class Program {
     const baseUrl: string = app.isPackaged
       ? `http://127.0.0.1:${this.serverPort}/`
       : Program.DEVELOPMENT_SERVER_URL;
-    const categoryParam: string = initialCategory ? `&category=${initialCategory}` : '';
+    // The category arrives from the renderer over IPC; encoded so it can only
+    // ever be the value of this one parameter.
+    const categoryParam: string = initialCategory ? `&category=${encodeURIComponent(initialCategory)}` : '';
     const configUrl: string = `${baseUrl}?window=configuration${categoryParam}`;
 
     void this.configWindow.loadURL(configUrl);
@@ -1152,6 +1158,14 @@ class Program {
 
     // Hide menu bar on Windows/Linux
     this.setupWizardWindow.setMenuBarVisibility(false);
+
+    // Prevent zoom
+    this.setupWizardWindow.webContents.on('before-input-event', (_event: Electron.Event, input: Electron.Input): void => {
+      if ((input.control || input.meta) && (input.key === '+' || input.key === '-' || input.key === '=' || input.key === '0')) {
+        _event.preventDefault();
+      }
+    });
+    this.setupWizardWindow.webContents.setVisualZoomLevelLimits(1, 1);
 
     // Load the Angular app with setup wizard parameter
     const baseUrl: string = app.isPackaged
@@ -1518,9 +1532,12 @@ class Program {
     ipcMain.handle("window:setContentHeight", (event: Readonly<Electron.IpcMainInvokeEvent>, height: number): void => {
       const win: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
       if (!win || win.isDestroyed()) return;
+      // The height is measured by the renderer; anything that is not a usable
+      // size (NaN, infinite, non-numeric, zero or negative) is ignored.
+      if (typeof height !== 'number' || !Number.isFinite(height) || height <= 0) return;
       const [width]: number[] = win.getContentSize();
       const maxHeight: number = screen.getDisplayMatching(win.getBounds()).workAreaSize.height;
-      const target: number = Math.min(Math.max(1, Math.ceil(height)), maxHeight);
+      const target: number = Math.min(Math.ceil(height), maxHeight);
       win.setContentSize(width, target);
     });
 
@@ -1629,8 +1646,9 @@ class Program {
       if (port < 1024 || port > 65535) return false;
       // Check if port is available by trying to listen on it
       return new Promise((resolve: (available: boolean) => void): void => {
-        const net: typeof import('net') = require('net');
-        const server: import('net').Server = net.createServer();
+        // Imported statically: the main process is bundled as an ES module,
+        // where require() does not exist and a dynamic one throws.
+        const server: TcpServer = createTcpServer();
         server.once('error', (): void => resolve(false));
         server.once('listening', (): void => {
           server.close();
@@ -1840,6 +1858,9 @@ class Program {
       });
 
       Promise.race([fadePromise, timeout]).then((): void => {
+        // If the timeout won, the handler is still registered; left behind it
+        // would make the next close of a reopened window throw on registering.
+        ipcMain.removeHandler('app:fadeOutComplete');
         windowLogger.info('Destroying window');
         // Close all child windows before destroying main window
         this.closeAllChildWindows();
@@ -2080,7 +2101,7 @@ class Program {
   }
 
   /**
-   * Closes all child windows (configuration, about, setup wizard).
+   * Closes all child windows (configuration, about, Open URL, setup wizard).
    * Called when the main window is closing to ensure clean shutdown.
    */
   private closeAllChildWindows(): void {
@@ -2093,6 +2114,11 @@ class Program {
       windowLogger.debug('Closing about window');
       this.aboutWindow.destroy();
       this.aboutWindow = null;
+    }
+    if (this.openUrlWindow && !this.openUrlWindow.isDestroyed()) {
+      windowLogger.debug('Closing Open URL window');
+      this.openUrlWindow.destroy();
+      this.openUrlWindow = null;
     }
     if (this.setupWizardWindow && !this.setupWizardWindow.isDestroyed()) {
       windowLogger.debug('Closing setup wizard window');

@@ -84,8 +84,18 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   /** Angular samples around each ring. */
   private static readonly CIRCULAR_SAMPLES: number = 512;
 
-  /** Number of frequency-bucket rings (one per inner circle). */
+  /** Number of frequency buckets the spectrum is split into (one per ring). */
   private static readonly RING_COUNT: number = 16;
+
+  /**
+   * Number of rings actually drawn and spun: one per inner circle.
+   *
+   * A ring sits on its own circle and rises to the next one out, so the
+   * outermost circle cannot carry one and any bucket beyond it has nowhere to
+   * be drawn. RING_COUNT still decides how finely the spectrum is bucketed.
+   */
+  private static readonly DRAWN_RING_COUNT: number =
+    Math.min(SpotlightVisualization.RING_COUNT, SpotlightVisualization.CIRCLE_COUNT - 1);
 
   /** Times each ring's waveform repeats around the circle (rotational symmetry). */
   private static readonly RING_REPEAT: number = 2;
@@ -276,8 +286,8 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     // Age the rings trail with the rotate/fade/blur spiral (rings counter-spin).
     this.spinTrail(this.ringsCanvas!, ringsCtx, SpotlightVisualization.RING_FADE);
 
-    // Fresh data: every ring onto its trail.
-    for (let ring: number = 0; ring < SpotlightVisualization.RING_COUNT; ring++) {
+    // Fresh data: every ring that has a band onto its trail.
+    for (let ring: number = 0; ring < SpotlightVisualization.DRAWN_RING_COUNT; ring++) {
       this.drawFrequencyRing(ringsCtx, ring);
     }
 
@@ -608,7 +618,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     const cx: number = this.trailCx;
     const cy: number = this.trailCy;
     // Only bands with both bounding circles can be spun (one annulus per ring).
-    const bands: number = Math.min(SpotlightVisualization.RING_COUNT, SpotlightVisualization.CIRCLE_COUNT - 1);
+    const bands: number = SpotlightVisualization.DRAWN_RING_COUNT;
 
     for (let ring: number = 0; ring < bands; ring++) {
       const inner: number = this.radii[ring];

@@ -3,5 +3,6 @@
   "compilerOptions": {
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/electron/**/*.ts"]
+  "include": ["src/electron/**/*.ts"],
+  "exclude": ["src/electron/dist"]
 }

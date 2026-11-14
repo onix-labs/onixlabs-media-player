@@ -24,6 +24,7 @@ import {LayoutControls} from './layout-controls';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
+import {SettingsService} from '../../../services/settings.service';
 import type {PlaylistItem, PlaylistState} from '../../../types/electron';
 
 // ============================================================================
@@ -588,6 +589,687 @@ describe('LayoutControls', (): void => {
 
       component.onKeyDown(new KeyboardEvent('keydown', {key: 'Control'}));
       expect(component.backwardIcon()).toBe('fa-solid fa-backward-step');
+    });
+  });
+});
+
+// ============================================================================
+// Rendered behaviour
+// ============================================================================
+
+describe('LayoutControls rendered', (): void => {
+  let component: LayoutControls;
+  let fixture: ComponentFixture<LayoutControls>;
+  let host: HTMLElement;
+  let mockMediaPlayer: ReturnType<typeof createMockMediaPlayerService>;
+  let mockElectron: ReturnType<typeof createMockElectronService>;
+  let mockDeps: ReturnType<typeof createMockDependencyService>;
+  let seekMode: WritableSignal<'drop' | 'drag'>;
+
+  /** Returns a spy from the fake MediaPlayerService by name. */
+  function playerSpy(name: string): ReturnType<typeof vi.fn> {
+    return mockMediaPlayer[name] as ReturnType<typeof vi.fn>;
+  }
+
+  /** Sets a writable signal on one of the fake services and re-renders. */
+  async function setSignal<T>(service: Record<string, unknown>, name: string, value: T): Promise<void> {
+    (service[name] as WritableSignal<T>).set(value);
+    await fixture.whenStable();
+  }
+
+  /** Finds the button that carries the given icon. */
+  function buttonWithIcon(icon: string): HTMLButtonElement {
+    return host.querySelector(`i.${icon}`)!.closest('button')!;
+  }
+
+  /** Finds a transport button by its position in the centre group. */
+  function transportButton(position: 'backward' | 'playPause' | 'forward'): HTMLButtonElement {
+    const index: number = ['backward', 'playPause', 'forward'].indexOf(position);
+    return host.querySelectorAll<HTMLButtonElement>('.button-group.center button')[index];
+  }
+
+  /** Names the icon inside an element, ignoring the shared style class. */
+  function iconName(container: Element): string {
+    return Array.from(container.querySelector('i')!.classList)
+      .filter((name: string): boolean => name !== 'fa-solid')
+      .join(' ');
+  }
+
+  /** Names the icon currently shown on a transport button. */
+  function transportIcon(position: 'backward' | 'playPause' | 'forward'): string {
+    return iconName(transportButton(position));
+  }
+
+  /** Clicks an element, optionally with Shift held. */
+  function click(element: HTMLElement, shiftKey: boolean = false): void {
+    element.dispatchEvent(new MouseEvent('click', {bubbles: true, shiftKey}));
+  }
+
+  /** Gives an element a known horizontal extent: 200px wide starting at x=100. */
+  function layOut(element: Element): void {
+    vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({left: 100, width: 200} as DOMRect);
+  }
+
+  /** Returns the seek bar, laid out 200px wide starting at x=100. */
+  function seekBar(): HTMLProgressElement {
+    return host.querySelector<HTMLProgressElement>('.seek-bar-container progress')!;
+  }
+
+  /** Returns the volume slider, laid out 200px wide starting at x=100. */
+  function volumeSlider(): HTMLElement {
+    return host.querySelector<HTMLElement>('.volume-slider')!;
+  }
+
+  /** Presses the mouse on an element at a horizontal position. */
+  function press(element: Element, clientX: number): MouseEvent {
+    const event: MouseEvent = new MouseEvent('mousedown', {bubbles: true, cancelable: true, clientX});
+    element.dispatchEvent(event);
+    return event;
+  }
+
+  /** Moves the mouse over the document to a horizontal position. */
+  function drag(clientX: number): void {
+    document.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX}));
+  }
+
+  /** Releases the mouse over the document at a horizontal position. */
+  function release(clientX: number): void {
+    document.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, clientX}));
+  }
+
+  /** Loads a track so the transport buttons are enabled. */
+  async function loadTrack(playlistCount: number = 1): Promise<void> {
+    (mockMediaPlayer['playlistCount'] as WritableSignal<number>).set(playlistCount);
+    await setSignal<PlaylistItem | null>(mockMediaPlayer, 'currentTrack', createPlaylistItem('1', 'Song'));
+  }
+
+  beforeEach(async (): Promise<void> => {
+    mockMediaPlayer = createMockMediaPlayerService();
+    mockElectron = createMockElectronService();
+    mockDeps = createMockDependencyService();
+    seekMode = signal<'drop' | 'drag'>('drop');
+
+    await TestBed.configureTestingModule({
+      imports: [LayoutControls],
+      providers: [
+        {provide: MediaPlayerService, useValue: mockMediaPlayer},
+        {provide: ElectronService, useValue: mockElectron},
+        {provide: DependencyService, useValue: mockDeps},
+        {provide: SettingsService, useValue: {seekMode}},
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(LayoutControls);
+    component = fixture.componentInstance;
+    host = fixture.nativeElement as HTMLElement;
+    await fixture.whenStable();
+    layOut(seekBar());
+    layOut(volumeSlider());
+  });
+
+  afterEach((): void => {
+    fixture.destroy();
+    vi.restoreAllMocks();
+  });
+
+  // ==========================================================================
+  // Button availability
+  // ==========================================================================
+
+  describe('button availability', (): void => {
+    it('disables everything that needs a track while nothing is loaded', (): void => {
+      const disabled: boolean[] = ['fa-shuffle', 'fa-repeat', 'fa-backward-step', 'fa-play', 'fa-forward-step', 'fa-tv', 'fa-picture-in-picture']
+        .map((icon: string): boolean => buttonWithIcon(icon).disabled);
+
+      expect(disabled).toEqual([true, true, true, true, true, true, true]);
+    });
+
+    it('keeps eject, open URL and mute available while nothing is loaded', (): void => {
+      expect(buttonWithIcon('fa-eject').disabled).toBe(false);
+      expect(buttonWithIcon('fa-link').disabled).toBe(false);
+      expect(buttonWithIcon('fa-volume-high').disabled).toBe(false);
+    });
+
+    it('disables eject and open URL when nothing can be played', async (): Promise<void> => {
+      await setSignal(mockDeps, 'noDependenciesInstalled', true);
+
+      expect(buttonWithIcon('fa-eject').disabled).toBe(true);
+      expect(buttonWithIcon('fa-link').disabled).toBe(true);
+    });
+
+    it('enables the track buttons once a track is loaded', async (): Promise<void> => {
+      await loadTrack();
+
+      const disabled: boolean[] = ['fa-shuffle', 'fa-repeat', 'fa-backward-step', 'fa-play', 'fa-tv', 'fa-picture-in-picture']
+        .map((icon: string): boolean => buttonWithIcon(icon).disabled);
+      expect(disabled).toEqual([false, false, false, false, false, false]);
+    });
+
+    it('keeps next disabled for the only track in the playlist', async (): Promise<void> => {
+      await loadTrack(1);
+
+      expect(transportButton('forward').disabled).toBe(true);
+    });
+
+    it('keeps next disabled on the last track of the playlist', async (): Promise<void> => {
+      await loadTrack(3);
+      await setSignal<PlaylistState>(mockElectron, 'playlist', {items: [], currentIndex: 2, shuffleEnabled: false, repeatEnabled: false});
+
+      expect(transportButton('forward').disabled).toBe(true);
+    });
+
+    it('enables next when a later track exists', async (): Promise<void> => {
+      await loadTrack(3);
+      await setSignal<PlaylistState>(mockElectron, 'playlist', {items: [], currentIndex: 1, shuffleEnabled: false, repeatEnabled: false});
+
+      expect(transportButton('forward').disabled).toBe(false);
+    });
+
+    it('enables next on the last track when repeat is on', async (): Promise<void> => {
+      await loadTrack(3);
+      await setSignal<PlaylistState>(mockElectron, 'playlist', {items: [], currentIndex: 2, shuffleEnabled: false, repeatEnabled: true});
+      await setSignal(mockMediaPlayer, 'isRepeatEnabled', true);
+
+      expect(transportButton('forward').disabled).toBe(false);
+    });
+
+    it('disables fullscreen and miniplayer while the configuration window is open', async (): Promise<void> => {
+      await loadTrack();
+      await setSignal(mockElectron, 'isConfigOpen', true);
+
+      expect(buttonWithIcon('fa-tv').disabled).toBe(true);
+      expect(buttonWithIcon('fa-picture-in-picture').disabled).toBe(true);
+    });
+  });
+
+  // ==========================================================================
+  // Displayed state
+  // ==========================================================================
+
+  describe('displayed state', (): void => {
+    it('shows the elapsed and total time', async (): Promise<void> => {
+      (mockMediaPlayer['time'] as WritableSignal<number>).set(65);
+      await setSignal(mockMediaPlayer, 'totalDuration', 200);
+
+      expect(host.querySelector('.time-display.current')?.textContent).toBe('1:05');
+      expect(host.querySelector('.time-display.total')?.textContent).toBe('3:20');
+    });
+
+    it('fills the seek bar to the playback progress', async (): Promise<void> => {
+      await setSignal(mockMediaPlayer, 'progress', 40);
+
+      expect(seekBar().value).toBe(40);
+    });
+
+    it('shows a pause icon while playing', async (): Promise<void> => {
+      await setSignal(mockMediaPlayer, 'isPlaying', true);
+
+      expect(transportIcon('playPause')).toBe('fa-pause');
+    });
+
+    it('highlights shuffle and repeat when they are on', async (): Promise<void> => {
+      (mockMediaPlayer['isShuffleEnabled'] as WritableSignal<boolean>).set(true);
+      await setSignal(mockMediaPlayer, 'isRepeatEnabled', true);
+
+      expect(buttonWithIcon('fa-shuffle').classList.contains('active')).toBe(true);
+      expect(buttonWithIcon('fa-repeat').classList.contains('active')).toBe(true);
+    });
+
+    it('offers to enter fullscreen while windowed', (): void => {
+      expect(buttonWithIcon('fa-tv').title).toBe('Enter fullscreen');
+    });
+
+    it('offers to exit fullscreen while fullscreen', async (): Promise<void> => {
+      await setSignal(mockElectron, 'isFullscreen', true);
+
+      expect(buttonWithIcon('fa-window-restore').title).toBe('Exit fullscreen');
+      expect(host.querySelector('i.fa-tv')).toBeNull();
+    });
+
+    it.each([
+      {volume: 0, icon: 'fa-volume-off'},
+      {volume: 0.2, icon: 'fa-volume-low'},
+      {volume: 0.33, icon: 'fa-volume-low'},
+      {volume: 0.5, icon: 'fa-volume'},
+      {volume: 0.66, icon: 'fa-volume'},
+      {volume: 0.9, icon: 'fa-volume-high'},
+    ])('shows $icon at volume $volume', async (testCase: {volume: number; icon: string}): Promise<void> => {
+      await setSignal(mockMediaPlayer, 'currentVolume', testCase.volume);
+
+      expect(iconName(host.querySelector('.button-group.right button')!)).toBe(testCase.icon);
+    });
+
+    it('shows the muted icon whatever the volume while muted', async (): Promise<void> => {
+      await setSignal(mockMediaPlayer, 'isMuted', true);
+
+      const button: HTMLButtonElement = host.querySelector<HTMLButtonElement>('.button-group.right button')!;
+      expect(iconName(button)).toBe('fa-volume-xmark');
+      expect(button.classList.contains('muted')).toBe(true);
+    });
+
+    it('positions the volume thumb at the volume level', async (): Promise<void> => {
+      await setSignal(mockMediaPlayer, 'currentVolume', 0.4);
+
+      expect(host.querySelector<HTMLElement>('.volume-thumb')!.style.left).toBe('40%');
+      expect(host.querySelector<HTMLProgressElement>('.volume-slider progress')!.value).toBe(40);
+    });
+  });
+
+  // ==========================================================================
+  // Button clicks
+  // ==========================================================================
+
+  describe('button clicks', (): void => {
+    beforeEach(async (): Promise<void> => {
+      await loadTrack(3);
+    });
+
+    it('eject opens the file picker', (): void => {
+      click(buttonWithIcon('fa-eject'));
+
+      expect(playerSpy('eject')).toHaveBeenCalledTimes(1);
+    });
+
+    it('open URL opens the URL window', (): void => {
+      click(buttonWithIcon('fa-link'));
+
+      expect(mockElectron['showOpenUrlWindow']).toHaveBeenCalledTimes(1);
+    });
+
+    it('shuffle toggles shuffle', (): void => {
+      click(buttonWithIcon('fa-shuffle'));
+
+      expect(playerSpy('toggleShuffle')).toHaveBeenCalledTimes(1);
+    });
+
+    it('repeat toggles repeat', (): void => {
+      click(buttonWithIcon('fa-repeat'));
+
+      expect(playerSpy('toggleRepeat')).toHaveBeenCalledTimes(1);
+    });
+
+    it('mute toggles mute', (): void => {
+      click(host.querySelector<HTMLButtonElement>('.button-group.right button')!);
+
+      expect(playerSpy('toggleMute')).toHaveBeenCalledTimes(1);
+    });
+
+    it('fullscreen toggles fullscreen', (): void => {
+      click(buttonWithIcon('fa-tv'));
+
+      expect(mockElectron['toggleFullscreen']).toHaveBeenCalledTimes(1);
+    });
+
+    it('miniplayer enters the miniplayer', (): void => {
+      click(buttonWithIcon('fa-picture-in-picture'));
+
+      expect(mockElectron['enterMiniplayer']).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      {position: 'backward' as const, shiftKey: false, expected: 'previous'},
+      {position: 'backward' as const, shiftKey: true, expected: 'skipBackward'},
+      {position: 'playPause' as const, shiftKey: false, expected: 'togglePlayPause'},
+      {position: 'playPause' as const, shiftKey: true, expected: 'stop'},
+      {position: 'forward' as const, shiftKey: false, expected: 'next'},
+      {position: 'forward' as const, shiftKey: true, expected: 'skipForward'},
+    ])('$position with shift=$shiftKey calls $expected only', (testCase: {position: 'backward' | 'playPause' | 'forward'; shiftKey: boolean; expected: string}): void => {
+      click(transportButton(testCase.position), testCase.shiftKey);
+
+      const called: string[] = ['previous', 'skipBackward', 'togglePlayPause', 'stop', 'next', 'skipForward']
+        .filter((name: string): boolean => playerSpy(name).mock.calls.length > 0);
+      expect(called).toEqual([testCase.expected]);
+    });
+
+    it('drops focus from a button once the mouse is released', (): void => {
+      const button: HTMLButtonElement = buttonWithIcon('fa-shuffle');
+      button.focus();
+
+      button.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+
+      expect(document.activeElement).not.toBe(button);
+    });
+  });
+
+  // ==========================================================================
+  // Shift key
+  // ==========================================================================
+
+  describe('holding Shift', (): void => {
+    /** Presses or releases a key on the document and re-renders. */
+    async function key(type: 'keydown' | 'keyup', name: string): Promise<void> {
+      document.dispatchEvent(new KeyboardEvent(type, {key: name, bubbles: true}));
+      await fixture.whenStable();
+    }
+
+    it('turns the transport buttons into skip back, stop and skip forward', async (): Promise<void> => {
+      await loadTrack();
+
+      await key('keydown', 'Shift');
+
+      expect([transportIcon('backward'), transportIcon('playPause'), transportIcon('forward')])
+        .toEqual(['fa-backward', 'fa-stop', 'fa-forward']);
+    });
+
+    it('enables skip forward even for the only track', async (): Promise<void> => {
+      await loadTrack(1);
+
+      await key('keydown', 'Shift');
+
+      expect(transportButton('forward').disabled).toBe(false);
+    });
+
+    it('restores the normal buttons when Shift is released', async (): Promise<void> => {
+      await loadTrack();
+      await key('keydown', 'Shift');
+
+      await key('keyup', 'Shift');
+
+      expect([transportIcon('backward'), transportIcon('playPause'), transportIcon('forward')])
+        .toEqual(['fa-backward-step', 'fa-play', 'fa-forward-step']);
+    });
+
+    it('leaves the icons alone while no track is loaded', async (): Promise<void> => {
+      await key('keydown', 'Shift');
+
+      expect([transportIcon('backward'), transportIcon('playPause'), transportIcon('forward')])
+        .toEqual(['fa-backward-step', 'fa-play', 'fa-forward-step']);
+    });
+
+    it('ignores other keys being pressed', async (): Promise<void> => {
+      await loadTrack();
+
+      await key('keydown', 'Control');
+
+      expect(transportIcon('playPause')).toBe('fa-play');
+    });
+
+    it('stays in Shift mode when another key is released', async (): Promise<void> => {
+      await loadTrack();
+      await key('keydown', 'Shift');
+
+      await key('keyup', 'a');
+
+      expect(transportIcon('playPause')).toBe('fa-stop');
+    });
+  });
+
+  // ==========================================================================
+  // Volume slider
+  // ==========================================================================
+
+  describe('volume slider', (): void => {
+    it('sets the volume to the pressed position', (): void => {
+      press(volumeSlider(), 150);
+
+      expect(playerSpy('setVolume')).toHaveBeenCalledExactlyOnceWith(0.25);
+    });
+
+    it('suppresses the browser default on press so no text selection starts', (): void => {
+      const event: MouseEvent = press(volumeSlider(), 150);
+
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('follows the mouse while dragging, even outside the slider', (): void => {
+      press(volumeSlider(), 150);
+
+      drag(250);
+
+      expect(playerSpy('setVolume')).toHaveBeenLastCalledWith(0.75);
+    });
+
+    it('stops at full volume when dragged past the right edge', (): void => {
+      press(volumeSlider(), 150);
+
+      drag(900);
+
+      expect(playerSpy('setVolume')).toHaveBeenLastCalledWith(1);
+    });
+
+    it('stops at silence when dragged past the left edge', (): void => {
+      press(volumeSlider(), 150);
+
+      drag(-50);
+
+      expect(playerSpy('setVolume')).toHaveBeenLastCalledWith(0);
+    });
+
+    it('sets the volume to the release position', (): void => {
+      press(volumeSlider(), 150);
+
+      release(200);
+
+      expect(playerSpy('setVolume')).toHaveBeenLastCalledWith(0.5);
+    });
+
+    it('stops following the mouse after release', (): void => {
+      press(volumeSlider(), 150);
+      release(200);
+      playerSpy('setVolume').mockClear();
+
+      drag(250);
+      release(250);
+
+      expect(playerSpy('setVolume')).not.toHaveBeenCalled();
+    });
+
+    it('does not react to mouse movement before any press', (): void => {
+      drag(250);
+      release(250);
+
+      expect(playerSpy('setVolume')).not.toHaveBeenCalled();
+    });
+
+    it('stops following the mouse when destroyed mid-drag', (): void => {
+      press(volumeSlider(), 150);
+      playerSpy('setVolume').mockClear();
+
+      fixture.destroy();
+      drag(250);
+
+      expect(playerSpy('setVolume')).not.toHaveBeenCalled();
+    });
+
+    it('ignores a press that does not come from an element', (): void => {
+      component.onVolumeMouseDown(new MouseEvent('mousedown', {clientX: 150}));
+
+      expect(playerSpy('setVolume')).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // Seek bar
+  // ==========================================================================
+
+  describe('seek bar', (): void => {
+    beforeEach(async (): Promise<void> => {
+      await setSignal(mockMediaPlayer, 'progress', 10);
+    });
+
+    it('previews the pressed position without seeking', async (): Promise<void> => {
+      press(seekBar(), 150);
+      await fixture.whenStable();
+
+      expect(seekBar().value).toBe(25);
+      expect(playerSpy('seekToProgress')).not.toHaveBeenCalled();
+    });
+
+    it('suppresses the browser default on press', (): void => {
+      const event: MouseEvent = press(seekBar(), 150);
+
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('moves the preview with the mouse without seeking in drop mode', async (): Promise<void> => {
+      press(seekBar(), 150);
+
+      drag(250);
+      await fixture.whenStable();
+
+      expect(seekBar().value).toBe(75);
+      expect(playerSpy('seekToProgress')).not.toHaveBeenCalled();
+    });
+
+    it('keeps the preview inside the bar when dragged past its ends', async (): Promise<void> => {
+      press(seekBar(), 150);
+
+      drag(900);
+      await fixture.whenStable();
+
+      expect(seekBar().value).toBe(100);
+    });
+
+    it('seeks once to the release position', (): void => {
+      press(seekBar(), 150);
+      drag(250);
+
+      release(200);
+
+      expect(playerSpy('seekToProgress')).toHaveBeenCalledExactlyOnceWith(50);
+    });
+
+    it('holds the released position until the seek completes', async (): Promise<void> => {
+      playerSpy('seekToProgress').mockReturnValue(new Promise<void>((): void => {}));
+      press(seekBar(), 150);
+
+      release(200);
+      await fixture.whenStable();
+
+      expect(seekBar().value).toBe(50);
+    });
+
+    it('returns to the playback progress once the seek completes', async (): Promise<void> => {
+      press(seekBar(), 150);
+
+      release(200);
+      await fixture.whenStable();
+
+      expect(seekBar().value).toBe(10);
+    });
+
+    it('logs when the seek to the release position fails', async (): Promise<void> => {
+      const failure: Error = new Error('HTTP 500: Internal Server Error');
+      const errorSpy: ReturnType<typeof vi.spyOn> = vi.spyOn(console, 'error').mockImplementation((): void => {});
+      playerSpy('seekToProgress').mockRejectedValue(failure);
+      press(seekBar(), 150);
+
+      release(200);
+      await fixture.whenStable();
+
+      expect(errorSpy).toHaveBeenCalledWith('[LayoutControls] Seek failed:', failure);
+    });
+
+    it('returns to the playback progress when the seek fails', async (): Promise<void> => {
+      vi.spyOn(console, 'error').mockImplementation((): void => {});
+      playerSpy('seekToProgress').mockRejectedValue(new Error('HTTP 500: Internal Server Error'));
+      press(seekBar(), 150);
+
+      release(200);
+      await fixture.whenStable();
+
+      expect(seekBar().value).toBe(10);
+    });
+
+    it('stops following the mouse after release', async (): Promise<void> => {
+      press(seekBar(), 150);
+      release(200);
+      await fixture.whenStable();
+      playerSpy('seekToProgress').mockClear();
+
+      drag(250);
+      release(250);
+      await fixture.whenStable();
+
+      expect(seekBar().value).toBe(10);
+      expect(playerSpy('seekToProgress')).not.toHaveBeenCalled();
+    });
+
+    it('stops following the mouse when destroyed mid-drag', (): void => {
+      seekMode.set('drag');
+      press(seekBar(), 150);
+
+      fixture.destroy();
+      drag(250);
+      release(250);
+
+      expect(playerSpy('seekToProgress')).not.toHaveBeenCalled();
+    });
+
+    it('ignores a press that does not come from an element', async (): Promise<void> => {
+      component.onProgressMouseDown(new MouseEvent('mousedown', {clientX: 150}));
+      await fixture.whenStable();
+
+      expect(seekBar().value).toBe(10);
+    });
+
+    describe('in drag mode', (): void => {
+      beforeEach((): void => {
+        seekMode.set('drag');
+      });
+
+      it('seeks while the mouse moves', (): void => {
+        press(seekBar(), 150);
+
+        drag(250);
+
+        expect(playerSpy('seekToProgress')).toHaveBeenCalledExactlyOnceWith(75);
+      });
+
+      it('skips positions that arrive while a seek is still in flight', (): void => {
+        playerSpy('seekToProgress').mockReturnValue(new Promise<void>((): void => {}));
+        press(seekBar(), 150);
+
+        drag(250);
+        drag(260);
+        drag(270);
+
+        expect(playerSpy('seekToProgress')).toHaveBeenCalledExactlyOnceWith(75);
+      });
+
+      it('seeks again once the previous seek has completed', async (): Promise<void> => {
+        press(seekBar(), 150);
+        drag(250);
+        await fixture.whenStable();
+
+        drag(260);
+
+        expect(playerSpy('seekToProgress').mock.calls).toEqual([[75], [80]]);
+      });
+
+      it('logs when a live seek fails', async (): Promise<void> => {
+        const failure: Error = new Error('HTTP 500: Internal Server Error');
+        const errorSpy: ReturnType<typeof vi.spyOn> = vi.spyOn(console, 'error').mockImplementation((): void => {});
+        playerSpy('seekToProgress').mockRejectedValue(failure);
+        press(seekBar(), 150);
+
+        drag(250);
+        await fixture.whenStable();
+
+        expect(errorSpy).toHaveBeenCalledWith('[LayoutControls] Seek failed:', failure);
+      });
+
+      it('seeks again after a live seek has failed', async (): Promise<void> => {
+        vi.spyOn(console, 'error').mockImplementation((): void => {});
+        playerSpy('seekToProgress').mockRejectedValue(new Error('HTTP 500: Internal Server Error'));
+        press(seekBar(), 150);
+        drag(250);
+        await fixture.whenStable();
+
+        drag(260);
+
+        expect(playerSpy('seekToProgress').mock.calls).toEqual([[75], [80]]);
+      });
+
+      it('still seeks to the release position while a live seek is in flight', (): void => {
+        playerSpy('seekToProgress').mockReturnValueOnce(new Promise<void>((): void => {}));
+        press(seekBar(), 150);
+        drag(250);
+
+        release(200);
+
+        expect(playerSpy('seekToProgress')).toHaveBeenLastCalledWith(50);
+      });
     });
   });
 });

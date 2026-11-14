@@ -11,7 +11,7 @@
  * @module electron/midi-parser
  */
 
-import { readFileSync, statSync } from 'fs';
+import { readFile, stat } from 'fs/promises';
 import { midiLogger } from './logger.js';
 
 export const MIDI_FORMATS: Set<string> = new Set(['.mid', '.midi']);
@@ -29,18 +29,22 @@ const MAX_MIDI_FILE_SIZE: number = 10 * 1024 * 1024;
  *
  * SMPTE-based timing division is not supported and returns 0.
  *
+ * Reads the file asynchronously: this runs on the Electron main process for
+ * every MIDI file added to the playlist, and a synchronous read from a network
+ * mount would stall the whole application for its duration.
+ *
  * @param filePath - Absolute path to the MIDI file
  * @returns Duration in seconds, or 0 if the file cannot be parsed
  */
-export function parseMidiDuration(filePath: string): number {
+export async function parseMidiDuration(filePath: string): Promise<number> {
   try {
-    const fileSize: number = statSync(filePath).size;
+    const fileSize: number = (await stat(filePath)).size;
     if (fileSize > MAX_MIDI_FILE_SIZE) {
       midiLogger.warn(`MIDI file too large (${fileSize} bytes), skipping parse`);
       return 0;
     }
 
-    const buffer: Buffer = readFileSync(filePath);
+    const buffer: Buffer = await readFile(filePath);
     let offset: number = 0;
 
     // Verify MIDI header "MThd"

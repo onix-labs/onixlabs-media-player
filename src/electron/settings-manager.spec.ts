@@ -7,6 +7,10 @@
  * - Save/load persistence cycle
  * - validateAndMerge partial settings merge with defaults
  * - v1 to v2 migration (perVisualizationSensitivity -> perVisualizationSettings)
+ * - Subtitle, equalizer and video adjustment settings (update and load)
+ * - Recent files and playlists (ordering, de-duplication, caps, removal)
+ * - Debounced saving, flush, and failed or interrupted writes
+ * - Platform-specific defaults
  *
  * @module electron/settings-manager.spec
  */
@@ -45,6 +49,7 @@ vi.mock('./logger.js', () => ({
 // ---------------------------------------------------------------------------
 
 import { SettingsManager } from './settings-manager.js';
+import { settingsLogger } from './logger.js';
 import type {
   AppSettings,
   WindowBounds,
@@ -53,6 +58,21 @@ import type {
   PlaybackSettingsUpdate,
   TranscodingSettingsUpdate,
   AppearanceSettingsUpdate,
+  SubtitleSettingsUpdate,
+  EqualizerSettingsUpdate,
+  VideoAdjustmentsSettingsUpdate,
+  PerVisualizationSettings,
+  RecentItem,
+  RecentItemsSettings,
+  RenderResolution,
+  CrossfadeDuration,
+  CrossfadeStyle,
+  HardwareAcceleration,
+  PreferredAudioLanguage,
+  PreferredSubtitleLanguage,
+  ColorScheme,
+  SeekMode,
+  SubtitleFontFamily,
 } from './settings-manager.js';
 
 // ---------------------------------------------------------------------------
@@ -84,6 +104,38 @@ function readSettingsFile(): AppSettings {
   const raw: string = fs.readFileSync(settingsFilePath(), 'utf-8');
   return JSON.parse(raw) as AppSettings;
 }
+
+/** Returns the path of the temporary file a save writes before renaming it. */
+function tempSettingsFilePath(): string {
+  return `${settingsFilePath()}.tmp`;
+}
+
+/** The descriptor of process.platform before any test replaced it. */
+const ORIGINAL_PLATFORM_DESCRIPTOR: PropertyDescriptor | undefined = Object.getOwnPropertyDescriptor(process, 'platform');
+
+/** Makes process.platform report the given platform until restorePlatform is called. */
+function stubPlatform(platform: NodeJS.Platform): void {
+  Object.defineProperty(process, 'platform', { ...ORIGINAL_PLATFORM_DESCRIPTOR, value: platform });
+}
+
+/** Puts the real process.platform back. */
+function restorePlatform(): void {
+  if (ORIGINAL_PLATFORM_DESCRIPTOR) {
+    Object.defineProperty(process, 'platform', ORIGINAL_PLATFORM_DESCRIPTOR);
+  }
+}
+
+/** Builds a stored recent item the way a settings file holds it. */
+function storedRecentItem(itemPath: string, type: 'file' | 'playlist' = 'file'): RecentItem {
+  return { path: itemPath, displayName: path.basename(itemPath), timestamp: '2026-01-01T00:00:00.000Z', type };
+}
+
+/** Lists the paths of recent items, in order. */
+function pathsOf(items: readonly RecentItem[]): string[] {
+  return items.map((item: RecentItem): string => item.path);
+}
+
+const mockedLoggerError: ReturnType<typeof vi.fn> = vi.mocked(settingsLogger.error);
 
 // ---------------------------------------------------------------------------
 // Test suites
@@ -148,7 +200,7 @@ describe('SettingsManager', () => {
     });
 
     it('should load valid settings from an existing file', () => {
-      const customSettings: AppSettings = {
+      const customSettings: Record<string, unknown> = {
         version: 2,
         visualization: {
           defaultType: 'waveform',
@@ -1501,6 +1553,2031 @@ describe('SettingsManager', () => {
           expect(result.application.serverPort).toBe(port);
         }
       });
+    });
+  });
+
+  // ===========================================================================
+  // Visualization rendering options
+  // ===========================================================================
+
+  describe('visualization rendering options', () => {
+    it('should accept every supported render resolution', () => {
+      const resolutions: readonly RenderResolution[] = [
+        'native', '320x180', '320x200', '640x360', '640x400', '640x480', '800x450', '800x500',
+        '800x600', '1024x576', '1024x640', '1024x768', '1280x720', '1280x800', '1280x1024',
+      ];
+
+      for (const resolution of resolutions) {
+        const manager: SettingsManager = new SettingsManager();
+        const result: AppSettings = manager.updateVisualizationSettings({ renderResolution: resolution });
+        expect(result.visualization.renderResolution).toBe(resolution);
+      }
+    });
+
+    it('should reject an unsupported render resolution', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateVisualizationSettings({
+        renderResolution: '1920x1080' as RenderResolution,
+      });
+
+      expect(result.visualization.renderResolution).toBe('native');
+    });
+
+    it('should accept every supported visualization crossfade duration', () => {
+      const durations: readonly CrossfadeDuration[] = [500, 750, 1000, 1500, 2000];
+
+      for (const duration of durations) {
+        const manager: SettingsManager = new SettingsManager();
+        const result: AppSettings = manager.updateVisualizationSettings({ crossfadeDuration: duration });
+        expect(result.visualization.crossfadeDuration).toBe(duration);
+      }
+    });
+
+    it('should reject a visualization crossfade duration that is not one of the presets', () => {
+      const invalidDurations: readonly number[] = [0, 499, 600, 2001, -1000];
+
+      for (const duration of invalidDurations) {
+        const manager: SettingsManager = new SettingsManager();
+        const result: AppSettings = manager.updateVisualizationSettings({
+          crossfadeDuration: duration as CrossfadeDuration,
+        });
+        expect(result.visualization.crossfadeDuration).toBe(1000);
+      }
+    });
+
+    it('should accept every supported crossfade style', () => {
+      const styles: readonly CrossfadeStyle[] = ['fade', 'zoom', 'shrink', 'blur', 'random'];
+
+      for (const style of styles) {
+        const manager: SettingsManager = new SettingsManager();
+        const result: AppSettings = manager.updateVisualizationSettings({ crossfadeStyle: style });
+        expect(result.visualization.crossfadeStyle).toBe(style);
+      }
+    });
+
+    it('should reject an unknown crossfade style', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateVisualizationSettings({
+        crossfadeStyle: 'wipe' as CrossfadeStyle,
+      });
+
+      expect(result.visualization.crossfadeStyle).toBe('fade');
+    });
+
+    it('should apply none of an update when one of its fields is invalid', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateVisualizationSettings({
+        defaultType: 'tunnel',
+        maxFrameRate: 30,
+        crossfadeStyle: 'wipe' as CrossfadeStyle,
+      });
+
+      expect(result.visualization.defaultType).toBe('water');
+      expect(result.visualization.maxFrameRate).toBe(60);
+    });
+
+    it('should keep the other visualization fields when one is updated', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateVisualizationSettings({ renderResolution: '640x480', crossfadeStyle: 'zoom' });
+
+      const result: AppSettings = manager.updateVisualizationSettings({ crossfadeDuration: 2000 });
+
+      expect(result.visualization.renderResolution).toBe('640x480');
+      expect(result.visualization.crossfadeStyle).toBe('zoom');
+      expect(result.visualization.crossfadeDuration).toBe(2000);
+    });
+
+    it('should load valid rendering options from the settings file', () => {
+      writeSettingsFile({
+        version: 2,
+        visualization: { renderResolution: '1280x720', crossfadeDuration: 750, crossfadeStyle: 'blur' },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.visualization.renderResolution).toBe('1280x720');
+      expect(settings.visualization.crossfadeDuration).toBe(750);
+      expect(settings.visualization.crossfadeStyle).toBe('blur');
+    });
+
+    it('should replace invalid rendering options in the settings file with defaults', () => {
+      writeSettingsFile({
+        version: 2,
+        visualization: { renderResolution: 720, crossfadeDuration: '1000', crossfadeStyle: 'wipe' },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.visualization.renderResolution).toBe('native');
+      expect(settings.visualization.crossfadeDuration).toBe(1000);
+      expect(settings.visualization.crossfadeStyle).toBe('fade');
+    });
+
+    it('should accept a whole-number strobe frequency between 1 and 20 Hz', () => {
+      const validFrequencies: readonly number[] = [1, 10, 20];
+
+      for (const frequency of validFrequencies) {
+        const manager: SettingsManager = new SettingsManager();
+        const result: AppSettings = manager.updateVisualizationSettings({
+          perVisualizationSettings: { spotlight: { strobeFrequency: frequency } },
+        });
+        expect(result.visualization.perVisualizationSettings['spotlight']?.strobeFrequency).toBe(frequency);
+      }
+    });
+
+    it('should drop a strobe frequency that is fractional or out of range', () => {
+      const invalidFrequencies: readonly unknown[] = [0, 21, 2.5, -1, '5'];
+
+      for (const frequency of invalidFrequencies) {
+        const manager: SettingsManager = new SettingsManager();
+        const result: AppSettings = manager.updateVisualizationSettings({
+          perVisualizationSettings: { spotlight: { strobeFrequency: frequency as number, sensitivity: 0.5 } },
+        });
+        expect(result.visualization.perVisualizationSettings['spotlight']).toEqual({ sensitivity: 0.5 });
+      }
+    });
+
+    it('should skip a per-visualization entry that is not an object', () => {
+      const manager: SettingsManager = new SettingsManager();
+      const update: unknown = { bars: 'loud', waveform: null, tunnel: { sensitivity: 0.2 } };
+
+      const result: AppSettings = manager.updateVisualizationSettings({
+        perVisualizationSettings: update as PerVisualizationSettings,
+      });
+
+      expect(result.visualization.perVisualizationSettings).toEqual({ tunnel: { sensitivity: 0.2 } });
+    });
+
+    it('should leave per-visualization settings alone when the update is not an object', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateVisualizationSettings({ perVisualizationSettings: { bars: { sensitivity: 0.3 } } });
+
+      const result: AppSettings = manager.updateVisualizationSettings({
+        perVisualizationSettings: null as unknown as PerVisualizationSettings,
+      });
+
+      expect(result.visualization.perVisualizationSettings).toEqual({ bars: { sensitivity: 0.3 } });
+    });
+
+    it('should ignore perVisualizationSettings in the file when it is not an object', () => {
+      writeSettingsFile({
+        version: 2,
+        visualization: { defaultType: 'bars', perVisualizationSettings: 'everything' },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.visualization.defaultType).toBe('bars');
+      expect(settings.visualization.perVisualizationSettings).toEqual({});
+    });
+  });
+
+  // ===========================================================================
+  // Application: wizard flags, focus-loss miniplayer, active SoundFont
+  // ===========================================================================
+
+  describe('application flags and active SoundFont', () => {
+    it('should reject a non-boolean setupCompleted', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateApplicationSettings({
+        setupCompleted: 'true' as unknown as boolean,
+      });
+
+      expect(result.application.setupCompleted).toBe(false);
+    });
+
+    it('should reject a non-string setupCompletedVersion', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateApplicationSettings({
+        setupCompletedVersion: 2026 as unknown as string,
+      });
+
+      expect(result.application.setupCompletedVersion).toBe('');
+    });
+
+    it('should not mark setup complete when the supplied version is not a string', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      manager.markSetupComplete(2026 as unknown as string);
+
+      expect(manager.isSetupComplete()).toBe(false);
+    });
+
+    it('should update miniplayerOnFocusLoss with a boolean', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateApplicationSettings({ miniplayerOnFocusLoss: true });
+
+      expect(result.application.miniplayerOnFocusLoss).toBe(true);
+    });
+
+    it('should reject a non-boolean miniplayerOnFocusLoss', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateApplicationSettings({
+        miniplayerOnFocusLoss: 1 as unknown as boolean,
+      });
+
+      expect(result.application.miniplayerOnFocusLoss).toBe(false);
+    });
+
+    it('should have no active SoundFont by default', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      expect(manager.getActiveSoundFontFileName()).toBeNull();
+    });
+
+    it('should remember the active SoundFont file name', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.setActiveSoundFontFileName('FluidR3_GM.sf2');
+
+      expect(result.application.activeSoundFontFileName).toBe('FluidR3_GM.sf2');
+      expect(manager.getActiveSoundFontFileName()).toBe('FluidR3_GM.sf2');
+    });
+
+    it('should clear the active SoundFont when set to null', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.setActiveSoundFontFileName('FluidR3_GM.sf2');
+
+      manager.setActiveSoundFontFileName(null);
+
+      expect(manager.getActiveSoundFontFileName()).toBeNull();
+    });
+
+    it('should keep the active SoundFont when an unrelated application setting changes', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.setActiveSoundFontFileName('FluidR3_GM.sf2');
+
+      manager.updateApplicationSettings({ controlsAutoHideDelay: 12 });
+
+      expect(manager.getActiveSoundFontFileName()).toBe('FluidR3_GM.sf2');
+    });
+
+    it('should keep other application settings when the active SoundFont changes', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateApplicationSettings({ serverPort: 8080, miniplayerOnFocusLoss: true });
+
+      const result: AppSettings = manager.setActiveSoundFontFileName('GeneralUser.sf2');
+
+      expect(result.application.serverPort).toBe(8080);
+      expect(result.application.miniplayerOnFocusLoss).toBe(true);
+    });
+
+    it('should persist the active SoundFont across a reload', () => {
+      const first: SettingsManager = new SettingsManager();
+      first.setActiveSoundFontFileName('GeneralUser.sf2');
+      first.flush();
+
+      const second: SettingsManager = new SettingsManager();
+
+      expect(second.getActiveSoundFontFileName()).toBe('GeneralUser.sf2');
+    });
+
+    it('should load application flags from the settings file', () => {
+      writeSettingsFile({
+        version: 2,
+        application: { miniplayerOnFocusLoss: true, activeSoundFontFileName: 'Custom.sf2', setupCompletedVersion: '2026.9.0' },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.application.miniplayerOnFocusLoss).toBe(true);
+      expect(settings.application.activeSoundFontFileName).toBe('Custom.sf2');
+      expect(settings.application.setupCompletedVersion).toBe('2026.9.0');
+    });
+
+    it('should replace wrongly typed application flags in the settings file with defaults', () => {
+      writeSettingsFile({
+        version: 2,
+        application: {
+          setupCompleted: 'yes',
+          setupCompletedVersion: 2026,
+          miniplayerOnFocusLoss: 'no',
+          activeSoundFontFileName: 42,
+        },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.application.setupCompleted).toBe(false);
+      expect(settings.application.setupCompletedVersion).toBe('');
+      expect(settings.application.miniplayerOnFocusLoss).toBe(false);
+      expect(settings.application.activeSoundFontFileName).toBeNull();
+    });
+  });
+
+  // ===========================================================================
+  // Playback: languages and seek mode
+  // ===========================================================================
+
+  describe('playback languages and seek mode', () => {
+    it('should accept supported preferred audio languages', () => {
+      const languages: readonly PreferredAudioLanguage[] = ['default', 'eng', 'jpn', 'hun'];
+
+      for (const language of languages) {
+        const manager: SettingsManager = new SettingsManager();
+        const result: AppSettings = manager.updatePlaybackSettings({ preferredAudioLanguage: language });
+        expect(result.playback.preferredAudioLanguage).toBe(language);
+      }
+    });
+
+    it('should reject "off" as a preferred audio language', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updatePlaybackSettings({
+        preferredAudioLanguage: 'off' as PreferredAudioLanguage,
+      });
+
+      expect(result.playback.preferredAudioLanguage).toBe('eng');
+    });
+
+    it('should reject an unknown preferred audio language', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updatePlaybackSettings({
+        preferredAudioLanguage: 'xx' as PreferredAudioLanguage,
+      });
+
+      expect(result.playback.preferredAudioLanguage).toBe('eng');
+    });
+
+    it('should accept supported preferred subtitle languages, including "off"', () => {
+      const languages: readonly PreferredSubtitleLanguage[] = ['default', 'eng', 'kor', 'off'];
+
+      for (const language of languages) {
+        const manager: SettingsManager = new SettingsManager();
+        manager.updatePlaybackSettings({ preferredSubtitleLanguage: 'spa' });
+        const result: AppSettings = manager.updatePlaybackSettings({ preferredSubtitleLanguage: language });
+        expect(result.playback.preferredSubtitleLanguage).toBe(language);
+      }
+    });
+
+    it('should reject an unknown preferred subtitle language', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updatePlaybackSettings({
+        preferredSubtitleLanguage: 'klingon' as PreferredSubtitleLanguage,
+      });
+
+      expect(result.playback.preferredSubtitleLanguage).toBe('off');
+    });
+
+    it('should accept both seek modes', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const dragging: AppSettings = manager.updatePlaybackSettings({ seekMode: 'drag' });
+      const dropping: AppSettings = manager.updatePlaybackSettings({ seekMode: 'drop' });
+
+      expect(dragging.playback.seekMode).toBe('drag');
+      expect(dropping.playback.seekMode).toBe('drop');
+    });
+
+    it('should reject an unknown seek mode', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updatePlaybackSettings({ seekMode: 'scrub' as SeekMode });
+
+      expect(result.playback.seekMode).toBe('drop');
+    });
+
+    it('should apply none of a playback update when one of its fields is invalid', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updatePlaybackSettings({
+        defaultVolume: 0.9,
+        seekMode: 'scrub' as SeekMode,
+      });
+
+      expect(result.playback.defaultVolume).toBe(0.5);
+    });
+
+    it('should load languages and seek mode from the settings file', () => {
+      writeSettingsFile({
+        version: 2,
+        playback: { preferredAudioLanguage: 'ger', preferredSubtitleLanguage: 'fre', seekMode: 'drag' },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.playback.preferredAudioLanguage).toBe('ger');
+      expect(settings.playback.preferredSubtitleLanguage).toBe('fre');
+      expect(settings.playback.seekMode).toBe('drag');
+    });
+
+    it('should replace invalid languages and seek mode in the settings file with defaults', () => {
+      writeSettingsFile({
+        version: 2,
+        playback: { preferredAudioLanguage: 'off', preferredSubtitleLanguage: 7, seekMode: 'scrub' },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.playback.preferredAudioLanguage).toBe('eng');
+      expect(settings.playback.preferredSubtitleLanguage).toBe('off');
+      expect(settings.playback.seekMode).toBe('drop');
+    });
+  });
+
+  // ===========================================================================
+  // Transcoding: hardware acceleration
+  // ===========================================================================
+
+  describe('transcoding hardware acceleration', () => {
+    it('should accept every supported hardware acceleration value', () => {
+      const values: readonly HardwareAcceleration[] = [
+        'auto', 'disabled', 'h264_videotoolbox', 'h264_nvenc', 'h264_qsv', 'h264_amf', 'h264_vaapi',
+      ];
+
+      for (const value of values) {
+        const manager: SettingsManager = new SettingsManager();
+        const result: AppSettings = manager.updateTranscodingSettings({ hardwareAcceleration: value });
+        expect(result.transcoding.hardwareAcceleration).toBe(value);
+      }
+    });
+
+    it('should reject an unknown hardware encoder', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateTranscodingSettings({
+        hardwareAcceleration: 'hevc_nvenc' as HardwareAcceleration,
+      });
+
+      expect(result.transcoding.hardwareAcceleration).toBe('auto');
+    });
+
+    it('should keep quality and bitrate when only hardware acceleration changes', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateTranscodingSettings({ videoQuality: 'high', audioBitrate: 320 });
+
+      const result: AppSettings = manager.updateTranscodingSettings({ hardwareAcceleration: 'disabled' });
+
+      expect(result.transcoding.videoQuality).toBe('high');
+      expect(result.transcoding.audioBitrate).toBe(320);
+    });
+
+    it('should load hardware acceleration from the settings file', () => {
+      writeSettingsFile({ version: 2, transcoding: { hardwareAcceleration: 'h264_qsv' } });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.transcoding.hardwareAcceleration).toBe('h264_qsv');
+    });
+
+    it('should replace an unknown hardware encoder in the settings file with "auto"', () => {
+      writeSettingsFile({ version: 2, transcoding: { videoQuality: 'low', hardwareAcceleration: 'h265_magic' } });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.transcoding.hardwareAcceleration).toBe('auto');
+      expect(settings.transcoding.videoQuality).toBe('low');
+    });
+  });
+
+  // ===========================================================================
+  // Appearance: colour scheme, background HSL, window tint
+  // ===========================================================================
+
+  describe('appearance colour scheme, background and tint', () => {
+    type AppearanceNumberField =
+      | 'backgroundHue' | 'backgroundSaturation' | 'backgroundLightness'
+      | 'windowTintHue' | 'windowTintSaturation' | 'windowTintLightness' | 'windowTintAlpha';
+
+    it('should accept every colour scheme', () => {
+      const schemes: readonly ColorScheme[] = ['dark', 'light', 'system'];
+
+      for (const scheme of schemes) {
+        const manager: SettingsManager = new SettingsManager();
+        manager.updateAppearanceSettings({ colorScheme: scheme === 'system' ? 'dark' : 'system' });
+        const result: AppSettings = manager.updateAppearanceSettings({ colorScheme: scheme });
+        expect(result.appearance.colorScheme).toBe(scheme);
+      }
+    });
+
+    it('should reject an unknown colour scheme', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateAppearanceSettings({ colorScheme: 'sepia' as ColorScheme });
+
+      expect(result.appearance.colorScheme).toBe('system');
+    });
+
+    it.each([
+      ['backgroundHue', 0], ['backgroundHue', 360],
+      ['backgroundSaturation', 0], ['backgroundSaturation', 100],
+      ['backgroundLightness', 0], ['backgroundLightness', 100],
+      ['windowTintHue', 360], ['windowTintSaturation', 100], ['windowTintLightness', 100],
+      ['windowTintAlpha', 1], ['windowTintAlpha', 0.35],
+    ] as const)('should accept %s at %d', (field: AppearanceNumberField, value: number) => {
+      const manager: SettingsManager = new SettingsManager();
+      const update: AppearanceSettingsUpdate = { [field]: value };
+
+      const result: AppSettings = manager.updateAppearanceSettings(update);
+
+      expect(result.appearance[field]).toBe(value);
+    });
+
+    it.each([
+      ['backgroundHue', -1], ['backgroundHue', 361], ['backgroundHue', 'red'],
+      ['backgroundSaturation', -1], ['backgroundSaturation', 101],
+      ['backgroundLightness', -0.5], ['backgroundLightness', 100.5],
+      ['windowTintHue', -1], ['windowTintHue', 400],
+      ['windowTintSaturation', 101], ['windowTintLightness', -10],
+      ['windowTintAlpha', -0.1], ['windowTintAlpha', 1.5], ['windowTintAlpha', Number.NaN],
+    ] as const)('should reject %s at %s', (field: AppearanceNumberField, value: number | string) => {
+      const manager: SettingsManager = new SettingsManager();
+      const before: AppSettings = manager.getSettings();
+      const update: unknown = { [field]: value, colorScheme: 'light' };
+
+      const result: AppSettings = manager.updateAppearanceSettings(update as AppearanceSettingsUpdate);
+
+      expect(result.appearance).toEqual(before.appearance);
+    });
+
+    it.each([
+      [0, 100, 50, '#ff0000'],
+      [120, 100, 50, '#00ff00'],
+      [240, 100, 50, '#0000ff'],
+      [360, 100, 50, '#ff0000'],
+      [60, 100, 50, '#ffff00'],
+      [200, 0, 100, '#ffffff'],
+      [200, 100, 0, '#000000'],
+      [0, 0, 20, '#333333'],
+    ] as const)('should derive the background colour for hsl(%d, %d%%, %d%%) as %s', (hue: number, saturation: number, lightness: number, expected: string) => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateAppearanceSettings({
+        backgroundHue: hue,
+        backgroundSaturation: saturation,
+        backgroundLightness: lightness,
+      });
+
+      expect(result.appearance.backgroundColor).toBe(expected);
+    });
+
+    it('should derive the background colour from stored HSL values when only one changes', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateAppearanceSettings({ backgroundHue: 240, backgroundSaturation: 100, backgroundLightness: 50 });
+
+      const result: AppSettings = manager.updateAppearanceSettings({ backgroundHue: 120 });
+
+      expect(result.appearance.backgroundColor).toBe('#00ff00');
+      expect(result.appearance.backgroundSaturation).toBe(100);
+      expect(result.appearance.backgroundLightness).toBe(50);
+    });
+
+    it('should prefer the HSL-derived colour over an explicit backgroundColor in the same update', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateAppearanceSettings({
+        backgroundColor: '#123456',
+        backgroundHue: 0,
+        backgroundSaturation: 100,
+        backgroundLightness: 50,
+      });
+
+      expect(result.appearance.backgroundColor).toBe('#ff0000');
+    });
+
+    it('should leave the background colour alone when only the window tint changes', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateAppearanceSettings({ backgroundColor: '#123456' });
+
+      const result: AppSettings = manager.updateAppearanceSettings({
+        windowTintHue: 210,
+        windowTintSaturation: 80,
+        windowTintLightness: 40,
+        windowTintAlpha: 0.25,
+      });
+
+      expect(result.appearance.backgroundColor).toBe('#123456');
+      expect(result.appearance.windowTintHue).toBe(210);
+      expect(result.appearance.windowTintSaturation).toBe(80);
+      expect(result.appearance.windowTintLightness).toBe(40);
+      expect(result.appearance.windowTintAlpha).toBe(0.25);
+    });
+
+    it('should load colour scheme, background HSL and tint from the settings file', () => {
+      writeSettingsFile({
+        version: 2,
+        appearance: {
+          colorScheme: 'light',
+          backgroundHue: 200,
+          backgroundSaturation: 30,
+          backgroundLightness: 15,
+          windowTintHue: 300,
+          windowTintSaturation: 60,
+          windowTintLightness: 45,
+          windowTintAlpha: 0.4,
+        },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.appearance).toMatchObject({
+        colorScheme: 'light',
+        backgroundHue: 200,
+        backgroundSaturation: 30,
+        backgroundLightness: 15,
+        windowTintHue: 300,
+        windowTintSaturation: 60,
+        windowTintLightness: 45,
+        windowTintAlpha: 0.4,
+      });
+    });
+
+    it('should replace out-of-range appearance values in the settings file with defaults', () => {
+      writeSettingsFile({
+        version: 2,
+        appearance: {
+          colorScheme: 'neon',
+          backgroundHue: 720,
+          backgroundSaturation: -5,
+          backgroundLightness: '12',
+          windowTintHue: -90,
+          windowTintSaturation: 250,
+          windowTintLightness: null,
+          windowTintAlpha: 2,
+        },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.appearance).toMatchObject({
+        colorScheme: 'system',
+        backgroundHue: 0,
+        backgroundSaturation: 0,
+        backgroundLightness: 12,
+        windowTintHue: 0,
+        windowTintSaturation: 0,
+        windowTintLightness: 0,
+        windowTintAlpha: 0,
+      });
+    });
+  });
+
+  // ===========================================================================
+  // Subtitles
+  // ===========================================================================
+
+  describe('updateSubtitleSettings', () => {
+    type SubtitleField = keyof SubtitleSettingsUpdate;
+
+    it('should use the documented subtitle defaults', () => {
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.subtitles).toEqual({
+        fontSize: 100,
+        fontColor: '#ffffff',
+        backgroundColor: '#000000',
+        backgroundOpacity: 0.75,
+        fontFamily: 'sans-serif',
+        textShadow: true,
+        shadowSpread: 2,
+        shadowBlur: 2,
+        shadowColor: '#000000',
+      });
+    });
+
+    it.each([
+      ['fontSize', 50], ['fontSize', 300],
+      ['fontColor', '#ff00ff'],
+      ['backgroundColor', '#101010'],
+      ['backgroundOpacity', 0], ['backgroundOpacity', 1],
+      ['fontFamily', 'serif'], ['fontFamily', 'monospace'], ['fontFamily', 'Arial'],
+      ['textShadow', false],
+      ['shadowSpread', 1], ['shadowSpread', 5],
+      ['shadowBlur', 0], ['shadowBlur', 10],
+      ['shadowColor', '#abcdef'],
+    ] as const)('should accept %s set to %s', (field: SubtitleField, value: number | string | boolean) => {
+      const manager: SettingsManager = new SettingsManager();
+      const update: unknown = { [field]: value };
+
+      const result: AppSettings = manager.updateSubtitleSettings(update as SubtitleSettingsUpdate);
+
+      expect(result.subtitles[field]).toBe(value);
+    });
+
+    it.each([
+      ['fontSize', 49], ['fontSize', 301], ['fontSize', 100.5], ['fontSize', '100'],
+      ['fontColor', 'white'], ['fontColor', '#fff'],
+      ['backgroundColor', '#00000'], ['backgroundColor', 0],
+      ['backgroundOpacity', -0.1], ['backgroundOpacity', 1.1],
+      ['fontFamily', 'Comic Sans'], ['fontFamily', 'arial'],
+      ['textShadow', 'yes'], ['textShadow', 0],
+      ['shadowSpread', 0.5], ['shadowSpread', 6],
+      ['shadowBlur', -1], ['shadowBlur', 11],
+      ['shadowColor', 'black'],
+    ] as const)('should reject %s set to %s', (field: SubtitleField, value: number | string) => {
+      const manager: SettingsManager = new SettingsManager();
+      const before: AppSettings = manager.getSettings();
+      const update: unknown = { [field]: value };
+
+      const result: AppSettings = manager.updateSubtitleSettings(update as SubtitleSettingsUpdate);
+
+      expect(result.subtitles).toEqual(before.subtitles);
+    });
+
+    it('should apply none of a subtitle update when one of its fields is invalid', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateSubtitleSettings({ fontSize: 150, shadowColor: 'black' });
+
+      expect(result.subtitles.fontSize).toBe(100);
+    });
+
+    it('should update several subtitle fields at once and keep the rest', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateSubtitleSettings({
+        fontSize: 180,
+        fontFamily: 'monospace' as SubtitleFontFamily,
+        textShadow: false,
+      });
+
+      expect(result.subtitles).toEqual({
+        fontSize: 180,
+        fontColor: '#ffffff',
+        backgroundColor: '#000000',
+        backgroundOpacity: 0.75,
+        fontFamily: 'monospace',
+        textShadow: false,
+        shadowSpread: 2,
+        shadowBlur: 2,
+        shadowColor: '#000000',
+      });
+    });
+
+    it('should leave other settings categories untouched', () => {
+      const manager: SettingsManager = new SettingsManager();
+      const before: AppSettings = manager.getSettings();
+
+      const result: AppSettings = manager.updateSubtitleSettings({ fontSize: 120 });
+
+      expect(result.playback).toEqual(before.playback);
+      expect(result.appearance).toEqual(before.appearance);
+    });
+
+    it('should persist subtitle settings across a reload', () => {
+      const first: SettingsManager = new SettingsManager();
+      first.updateSubtitleSettings({ fontSize: 250, fontColor: '#ffff00', backgroundOpacity: 0.25 });
+      first.flush();
+
+      const reloaded: AppSettings = new SettingsManager().getSettings();
+
+      expect(reloaded.subtitles.fontSize).toBe(250);
+      expect(reloaded.subtitles.fontColor).toBe('#ffff00');
+      expect(reloaded.subtitles.backgroundOpacity).toBe(0.25);
+    });
+
+    it('should merge a partial subtitles section in the file with defaults', () => {
+      writeSettingsFile({ version: 2, subtitles: { fontSize: 200, fontFamily: 'serif' } });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.subtitles.fontSize).toBe(200);
+      expect(settings.subtitles.fontFamily).toBe('serif');
+      expect(settings.subtitles.fontColor).toBe('#ffffff');
+      expect(settings.subtitles.textShadow).toBe(true);
+    });
+
+    it('should replace invalid subtitle values in the settings file with defaults', () => {
+      writeSettingsFile({
+        version: 2,
+        subtitles: {
+          fontSize: 1000,
+          fontColor: 'white',
+          backgroundColor: 12,
+          backgroundOpacity: 7,
+          fontFamily: 'Papyrus',
+          textShadow: 'true',
+          shadowSpread: 0,
+          shadowBlur: 99,
+          shadowColor: '#12',
+        },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.subtitles).toEqual({
+        fontSize: 100,
+        fontColor: '#ffffff',
+        backgroundColor: '#000000',
+        backgroundOpacity: 0.75,
+        fontFamily: 'sans-serif',
+        textShadow: true,
+        shadowSpread: 2,
+        shadowBlur: 2,
+        shadowColor: '#000000',
+      });
+    });
+
+    it('should load every valid subtitle value from the settings file', () => {
+      const stored: SubtitleSettingsUpdate = {
+        fontSize: 75,
+        fontColor: '#00ff00',
+        backgroundColor: '#222222',
+        backgroundOpacity: 0.5,
+        fontFamily: 'Arial',
+        textShadow: false,
+        shadowSpread: 4,
+        shadowBlur: 8,
+        shadowColor: '#333333',
+      };
+      writeSettingsFile({ version: 2, subtitles: stored });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.subtitles).toEqual(stored);
+    });
+  });
+
+  // ===========================================================================
+  // Equalizer
+  // ===========================================================================
+
+  describe('updateEqualizerSettings', () => {
+    const FLAT_BANDS: readonly number[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    it('should default to a disabled, flat equalizer with ten bands', () => {
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.equalizer).toEqual({ enabled: false, preset: 'flat', bands: FLAT_BANDS });
+    });
+
+    it('should enable and disable the equalizer', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const enabled: AppSettings = manager.updateEqualizerSettings({ enabled: true });
+      const disabled: AppSettings = manager.updateEqualizerSettings({ enabled: false });
+
+      expect(enabled.equalizer.enabled).toBe(true);
+      expect(disabled.equalizer.enabled).toBe(false);
+    });
+
+    it('should reject a non-boolean enabled flag', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateEqualizerSettings({ enabled: 'on' as unknown as boolean });
+
+      expect(result.equalizer.enabled).toBe(false);
+    });
+
+    it('should accept every known preset', () => {
+      const presets: readonly string[] = ['rock', 'pop', 'jazz', 'bass', 'vocal', 'treble', 'custom', 'flat'];
+
+      for (const preset of presets) {
+        const manager: SettingsManager = new SettingsManager();
+        manager.updateEqualizerSettings({ preset: preset === 'flat' ? 'rock' : 'flat' });
+        const result: AppSettings = manager.updateEqualizerSettings({ preset });
+        expect(result.equalizer.preset).toBe(preset);
+      }
+    });
+
+    it('should reject an unknown preset', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateEqualizerSettings({ preset: 'dubstep' });
+
+      expect(result.equalizer.preset).toBe('flat');
+    });
+
+    it('should store ten in-range band gains unchanged', () => {
+      const manager: SettingsManager = new SettingsManager();
+      const bands: readonly number[] = [-12, -6, -3, 0, 1.5, 3, 6, 9, 11.5, 12];
+
+      const result: AppSettings = manager.updateEqualizerSettings({ bands });
+
+      expect(result.equalizer.bands).toEqual(bands);
+    });
+
+    it('should clamp band gains to the -12..12 dB range', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateEqualizerSettings({
+        bands: [-40, -12.1, 12.1, 99, 0, 0, 0, 0, 0, 0],
+      });
+
+      expect(result.equalizer.bands).toEqual([-12, -12, 12, 12, 0, 0, 0, 0, 0, 0]);
+    });
+
+    it('should reset a non-numeric or non-finite band gain to 0 dB', () => {
+      const manager: SettingsManager = new SettingsManager();
+      const bands: unknown = [3, 'loud', Number.NaN, Number.POSITIVE_INFINITY, null, 3, 3, 3, 3, 3];
+
+      const result: AppSettings = manager.updateEqualizerSettings({ bands: bands as number[] });
+
+      expect(result.equalizer.bands).toEqual([3, 0, 0, 0, 0, 3, 3, 3, 3, 3]);
+    });
+
+    it('should reject a band list that does not have exactly ten entries', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateEqualizerSettings({ bands: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] });
+
+      const tooFew: AppSettings = manager.updateEqualizerSettings({ bands: [2, 2, 2] });
+      const tooMany: AppSettings = manager.updateEqualizerSettings({ bands: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2] });
+
+      expect(tooFew.equalizer.bands).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+      expect(tooMany.equalizer.bands).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+    });
+
+    it('should reject bands that are not an array', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateEqualizerSettings({ bands: 'flat' as unknown as number[] });
+
+      expect(result.equalizer.bands).toEqual(FLAT_BANDS);
+    });
+
+    it('should apply none of an equalizer update when the bands are invalid', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateEqualizerSettings({ enabled: true, preset: 'rock', bands: [1] });
+
+      expect(result.equalizer).toEqual({ enabled: false, preset: 'flat', bands: FLAT_BANDS });
+    });
+
+    it('should keep the bands when only the preset changes', () => {
+      const manager: SettingsManager = new SettingsManager();
+      const bands: readonly number[] = [5, 4, 3, 2, 1, 0, -1, -2, -3, -4];
+      manager.updateEqualizerSettings({ bands });
+
+      const result: AppSettings = manager.updateEqualizerSettings({ preset: 'custom' });
+
+      expect(result.equalizer.bands).toEqual(bands);
+      expect(result.equalizer.preset).toBe('custom');
+    });
+
+    it('should persist equalizer settings across a reload', () => {
+      const bands: readonly number[] = [6, 5, 4, 3, 2, 1, 0, -1, -2, -3];
+      const first: SettingsManager = new SettingsManager();
+      first.updateEqualizerSettings({ enabled: true, preset: 'custom', bands });
+      first.flush();
+
+      const reloaded: AppSettings = new SettingsManager().getSettings();
+
+      expect(reloaded.equalizer).toEqual({ enabled: true, preset: 'custom', bands });
+    });
+
+    it('should clamp band gains loaded from the settings file', () => {
+      writeSettingsFile({
+        version: 2,
+        equalizer: { enabled: true, preset: 'bass', bands: [50, -50, 'x', null, 1, 2, 3, 4, 5, 6] },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.equalizer).toEqual({ enabled: true, preset: 'bass', bands: [12, -12, 0, 0, 1, 2, 3, 4, 5, 6] });
+    });
+
+    it('should reset malformed bands in the settings file to flat', () => {
+      writeSettingsFile({ version: 2, equalizer: { enabled: true, preset: 'rock', bands: [1, 2, 3] } });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.equalizer.bands).toEqual(FLAT_BANDS);
+      expect(settings.equalizer.preset).toBe('rock');
+    });
+
+    it('should replace an invalid enabled flag and preset in the settings file with defaults', () => {
+      writeSettingsFile({ version: 2, equalizer: { enabled: 1, preset: 'dubstep', bands: 'none' } });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.equalizer).toEqual({ enabled: false, preset: 'flat', bands: FLAT_BANDS });
+    });
+
+    it('should use default equalizer settings when the section is not an object', () => {
+      writeSettingsFile({ version: 2, equalizer: 'rock' });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.equalizer).toEqual({ enabled: false, preset: 'flat', bands: FLAT_BANDS });
+    });
+  });
+
+  // ===========================================================================
+  // Video adjustments
+  // ===========================================================================
+
+  describe('updateVideoAdjustmentsSettings', () => {
+    type LevelField = 'brightness' | 'contrast' | 'saturation' | 'hue' | 'blur' | 'grayscale' | 'sepia';
+
+    const NEUTRAL: VideoAdjustmentsSettingsUpdate = {
+      enabled: false,
+      preset: 'default',
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      hue: 0,
+      blur: 0,
+      grayscale: 0,
+      sepia: 0,
+      invert: false,
+    };
+
+    it('should default to disabled, neutral video adjustments', () => {
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.videoAdjustments).toEqual(NEUTRAL);
+    });
+
+    it('should update enabled, preset and invert', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateVideoAdjustmentsSettings({ enabled: true, preset: 'noir', invert: true });
+
+      expect(result.videoAdjustments.enabled).toBe(true);
+      expect(result.videoAdjustments.preset).toBe('noir');
+      expect(result.videoAdjustments.invert).toBe(true);
+    });
+
+    it('should accept every known preset', () => {
+      const presets: readonly string[] = ['vivid', 'warm', 'cool', 'soft', 'noir', 'night', 'custom', 'default'];
+
+      for (const preset of presets) {
+        const manager: SettingsManager = new SettingsManager();
+        manager.updateVideoAdjustmentsSettings({ preset: preset === 'default' ? 'vivid' : 'default' });
+        const result: AppSettings = manager.updateVideoAdjustmentsSettings({ preset });
+        expect(result.videoAdjustments.preset).toBe(preset);
+      }
+    });
+
+    it('should reject an unknown preset', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateVideoAdjustmentsSettings({ preset: 'psychedelic', brightness: 20 });
+
+      expect(result.videoAdjustments).toEqual(NEUTRAL);
+    });
+
+    it('should reject a non-boolean enabled flag', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateVideoAdjustmentsSettings({
+        enabled: 'yes' as unknown as boolean,
+        contrast: 20,
+      });
+
+      expect(result.videoAdjustments).toEqual(NEUTRAL);
+    });
+
+    it('should reject a non-boolean invert flag', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.updateVideoAdjustmentsSettings({
+        invert: 1 as unknown as boolean,
+        contrast: 20,
+      });
+
+      expect(result.videoAdjustments).toEqual(NEUTRAL);
+    });
+
+    it.each([
+      ['brightness', 55, 55], ['brightness', 250, 100], ['brightness', -250, -100],
+      ['contrast', -40, -40], ['contrast', 101, 100], ['contrast', -101, -100],
+      ['saturation', 100, 100], ['saturation', 1000, 100], ['saturation', -1000, -100],
+      ['hue', 180, 180], ['hue', 181, 180], ['hue', -360, -180],
+      ['blur', 30, 30], ['blur', 101, 100], ['blur', -5, 0],
+      ['grayscale', 100, 100], ['grayscale', 400, 100], ['grayscale', -1, 0],
+      ['sepia', 0, 0], ['sepia', 150, 100], ['sepia', -150, 0],
+    ] as const)('should store %s %d as %d', (field: LevelField, value: number, expected: number) => {
+      const manager: SettingsManager = new SettingsManager();
+      const update: VideoAdjustmentsSettingsUpdate = { [field]: value };
+
+      const result: AppSettings = manager.updateVideoAdjustmentsSettings(update);
+
+      expect(result.videoAdjustments[field]).toBe(expected);
+    });
+
+    it('should reset a non-finite level to 0', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateVideoAdjustmentsSettings({ brightness: 40, hue: 90 });
+
+      const result: AppSettings = manager.updateVideoAdjustmentsSettings({
+        brightness: Number.NaN,
+        hue: 'sideways' as unknown as number,
+      });
+
+      expect(result.videoAdjustments.brightness).toBe(0);
+      expect(result.videoAdjustments.hue).toBe(0);
+    });
+
+    it('should keep the levels that an update does not mention', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateVideoAdjustmentsSettings({
+        enabled: true, preset: 'custom', brightness: 10, contrast: 20, saturation: 30, hue: 40, blur: 5, grayscale: 6, sepia: 7, invert: true,
+      });
+
+      const result: AppSettings = manager.updateVideoAdjustmentsSettings({ contrast: -20 });
+
+      expect(result.videoAdjustments).toEqual({
+        enabled: true, preset: 'custom', brightness: 10, contrast: -20, saturation: 30, hue: 40, blur: 5, grayscale: 6, sepia: 7, invert: true,
+      });
+    });
+
+    it('should persist video adjustments across a reload', () => {
+      const first: SettingsManager = new SettingsManager();
+      first.updateVideoAdjustmentsSettings({ enabled: true, preset: 'warm', brightness: 15, sepia: 35 });
+      first.flush();
+
+      const reloaded: AppSettings = new SettingsManager().getSettings();
+
+      expect(reloaded.videoAdjustments).toEqual({ ...NEUTRAL, enabled: true, preset: 'warm', brightness: 15, sepia: 35 });
+    });
+
+    it('should clamp levels loaded from the settings file', () => {
+      writeSettingsFile({
+        version: 2,
+        videoAdjustments: {
+          enabled: true, preset: 'vivid', brightness: 500, contrast: -500, saturation: 50, hue: 720, blur: -3, grayscale: 101, sepia: 40, invert: true,
+        },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.videoAdjustments).toEqual({
+        enabled: true, preset: 'vivid', brightness: 100, contrast: -100, saturation: 50, hue: 180, blur: 0, grayscale: 100, sepia: 40, invert: true,
+      });
+    });
+
+    it('should replace wrongly typed video adjustments in the settings file with defaults', () => {
+      writeSettingsFile({
+        version: 2,
+        videoAdjustments: {
+          enabled: 'true', preset: 'psychedelic', brightness: '50', contrast: null, saturation: {}, hue: [], blur: true, grayscale: 'x', sepia: 25, invert: 0,
+        },
+      });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.videoAdjustments).toEqual({ ...NEUTRAL, sepia: 25 });
+    });
+
+    it('should use default video adjustments when the section is not an object', () => {
+      writeSettingsFile({ version: 2, videoAdjustments: 5 });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.videoAdjustments).toEqual(NEUTRAL);
+    });
+  });
+
+  // ===========================================================================
+  // Recent files and playlists
+  // ===========================================================================
+
+  describe('recent items', () => {
+    const NOW_ISO: string = '2026-03-04T05:06:07.000Z';
+    const songA: string = path.join(os.tmpdir(), 'Music', 'a.mp3');
+    const songB: string = path.join(os.tmpdir(), 'Music', 'b.flac');
+    const songC: string = path.join(os.tmpdir(), 'Music', 'c.ogg');
+    const listA: string = path.join(os.tmpdir(), 'Playlists', 'a.opp');
+    const listB: string = path.join(os.tmpdir(), 'Playlists', 'b.opp');
+
+    /** Builds n distinct file paths: track-0.mp3, track-1.mp3, ... */
+    function numberedPaths(count: number, extension: string = 'mp3'): string[] {
+      return Array.from({ length: count }, (_: unknown, index: number): string =>
+        path.join(os.tmpdir(), 'Music', `track-${index}.${extension}`));
+    }
+
+    afterEach(() => {
+      restorePlatform();
+      vi.useRealTimers();
+    });
+
+    it('should start with no recent items and the default caps', () => {
+      const recent: RecentItemsSettings = new SettingsManager().getRecentItems();
+
+      expect(recent).toEqual({ recentFiles: [], recentPlaylists: [], maxFiles: 10, maxPlaylists: 5 });
+    });
+
+    it('should record a recent file with its base name, type and the time it was added', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(NOW_ISO));
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.addRecentFile(songA);
+
+      expect(result.recentItems.recentFiles).toEqual([
+        { path: songA, displayName: 'a.mp3', timestamp: NOW_ISO, type: 'file' },
+      ]);
+    });
+
+    it('should put the most recently added file first', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentFile(songA);
+      manager.addRecentFile(songB);
+
+      const result: AppSettings = manager.addRecentFile(songC);
+
+      expect(pathsOf(result.recentItems.recentFiles)).toEqual([songC, songB, songA]);
+    });
+
+    it('should move a file that is added again to the front without duplicating it', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentFile(songA);
+      manager.addRecentFile(songB);
+      manager.addRecentFile(songC);
+
+      const result: AppSettings = manager.addRecentFile(songA);
+
+      expect(pathsOf(result.recentItems.recentFiles)).toEqual([songA, songC, songB]);
+    });
+
+    it('should refresh the timestamp of a file that is added again', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentFile(songA);
+      vi.setSystemTime(new Date(NOW_ISO));
+
+      const result: AppSettings = manager.addRecentFile(songA);
+
+      expect(result.recentItems.recentFiles[0].timestamp).toBe(NOW_ISO);
+    });
+
+    it('should keep only the ten most recent files', () => {
+      const manager: SettingsManager = new SettingsManager();
+      const paths: string[] = numberedPaths(12);
+
+      for (const filePath of paths) {
+        manager.addRecentFile(filePath);
+      }
+
+      const expected: string[] = paths.slice(2).reverse();
+      expect(pathsOf(manager.getRecentItems().recentFiles)).toEqual(expected);
+    });
+
+    it('should honour a smaller maxFiles cap stored in the settings file', () => {
+      writeSettingsFile({ version: 2, recentItems: { recentFiles: [], recentPlaylists: [], maxFiles: 2, maxPlaylists: 1 } });
+      const manager: SettingsManager = new SettingsManager();
+
+      manager.addRecentFiles([songA, songB, songC]);
+
+      expect(pathsOf(manager.getRecentItems().recentFiles)).toEqual([songC, songB]);
+    });
+
+    it('should add a batch of files so the last one given ends up first', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentFile(songA);
+
+      const result: AppSettings = manager.addRecentFiles([songB, songC]);
+
+      expect(pathsOf(result.recentItems.recentFiles)).toEqual([songC, songB, songA]);
+    });
+
+    it('should keep one entry, at its latest position, for a path repeated within a batch', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.addRecentFiles([songA, songB, songA]);
+
+      expect(pathsOf(result.recentItems.recentFiles)).toEqual([songA, songB]);
+    });
+
+    it('should replace existing entries for paths that a batch adds again', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentFiles([songA, songB, songC]);
+
+      const result: AppSettings = manager.addRecentFiles([songA, songB]);
+
+      expect(pathsOf(result.recentItems.recentFiles)).toEqual([songB, songA, songC]);
+    });
+
+    it('should give every file in a batch the same timestamp', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(NOW_ISO));
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.addRecentFiles([songA, songB]);
+
+      expect(result.recentItems.recentFiles.map((item: RecentItem): string => item.timestamp)).toEqual([NOW_ISO, NOW_ISO]);
+    });
+
+    it('should change nothing and schedule no save for an empty batch', () => {
+      const manager: SettingsManager = new SettingsManager();
+      const before: AppSettings = manager.getSettings();
+
+      const result: AppSettings = manager.addRecentFiles([]);
+      manager.flush();
+
+      expect(result).toBe(before);
+      expect(fs.existsSync(settingsFilePath())).toBe(false);
+    });
+
+    it('should treat paths that differ only by case as the same file on Windows', () => {
+      stubPlatform('win32');
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentFile(songA);
+      manager.addRecentFile(songB);
+
+      const result: AppSettings = manager.addRecentFile(songA.toUpperCase());
+
+      expect(pathsOf(result.recentItems.recentFiles)).toEqual([songA.toUpperCase(), songB]);
+    });
+
+    it('should treat paths that differ only by case as different files off Windows', () => {
+      stubPlatform('linux');
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentFile(songA);
+
+      const result: AppSettings = manager.addRecentFile(songA.toUpperCase());
+
+      expect(pathsOf(result.recentItems.recentFiles)).toEqual([songA.toUpperCase(), songA]);
+    });
+
+    it('should remove a recent file by path', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentFiles([songA, songB, songC]);
+
+      const result: AppSettings = manager.removeRecentFile(songB);
+
+      expect(pathsOf(result.recentItems.recentFiles)).toEqual([songC, songA]);
+    });
+
+    it('should leave the list unchanged when removing a file that is not in it', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentFiles([songA, songB]);
+
+      const result: AppSettings = manager.removeRecentFile(songC);
+
+      expect(pathsOf(result.recentItems.recentFiles)).toEqual([songB, songA]);
+    });
+
+    it('should remove a recent file regardless of case on Windows', () => {
+      stubPlatform('win32');
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentFiles([songA, songB]);
+
+      const result: AppSettings = manager.removeRecentFile(songA.toUpperCase());
+
+      expect(pathsOf(result.recentItems.recentFiles)).toEqual([songB]);
+    });
+
+    it('should not remove a recent file whose case differs off Windows', () => {
+      stubPlatform('darwin');
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentFiles([songA, songB]);
+
+      const result: AppSettings = manager.removeRecentFile(songA.toUpperCase());
+
+      expect(pathsOf(result.recentItems.recentFiles)).toEqual([songB, songA]);
+    });
+
+    it('should record a recent playlist with its base name, type and the time it was added', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(NOW_ISO));
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.addRecentPlaylist(listA);
+
+      expect(result.recentItems.recentPlaylists).toEqual([
+        { path: listA, displayName: 'a.opp', timestamp: NOW_ISO, type: 'playlist' },
+      ]);
+    });
+
+    it('should move a playlist that is added again to the front without duplicating it', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentPlaylist(listA);
+      manager.addRecentPlaylist(listB);
+
+      const result: AppSettings = manager.addRecentPlaylist(listA);
+
+      expect(pathsOf(result.recentItems.recentPlaylists)).toEqual([listA, listB]);
+    });
+
+    it('should keep only the five most recent playlists', () => {
+      const manager: SettingsManager = new SettingsManager();
+      const paths: string[] = numberedPaths(7, 'opp');
+
+      for (const playlistPath of paths) {
+        manager.addRecentPlaylist(playlistPath);
+      }
+
+      const expected: string[] = paths.slice(2).reverse();
+      expect(pathsOf(manager.getRecentItems().recentPlaylists)).toEqual(expected);
+    });
+
+    it('should treat playlist paths that differ only by case as the same playlist on Windows', () => {
+      stubPlatform('win32');
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentPlaylist(listA);
+
+      const result: AppSettings = manager.addRecentPlaylist(listA.toUpperCase());
+
+      expect(pathsOf(result.recentItems.recentPlaylists)).toEqual([listA.toUpperCase()]);
+    });
+
+    it('should treat playlist paths that differ only by case as different playlists off Windows', () => {
+      stubPlatform('linux');
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentPlaylist(listA);
+
+      const result: AppSettings = manager.addRecentPlaylist(listA.toUpperCase());
+
+      expect(pathsOf(result.recentItems.recentPlaylists)).toEqual([listA.toUpperCase(), listA]);
+    });
+
+    it('should remove a recent playlist by path', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentPlaylist(listA);
+      manager.addRecentPlaylist(listB);
+
+      const result: AppSettings = manager.removeRecentPlaylist(listA);
+
+      expect(pathsOf(result.recentItems.recentPlaylists)).toEqual([listB]);
+    });
+
+    it('should remove a recent playlist regardless of case on Windows', () => {
+      stubPlatform('win32');
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentPlaylist(listA);
+
+      const result: AppSettings = manager.removeRecentPlaylist(listA.toUpperCase());
+
+      expect(result.recentItems.recentPlaylists).toEqual([]);
+    });
+
+    it('should not remove a recent playlist whose case differs off Windows', () => {
+      stubPlatform('linux');
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentPlaylist(listA);
+
+      const result: AppSettings = manager.removeRecentPlaylist(listA.toUpperCase());
+
+      expect(pathsOf(result.recentItems.recentPlaylists)).toEqual([listA]);
+    });
+
+    it('should keep files and playlists in separate lists', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.addRecentFile(songA);
+      manager.addRecentPlaylist(listA);
+
+      manager.removeRecentFile(listA);
+      manager.removeRecentPlaylist(songA);
+
+      expect(pathsOf(manager.getRecentItems().recentFiles)).toEqual([songA]);
+      expect(pathsOf(manager.getRecentItems().recentPlaylists)).toEqual([listA]);
+    });
+
+    it('should clear both lists but keep the caps', () => {
+      writeSettingsFile({
+        version: 2,
+        recentItems: {
+          recentFiles: [storedRecentItem(songA)],
+          recentPlaylists: [storedRecentItem(listA, 'playlist')],
+          maxFiles: 20,
+          maxPlaylists: 8,
+        },
+      });
+      const manager: SettingsManager = new SettingsManager();
+
+      const result: AppSettings = manager.clearRecentItems();
+
+      expect(result.recentItems).toEqual({ recentFiles: [], recentPlaylists: [], maxFiles: 20, maxPlaylists: 8 });
+    });
+
+    it('should persist recent items across a reload', () => {
+      const first: SettingsManager = new SettingsManager();
+      first.addRecentFiles([songA, songB]);
+      first.addRecentPlaylist(listA);
+      first.flush();
+
+      const reloaded: RecentItemsSettings = new SettingsManager().getRecentItems();
+
+      expect(pathsOf(reloaded.recentFiles)).toEqual([songB, songA]);
+      expect(pathsOf(reloaded.recentPlaylists)).toEqual([listA]);
+    });
+
+    it('should persist a cleared list across a reload', () => {
+      const first: SettingsManager = new SettingsManager();
+      first.addRecentFile(songA);
+      first.flush();
+      first.clearRecentItems();
+      first.flush();
+
+      const reloaded: RecentItemsSettings = new SettingsManager().getRecentItems();
+
+      expect(reloaded.recentFiles).toEqual([]);
+    });
+
+    it('should load stored recent items in their stored order', () => {
+      const files: RecentItem[] = [storedRecentItem(songB), storedRecentItem(songA)];
+      const playlists: RecentItem[] = [storedRecentItem(listB, 'playlist')];
+      writeSettingsFile({ version: 2, recentItems: { recentFiles: files, recentPlaylists: playlists, maxFiles: 10, maxPlaylists: 5 } });
+
+      const recent: RecentItemsSettings = new SettingsManager().getRecentItems();
+
+      expect(recent.recentFiles).toEqual(files);
+      expect(recent.recentPlaylists).toEqual(playlists);
+    });
+
+    it.each([
+      ['a missing displayName', { path: '/a.mp3', timestamp: 't', type: 'file' }],
+      ['a non-string path', { path: 5, displayName: 'a.mp3', timestamp: 't', type: 'file' }],
+      ['a non-string timestamp', { path: '/a.mp3', displayName: 'a.mp3', timestamp: 1700000000, type: 'file' }],
+      ['an unknown type', { path: '/a.mp3', displayName: 'a.mp3', timestamp: 't', type: 'folder' }],
+      ['a null entry', null],
+      ['a bare string entry', '/a.mp3'],
+    ])('should discard a stored recent files list containing %s', (_description: string, badEntry: unknown) => {
+      writeSettingsFile({
+        version: 2,
+        recentItems: {
+          recentFiles: [storedRecentItem(songA), badEntry],
+          recentPlaylists: [storedRecentItem(listA, 'playlist')],
+        },
+      });
+
+      const recent: RecentItemsSettings = new SettingsManager().getRecentItems();
+
+      expect(recent.recentFiles).toEqual([]);
+      expect(pathsOf(recent.recentPlaylists)).toEqual([listA]);
+    });
+
+    it('should discard stored recent lists that are not arrays', () => {
+      writeSettingsFile({ version: 2, recentItems: { recentFiles: { 0: storedRecentItem(songA) }, recentPlaylists: 'none' } });
+
+      const recent: RecentItemsSettings = new SettingsManager().getRecentItems();
+
+      expect(recent.recentFiles).toEqual([]);
+      expect(recent.recentPlaylists).toEqual([]);
+    });
+
+    it('should accept stored caps between 1 and 50', () => {
+      writeSettingsFile({ version: 2, recentItems: { maxFiles: 50, maxPlaylists: 1 } });
+
+      const recent: RecentItemsSettings = new SettingsManager().getRecentItems();
+
+      expect(recent.maxFiles).toBe(50);
+      expect(recent.maxPlaylists).toBe(1);
+    });
+
+    it.each([[0], [51], [-3], [2.5], ['10'], [null]])('should replace a stored cap of %s with the defaults', (cap: unknown) => {
+      writeSettingsFile({ version: 2, recentItems: { maxFiles: cap, maxPlaylists: cap } });
+
+      const recent: RecentItemsSettings = new SettingsManager().getRecentItems();
+
+      expect(recent.maxFiles).toBe(10);
+      expect(recent.maxPlaylists).toBe(5);
+    });
+
+    it('should use default recent items when the section is not an object', () => {
+      writeSettingsFile({ version: 2, recentItems: 'none' });
+
+      const recent: RecentItemsSettings = new SettingsManager().getRecentItems();
+
+      expect(recent).toEqual({ recentFiles: [], recentPlaylists: [], maxFiles: 10, maxPlaylists: 5 });
+    });
+
+    it('should not carry recent items from one profile into another', () => {
+      const first: SettingsManager = new SettingsManager();
+      first.addRecentFile(songA);
+      mockUserDataPath = path.join(mockUserDataPath, 'second-profile');
+      createTempDir();
+
+      const second: SettingsManager = new SettingsManager();
+
+      expect(second.getRecentItems().recentFiles).toEqual([]);
+    });
+  });
+
+  // ===========================================================================
+  // Loading damaged or unexpected settings files
+  // ===========================================================================
+
+  describe('loading damaged settings files', () => {
+    /** The settings a fresh install starts with. */
+    function defaultSettings(): AppSettings {
+      const directory: string = path.join(mockUserDataPath, 'pristine');
+      const original: string = mockUserDataPath;
+      fs.mkdirSync(directory, { recursive: true });
+      mockUserDataPath = directory;
+      try {
+        return new SettingsManager().getSettings();
+      } finally {
+        mockUserDataPath = original;
+      }
+    }
+
+    it.each([
+      ['an empty file', ''],
+      ['a file truncated mid-write', '{\n  "version": 2,\n  "playback": {\n    "defaultVolume": 0.'],
+      ['a bare number', '42'],
+      ['a boolean', 'false'],
+      ['binary rubbish', '\u0000\u0001\u0002'],
+    ])('should fall back to defaults for %s', (_description: string, contents: string) => {
+      fs.writeFileSync(settingsFilePath(), contents, 'utf-8');
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings).toEqual(defaultSettings());
+    });
+
+    it('should fall back to defaults when the file holds a JSON array', () => {
+      fs.writeFileSync(settingsFilePath(), '[1, 2, 3]', 'utf-8');
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings).toEqual(defaultSettings());
+    });
+
+    it('should log the failure when the file cannot be parsed', () => {
+      fs.writeFileSync(settingsFilePath(), '{"version": 2,', 'utf-8');
+      mockedLoggerError.mockClear();
+
+      new SettingsManager();
+
+      expect(mockedLoggerError).toHaveBeenCalledWith(expect.stringContaining('Failed to load settings'));
+    });
+
+    it('should fall back to defaults when the settings path cannot be read as a file', () => {
+      fs.mkdirSync(settingsFilePath());
+      mockedLoggerError.mockClear();
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.playback.defaultVolume).toBe(0.5);
+      expect(mockedLoggerError).toHaveBeenCalledWith(expect.stringContaining('Failed to load settings'));
+    });
+
+    it('should use defaults for each section that has the wrong type and keep the valid ones', () => {
+      writeSettingsFile({
+        version: 2,
+        visualization: 'water',
+        application: 8080,
+        playback: { defaultVolume: 0.9 },
+        transcoding: true,
+        appearance: 'dark',
+        subtitles: 12,
+        windowState: 'left',
+      });
+      const defaults: AppSettings = defaultSettings();
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings).toEqual({ ...defaults, playback: { ...defaults.playback, defaultVolume: 0.9 } });
+    });
+
+    it('should treat a section stored as null like a missing section', () => {
+      writeSettingsFile({ version: 2, visualization: null, playback: null, recentItems: null });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings).toEqual(defaultSettings());
+    });
+
+    it('should ignore a stale temporary file left by an interrupted save', () => {
+      writeSettingsFile({ version: 2, playback: { defaultVolume: 0.2 } });
+      fs.writeFileSync(tempSettingsFilePath(), '{"version": 2, "playback": {"defaultVol', 'utf-8');
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.playback.defaultVolume).toBe(0.2);
+    });
+
+    it('should replace a stale temporary file on the next save', () => {
+      fs.writeFileSync(tempSettingsFilePath(), 'half-written', 'utf-8');
+      const manager: SettingsManager = new SettingsManager();
+
+      manager.updatePlaybackSettings({ defaultVolume: 0.3 });
+      manager.flush();
+
+      expect(fs.existsSync(tempSettingsFilePath())).toBe(false);
+      expect(readSettingsFile().playback.defaultVolume).toBe(0.3);
+    });
+
+    it('should overwrite a corrupt file with valid settings on the next save', () => {
+      fs.writeFileSync(settingsFilePath(), '{{{not valid json!!!', 'utf-8');
+      const manager: SettingsManager = new SettingsManager();
+
+      manager.updateTranscodingSettings({ audioBitrate: 256 });
+      manager.flush();
+
+      expect(readSettingsFile().transcoding.audioBitrate).toBe(256);
+    });
+
+    it('should write every settings category to disk', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      manager.updatePlaybackSettings({ defaultVolume: 0.6 });
+      manager.flush();
+
+      expect(Object.keys(readSettingsFile()).sort()).toEqual([
+        'appearance', 'application', 'equalizer', 'playback', 'recentItems', 'subtitles',
+        'transcoding', 'version', 'videoAdjustments', 'visualization', 'windowState',
+      ]);
+    });
+
+    it('should not let changes in one manager leak into the defaults another one starts with', () => {
+      const first: SettingsManager = new SettingsManager();
+      first.updatePlaybackSettings({ defaultVolume: 0.9 });
+      first.updateEqualizerSettings({ enabled: true, bands: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] });
+
+      const fresh: AppSettings = defaultSettings();
+
+      expect(fresh.playback.defaultVolume).toBe(0.5);
+      expect(fresh.equalizer).toEqual({ enabled: false, preset: 'flat', bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] });
+    });
+  });
+
+  // ===========================================================================
+  // Miniplayer bounds from disk
+  // ===========================================================================
+
+  describe('miniplayer bounds persistence', () => {
+    it('should persist miniplayer bounds across a reload', () => {
+      const bounds: WindowBounds = { x: -1200, y: 40, width: 360, height: 220 };
+      const first: SettingsManager = new SettingsManager();
+      first.setMiniplayerBounds(bounds);
+      first.flush();
+
+      const second: SettingsManager = new SettingsManager();
+
+      expect(second.getMiniplayerBounds()).toEqual(bounds);
+    });
+
+    it('should persist cleared miniplayer bounds across a reload', () => {
+      const first: SettingsManager = new SettingsManager();
+      first.setMiniplayerBounds({ x: 10, y: 10, width: 320, height: 200 });
+      first.flush();
+      first.setMiniplayerBounds(null);
+      first.flush();
+
+      const second: SettingsManager = new SettingsManager();
+
+      expect(second.getMiniplayerBounds()).toBeNull();
+    });
+
+    it('should keep the previous bounds when invalid bounds are supplied', () => {
+      const bounds: WindowBounds = { x: 10, y: 20, width: 320, height: 200 };
+      const manager: SettingsManager = new SettingsManager();
+      manager.setMiniplayerBounds(bounds);
+
+      manager.setMiniplayerBounds({ x: 0, y: 0, width: 0, height: 0 });
+
+      expect(manager.getMiniplayerBounds()).toEqual(bounds);
+    });
+
+    it.each([
+      ['a string', '100,100,320,200'],
+      ['an array', [100, 100, 320, 200]],
+      ['bounds with string numbers', { x: '10', y: '10', width: '320', height: '200' }],
+      ['bounds with a zero size', { x: 10, y: 10, width: 0, height: 200 }],
+      ['bounds missing a position', { width: 320, height: 200 }],
+    ])('should ignore stored miniplayer bounds that are %s', (_description: string, stored: unknown) => {
+      writeSettingsFile({ version: 2, windowState: { miniplayerBounds: stored } });
+
+      const manager: SettingsManager = new SettingsManager();
+
+      expect(manager.getMiniplayerBounds()).toBeNull();
+    });
+  });
+
+  // ===========================================================================
+  // Debounced saving and flush
+  // ===========================================================================
+
+  describe('debounced saving', () => {
+    const SAVE_DELAY_MS: number = 250;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should not write to disk until the save delay has passed', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      manager.updatePlaybackSettings({ defaultVolume: 0.7 });
+      vi.advanceTimersByTime(SAVE_DELAY_MS - 1);
+
+      expect(fs.existsSync(settingsFilePath())).toBe(false);
+    });
+
+    it('should write to disk once the save delay has passed', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      manager.updatePlaybackSettings({ defaultVolume: 0.7 });
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+
+      expect(readSettingsFile().playback.defaultVolume).toBe(0.7);
+    });
+
+    it('should include every change made during the delay in the one write', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      manager.updatePlaybackSettings({ defaultVolume: 0.1 });
+      vi.advanceTimersByTime(100);
+      manager.updatePlaybackSettings({ defaultVolume: 0.2 });
+      manager.updateTranscodingSettings({ audioBitrate: 320 });
+      vi.advanceTimersByTime(SAVE_DELAY_MS - 100);
+
+      const saved: AppSettings = readSettingsFile();
+      expect(saved.playback.defaultVolume).toBe(0.2);
+      expect(saved.transcoding.audioBitrate).toBe(320);
+    });
+
+    it('should save a change made after an earlier write completed', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updatePlaybackSettings({ defaultVolume: 0.1 });
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+
+      manager.updatePlaybackSettings({ defaultVolume: 0.8 });
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+
+      expect(readSettingsFile().playback.defaultVolume).toBe(0.8);
+    });
+
+    it('should write a pending change immediately on flush', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateApplicationSettings({ serverPort: 5555 });
+
+      manager.flush();
+
+      expect(readSettingsFile().application.serverPort).toBe(5555);
+    });
+
+    it('should not write again after flush once the original delay passes', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateApplicationSettings({ serverPort: 5555 });
+      manager.flush();
+      fs.rmSync(settingsFilePath());
+
+      vi.advanceTimersByTime(SAVE_DELAY_MS * 2);
+
+      expect(fs.existsSync(settingsFilePath())).toBe(false);
+    });
+
+    it('should write nothing on flush when no change is pending', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      manager.flush();
+
+      expect(fs.existsSync(settingsFilePath())).toBe(false);
+    });
+
+    it('should not schedule a write for a rejected update', () => {
+      const manager: SettingsManager = new SettingsManager();
+
+      manager.updatePlaybackSettings({ defaultVolume: 7 });
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+
+      expect(fs.existsSync(settingsFilePath())).toBe(false);
+    });
+
+    it('should not create a settings file just by loading defaults', () => {
+      new SettingsManager();
+
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+
+      expect(fs.existsSync(settingsFilePath())).toBe(false);
+    });
+  });
+
+  // ===========================================================================
+  // Failed saves
+  // ===========================================================================
+
+  describe('failed saves', () => {
+    it('should not throw when the user data directory has disappeared', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updatePlaybackSettings({ defaultVolume: 0.9 });
+      removeTempDir();
+
+      expect((): void => manager.flush()).not.toThrow();
+    });
+
+    it('should log a failed save', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updatePlaybackSettings({ defaultVolume: 0.9 });
+      removeTempDir();
+      mockedLoggerError.mockClear();
+
+      manager.flush();
+
+      expect(mockedLoggerError).toHaveBeenCalledWith(expect.stringContaining('Failed to save settings'));
+    });
+
+    it('should keep the change in memory when the save fails', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updatePlaybackSettings({ defaultVolume: 0.9 });
+      removeTempDir();
+
+      manager.flush();
+
+      expect(manager.getSettings().playback.defaultVolume).toBe(0.9);
+    });
+
+    it('should remove the temporary file when it cannot be moved into place', () => {
+      // A directory at the destination makes the rename fail after the temp file is written.
+      fs.mkdirSync(settingsFilePath());
+      const manager: SettingsManager = new SettingsManager();
+      manager.updatePlaybackSettings({ defaultVolume: 0.9 });
+      mockedLoggerError.mockClear();
+
+      manager.flush();
+
+      expect(fs.existsSync(tempSettingsFilePath())).toBe(false);
+      expect(mockedLoggerError).toHaveBeenCalledWith(expect.stringContaining('Failed to save settings'));
+    });
+
+    it('should not throw when the temporary file can be neither written nor cleaned up', () => {
+      // A directory at the temp path fails both the write and the unlink.
+      fs.mkdirSync(tempSettingsFilePath());
+      const manager: SettingsManager = new SettingsManager();
+      manager.updatePlaybackSettings({ defaultVolume: 0.9 });
+
+      expect((): void => manager.flush()).not.toThrow();
+      expect(fs.existsSync(settingsFilePath())).toBe(false);
+    });
+
+    it('should leave the previous settings file intact when a save fails', () => {
+      writeSettingsFile({ version: 2, playback: { defaultVolume: 0.2 } });
+      fs.mkdirSync(tempSettingsFilePath());
+      const manager: SettingsManager = new SettingsManager();
+      manager.updatePlaybackSettings({ defaultVolume: 0.9 });
+
+      manager.flush();
+
+      expect(readSettingsFile().playback.defaultVolume).toBe(0.2);
+    });
+
+    it('should save successfully again once the obstruction is gone', () => {
+      fs.mkdirSync(tempSettingsFilePath());
+      const manager: SettingsManager = new SettingsManager();
+      manager.updatePlaybackSettings({ defaultVolume: 0.9 });
+      manager.flush();
+      fs.rmSync(tempSettingsFilePath(), { recursive: true, force: true });
+
+      manager.updatePlaybackSettings({ skipDuration: 30 });
+      manager.flush();
+
+      const saved: AppSettings = readSettingsFile();
+      expect(saved.playback.defaultVolume).toBe(0.9);
+      expect(saved.playback.skipDuration).toBe(30);
+    });
+  });
+
+  // ===========================================================================
+  // Platform-specific defaults
+  // ===========================================================================
+
+  describe('platform-specific defaults', () => {
+    /** Loads a fresh copy of the module as it would initialise on the given platform. */
+    async function createManagerOn(platform: NodeJS.Platform): Promise<SettingsManager> {
+      stubPlatform(platform);
+      vi.resetModules();
+      const freshModule: typeof import('./settings-manager.js') = await import('./settings-manager.js');
+      return new freshModule.SettingsManager();
+    }
+
+    afterEach(() => {
+      restorePlatform();
+      vi.resetModules();
+    });
+
+    it('should disable glass by default on Windows', async () => {
+      const manager: SettingsManager = await createManagerOn('win32');
+
+      expect(manager.getSettings().appearance.glassEnabled).toBe(false);
+    });
+
+    it.each([['darwin'], ['linux']] as const)('should enable glass by default on %s', async (platform: NodeJS.Platform) => {
+      const manager: SettingsManager = await createManagerOn(platform);
+
+      expect(manager.getSettings().appearance.glassEnabled).toBe(true);
+    });
+
+    it('should use the Windows glass default when the file has an appearance section without it', async () => {
+      writeSettingsFile({ version: 2, appearance: { colorScheme: 'dark' } });
+
+      const manager: SettingsManager = await createManagerOn('win32');
+
+      expect(manager.getSettings().appearance.glassEnabled).toBe(false);
+      expect(manager.getSettings().appearance.colorScheme).toBe('dark');
+    });
+
+    it('should honour glass enabled in the file on Windows', async () => {
+      writeSettingsFile({ version: 2, appearance: { glassEnabled: true } });
+
+      const manager: SettingsManager = await createManagerOn('win32');
+
+      expect(manager.getSettings().appearance.glassEnabled).toBe(true);
+    });
+
+    it('should use the same non-appearance defaults on every platform', async () => {
+      const onWindows: AppSettings = (await createManagerOn('win32')).getSettings();
+      const onLinux: AppSettings = (await createManagerOn('linux')).getSettings();
+
+      expect({ ...onWindows, appearance: null }).toEqual({ ...onLinux, appearance: null });
     });
   });
 });

@@ -260,13 +260,24 @@ export class AudioOutlet implements OnInit, OnDestroy {
   private readonly visualizationType: ReturnType<typeof signal<string>> = signal<string>('bars');
 
   /** Signal for the visualization display name */
-  private readonly visualizationNameSignal: ReturnType<typeof signal<string>> = signal<string>('Frequency Bars');
+  private readonly visualizationNameSignal: ReturnType<typeof signal<string>> =
+    signal<string>(VISUALIZATION_METADATA[this.visualizationType()].name);
 
   /** Signal for the visualization category */
-  private readonly visualizationCategorySignal: ReturnType<typeof signal<string>> = signal<string>('Bars');
+  private readonly visualizationCategorySignal: ReturnType<typeof signal<string>> =
+    signal<string>(VISUALIZATION_METADATA[this.visualizationType()].category);
 
   /** File path of currently loaded audio (for change detection) */
   private currentFilePath: string | null = null;
+
+  /**
+   * The force-reload counter value the track effect last acted on.
+   *
+   * The counter only ever increments, so "above zero" stays true for the rest
+   * of the session; a reload is owed only when the value has moved since the
+   * effect last ran.
+   */
+  private lastForceReloadCounter: number = 0;
 
   /** Path of the last successfully loaded audio (state reached 'playing') */
   private readonly resume: ResumePositionTracker = new ResumePositionTracker();
@@ -346,18 +357,24 @@ export class AudioOutlet implements OnInit, OnDestroy {
     // Also depends on playbackState to detect same-track re-selection:
     // when the server enters 'loading', currentFilePath is always cleared
     // so the same file gets reloaded on re-selection.
-    // Also watches forceReloadCounter for soundfont changes that require re-render.
+    // Also watches forceReloadCounter for soundfont changes that require re-render,
+    // and serverUrl so a track selected before the media server is up loads once
+    // the URL arrives.
     effect((): void => {
       const track: PlaylistItem | null = this.mediaPlayer.currentTrack();
       const state: string = this.mediaPlayer.playbackState();
       const forceReload: number = this.electron.forceReloadCounter();
+      const _serverUrl: string = this.mediaPlayer.serverUrl();
 
       this.resume.observe(state, this.currentFilePath);
 
-      // Clear cached path on loading or force reload (soundfont change)
-      if (state === 'loading' || forceReload > 0) {
+      // Clear cached path on loading or force reload (soundfont change). The
+      // counter is compared with the value last seen, not with zero: it never
+      // goes back down, so every later run of this effect would reload again.
+      if (state === 'loading' || forceReload !== this.lastForceReloadCounter) {
         this.currentFilePath = null;
       }
+      this.lastForceReloadCounter = forceReload;
 
       if (track?.type === 'audio' && track.filePath !== this.currentFilePath) {
         // Resume after stop picks up the server position; every other load
@@ -367,7 +384,10 @@ export class AudioOutlet implements OnInit, OnDestroy {
           track.filePath,
           (): number => untracked((): number => this.mediaPlayer.currentTime())
         );
-        void this.loadAudioSource(track.filePath, resumeTime);
+        // Untracked: loading reads volume, mute, the crossfade duration and, on
+        // the first load, everything the audio graph and visualization are built
+        // from. None of those should re-run this effect.
+        void untracked((): Promise<void> => this.loadAudioSource(track.filePath, resumeTime));
       }
     });
 
@@ -1047,6 +1067,10 @@ export class AudioOutlet implements OnInit, OnDestroy {
    * @param persist - Whether to persist the change to config (default: true)
    */
   public setVisualization(type: string, persist: boolean = true): void {
+    // Ids arrive from persisted settings as well as the menu. An own-property
+    // check, because a plain lookup also finds inherited keys ('constructor').
+    if (!Object.hasOwn(VISUALIZATION_METADATA, type)) return;
+
     this.visualizationType.set(type);
 
     // Persist to config so it survives component recreation (e.g., miniplayer toggle)

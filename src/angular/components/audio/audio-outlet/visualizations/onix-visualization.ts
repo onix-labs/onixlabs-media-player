@@ -254,6 +254,7 @@ export class OnixVisualization extends Canvas2DVisualization {
     const height: number = this.height;
     const centerX: number = this.centerX;
     const centerY: number = this.centerY;
+    if (width <= 0 || height <= 0) return;
 
     // Ensure canvases exist
     if (!this.trailCanvas || !this.trailCtx || !this.tempCanvas || !this.tempCtx) {

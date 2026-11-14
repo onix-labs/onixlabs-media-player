@@ -99,8 +99,10 @@ function items(n: number): Omit<PlaylistItem, 'id'>[] {
 /**
  * Pins Math.random to a fixed value so Fisher-Yates is deterministic.
  *
- * With random() === 0, every swap picks j = 0, which reverses nothing and
- * leaves the identity order — a known, assertable permutation.
+ * With random() === 0, every swap picks j = 0, which rotates the order one
+ * place to the left ([1, 2, 3, 0] for four tracks). Just under 1, every swap
+ * picks j === i and the order stays the identity. Either way the permutation
+ * is known and assertable.
  *
  * @param value - The value Math.random should return
  */
@@ -522,6 +524,18 @@ describe('PlaylistManager', (): void => {
       expect(mock.of('playlist:mode')).toHaveLength(0);
     });
 
+    it('returns to playlist order when turned off again', (): void => {
+      manager.addItems(items(4));
+      // With every swap picking j === 0 the shuffle order is [0, 2, 3, 1], so
+      // the shuffled successor of the first track is the third, not the second.
+      pinRandom(0);
+      manager.setShuffle(true);
+
+      manager.setShuffle(false);
+
+      expect(manager.next()?.title).toBe('b');
+    });
+
     it('broadcasts the mode change', (): void => {
       manager.addItems(items(2));
       mock.clear();
@@ -534,6 +548,126 @@ describe('PlaylistManager', (): void => {
     it('handles being enabled on an empty playlist', (): void => {
       expect((): void => manager.setShuffle(true)).not.toThrow();
       expect(manager.getState().shuffleEnabled).toBe(true);
+    });
+  });
+
+  // ==========================================================================
+  // Shuffle Position Tracking
+  // ==========================================================================
+
+  // These pin Math.random just under 1, where every Fisher-Yates swap picks
+  // j === i and the shuffle order is the identity [0, 1, 2, ...]. Position in
+  // the shuffle order is then the same as the index, so where next() goes
+  // shows whether an operation kept the shuffle position in step.
+  describe('shuffle position tracking', (): void => {
+    it('plays every track once when shuffle was enabled before any track was added', (): void => {
+      pinRandom(0.99);
+      manager.setShuffle(true);
+
+      manager.addItems(items(3));
+
+      const visited: number[] = [manager.getState().currentIndex];
+      while (manager.next() !== null) {
+        visited.push(manager.getState().currentIndex);
+      }
+      expect(visited).toEqual([0, 1, 2]);
+    });
+
+    // Unlike the test above, these pin values that shuffle the first track
+    // away from the front of the order. Pinned before adding, because the order
+    // is generated as the items go in; the ids then collide, so the first track
+    // is selected by index.
+    it.each([0, 0.3])('plays every track once when shuffle was enabled before the tracks were added (random pinned to %s)', (value: number): void => {
+      pinRandom(value);
+      manager.setShuffle(true);
+      manager.addItems(items(4));
+
+      manager.selectIndex(0);
+
+      const visited: number[] = [manager.getState().currentIndex];
+      for (let i: number = 0; i < 3; i++) {
+        manager.next();
+        visited.push(manager.getState().currentIndex);
+      }
+      expect([...visited].sort((a: number, b: number): number => a - b)).toEqual([0, 1, 2, 3]);
+      expect(manager.next()).toBeNull();
+    });
+
+    it.each([0, 0.3])('plays every track once from the track auto-selected when the first tracks are added (random pinned to %s)', (value: number): void => {
+      pinRandom(value);
+      manager.setShuffle(true);
+
+      manager.addItems(items(4));
+
+      const visited: number[] = [manager.getState().currentIndex];
+      while (manager.next() !== null) {
+        visited.push(manager.getState().currentIndex);
+      }
+      expect(visited[0]).toBe(0);
+      expect([...visited].sort((a: number, b: number): number => a - b)).toEqual([0, 1, 2, 3]);
+    });
+
+    it('never lands on a removed index after an item is removed', (): void => {
+      // Pinned only after adding: item ids are drawn from Math.random too.
+      const added: PlaylistItem[] = manager.addItems(items(4));
+      pinRandom(0.99);
+      manager.setShuffle(true);
+
+      manager.removeItem(added[3].id);
+
+      const visited: number[] = [manager.getState().currentIndex];
+      while (manager.next() !== null) {
+        visited.push(manager.getState().currentIndex);
+      }
+      expect(visited).toEqual([0, 1, 2]);
+    });
+
+    it('continues from the track selected by id', (): void => {
+      // Pinned only after adding: item ids are drawn from Math.random too.
+      const added: PlaylistItem[] = manager.addItems(items(4));
+      pinRandom(0.99);
+      manager.setShuffle(true);
+
+      manager.selectItem(added[2].id);
+
+      expect(manager.next()?.title).toBe('d');
+      expect(manager.next()).toBeNull();
+    });
+
+    it('continues from the track selected by index', (): void => {
+      pinRandom(0.99);
+      manager.addItems(items(4));
+      manager.setShuffle(true);
+
+      manager.selectIndex(2);
+
+      expect(manager.next()?.title).toBe('d');
+      expect(manager.next()).toBeNull();
+    });
+
+    it('continues from the track previous() returned to through play history', (): void => {
+      pinRandom(0.99);
+      manager.addItems(items(4));
+      manager.setShuffle(true);
+      manager.selectIndex(2);
+      manager.selectIndex(0);
+
+      const returnedTo: PlaylistItem | null = manager.previous();
+
+      expect(returnedTo?.title).toBe('c');
+      expect(manager.next()?.title).toBe('d');
+    });
+
+    it('steps back through the shuffle order when play history has nothing usable', (): void => {
+      pinRandom(0.99);
+      // Enabling shuffle on an empty playlist seeds the history with "no
+      // selection", which previous() cannot return to.
+      manager.setShuffle(true);
+      manager.addItems(items(3));
+      manager.next();
+
+      expect(manager.previous()?.title).toBe('a');
+      expect(manager.getState().currentIndex).toBe(0);
     });
   });
 

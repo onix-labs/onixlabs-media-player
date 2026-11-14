@@ -21,8 +21,8 @@
 
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
-import { createReadStream, statSync, existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, renameSync, Stats } from 'fs';
-import { rm } from 'fs/promises';
+import { createReadStream, statSync, existsSync, mkdirSync, unlinkSync, renameSync, Stats } from 'fs';
+import { rm, stat, readFile, writeFile } from 'fs/promises';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { SettingsManager } from './settings-manager.js';
@@ -792,12 +792,7 @@ export class UnifiedMediaServer {
    */
   public clearPlaylist(): void {
     // Stop playback and reset state
-    this.playback.state = 'idle';
-    this.playback.currentTime = 0;
-    this.playback.duration = 0;
-    this.playback.currentMedia = null;
-    this.playback.errorMessage = null;
-    this.stopTimeTracking();
+    this.resetPlayback();
 
     // Clear the playlist
     this.playlist.clear();
@@ -805,6 +800,23 @@ export class UnifiedMediaServer {
     // Broadcast the reset state
     this.broadcastState();
     this.broadcastTime();
+  }
+
+  /**
+   * Returns playback to idle with nothing loaded.
+   *
+   * Shared by both ways of clearing the playlist (the HTTP handler and the
+   * public method the main process calls) so that neither can leave part of
+   * the previous session behind — a position seeked while stopped would
+   * otherwise be resumed by the first track of the next playlist.
+   */
+  private resetPlayback(): void {
+    this.playback.state = 'idle';
+    this.playback.currentMedia = null;
+    this.playback.currentTime = 0;
+    this.playback.duration = 0;
+    this.pausedTime = 0;
+    this.stopTimeTracking();
   }
 
   // ============================================================================
@@ -876,7 +888,7 @@ export class UnifiedMediaServer {
       if (pathname === '/events' && method === 'GET') {
         this.handleSSE(req, res);
       } else if (pathname === '/media/stream' && method === 'GET') {
-        this.handleMediaStream(req, res, url);
+        await this.handleMediaStream(req, res, url);
       } else if (pathname === '/media/info' && method === 'GET') {
         await this.handleMediaInfo(res, url);
       } else if (pathname === '/media/url/info' && method === 'POST') {
@@ -890,11 +902,11 @@ export class UnifiedMediaServer {
       } else if (pathname.startsWith('/media/url/cancel/') && method === 'POST') {
         this.handleUrlCancel(res, pathname);
       } else if (pathname === '/media/artwork' && method === 'GET') {
-        this.handleArtwork(res, url);
+        await this.handleArtwork(res, url);
       } else if (pathname === '/media/subtitles' && method === 'GET') {
-        this.handleSubtitles(req, res, url);
+        await this.handleSubtitles(req, res, url);
       } else if (pathname === '/media/subtitles/external' && method === 'GET') {
-        this.handleExternalSubtitles(req, res, url);
+        await this.handleExternalSubtitles(req, res, url);
       } else if (pathname === '/player/play' && method === 'POST') {
         await this.handlePlay(res);
       } else if (pathname === '/player/pause' && method === 'POST') {
@@ -971,7 +983,7 @@ export class UnifiedMediaServer {
         this.handleDependenciesRefresh(res);
       } else if (this.staticPath) {
         // Serve static files for Angular app in production
-        this.serveStaticFile(req, res, pathname);
+        await this.serveStaticFile(req, res, pathname);
       } else {
         res.writeHead(404);
         res.end(JSON.stringify({ error: 'Not found' }));
@@ -984,6 +996,10 @@ export class UnifiedMediaServer {
       if (errorMessage === 'Request body too large') {
         res.writeHead(413);
         res.end(JSON.stringify({ error: 'Request body too large' }));
+      } else if (errorMessage === UnifiedMediaServer.INVALID_JSON_BODY) {
+        // A body that does not parse is the client's mistake, not the server's
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: UnifiedMediaServer.INVALID_JSON_BODY }));
       } else {
         res.writeHead(500);
         res.end(JSON.stringify({ error: 'Internal server error' }));
@@ -1105,7 +1121,26 @@ export class UnifiedMediaServer {
     return { valid: true, normalizedPath: filePath };
   }
 
-  private validateFilePath(filePath: string): { valid: boolean; error?: string } {
+  /**
+   * Stats a path without blocking the main process.
+   *
+   * Everything on the request path goes through this rather than
+   * existsSync/statSync: media commonly lives on a network mount, where a
+   * synchronous stat stalls the whole main process (menus, IPC, every other
+   * request) for as long as the share takes to answer.
+   *
+   * @param filePath - Path to stat
+   * @returns The file's stats, or undefined if it cannot be read
+   */
+  private static async statIfReadable(filePath: string): Promise<Stats | undefined> {
+    try {
+      return await stat(filePath);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async validateFilePath(filePath: string): Promise<{ valid: boolean; error?: string }> {
     // Remote http(s) sources (resolved via yt-dlp) are valid as-is — they are
     // consumed by ffprobe/ffmpeg, not the local filesystem. Skip path checks.
     if (UnifiedMediaServer.isRemoteUrl(filePath)) {
@@ -1131,18 +1166,14 @@ export class UnifiedMediaServer {
     }
 
     // Check file exists
-    if (!existsSync(filePath)) {
+    const stats: Stats | undefined = await UnifiedMediaServer.statIfReadable(filePath);
+    if (!stats) {
       return { valid: false, error: 'File not found' };
     }
 
     // Verify it's a regular file (not directory, symlink to sensitive location, etc.)
-    try {
-      const stats: Stats = statSync(filePath);
-      if (!stats.isFile()) {
-        return { valid: false, error: 'Path is not a regular file' };
-      }
-    } catch {
-      return { valid: false, error: 'Cannot access file' };
+    if (!stats.isFile()) {
+      return { valid: false, error: 'Path is not a regular file' };
     }
 
     return { valid: true };
@@ -1163,7 +1194,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    * @param url - Parsed URL with path parameter
    */
-  private handleMediaStream(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): void {
+  private async handleMediaStream(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): Promise<void> {
     const filePath: string | null = url.searchParams.get('path');
     if (!filePath) {
       res.writeHead(400);
@@ -1172,7 +1203,7 @@ export class UnifiedMediaServer {
     }
 
     // Validate file path for security
-    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    const validation: { valid: boolean; error?: string } = await this.validateFilePath(filePath);
     if (!validation.valid) {
       res.writeHead(validation.error === 'File not found' ? 404 : 400);
       res.end(JSON.stringify({ error: validation.error }));
@@ -1205,12 +1236,12 @@ export class UnifiedMediaServer {
     const isTracker: boolean = TRACKER_FORMATS.has(ext);
 
     if (isMidi) {
-      this.serveMidiFile(req, res, filePath);
+      await this.serveMidiFile(req, res, filePath);
       return;
     }
 
     if (isTracker) {
-      this.serveTrackerFile(req, res, filePath);
+      await this.serveTrackerFile(req, res, filePath);
       return;
     }
 
@@ -1229,7 +1260,7 @@ export class UnifiedMediaServer {
     }
 
     if (isNativeVideo || isNativeAudio) {
-      this.serveDirectFile(req, res, filePath, ext);
+      await this.serveDirectFile(req, res, filePath, ext);
     } else {
       this.serveTranscodedFile(req, res, filePath, url).catch(this.failStream(res, 'Transcoded stream'));
     }
@@ -1249,16 +1280,15 @@ export class UnifiedMediaServer {
    * @param ext - File extension (for MIME type lookup)
    * @param options - Optional settings (noCache: disable browser caching)
    */
-  private serveDirectFile(
+  private async serveDirectFile(
     req: Readonly<IncomingMessage>,
     res: Readonly<ServerResponse>,
     filePath: string,
     ext: string,
     options?: {noCache?: boolean}
-  ): void {
+  ): Promise<void> {
     try {
-      const stat: ReturnType<typeof statSync> = statSync(filePath);
-      const fileSize: number = stat.size;
+      const fileSize: number = (await stat(filePath)).size;
       const mimeType: string = MIME_TYPES[ext] || 'application/octet-stream';
       const range: string | undefined = req.headers.range;
 
@@ -1297,7 +1327,7 @@ export class UnifiedMediaServer {
   /**
    * Serves static files for the Angular application in production.
    */
-  private serveStaticFile(_req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, pathname: string): void {
+  private async serveStaticFile(_req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, pathname: string): Promise<void> {
     if (!this.staticPath) {
       res.writeHead(404);
       res.end(JSON.stringify({ error: 'Not found' }));
@@ -1318,23 +1348,20 @@ export class UnifiedMediaServer {
       return;
     }
 
-    if (!existsSync(filePath)) {
+    let fileStats: Stats | undefined = await UnifiedMediaServer.statIfReadable(filePath);
+    if (!fileStats) {
       // SPA fallback: serve index.html for unknown routes
       filePath = path.join(this.staticPath, 'index.html');
-      if (!existsSync(filePath)) {
-        res.writeHead(404);
-        res.end(JSON.stringify({ error: 'Not found' }));
-        return;
-      }
+      fileStats = await UnifiedMediaServer.statIfReadable(filePath);
+    }
+
+    if (!fileStats?.isFile()) {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: 'Not found' }));
+      return;
     }
 
     try {
-      const stat: Stats = statSync(filePath);
-      if (!stat.isFile()) {
-        res.writeHead(404);
-        res.end(JSON.stringify({ error: 'Not found' }));
-        return;
-      }
 
       const ext: string = path.extname(filePath).toLowerCase();
       const mimeTypes: Record<string, string> = {
@@ -1353,7 +1380,7 @@ export class UnifiedMediaServer {
 
       res.writeHead(200, {
         'Content-Type': mimeType,
-        'Content-Length': stat.size,
+        'Content-Length': fileStats.size,
       });
       createReadStream(filePath).pipe(res);
     } catch (err) {
@@ -2127,7 +2154,30 @@ export class UnifiedMediaServer {
     // duplicate render.
     const render: Promise<string> = this.performMidiRender(filePath);
     this.midiRenderInProgress.set(filePath, render);
+    UnifiedMediaServer.forgetFailedRender(this.midiRenderInProgress, filePath, render);
     return render;
+  }
+
+  /**
+   * Removes a render from an in-progress map if it fails.
+   *
+   * A render can fail before it ever spawns a process — no SoundFont, a
+   * missing binary, an unreadable source — and a rejected promise left in the
+   * map would be handed to every later request for the file, which would then
+   * fail without re-checking whether the cause has since been fixed.
+   *
+   * @param inProgress - The in-progress map the render was registered in
+   * @param filePath - Absolute path to the file being rendered
+   * @param render - The render registered for the file
+   */
+  private static forgetFailedRender(inProgress: Map<string, Promise<string>>, filePath: string, render: Promise<string>): void {
+    render.catch((): void => {
+      // Only this render's own entry: a later request may already have
+      // registered a new render for the same file.
+      if (inProgress.get(filePath) === render) {
+        inProgress.delete(filePath);
+      }
+    });
   }
 
   /**
@@ -2166,7 +2216,6 @@ export class UnifiedMediaServer {
           this.midiRenderInProgress.delete(filePath);
           return this.renderMidiToFile(filePath);
         });
-        this.midiRenderInProgress.set(filePath, diskPromise);
         return diskPromise;
       }
     }
@@ -2292,7 +2341,6 @@ export class UnifiedMediaServer {
       });
     });
 
-    this.midiRenderInProgress.set(filePath, promise);
     return promise;
   }
 
@@ -2307,10 +2355,10 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    * @param filePath - Absolute path to the MIDI file
    */
-  private serveMidiFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string): void {
+  private async serveMidiFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string): Promise<void> {
     // Serve pre-rendered file if available (supports range requests for seeking)
     const cached: {readonly tempFile: string; readonly duration: number} | undefined = this.midiRenderCache.get(filePath);
-    if (cached && existsSync(cached.tempFile)) {
+    if (cached && await UnifiedMediaServer.statIfReadable(cached.tempFile)) {
       // Inline duration correction (safety net for edge case: render finished
       // after probeMedia returned but before playback started)
       if (cached.duration > 0 && Math.abs(cached.duration - this.playback.duration) > 1) {
@@ -2318,20 +2366,20 @@ export class UnifiedMediaServer {
         this.broadcastTime();
       }
       midiLogger.info(`Serving pre-rendered MIDI: ${path.basename(cached.tempFile)}`);
-      this.serveDirectFile(req, res, cached.tempFile, '.mp3', {noCache: true});
+      await this.serveDirectFile(req, res, cached.tempFile, '.mp3', {noCache: true});
       return;
     }
 
     // Render to temp file on demand, then serve with range request support.
     // The HTTP response is held open until the render completes.
     midiLogger.info(`Rendering MIDI on demand: ${path.basename(filePath)}`);
-    this.renderMidiToFile(filePath).then((tempFile: string): void => {
+    this.renderMidiToFile(filePath).then((tempFile: string): Promise<void> => {
       const entry: {readonly tempFile: string; readonly duration: number} | undefined = this.midiRenderCache.get(filePath);
       if (entry && entry.duration > 0 && Math.abs(entry.duration - this.playback.duration) > 1) {
         this.playback.duration = entry.duration;
         this.broadcastTime();
       }
-      this.serveDirectFile(req, res, tempFile, '.mp3', {noCache: true});
+      return this.serveDirectFile(req, res, tempFile, '.mp3', {noCache: true});
     }).catch((err: Error): void => {
       midiLogger.error(`MIDI render failed: ${err.message}`);
       if (!res.headersSent) {
@@ -2419,6 +2467,7 @@ export class UnifiedMediaServer {
     // 3. Register before the render suspends (see renderMidiToFile).
     const render: Promise<string> = this.performTrackerRender(filePath);
     this.trackerRenderInProgress.set(filePath, render);
+    UnifiedMediaServer.forgetFailedRender(this.trackerRenderInProgress, filePath, render);
     return render;
   }
 
@@ -2465,7 +2514,6 @@ export class UnifiedMediaServer {
           this.trackerRenderInProgress.delete(filePath);
           return this.renderTrackerToFile(filePath);
         });
-        this.trackerRenderInProgress.set(filePath, diskPromise);
         return diskPromise;
       }
     }
@@ -2548,7 +2596,6 @@ export class UnifiedMediaServer {
       });
     });
 
-    this.trackerRenderInProgress.set(filePath, promise);
     return promise;
   }
 
@@ -2563,26 +2610,26 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    * @param filePath - Absolute path to the tracker module
    */
-  private serveTrackerFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string): void {
+  private async serveTrackerFile(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, filePath: string): Promise<void> {
     const cached: {readonly tempFile: string; readonly duration: number} | undefined = this.trackerRenderCache.get(filePath);
-    if (cached && existsSync(cached.tempFile)) {
+    if (cached && await UnifiedMediaServer.statIfReadable(cached.tempFile)) {
       if (cached.duration > 0 && Math.abs(cached.duration - this.playback.duration) > 1) {
         this.playback.duration = cached.duration;
         this.broadcastTime();
       }
       midiLogger.info(`Serving pre-rendered tracker: ${path.basename(cached.tempFile)}`);
-      this.serveDirectFile(req, res, cached.tempFile, '.mp3', {noCache: true});
+      await this.serveDirectFile(req, res, cached.tempFile, '.mp3', {noCache: true});
       return;
     }
 
     midiLogger.info(`Rendering tracker on demand: ${path.basename(filePath)}`);
-    this.renderTrackerToFile(filePath).then((tempFile: string): void => {
+    this.renderTrackerToFile(filePath).then((tempFile: string): Promise<void> => {
       const entry: {readonly tempFile: string; readonly duration: number} | undefined = this.trackerRenderCache.get(filePath);
       if (entry && entry.duration > 0 && Math.abs(entry.duration - this.playback.duration) > 1) {
         this.playback.duration = entry.duration;
         this.broadcastTime();
       }
-      this.serveDirectFile(req, res, tempFile, '.mp3', {noCache: true});
+      return this.serveDirectFile(req, res, tempFile, '.mp3', {noCache: true});
     }).catch((err: Error): void => {
       midiLogger.error(`Tracker render failed: ${err.message}`);
       if (!res.headersSent) {
@@ -2611,7 +2658,7 @@ export class UnifiedMediaServer {
     }
 
     // Validate file path for security
-    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    const validation: { valid: boolean; error?: string } = await this.validateFilePath(filePath);
     if (!validation.valid) {
       res.writeHead(validation.error === 'File not found' ? 404 : 400);
       res.end(JSON.stringify({ error: validation.error }));
@@ -2638,8 +2685,7 @@ export class UnifiedMediaServer {
    * Body: { url: string }
    */
   private async handleUrlInfo(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { url }: { url?: unknown } = JSON.parse(body);
+    const { url }: { url?: unknown } = await this.readJsonBody(req);
     if (typeof url !== 'string' || !url.trim()) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'No URL provided' }));
@@ -2667,8 +2713,7 @@ export class UnifiedMediaServer {
    * broadcast over SSE (download:progress / download:complete / download:error).
    */
   private async handleUrlDownload(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { url, format, formatId, title, outputPath }: { url?: unknown; format?: unknown; formatId?: unknown; title?: unknown; outputPath?: unknown } = JSON.parse(body);
+    const { url, format, formatId, title, outputPath }: { url?: unknown; format?: unknown; formatId?: unknown; title?: unknown; outputPath?: unknown } = await this.readJsonBody(req);
     if (typeof url !== 'string' || !url.trim()) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'No URL provided' }));
@@ -2697,8 +2742,7 @@ export class UnifiedMediaServer {
    * consume directly, so the renderer adds it like any other playlist item.
    */
   private async handleUrlResolve(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { url, format, maxHeight }: { url?: unknown; format?: unknown; maxHeight?: unknown } = JSON.parse(body);
+    const { url, format, maxHeight }: { url?: unknown; format?: unknown; maxHeight?: unknown } = await this.readJsonBody(req);
     if (typeof url !== 'string' || !url.trim()) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: 'No URL provided' }));
@@ -2794,7 +2838,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response
    * @param url - Parsed URL with query parameters
    */
-  private handleArtwork(res: Readonly<ServerResponse>, url: Readonly<URL>): void {
+  private async handleArtwork(res: Readonly<ServerResponse>, url: Readonly<URL>): Promise<void> {
     const filePath: string | null = url.searchParams.get('path');
 
     if (!filePath) {
@@ -2810,7 +2854,7 @@ export class UnifiedMediaServer {
       return;
     }
 
-    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    const validation: { valid: boolean; error?: string } = await this.validateFilePath(filePath);
     if (!validation.valid) {
       res.writeHead(validation.error === 'File not found' ? 404 : 400);
       res.end(JSON.stringify({ error: validation.error }));
@@ -2920,7 +2964,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response
    * @param url - Parsed URL with query parameters
    */
-  private handleSubtitles(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): void {
+  private async handleSubtitles(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): Promise<void> {
     const filePath: string | null = url.searchParams.get('path');
     const trackIndex: string | null = url.searchParams.get('track');
 
@@ -2944,7 +2988,7 @@ export class UnifiedMediaServer {
     }
 
     // Validate file path for security
-    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    const validation: { valid: boolean; error?: string } = await this.validateFilePath(filePath);
     if (!validation.valid) {
       res.writeHead(validation.error === 'File not found' ? 404 : 400);
       res.end(JSON.stringify({ error: validation.error }));
@@ -2971,41 +3015,83 @@ export class UnifiedMediaServer {
       'pipe:1'
     ]);
 
-    // Set response headers for WebVTT
-    res.writeHead(200, {
-      'Content-Type': 'text/vtt; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
-    });
+    this.streamWebVtt(req, res, ffmpeg, 'Subtitle extraction');
+  }
 
-    // Pipe FFmpeg output directly to response
-    ffmpeg.stdout?.pipe(res);
+  /**
+   * Streams the WebVTT that a subtitle FFmpeg writes to stdout as the response.
+   *
+   * The 200 is held back until FFmpeg produces output or exits, so a process
+   * that could not be started is answered with a real 500 instead of an empty
+   * track that looks like a success. Nothing reaches the client any later for
+   * it: Node only puts the headers on the wire with the first body chunk.
+   *
+   * @param req - HTTP request, watched for the client disconnecting
+   * @param res - HTTP response to stream to
+   * @param ffmpeg - The spawned FFmpeg writing WebVTT to stdout
+   * @param label - What the process is doing, for log messages
+   */
+  private streamWebVtt(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, ffmpeg: ChildProcess, label: string): void {
+    const sendHeaders: () => void = (): void => {
+      res.writeHead(200, {
+        'Content-Type': 'text/vtt; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600',
+      });
+    };
+
+    // Pipe FFmpeg output directly to the response from its first chunk on
+    ffmpeg.stdout?.once('data', (chunk: Readonly<Buffer>): void => {
+      if (res.writableEnded) {
+        return;
+      }
+      sendHeaders();
+      res.write(chunk);
+      ffmpeg.stdout?.pipe(res);
+    });
 
     // Handle errors
     ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
       const msg: string = data.toString().trim();
       // Only log actual errors, not progress info
       if (msg.includes('Error') || msg.includes('Invalid')) {
-        ffmpegLogger.error(`Subtitle extraction error: ${msg}`);
+        ffmpegLogger.error(`${label} error: ${msg}`);
       }
     });
 
     ffmpeg.on('error', (err: Readonly<Error>): void => {
-      ffmpegLogger.error(`Subtitle extraction failed: ${err.message}`);
+      ffmpegLogger.error(`${label} failed: ${err.message}`);
+      if (res.writableEnded) {
+        return;
+      }
       if (!res.headersSent) {
         res.writeHead(500);
         res.end(JSON.stringify({ error: err.message }));
+        return;
       }
+      // Output has started, so the status can no longer change. End the
+      // response anyway: FFmpeg may never close stdout after an error, and the
+      // client would otherwise wait on it indefinitely.
+      ffmpeg.stdout?.unpipe(res);
+      res.end();
     });
 
     ffmpeg.on('close', (code: number | null): void => {
       if (code !== 0 && code !== null) {
-        ffmpegLogger.warn(`Subtitle extraction exited with code ${code}`);
+        ffmpegLogger.warn(`${label} exited with code ${code}`);
+      }
+      // FFmpeg wrote nothing, so nothing was piped and nothing ended the
+      // response. An empty track is still a valid answer.
+      if (!res.headersSent) {
+        sendHeaders();
+        res.end();
       }
     });
 
     // Handle client disconnect
     req.on('close', (): void => {
-      ffmpeg.kill('SIGTERM');
+      if (ffmpeg.exitCode === null) {
+        ffmpeg.kill('SIGTERM');
+      }
     });
   }
 
@@ -3020,7 +3106,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response
    * @param url - Parsed URL with query parameters
    */
-  private handleExternalSubtitles(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): void {
+  private async handleExternalSubtitles(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>, url: Readonly<URL>): Promise<void> {
     const filePath: string | null = url.searchParams.get('path');
 
     if (!filePath) {
@@ -3030,7 +3116,7 @@ export class UnifiedMediaServer {
     }
 
     // Validate file path for security
-    const validation: { valid: boolean; error?: string } = this.validateFilePath(filePath);
+    const validation: { valid: boolean; error?: string } = await this.validateFilePath(filePath);
     if (!validation.valid) {
       res.writeHead(validation.error === 'File not found' ? 404 : 400);
       res.end(JSON.stringify({ error: validation.error }));
@@ -3063,42 +3149,7 @@ export class UnifiedMediaServer {
       'pipe:1'
     ]);
 
-    // Set response headers for WebVTT
-    res.writeHead(200, {
-      'Content-Type': 'text/vtt; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
-    });
-
-    // Pipe FFmpeg output directly to response
-    ffmpeg.stdout?.pipe(res);
-
-    // Handle errors
-    ffmpeg.stderr?.on('data', (data: Readonly<Buffer>): void => {
-      const msg: string = data.toString().trim();
-      // Only log actual errors, not progress info
-      if (msg.includes('Error') || msg.includes('Invalid')) {
-        ffmpegLogger.error(`External subtitle conversion error: ${msg}`);
-      }
-    });
-
-    ffmpeg.on('error', (err: Readonly<Error>): void => {
-      ffmpegLogger.error(`External subtitle conversion failed: ${err.message}`);
-      if (!res.headersSent) {
-        res.writeHead(500);
-        res.end(JSON.stringify({ error: err.message }));
-      }
-    });
-
-    ffmpeg.on('close', (code: number | null): void => {
-      if (code !== 0 && code !== null) {
-        ffmpegLogger.warn(`External subtitle conversion exited with code ${code}`);
-      }
-    });
-
-    // Handle client disconnect
-    req.on('close', (): void => {
-      ffmpeg.kill('SIGTERM');
-    });
+    this.streamWebVtt(req, res, ffmpeg, 'External subtitle conversion');
   }
 
   /**
@@ -3117,7 +3168,7 @@ export class UnifiedMediaServer {
    * @returns Promise resolving to media information
    * @throws Error if probing fails
    */
-  private probeMedia(filePath: string): Promise<MediaInfo> {
+  private async probeMedia(filePath: string): Promise<MediaInfo> {
     // MIDI files cannot be probed by ffprobe - use cached render duration
     // if available, otherwise fall back to parseMidiDuration and start
     // a background render.
@@ -3127,25 +3178,25 @@ export class UnifiedMediaServer {
       const cached: {readonly tempFile: string; readonly duration: number} | undefined =
         this.midiRenderCache.get(filePath);
       if (cached) {
-        return Promise.resolve({
+        return {
           duration: cached.duration,
           type: 'audio' as const,
           title: path.basename(filePath, ext),
           filePath,
-        });
+        };
       }
 
       // Not cached yet — queue a background render and return the approximate
       // duration meanwhile. Queued rather than fired immediately so a bulk add
       // does not start one decode pipeline per file.
       this.enqueueRender((): Promise<void> => this.renderMidiToFile(filePath).then((): void => undefined));
-      const duration: number = parseMidiDuration(filePath);
-      return Promise.resolve({
+      const duration: number = await parseMidiDuration(filePath);
+      return {
         duration,
         type: 'audio' as const,
         title: path.basename(filePath, ext),
         filePath,
-      });
+      };
     }
 
     // Tracker modules cannot be probed by ffprobe either — their accurate
@@ -3156,21 +3207,21 @@ export class UnifiedMediaServer {
       const cached: {readonly tempFile: string; readonly duration: number} | undefined =
         this.trackerRenderCache.get(filePath);
       if (cached) {
-        return Promise.resolve({
+        return {
           duration: cached.duration,
           type: 'audio' as const,
           title: path.basename(filePath, ext),
           filePath,
-        });
+        };
       }
 
       this.enqueueRender((): Promise<void> => this.renderTrackerToFile(filePath).then((): void => undefined));
-      return Promise.resolve({
+      return {
         duration: 0,
         type: 'audio' as const,
         title: path.basename(filePath, ext),
         filePath,
-      });
+      };
     }
 
     // Reuse the cached probe when the file is unchanged. Files are probed once
@@ -3179,17 +3230,16 @@ export class UnifiedMediaServer {
     if (!UnifiedMediaServer.isRemoteUrl(filePath)) {
       const cachedInfo: MediaInfo | undefined = this.mediaInfoCache.get(filePath);
       if (cachedInfo) {
-        try {
-          if (this.mediaInfoMtimes.get(filePath) === statSync(filePath).mtimeMs) {
-            return Promise.resolve(cachedInfo);
-          }
-        } catch {
-          // Unreadable now — fall through and let ffprobe report the failure.
+        // Unreadable now means no stats — fall through and let ffprobe report
+        // the failure.
+        const stats: Stats | undefined = await UnifiedMediaServer.statIfReadable(filePath);
+        if (stats && this.mediaInfoMtimes.get(filePath) === stats.mtimeMs) {
+          return cachedInfo;
         }
       }
     }
 
-    return new Promise((resolve: (value: Readonly<MediaInfo>) => void, reject: (reason: Readonly<Error>) => void): void => {
+    const probedInfo: MediaInfo = await new Promise((resolve: (value: Readonly<MediaInfo>) => void, reject: (reason: Readonly<Error>) => void): void => {
       const ffprobeBin: string | null = this.deps.getFfprobePath();
       if (!ffprobeBin) {
         ffmpegLogger.error('ffprobe binary not found');
@@ -3315,14 +3365,8 @@ export class UnifiedMediaServer {
             subtitleTracks: subtitleTracks && subtitleTracks.length > 0 ? subtitleTracks : undefined,
           };
 
-          // Cache MediaInfo for stream handler codec lookup, stamped with the
-          // file's mtime so a re-probe happens only when the file changes.
+          // Cache MediaInfo for stream handler codec lookup.
           this.mediaInfoCache.set(filePath, mediaInfo);
-          try {
-            this.mediaInfoMtimes.set(filePath, statSync(filePath).mtimeMs);
-          } catch {
-            // Remote sources have no mtime; the entry simply never validates.
-          }
 
           resolve(mediaInfo);
         } catch (e) {
@@ -3334,6 +3378,18 @@ export class UnifiedMediaServer {
         reject(new Error(`ffprobe error: ${err.message}`));
       });
     });
+
+    // Stamp the cached entry with the file's mtime so a re-probe happens only
+    // when the file changes. Remote sources have no mtime; their entry simply
+    // never validates.
+    if (!UnifiedMediaServer.isRemoteUrl(filePath)) {
+      const stats: Stats | undefined = await UnifiedMediaServer.statIfReadable(filePath);
+      if (stats) {
+        this.mediaInfoMtimes.set(filePath, stats.mtimeMs);
+      }
+    }
+
+    return probedInfo;
   }
 
   // ============================================================================
@@ -3435,9 +3491,7 @@ export class UnifiedMediaServer {
       res.end(JSON.stringify({ success: true, media: mediaInfo }));
     } catch (err) {
       playbackLogger.error(`Failed to load media: ${(err as Error).message}`);
-      this.playback.state = 'error';
-      this.playback.errorMessage = (err as Error).message;
-      this.broadcastState();
+      this.failPlayback((err as Error).message);
       res.writeHead(500);
       res.end(JSON.stringify({ error: (err as Error).message }));
     }
@@ -3549,8 +3603,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleSeek(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { time }: { time: unknown } = JSON.parse(body);
+    const { time }: { time: unknown } = await this.readJsonBody(req);
 
     if (typeof time !== 'number') {
       res.writeHead(400);
@@ -3590,8 +3643,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleTimeSync(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { time }: { time: unknown } = JSON.parse(body);
+    const { time }: { time: unknown } = await this.readJsonBody(req);
 
     if (typeof time !== 'number' || !isFinite(time)) {
       res.writeHead(400);
@@ -3623,8 +3675,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleVolume(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { volume, muted }: { volume?: number; muted?: boolean } = JSON.parse(body);
+    const { volume, muted }: { volume?: number; muted?: boolean } = await this.readJsonBody(req);
 
     if (typeof volume === 'number') {
       this.playback.volume = Math.max(0, Math.min(1, volume));
@@ -3711,8 +3762,7 @@ export class UnifiedMediaServer {
   }
 
   private async handlePlaylistAdd(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { paths }: { paths: unknown } = JSON.parse(body);
+    const { paths }: { paths: unknown } = await this.readJsonBody(req);
 
     if (!Array.isArray(paths)) {
       res.writeHead(400);
@@ -3785,7 +3835,9 @@ export class UnifiedMediaServer {
    * @param pathname - URL path containing item ID
    */
   private async handlePlaylistRemove(res: Readonly<ServerResponse>, pathname: string): Promise<void> {
-    const id: string = pathname.replace('/playlist/remove/', '');
+    // Decoded to match the renderer, which percent-encodes the id as it does
+    // for download job ids.
+    const id: string = decodeURIComponent(pathname.substring('/playlist/remove/'.length));
 
     // Check if we're removing the currently playing item
     const currentItem: PlaylistItem | null = this.playlist.getCurrentItem();
@@ -3858,9 +3910,7 @@ export class UnifiedMediaServer {
             this.broadcastTime();
             this.startTimeTracking();
           } catch (err) {
-            this.playback.state = 'error';
-            this.playback.errorMessage = (err as Error).message;
-            this.broadcastState();
+            this.failPlayback((err as Error).message);
           }
         } else {
           // No next item available - go to idle
@@ -3889,12 +3939,7 @@ export class UnifiedMediaServer {
    */
   private handlePlaylistClear(res: Readonly<ServerResponse>): void {
     this.playlist.clear();
-    this.playback.state = 'idle';
-    this.playback.currentMedia = null;
-    this.playback.currentTime = 0;
-    this.pausedTime = 0;
-    this.playback.duration = 0;
-    this.stopTimeTracking();
+    this.resetPlayback();
     this.broadcastState();
 
     // Notify of playlist count change for menu state
@@ -3913,7 +3958,9 @@ export class UnifiedMediaServer {
    * @param pathname - URL path containing item ID
    */
   private async handlePlaylistSelect(res: Readonly<ServerResponse>, pathname: string): Promise<void> {
-    const id: string = pathname.replace('/playlist/select/', '');
+    // Decoded to match the renderer, which percent-encodes the id as it does
+    // for download job ids.
+    const id: string = decodeURIComponent(pathname.substring('/playlist/select/'.length));
     const item: PlaylistItem | null = this.playlist.selectItem(id);
 
     if (!item) {
@@ -3944,9 +3991,7 @@ export class UnifiedMediaServer {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, item, media: mediaInfo }));
     } catch (err) {
-      this.playback.state = 'error';
-      this.playback.errorMessage = (err as Error).message;
-      this.broadcastState();
+      this.failPlayback((err as Error).message);
       res.writeHead(500);
       res.end(JSON.stringify({ error: (err as Error).message }));
     }
@@ -4000,9 +4045,7 @@ export class UnifiedMediaServer {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, item, media: mediaInfo }));
     } catch (err) {
-      this.playback.state = 'error';
-      this.playback.errorMessage = (err as Error).message;
-      this.broadcastState();
+      this.failPlayback((err as Error).message);
       res.writeHead(500);
       res.end(JSON.stringify({ error: (err as Error).message }));
     }
@@ -4046,9 +4089,7 @@ export class UnifiedMediaServer {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, item, media: mediaInfo }));
     } catch (err) {
-      this.playback.state = 'error';
-      this.playback.errorMessage = (err as Error).message;
-      this.broadcastState();
+      this.failPlayback((err as Error).message);
       res.writeHead(500);
       res.end(JSON.stringify({ error: (err as Error).message }));
     }
@@ -4061,8 +4102,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handlePlaylistShuffle(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { enabled }: { enabled: unknown } = JSON.parse(body);
+    const { enabled }: { enabled: unknown } = await this.readJsonBody(req);
 
     this.playlist.setShuffle(!!enabled);
 
@@ -4077,8 +4117,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handlePlaylistRepeat(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { enabled }: { enabled: unknown } = JSON.parse(body);
+    const { enabled }: { enabled: unknown } = await this.readJsonBody(req);
 
     this.playlist.setRepeat(!!enabled);
 
@@ -4094,8 +4133,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response
    */
   private async handlePlaylistSave(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { filePath }: { filePath: string } = JSON.parse(body);
+    const { filePath }: { filePath: string } = await this.readJsonBody(req);
 
     if (!filePath) {
       res.writeHead(400);
@@ -4141,7 +4179,7 @@ export class UnifiedMediaServer {
     };
 
     try {
-      writeFileSync(targetPath, JSON.stringify(oppData, null, 2), 'utf-8');
+      await writeFile(targetPath, JSON.stringify(oppData, null, 2), 'utf-8');
       this.playlist.setSourceFilePath(targetPath);
       playlistLogger.info(`Playlist saved to: ${targetPath}`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -4161,8 +4199,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response
    */
   private async handlePlaylistLoad(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { filePath }: { filePath: string } = JSON.parse(body);
+    const { filePath }: { filePath: string } = await this.readJsonBody(req);
 
     if (!filePath) {
       res.writeHead(400);
@@ -4171,14 +4208,14 @@ export class UnifiedMediaServer {
     }
 
     // Validate file exists
-    if (!existsSync(filePath)) {
+    if (!await UnifiedMediaServer.statIfReadable(filePath)) {
       res.writeHead(404);
       res.end(JSON.stringify({ error: 'File not found' }));
       return;
     }
 
     try {
-      const content: string = readFileSync(filePath, 'utf-8');
+      const content: string = await readFile(filePath, 'utf-8');
       const data: unknown = JSON.parse(content);
 
       // Validate format
@@ -4228,10 +4265,25 @@ export class UnifiedMediaServer {
         this.playback.state = 'loading';
         this.broadcastState();
 
-        const mediaInfo: MediaInfo = await this.probeMedia(firstItem.filePath);
+        // The playlist has been replaced by now, so a first item that cannot
+        // be loaded is a playback failure like any other failed selection,
+        // not a failure to read the playlist file.
+        let mediaInfo: MediaInfo;
+        try {
+          mediaInfo = await this.probeMedia(firstItem.filePath);
+        } catch (err) {
+          playlistLogger.error(`Failed to load playlist: ${(err as Error).message}`);
+          this.failPlayback((err as Error).message);
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: (err as Error).message }));
+          return;
+        }
+
         this.playback.currentMedia = mediaInfo;
         this.playback.duration = mediaInfo.duration;
         this.playback.currentTime = 0;
+        this.pausedTime = 0;
+        this.lastTrackStartAt = Date.now();
         this.playback.state = 'playing';
         this.startTime = Date.now();
 
@@ -4287,8 +4339,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleSettingsVisualization(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const update: VisualizationSettingsUpdate = JSON.parse(body) as VisualizationSettingsUpdate;
+    const update: VisualizationSettingsUpdate = await this.readJsonBody(req);
 
     const updatedSettings: AppSettings = this.settings.updateVisualizationSettings(update);
 
@@ -4309,8 +4360,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleSettingsApplication(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const update: ApplicationSettingsUpdate = JSON.parse(body) as ApplicationSettingsUpdate;
+    const update: ApplicationSettingsUpdate = await this.readJsonBody(req);
 
     const updatedSettings: AppSettings = this.settings.updateApplicationSettings(update);
 
@@ -4330,8 +4380,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleSettingsPlayback(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const update: PlaybackSettingsUpdate = JSON.parse(body) as PlaybackSettingsUpdate;
+    const update: PlaybackSettingsUpdate = await this.readJsonBody(req);
 
     const updatedSettings: AppSettings = this.settings.updatePlaybackSettings(update);
 
@@ -4351,8 +4400,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleSettingsTranscoding(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const update: TranscodingSettingsUpdate = JSON.parse(body) as TranscodingSettingsUpdate;
+    const update: TranscodingSettingsUpdate = await this.readJsonBody(req);
 
     const updatedSettings: AppSettings = this.settings.updateTranscodingSettings(update);
 
@@ -4373,8 +4421,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleSettingsAppearance(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const update: AppearanceSettingsUpdate = JSON.parse(body) as AppearanceSettingsUpdate;
+    const update: AppearanceSettingsUpdate = await this.readJsonBody(req);
 
     const updatedSettings: AppSettings = this.settings.updateAppearanceSettings(update);
 
@@ -4394,8 +4441,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleSettingsSubtitles(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const update: SubtitleSettingsUpdate = JSON.parse(body) as SubtitleSettingsUpdate;
+    const update: SubtitleSettingsUpdate = await this.readJsonBody(req);
 
     const updatedSettings: AppSettings = this.settings.updateSubtitleSettings(update);
 
@@ -4415,8 +4461,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleSettingsEqualizer(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const update: EqualizerSettingsUpdate = JSON.parse(body) as EqualizerSettingsUpdate;
+    const update: EqualizerSettingsUpdate = await this.readJsonBody(req);
 
     const updatedSettings: AppSettings = this.settings.updateEqualizerSettings(update);
 
@@ -4436,8 +4481,7 @@ export class UnifiedMediaServer {
    * @param res - HTTP response to write to
    */
   private async handleSettingsVideoAdjustments(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const update: VideoAdjustmentsSettingsUpdate = JSON.parse(body) as VideoAdjustmentsSettingsUpdate;
+    const update: VideoAdjustmentsSettingsUpdate = await this.readJsonBody(req);
 
     const updatedSettings: AppSettings = this.settings.updateVideoAdjustmentsSettings(update);
 
@@ -4474,8 +4518,7 @@ export class UnifiedMediaServer {
    * Returns 202 Accepted immediately, then broadcasts progress events.
    */
   private async handleDependenciesInstall(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
+    const { id }: { id: DependencyId } = await this.readJsonBody(req);
 
     if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'yt-dlp') {
       res.writeHead(400);
@@ -4498,8 +4541,7 @@ export class UnifiedMediaServer {
    * Returns 202 Accepted immediately, then broadcasts progress events.
    */
   private async handleDependenciesUninstall(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
+    const { id }: { id: DependencyId } = await this.readJsonBody(req);
 
     if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'yt-dlp') {
       res.writeHead(400);
@@ -4522,8 +4564,7 @@ export class UnifiedMediaServer {
    * progress via SSE. Returns 202 Accepted immediately. Only yt-dlp updates.
    */
   private async handleDependenciesUpdate(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { id }: { id: DependencyId } = JSON.parse(body) as { id: DependencyId };
+    const { id }: { id: DependencyId } = await this.readJsonBody(req);
 
     if (id !== 'ffmpeg' && id !== 'fluidsynth' && id !== 'yt-dlp') {
       res.writeHead(400);
@@ -4545,8 +4586,7 @@ export class UnifiedMediaServer {
    * Installs a SoundFont file by copying it to the app data directory.
    */
   private async handleSoundFontInstall(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { sourcePath }: { sourcePath: string } = JSON.parse(body) as { sourcePath: string };
+    const { sourcePath }: { sourcePath: string } = await this.readJsonBody(req);
 
     if (!sourcePath) {
       res.writeHead(400);
@@ -4570,8 +4610,7 @@ export class UnifiedMediaServer {
    * If the removed file was the active selection, clears the setting.
    */
   private async handleSoundFontRemove(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { fileName }: { fileName: string } = JSON.parse(body) as { fileName: string };
+    const { fileName }: { fileName: string } = await this.readJsonBody(req);
 
     if (!fileName) {
       res.writeHead(400);
@@ -4600,8 +4639,7 @@ export class UnifiedMediaServer {
    * If MIDI is currently playing, stops playback to force re-render with new soundfont.
    */
   private async handleSoundFontSelect(req: Readonly<IncomingMessage>, res: Readonly<ServerResponse>): Promise<void> {
-    const body: string = await this.readBody(req);
-    const { fileName }: { fileName: string | null } = JSON.parse(body) as { fileName: string | null };
+    const { fileName }: { fileName: string | null } = await this.readJsonBody(req);
 
     // Validate that the soundfont exists (if not null)
     if (fileName !== null) {
@@ -4771,6 +4809,31 @@ export class UnifiedMediaServer {
   }
 
   /**
+   * Message of the error {@link readJsonBody} throws, which the request
+   * router recognises and answers with a 400.
+   */
+  private static readonly INVALID_JSON_BODY: string = 'Invalid JSON body';
+
+  /**
+   * Reads the body of an HTTP request and parses it as JSON.
+   *
+   * Parsing lives here rather than in each handler so that a malformed body
+   * is reported the same way everywhere, as a client error.
+   *
+   * @param req - Incoming HTTP request
+   * @returns Promise resolving to the parsed body
+   * @throws Error if the body exceeds MAX_BODY_SIZE or is not valid JSON
+   */
+  private async readJsonBody<T>(req: Readonly<IncomingMessage>): Promise<T> {
+    const body: string = await this.readBody(req);
+    try {
+      return JSON.parse(body) as T;
+    } catch {
+      throw new Error(UnifiedMediaServer.INVALID_JSON_BODY);
+    }
+  }
+
+  /**
    * Starts the playback time tracking interval.
    *
    * Updates currentTime every 100ms based on elapsed time since startTime.
@@ -4863,16 +4926,36 @@ export class UnifiedMediaServer {
       this.broadcastTime();
       this.startTimeTracking();
     } catch (err) {
-      this.playback.state = 'error';
-      this.playback.errorMessage = (err as Error).message;
-      this.broadcastState();
+      this.failPlayback((err as Error).message);
     }
+  }
+
+  /**
+   * Puts playback into the error state and tells clients why.
+   *
+   * Every failed load goes through here so that none of them can leave the
+   * clock of a previously playing track running behind the error.
+   *
+   * @param message - Why the media could not be loaded
+   */
+  private failPlayback(message: string): void {
+    this.playback.state = 'error';
+    this.playback.errorMessage = message;
+    this.stopTimeTracking();
+    this.broadcastState();
   }
 
   /**
    * Broadcasts current playback state to all SSE clients.
    */
   private broadcastState(): void {
+    // The message describes the error state only. Every state change is
+    // broadcast, so dropping it here is what keeps a later successful play
+    // (or a clear) from announcing an error that is no longer current.
+    if (this.playback.state !== 'error') {
+      this.playback.errorMessage = null;
+    }
+
     this.sse.broadcast('playback:state', {
       state: this.playback.state,
       errorMessage: this.playback.errorMessage,

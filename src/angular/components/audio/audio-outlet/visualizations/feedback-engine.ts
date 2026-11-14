@@ -727,6 +727,9 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   private readonly surfaceTextures: (WebGLTexture | null)[] = [null, null];
   private readonly surfaceBuffers: (WebGLFramebuffer | null)[] = [null, null];
 
+  /** Set once destroy() runs so a trailing frame cannot touch the released context. */
+  private destroyed: boolean = false;
+
   /** Index of the attachment holding the current frame. */
   private front: number = 0;
 
@@ -996,6 +999,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   // ==========================================================================
 
   public draw(): void {
+    if (this.destroyed) return;
     this.updateFade();
 
     if (this.width <= 0 || this.height <= 0) return;
@@ -1269,6 +1273,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
   }
 
   public override destroy(): void {
+    this.destroyed = true;
     const gl: WebGLRenderingContext = this.gl;
     this.deleteSurfaces();
     if (this.paletteTexture) gl.deleteTexture(this.paletteTexture);

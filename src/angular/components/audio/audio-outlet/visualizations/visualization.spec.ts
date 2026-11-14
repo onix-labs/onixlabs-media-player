@@ -7,7 +7,10 @@
  *   fade logic, resize, hslToRgb, sensitivityFactor, getFadeMultiplier
  * - Canvas2DVisualization: applyFadeOverlay, clearLowAlphaPixels,
  *   resize with preserveContentOnResize, getCachedColor, getColorFromHue,
- *   createOffscreenCanvas
+ *   createOffscreenCanvas, the persistence fade and the ghost-pixel clear
+ *   cadence, surface sizing, bloom, directional zoom, layered path drawing
+ * - Fade timing against a controlled clock, and isIdle
+ * - WebGLVisualization: context acquisition and release
  *
  * A minimal concrete subclass (TestVisualization) is used to test the
  * abstract base classes. Web Audio API and Canvas 2D are mocked.
@@ -53,6 +56,11 @@ function createMockCtx(): CanvasRenderingContext2D {
     closePath: vi.fn(),
     stroke: vi.fn(),
     fill: vi.fn(),
+    translate: vi.fn(),
+    scale: vi.fn(),
+    rotate: vi.fn(),
+    setTransform: vi.fn(),
+    filter: 'none',
     globalCompositeOperation: 'source-over',
     fillStyle: '',
     strokeStyle: '',
@@ -81,6 +89,73 @@ function createMockCanvas(): HTMLCanvasElement {
 // ============================================================================
 // Concrete test subclasses
 // ============================================================================
+
+/** Options accepted by the layered path helpers */
+interface LayerOptions {
+  ctx?: CanvasRenderingContext2D;
+  baseGlowBlur?: number;
+  closePath?: boolean;
+  fill?: boolean;
+  glowLineWidthOffset?: number;
+  highlightLineWidth?: number;
+}
+
+/** What a mock context was set to at the moment a path was painted */
+interface PaintSnapshot {
+  strokeStyle: string | CanvasGradient | CanvasPattern;
+  fillStyle: string | CanvasGradient | CanvasPattern;
+  lineWidth: number;
+  shadowBlur: number;
+  shadowColor: string;
+}
+
+/** Records the mock context's style each time stroke() or fill() is called on it */
+function recordPaints(ctx: CanvasRenderingContext2D): PaintSnapshot[] {
+  const paints: PaintSnapshot[] = [];
+  const snapshot = (): void => {
+    paints.push({
+      strokeStyle: ctx.strokeStyle,
+      fillStyle: ctx.fillStyle,
+      lineWidth: ctx.lineWidth,
+      shadowBlur: ctx.shadowBlur,
+      shadowColor: ctx.shadowColor,
+    });
+  };
+  vi.mocked(ctx.stroke).mockImplementation(snapshot);
+  vi.mocked(ctx.fill).mockImplementation(snapshot);
+  return paints;
+}
+
+/** Creates a mock offscreen canvas together with its mock context */
+function createMockPair(): OffscreenCanvasPair {
+  const pairCanvas: HTMLCanvasElement = createMockCanvas();
+  return {canvas: pairCanvas, ctx: pairCanvas.getContext('2d') as CanvasRenderingContext2D};
+}
+
+/** Concrete WebGL visualization for testing base class behavior */
+class TestWebGLVisualization extends WebGLVisualization {
+  public readonly name: string = 'Test GL';
+  public readonly category: string = 'test';
+
+  public constructor(config: VisualizationConfig) {
+    super(config);
+  }
+
+  public draw(): void {
+    // Nothing to render: only context handling is under test.
+  }
+
+  public get testGl(): WebGLRenderingContext { return this.gl; }
+}
+
+/** Creates a mock canvas that hands out the given context for each context id */
+function createMockGLCanvas(contexts: Record<string, unknown>): HTMLCanvasElement {
+  return {
+    width: 800,
+    height: 600,
+    getContext: vi.fn((id: string): unknown => contexts[id] ?? null),
+  } as unknown as HTMLCanvasElement;
+}
 
 /** Concrete Canvas2D visualization for testing base class behavior */
 class TestCanvas2DVisualization extends Canvas2DVisualization {
@@ -134,6 +209,50 @@ class TestCanvas2DVisualization extends Canvas2DVisualization {
   }
   public testBuildSmoothPath(ctx: CanvasRenderingContext2D, points: Array<{x: number; y: number}>, n?: number): void {
     this.buildSmoothPath(ctx, points, n);
+  }
+  public testBuildSmoothPathFrom(ctx: CanvasRenderingContext2D, points: Array<{x: number; y: number}>, n: number, start: number): void {
+    this.buildSmoothPath(ctx, points, n, start);
+  }
+  public testApplyPersistenceFade(fadeRate: number): void { this.applyPersistenceFade(fadeRate); }
+  public testPeriodicClearLowAlpha(interval: number): void { this.periodicClearLowAlpha(interval); }
+  public testGetSurfaceSize(w: number, h: number, budget: number): {width: number; height: number} {
+    return this.getSurfaceSize(w, h, budget);
+  }
+  public testApplySurfaceTransform(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+    this.applySurfaceTransform(ctx, w, h);
+  }
+  public testCopySurface(ctx: CanvasRenderingContext2D, source: HTMLCanvasElement): void { this.copySurface(ctx, source); }
+  public testDrawBloom(bloom: OffscreenCanvasPair, source: HTMLCanvasElement, blur: number, strength: number, scale: number): void {
+    this.drawBloom(bloom, source, blur, strength, scale);
+  }
+  public testApplyDirectionalZoom(
+    trail: OffscreenCanvasPair,
+    temp: OffscreenCanvasPair,
+    centerX: number,
+    centerY: number,
+    fadeRate: number,
+    zoomScale: number,
+    rotation?: number
+  ): void {
+    this.applyDirectionalZoom(trail.canvas, trail.ctx, temp.canvas, temp.ctx, centerX, centerY, fadeRate, zoomScale, rotation);
+  }
+  public testDrawPathWithLayers(
+    buildPath: () => void,
+    mainColor: string,
+    glowColor: string,
+    highlightColor?: string,
+    options?: LayerOptions
+  ): void {
+    this.drawPathWithLayers(buildPath, mainColor, glowColor, highlightColor, options);
+  }
+  public testDrawPointsWithLayers(
+    points: ReadonlyArray<{x: number; y: number}>,
+    mainColor: string,
+    glowColor: string,
+    highlightColor?: string,
+    options?: LayerOptions & {startIndex?: number; endIndex?: number}
+  ): void {
+    this.drawPointsWithLayers(points, mainColor, glowColor, highlightColor, options);
   }
   public get testFadeAlpha(): number { return this.fadeAlpha; }
   public set testFadeAlpha(v: number) { this.fadeAlpha = v; }
@@ -843,6 +962,1006 @@ describe('Visualization base classes', (): void => {
     it('increments draw count and calls updateFade', (): void => {
       viz.draw();
       expect(viz.drawCallCount).toBe(1);
+    });
+  });
+
+  // ==========================================================================
+  // Construction failures
+  // ==========================================================================
+
+  describe('construction without a 2D context', (): void => {
+    it('throws when the canvas cannot supply a 2D context', (): void => {
+      const contextless: HTMLCanvasElement = {
+        width: 800,
+        height: 600,
+        getContext: vi.fn().mockReturnValue(null),
+      } as unknown as HTMLCanvasElement;
+
+      expect((): TestCanvas2DVisualization => new TestCanvas2DVisualization({canvas: contextless, analyser})).toThrow(
+        'Failed to get 2D context'
+      );
+    });
+  });
+
+  // ==========================================================================
+  // setStrobeFrequency / getStrobeFrequency
+  // ==========================================================================
+
+  describe('setStrobeFrequency', (): void => {
+    it('defaults to 5 Hz', (): void => {
+      expect(viz.getStrobeFrequency()).toBe(5);
+    });
+
+    it('sets strobe frequency to a valid value', (): void => {
+      viz.setStrobeFrequency(12);
+      expect(viz.getStrobeFrequency()).toBe(12);
+    });
+
+    it('clamps to 1 at lower bound', (): void => {
+      viz.setStrobeFrequency(0);
+      expect(viz.getStrobeFrequency()).toBe(1);
+    });
+
+    it('clamps to 20 at upper bound', (): void => {
+      viz.setStrobeFrequency(60);
+      expect(viz.getStrobeFrequency()).toBe(20);
+    });
+  });
+
+  // ==========================================================================
+  // setArtworkUrl
+  // ==========================================================================
+
+  describe('setArtworkUrl', (): void => {
+    it('draws nothing by default, since only artwork visualizations use it', (): void => {
+      viz.setArtworkUrl('media://artwork/1');
+      viz.setArtworkUrl(null);
+
+      expect(viz.testCtx.drawImage).not.toHaveBeenCalled();
+      expect(viz.testCtx.clearRect).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // Fade timing and isIdle (controlled clock)
+  // ==========================================================================
+
+  describe('fade timing', (): void => {
+    let now: number;
+    let timed: TestCanvas2DVisualization;
+
+    beforeEach((): void => {
+      now = 10_000;
+      vi.spyOn(performance, 'now').mockImplementation((): number => now);
+      timed = new TestCanvas2DVisualization({canvas: createMockCanvas(), analyser});
+    });
+
+    it('starts fully faded out', (): void => {
+      expect(timed.testFadeAlpha).toBe(1);
+    });
+
+    it('fades in over 500ms of playback', (): void => {
+      timed.setPlaying(true);
+      timed.testFadeAlpha = 1;
+
+      now += 250;
+      timed.testUpdateFade();
+
+      expect(timed.testFadeAlpha).toBeCloseTo(0.5, 10);
+    });
+
+    it('is fully faded in after 500ms of playback', (): void => {
+      timed.setPlaying(true);
+      timed.testFadeAlpha = 1;
+
+      now += 500;
+      timed.testUpdateFade();
+
+      expect(timed.testFadeAlpha).toBe(0);
+    });
+
+    it('fades out over 5000ms once playback stops', (): void => {
+      timed.setPlaying(true);
+      timed.setPlaying(false);
+
+      now += 1000;
+      timed.testUpdateFade();
+
+      expect(timed.testFadeAlpha).toBeCloseTo(0.2, 10);
+    });
+
+    it('is fully faded out 5000ms after playback stops', (): void => {
+      timed.setPlaying(true);
+      timed.setPlaying(false);
+
+      now += 5000;
+      timed.testUpdateFade();
+
+      expect(timed.testFadeAlpha).toBe(1);
+    });
+
+    it('fades by elapsed time, not by the number of frames drawn', (): void => {
+      const manyFrames: TestCanvas2DVisualization = new TestCanvas2DVisualization({canvas: createMockCanvas(), analyser});
+      timed.setPlaying(true);
+      timed.setPlaying(false);
+      manyFrames.setPlaying(true);
+      manyFrames.setPlaying(false);
+
+      for (let i: number = 0; i < 100; i++) {
+        now += 20;
+        manyFrames.testUpdateFade();
+      }
+      timed.testUpdateFade();
+
+      expect(manyFrames.testFadeAlpha).toBeCloseTo(0.4, 10);
+      expect(timed.testFadeAlpha).toBeCloseTo(0.4, 10);
+    });
+
+    it('measures each fade step from the previous frame', (): void => {
+      timed.setPlaying(true);
+      timed.setPlaying(false);
+      now += 1000;
+      timed.testUpdateFade();
+
+      now += 1000;
+      timed.testUpdateFade();
+
+      expect(timed.testFadeAlpha).toBeCloseTo(0.4, 10);
+    });
+
+    it('does not count time spent idle towards the fade-in when playback starts', (): void => {
+      now += 60_000; // The render loop skips draw() while idle, so the frame clock is stale.
+      timed.setPlaying(true);
+      timed.testFadeAlpha = 1;
+
+      now += 100;
+      timed.testUpdateFade();
+
+      expect(timed.testFadeAlpha).toBeCloseTo(0.8, 10);
+    });
+
+    it('does not move the fade when no time has passed', (): void => {
+      timed.setPlaying(true);
+      timed.setPlaying(false);
+      timed.testFadeAlpha = 0.3;
+
+      timed.testUpdateFade();
+
+      expect(timed.testFadeAlpha).toBe(0.3);
+    });
+
+    describe('isIdle', (): void => {
+      it('is idle before playback has ever started', (): void => {
+        expect(timed.isIdle()).toBe(true);
+      });
+
+      it('is not idle as soon as playback starts', (): void => {
+        timed.setPlaying(true);
+
+        expect(timed.isIdle()).toBe(false);
+      });
+
+      it('is never idle during playback, even if the frame is fully faded', (): void => {
+        timed.setPlaying(true);
+        timed.testFadeAlpha = 1;
+
+        expect(timed.isIdle()).toBe(false);
+      });
+
+      it('is not idle the moment playback stops', (): void => {
+        timed.setPlaying(true);
+        timed.setPlaying(false);
+
+        expect(timed.isIdle()).toBe(false);
+      });
+
+      it('is not idle part-way through the fade-out', (): void => {
+        timed.setPlaying(true);
+        timed.setPlaying(false);
+
+        now += 4999;
+        timed.testUpdateFade();
+
+        expect(timed.isIdle()).toBe(false);
+      });
+
+      it('is idle once the fade-out has completed', (): void => {
+        timed.setPlaying(true);
+        timed.setPlaying(false);
+
+        now += 5000;
+        timed.testUpdateFade();
+
+        expect(timed.isIdle()).toBe(true);
+      });
+
+      it('stops being idle when playback resumes', (): void => {
+        timed.setPlaying(true);
+        timed.setPlaying(false);
+        now += 5000;
+        timed.testUpdateFade();
+
+        timed.setPlaying(true);
+
+        expect(timed.isIdle()).toBe(false);
+      });
+    });
+  });
+
+  // ==========================================================================
+  // applyFadeOverlay strength
+  // ==========================================================================
+
+  describe('applyFadeOverlay strength', (): void => {
+    it('erases with an opacity equal to the fade level', (): void => {
+      viz.testFadeAlpha = 0.25;
+
+      viz.testApplyFadeOverlay();
+
+      expect(viz.testCtx.fillStyle).toBe('rgba(0, 0, 0, 0.25)');
+    });
+  });
+
+  // ==========================================================================
+  // resize with preserveContentOnResize (dimensions changed)
+  // ==========================================================================
+
+  describe('resize preserving content across a change of size', (): void => {
+    beforeEach((): void => {
+      viz.testPreserveContentOnResize = true;
+    });
+
+    it('snapshots the canvas and redraws it scaled to the new size once a frame has been drawn', (): void => {
+      viz.testHasDrawn = true;
+
+      viz.resize(400, 300);
+
+      const snapshot: HTMLCanvasElement = vi.mocked(document.createElement).mock.results[0].value as HTMLCanvasElement;
+      const snapshotCtx: CanvasRenderingContext2D = snapshot.getContext('2d') as CanvasRenderingContext2D;
+      expect([snapshot.width, snapshot.height]).toEqual([800, 600]);
+      expect(snapshotCtx.drawImage).toHaveBeenCalledWith(canvas, 0, 0);
+      expect(viz.testCtx.drawImage).toHaveBeenCalledWith(snapshot, 0, 0, 800, 600, 0, 0, 400, 300);
+    });
+
+    it('redraws the snapshot with high-quality smoothing', (): void => {
+      viz.testHasDrawn = true;
+
+      viz.resize(400, 300);
+
+      expect(viz.testCtx.imageSmoothingEnabled).toBe(true);
+      expect(viz.testCtx.imageSmoothingQuality).toBe('high');
+    });
+
+    it('updates the canvas size and calls onResize after preserving', (): void => {
+      viz.testHasDrawn = true;
+
+      viz.resize(400, 300);
+
+      expect([canvas.width, canvas.height]).toEqual([400, 300]);
+      expect(viz.resizeCount).toBe(1);
+    });
+
+    it('resizes without a snapshot when nothing has been drawn yet', (): void => {
+      viz.resize(400, 300);
+
+      expect(document.createElement).not.toHaveBeenCalled();
+      expect(viz.testCtx.drawImage).not.toHaveBeenCalled();
+      expect([canvas.width, canvas.height]).toEqual([400, 300]);
+      expect(viz.resizeCount).toBe(1);
+    });
+
+    it('resizes without a snapshot when the canvas previously had no area', (): void => {
+      viz.testHasDrawn = true;
+      canvas.width = 0;
+      canvas.height = 0;
+
+      viz.resize(400, 300);
+
+      expect(document.createElement).not.toHaveBeenCalled();
+      expect([canvas.width, canvas.height]).toEqual([400, 300]);
+      expect(viz.resizeCount).toBe(1);
+    });
+  });
+
+  // ==========================================================================
+  // applyPersistenceFade
+  // ==========================================================================
+
+  describe('applyPersistenceFade', (): void => {
+    it('erases the whole canvas at the given rate at default trail intensity', (): void => {
+      viz.resize(320, 240);
+
+      viz.testApplyPersistenceFade(0.04);
+
+      expect(viz.testCtx.globalCompositeOperation).toBe('destination-out');
+      expect(viz.testCtx.fillStyle).toBe('rgba(0, 0, 0, 0.04)');
+      expect(viz.testCtx.fillRect).toHaveBeenCalledWith(0, 0, 320, 240);
+    });
+
+    it('erases twice as fast at minimum trail intensity', (): void => {
+      viz.setTrailIntensity(0);
+
+      viz.testApplyPersistenceFade(0.04);
+
+      expect(viz.testCtx.fillStyle).toBe('rgba(0, 0, 0, 0.08)');
+    });
+
+    it('erases half as fast at maximum trail intensity', (): void => {
+      viz.setTrailIntensity(1);
+
+      viz.testApplyPersistenceFade(0.04);
+
+      expect(viz.testCtx.fillStyle).toBe('rgba(0, 0, 0, 0.02)');
+    });
+
+    it('wraps the erase in save and restore so the composite mode does not leak', (): void => {
+      viz.testApplyPersistenceFade(0.04);
+
+      expect(viz.testCtx.save).toHaveBeenCalledTimes(1);
+      expect(viz.testCtx.restore).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ==========================================================================
+  // periodicClearLowAlpha cadence
+  // ==========================================================================
+
+  describe('periodicClearLowAlpha', (): void => {
+    /** Calls periodicClearLowAlpha(interval) once per frame and returns how many frames triggered a readback. */
+    function countClears(frames: number, interval: number): number {
+      for (let i: number = 0; i < frames; i++) {
+        viz.testPeriodicClearLowAlpha(interval);
+      }
+      return vi.mocked(viz.testCtx.getImageData).mock.calls.length;
+    }
+
+    it('does not clear before the interval has elapsed', (): void => {
+      viz.resize(800, 600);
+
+      expect(countClears(9, 10)).toBe(0);
+    });
+
+    it('clears on the frame that completes the interval', (): void => {
+      viz.resize(800, 600);
+
+      expect(countClears(10, 10)).toBe(1);
+    });
+
+    it('keeps clearing once per interval', (): void => {
+      viz.resize(800, 600);
+
+      expect(countClears(35, 10)).toBe(3);
+    });
+
+    it('reads back the whole canvas', (): void => {
+      viz.resize(800, 600);
+
+      countClears(10, 10);
+
+      expect(viz.testCtx.getImageData).toHaveBeenCalledWith(0, 0, 800, 600);
+    });
+
+    it('uses the interval as written at exactly 1080p', (): void => {
+      viz.resize(1920, 1080);
+
+      expect(countClears(10, 10)).toBe(1);
+    });
+
+    it('doubles the interval as soon as the canvas exceeds 1080p', (): void => {
+      viz.resize(1921, 1080);
+
+      expect(countClears(19, 10)).toBe(0);
+      expect(countClears(1, 10)).toBe(1);
+    });
+
+    it('quadruples the interval at 4K', (): void => {
+      viz.resize(3840, 2160);
+
+      expect(countClears(39, 10)).toBe(0);
+      expect(countClears(1, 10)).toBe(1);
+    });
+
+    it('stretches the interval sixteen-fold at 8K', (): void => {
+      viz.resize(7680, 4320);
+
+      expect(countClears(159, 10)).toBe(0);
+      expect(countClears(1, 10)).toBe(1);
+    });
+
+    it('never reads back a canvas with no area', (): void => {
+      viz.resize(0, 0);
+
+      expect(countClears(50, 10)).toBe(0);
+    });
+  });
+
+  // ==========================================================================
+  // getSurfaceSize
+  // ==========================================================================
+
+  describe('getSurfaceSize', (): void => {
+    it('returns the logical size when it is within the budget', (): void => {
+      expect(viz.testGetSurfaceSize(800, 600, 1_000_000)).toEqual({width: 800, height: 600});
+    });
+
+    it('returns the logical size when it is exactly on the budget', (): void => {
+      expect(viz.testGetSurfaceSize(1000, 1000, 1_000_000)).toEqual({width: 1000, height: 1000});
+    });
+
+    it('scales both dimensions down to meet the budget', (): void => {
+      // 4K is four times a 1080p budget, so each side halves.
+      expect(viz.testGetSurfaceSize(3840, 2160, 1920 * 1080)).toEqual({width: 1920, height: 1080});
+    });
+
+    it('preserves the aspect ratio when scaling down', (): void => {
+      const size: {width: number; height: number} = viz.testGetSurfaceSize(4000, 1000, 250_000);
+
+      expect(size).toEqual({width: 1000, height: 250});
+    });
+
+    it('never returns a dimension below one pixel', (): void => {
+      const size: {width: number; height: number} = viz.testGetSurfaceSize(10_000, 2, 100);
+
+      expect(size.height).toBe(1);
+      expect(size.width).toBeGreaterThanOrEqual(1);
+    });
+
+    it('returns an empty logical size unchanged', (): void => {
+      expect(viz.testGetSurfaceSize(0, 0, 100)).toEqual({width: 0, height: 0});
+    });
+  });
+
+  // ==========================================================================
+  // applySurfaceTransform
+  // ==========================================================================
+
+  describe('applySurfaceTransform', (): void => {
+    it('scales logical coordinates onto the backing store', (): void => {
+      const surface: OffscreenCanvasPair = createMockPair();
+      surface.canvas.width = 480;
+      surface.canvas.height = 270;
+      const ctx: CanvasRenderingContext2D = {...surface.ctx, canvas: surface.canvas} as CanvasRenderingContext2D;
+
+      viz.testApplySurfaceTransform(ctx, 1920, 1080);
+
+      expect(ctx.setTransform).toHaveBeenCalledWith(0.25, 0, 0, 0.25, 0, 0);
+    });
+
+    it('scales each axis independently', (): void => {
+      const surface: OffscreenCanvasPair = createMockPair();
+      surface.canvas.width = 400;
+      surface.canvas.height = 100;
+      const ctx: CanvasRenderingContext2D = {...surface.ctx, canvas: surface.canvas} as CanvasRenderingContext2D;
+
+      viz.testApplySurfaceTransform(ctx, 800, 400);
+
+      expect(ctx.setTransform).toHaveBeenCalledWith(0.5, 0, 0, 0.25, 0, 0);
+    });
+
+    it('leaves the transform alone for an empty logical area', (): void => {
+      const surface: OffscreenCanvasPair = createMockPair();
+      const ctx: CanvasRenderingContext2D = {...surface.ctx, canvas: surface.canvas} as CanvasRenderingContext2D;
+
+      viz.testApplySurfaceTransform(ctx, 0, 1080);
+      viz.testApplySurfaceTransform(ctx, 1920, 0);
+
+      expect(ctx.setTransform).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // copySurface
+  // ==========================================================================
+
+  describe('copySurface', (): void => {
+    it('replaces the destination with the source, pixel for pixel', (): void => {
+      const destination: OffscreenCanvasPair = createMockPair();
+      const source: HTMLCanvasElement = createMockCanvas();
+
+      viz.testCopySurface(destination.ctx, source);
+
+      expect(destination.ctx.setTransform).toHaveBeenCalledWith(1, 0, 0, 1, 0, 0);
+      expect(destination.ctx.globalCompositeOperation).toBe('copy');
+      expect(destination.ctx.drawImage).toHaveBeenCalledWith(source, 0, 0);
+    });
+
+    it('restores the destination state after the copy', (): void => {
+      const destination: OffscreenCanvasPair = createMockPair();
+      const order: string[] = [];
+      vi.mocked(destination.ctx.save).mockImplementation((): void => { order.push('save'); });
+      vi.mocked(destination.ctx.drawImage).mockImplementation((): void => { order.push('drawImage'); });
+      vi.mocked(destination.ctx.restore).mockImplementation((): void => { order.push('restore'); });
+
+      viz.testCopySurface(destination.ctx, createMockCanvas());
+
+      expect(order).toEqual(['save', 'drawImage', 'restore']);
+    });
+  });
+
+  // ==========================================================================
+  // drawBloom
+  // ==========================================================================
+
+  describe('drawBloom', (): void => {
+    let bloom: OffscreenCanvasPair;
+    let source: HTMLCanvasElement;
+
+    beforeEach((): void => {
+      bloom = createMockPair();
+      source = createMockCanvas();
+      viz.resize(800, 600);
+    });
+
+    it('sizes the intermediate to the given fraction of the canvas', (): void => {
+      viz.testDrawBloom(bloom, source, 20, 0.6, 0.25);
+
+      expect([bloom.canvas.width, bloom.canvas.height]).toEqual([200, 150]);
+    });
+
+    it('never sizes the intermediate below one pixel', (): void => {
+      viz.testDrawBloom(bloom, source, 20, 0.6, 0.0001);
+
+      expect([bloom.canvas.width, bloom.canvas.height]).toEqual([1, 1]);
+    });
+
+    it('does not resize an intermediate that is already the right size', (): void => {
+      // Assigning a canvas dimension reallocates and clears it, even to the same value.
+      const widthWrites: number[] = [];
+      let width: number = 200;
+      bloom.canvas.height = 150;
+      Object.defineProperty(bloom.canvas, 'width', {
+        get: (): number => width,
+        set: (value: number): void => {
+          width = value;
+          widthWrites.push(value);
+        },
+      });
+
+      viz.testDrawBloom(bloom, source, 20, 0.6, 0.25);
+
+      expect(widthWrites).toEqual([]);
+    });
+
+    it('blurs the source into the intermediate with the radius scaled to match', (): void => {
+      let filterAtDraw: string = '';
+      vi.mocked(bloom.ctx.drawImage).mockImplementation((): void => { filterAtDraw = bloom.ctx.filter; });
+
+      viz.testDrawBloom(bloom, source, 20, 0.6, 0.25);
+
+      expect(filterAtDraw).toBe('blur(5px)');
+      expect(bloom.ctx.globalCompositeOperation).toBe('copy');
+      expect(bloom.ctx.drawImage).toHaveBeenCalledWith(source, 0, 0, 200, 150);
+    });
+
+    it('adds the blurred intermediate over the full canvas at the given strength', (): void => {
+      viz.testDrawBloom(bloom, source, 20, 0.6, 0.25);
+
+      expect(viz.testCtx.globalCompositeOperation).toBe('lighter');
+      expect(viz.testCtx.globalAlpha).toBe(0.6);
+      expect(viz.testCtx.drawImage).toHaveBeenCalledWith(bloom.canvas, 0, 0, 800, 600);
+    });
+  });
+
+  // ==========================================================================
+  // applyDirectionalZoom
+  // ==========================================================================
+
+  describe('applyDirectionalZoom', (): void => {
+    let trail: OffscreenCanvasPair;
+    let temp: OffscreenCanvasPair;
+
+    beforeEach((): void => {
+      trail = createMockPair();
+      temp = createMockPair();
+      viz.resize(800, 600);
+    });
+
+    it('copies the trail to the temp canvas before clearing it', (): void => {
+      const order: string[] = [];
+      vi.mocked(temp.ctx.drawImage).mockImplementation((): void => { order.push('copy to temp'); });
+      vi.mocked(trail.ctx.clearRect).mockImplementation((): void => { order.push('clear trail'); });
+      vi.mocked(trail.ctx.drawImage).mockImplementation((): void => { order.push('draw back'); });
+
+      viz.testApplyDirectionalZoom(trail, temp, 400, 300, 0.025, 1.03);
+
+      expect(order).toEqual(['copy to temp', 'clear trail', 'draw back']);
+      expect(temp.ctx.clearRect).toHaveBeenCalledWith(0, 0, 800, 600);
+      expect(temp.ctx.drawImage).toHaveBeenCalledWith(trail.canvas, 0, 0);
+      expect(trail.ctx.clearRect).toHaveBeenCalledWith(0, 0, 800, 600);
+    });
+
+    it('draws the trail back scaled about the zoom centre', (): void => {
+      viz.testApplyDirectionalZoom(trail, temp, 400, 300, 0.025, 1.03);
+
+      expect(vi.mocked(trail.ctx.translate).mock.calls).toEqual([[400, 300], [-400, -300]]);
+      expect(trail.ctx.scale).toHaveBeenCalledWith(1.03, 1.03);
+      expect(trail.ctx.drawImage).toHaveBeenCalledWith(temp.canvas, 0, 0);
+    });
+
+    it('snaps a fractional zoom centre to whole pixels', (): void => {
+      viz.testApplyDirectionalZoom(trail, temp, 400.7, 300.2, 0.025, 1.03);
+
+      expect(vi.mocked(trail.ctx.translate).mock.calls).toEqual([[400, 300], [-400, -300]]);
+    });
+
+    it('dims the trail by the fade rate at default trail intensity', (): void => {
+      viz.testApplyDirectionalZoom(trail, temp, 400, 300, 0.025, 1.03);
+
+      expect(trail.ctx.globalAlpha).toBeCloseTo(0.975, 10);
+    });
+
+    it('dims the trail faster at minimum trail intensity', (): void => {
+      viz.setTrailIntensity(0);
+
+      viz.testApplyDirectionalZoom(trail, temp, 400, 300, 0.025, 1.03);
+
+      expect(trail.ctx.globalAlpha).toBeCloseTo(0.95, 10);
+    });
+
+    it('dims the trail more slowly at maximum trail intensity', (): void => {
+      viz.setTrailIntensity(1);
+
+      viz.testApplyDirectionalZoom(trail, temp, 400, 300, 0.025, 1.03);
+
+      expect(trail.ctx.globalAlpha).toBeCloseTo(0.9875, 10);
+    });
+
+    it('does not rotate the trail unless asked', (): void => {
+      viz.testApplyDirectionalZoom(trail, temp, 400, 300, 0.025, 1.03);
+
+      expect(trail.ctx.rotate).not.toHaveBeenCalled();
+    });
+
+    it('turns the trail by the given rotation', (): void => {
+      viz.testApplyDirectionalZoom(trail, temp, 400, 300, 0.025, 1.03, 0.01);
+
+      expect(trail.ctx.rotate).toHaveBeenCalledWith(0.01);
+    });
+  });
+
+  // ==========================================================================
+  // drawPathWithLayers
+  // ==========================================================================
+
+  describe('drawPathWithLayers', (): void => {
+    const MAIN: string = 'rgb(0, 255, 100)';
+    const GLOW: string = 'rgba(0, 255, 100, 0.8)';
+    const HIGHLIGHT: string = 'rgba(150, 255, 180, 0.6)';
+
+    it('builds and strokes the path once per layer: glow, main and highlight', (): void => {
+      const buildPath = vi.fn();
+      const paints: PaintSnapshot[] = recordPaints(viz.testCtx);
+
+      viz.testDrawPathWithLayers(buildPath, MAIN, GLOW, HIGHLIGHT);
+
+      expect(buildPath).toHaveBeenCalledTimes(3);
+      // The glow stroke is the glow colour at 37.5% of its opacity.
+      expect(paints.map((paint: PaintSnapshot): unknown => paint.strokeStyle)).toEqual(['rgba(0, 255, 100, 0.30)', MAIN, HIGHLIGHT]);
+    });
+
+    it('omits the highlight layer when no highlight colour is given', (): void => {
+      const buildPath = vi.fn();
+      const paints: PaintSnapshot[] = recordPaints(viz.testCtx);
+
+      viz.testDrawPathWithLayers(buildPath, MAIN, GLOW);
+
+      expect(buildPath).toHaveBeenCalledTimes(2);
+      expect(paints.map((paint: PaintSnapshot): unknown => paint.strokeStyle)).toEqual(['rgba(0, 255, 100, 0.30)', MAIN]);
+    });
+
+    it('strokes a wide glow, the main line at the line width and a thin highlight', (): void => {
+      const paints: PaintSnapshot[] = recordPaints(viz.testCtx);
+      viz.setLineWidth(3);
+
+      viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT);
+
+      expect(paints.map((paint: PaintSnapshot): number => paint.lineWidth)).toEqual([7, 3, 1]);
+    });
+
+    it('honours custom glow and highlight widths', (): void => {
+      const paints: PaintSnapshot[] = recordPaints(viz.testCtx);
+
+      viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT, {glowLineWidthOffset: 10, highlightLineWidth: 0.5});
+
+      expect(paints.map((paint: PaintSnapshot): number => paint.lineWidth)).toEqual([12, 2, 0.5]);
+    });
+
+    it('shadows the glow layer with the glow colour, blurred in proportion to glow intensity', (): void => {
+      const paints: PaintSnapshot[] = recordPaints(viz.testCtx);
+      viz.setGlowIntensity(0.5);
+
+      viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT);
+
+      // Default base blur of 12, halved.
+      expect(paints[0].shadowBlur).toBe(6);
+      expect(paints[0].shadowColor).toBe(GLOW);
+    });
+
+    it('honours a custom base glow blur', (): void => {
+      const paints: PaintSnapshot[] = recordPaints(viz.testCtx);
+      viz.setGlowIntensity(1);
+
+      viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT, {baseGlowBlur: 20});
+
+      expect(paints[0].shadowBlur).toBe(20);
+    });
+
+    it('confines the glow shadow to the glow layer with save and restore', (): void => {
+      const order: string[] = [];
+      vi.mocked(viz.testCtx.save).mockImplementation((): void => { order.push('save'); });
+      vi.mocked(viz.testCtx.restore).mockImplementation((): void => { order.push('restore'); });
+      vi.mocked(viz.testCtx.stroke).mockImplementation((): void => { order.push('stroke'); });
+
+      viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT);
+
+      expect(order).toEqual(['save', 'stroke', 'restore', 'stroke', 'stroke']);
+    });
+
+    it('uses a glow colour without an alpha channel as it is', (): void => {
+      const paints: PaintSnapshot[] = recordPaints(viz.testCtx);
+
+      viz.testDrawPathWithLayers(vi.fn(), MAIN, 'red');
+
+      expect(paints[0].strokeStyle).toBe('red');
+    });
+
+    it('rounds the stroke ends and joins', (): void => {
+      viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW);
+
+      expect(viz.testCtx.lineCap).toBe('round');
+      expect(viz.testCtx.lineJoin).toBe('round');
+    });
+
+    it('closes the path in every layer when asked', (): void => {
+      viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT, {closePath: true});
+
+      expect(viz.testCtx.closePath).toHaveBeenCalledTimes(3);
+    });
+
+    it('leaves the path open by default', (): void => {
+      viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT);
+
+      expect(viz.testCtx.closePath).not.toHaveBeenCalled();
+    });
+
+    it('fills instead of stroking when asked', (): void => {
+      const paints: PaintSnapshot[] = recordPaints(viz.testCtx);
+
+      viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT, {fill: true});
+
+      expect(viz.testCtx.fill).toHaveBeenCalledTimes(3);
+      expect(viz.testCtx.stroke).not.toHaveBeenCalled();
+      expect(paints.map((paint: PaintSnapshot): unknown => paint.fillStyle)).toEqual(['rgba(0, 255, 100, 0.30)', MAIN, HIGHLIGHT]);
+    });
+
+    it('draws on the context it is given rather than its own', (): void => {
+      const other: CanvasRenderingContext2D = createMockCtx();
+
+      viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT, {ctx: other});
+
+      expect(other.stroke).toHaveBeenCalledTimes(3);
+      expect(viz.testCtx.stroke).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // drawPointsWithLayers
+  // ==========================================================================
+
+  describe('drawPointsWithLayers', (): void => {
+    const POINTS: ReadonlyArray<{x: number; y: number}> = [{x: 0, y: 0}, {x: 10, y: 5}, {x: 20, y: 0}, {x: 30, y: 5}];
+
+    it('draws a polyline through the points in each of the three layers', (): void => {
+      viz.testDrawPointsWithLayers(POINTS, 'rgb(1, 2, 3)', 'rgba(1, 2, 3, 0.8)', 'white');
+
+      const oneLayerMoves: number[][] = [[0, 0]];
+      const oneLayerLines: number[][] = [[10, 5], [20, 0], [30, 5]];
+      expect(vi.mocked(viz.testCtx.moveTo).mock.calls).toEqual([...oneLayerMoves, ...oneLayerMoves, ...oneLayerMoves]);
+      expect(vi.mocked(viz.testCtx.lineTo).mock.calls).toEqual([...oneLayerLines, ...oneLayerLines, ...oneLayerLines]);
+      expect(viz.testCtx.stroke).toHaveBeenCalledTimes(3);
+    });
+
+    it('draws only the requested range of points', (): void => {
+      viz.testDrawPointsWithLayers(POINTS, 'rgb(1, 2, 3)', 'rgba(1, 2, 3, 0.8)', undefined, {startIndex: 1, endIndex: 3});
+
+      expect(vi.mocked(viz.testCtx.moveTo).mock.calls).toEqual([[10, 5], [10, 5]]);
+      expect(vi.mocked(viz.testCtx.lineTo).mock.calls).toEqual([[20, 0], [20, 0]]);
+    });
+
+    it('draws nothing for fewer than two points', (): void => {
+      viz.testDrawPointsWithLayers([{x: 5, y: 5}], 'rgb(1, 2, 3)', 'rgba(1, 2, 3, 0.8)', 'white');
+
+      expect(viz.testCtx.beginPath).not.toHaveBeenCalled();
+      expect(viz.testCtx.stroke).not.toHaveBeenCalled();
+    });
+
+    it('draws nothing when the requested range holds fewer than two points', (): void => {
+      viz.testDrawPointsWithLayers(POINTS, 'rgb(1, 2, 3)', 'rgba(1, 2, 3, 0.8)', 'white', {startIndex: 2, endIndex: 3});
+
+      expect(viz.testCtx.stroke).not.toHaveBeenCalled();
+    });
+
+    it('draws on the context it is given rather than its own', (): void => {
+      const other: CanvasRenderingContext2D = createMockCtx();
+
+      viz.testDrawPointsWithLayers(POINTS, 'rgb(1, 2, 3)', 'rgba(1, 2, 3, 0.8)', undefined, {ctx: other});
+
+      expect(other.moveTo).toHaveBeenCalledWith(0, 0);
+      expect(viz.testCtx.moveTo).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // buildSmoothPath geometry
+  // ==========================================================================
+
+  describe('buildSmoothPath geometry', (): void => {
+    const POINTS: Array<{x: number; y: number}> = [{x: 0, y: 0}, {x: 100, y: 40}, {x: 200, y: 0}];
+
+    it('visits every point in order with straight lines when smoothing is 0', (): void => {
+      viz.setWaveformSmoothing(0);
+      const ctx: CanvasRenderingContext2D = createMockCtx();
+
+      viz.testBuildSmoothPath(ctx, POINTS);
+
+      expect(vi.mocked(ctx.lineTo).mock.calls).toEqual([[100, 40], [200, 0]]);
+    });
+
+    it('curves to each midpoint using the point itself as the control at full smoothing', (): void => {
+      viz.setWaveformSmoothing(1);
+      const ctx: CanvasRenderingContext2D = createMockCtx();
+
+      viz.testBuildSmoothPath(ctx, POINTS);
+
+      expect(vi.mocked(ctx.quadraticCurveTo).mock.calls).toEqual([
+        [0, 0, 50, 20],
+        [100, 40, 150, 20],
+      ]);
+    });
+
+    it('pulls the control point halfway back to the midpoint at half smoothing', (): void => {
+      viz.setWaveformSmoothing(0.5);
+      const ctx: CanvasRenderingContext2D = createMockCtx();
+
+      viz.testBuildSmoothPath(ctx, POINTS);
+
+      expect(vi.mocked(ctx.quadraticCurveTo).mock.calls).toEqual([
+        [25, 10, 50, 20],
+        [125, 30, 150, 20],
+      ]);
+    });
+
+    it('finishes a smoothed path on the last point', (): void => {
+      viz.setWaveformSmoothing(1);
+      const ctx: CanvasRenderingContext2D = createMockCtx();
+
+      viz.testBuildSmoothPath(ctx, POINTS);
+
+      expect(vi.mocked(ctx.lineTo).mock.calls).toEqual([[200, 0]]);
+    });
+
+    it('starts a straight path from the given start index', (): void => {
+      viz.setWaveformSmoothing(0);
+      const ctx: CanvasRenderingContext2D = createMockCtx();
+
+      viz.testBuildSmoothPathFrom(ctx, POINTS, 2, 1);
+
+      expect(ctx.moveTo).toHaveBeenCalledWith(100, 40);
+      expect(vi.mocked(ctx.lineTo).mock.calls).toEqual([[200, 0]]);
+    });
+
+    it('starts a smoothed path from the given start index', (): void => {
+      viz.setWaveformSmoothing(1);
+      const ctx: CanvasRenderingContext2D = createMockCtx();
+
+      viz.testBuildSmoothPathFrom(ctx, POINTS, 2, 1);
+
+      expect(ctx.moveTo).toHaveBeenCalledWith(100, 40);
+      expect(vi.mocked(ctx.quadraticCurveTo).mock.calls).toEqual([[100, 40, 150, 20]]);
+    });
+  });
+
+  // ==========================================================================
+  // WebGLVisualization
+  // ==========================================================================
+
+  describe('WebGLVisualization', (): void => {
+    it('uses the webgl context when the canvas supplies one', (): void => {
+      const gl: WebGLRenderingContext = {getExtension: vi.fn()} as unknown as WebGLRenderingContext;
+      const glCanvas: HTMLCanvasElement = createMockGLCanvas({webgl: gl});
+
+      const glViz: TestWebGLVisualization = new TestWebGLVisualization({canvas: glCanvas, analyser});
+
+      expect(glViz.testGl).toBe(gl);
+    });
+
+    it('falls back to the experimental-webgl context', (): void => {
+      const gl: WebGLRenderingContext = {getExtension: vi.fn()} as unknown as WebGLRenderingContext;
+      const glCanvas: HTMLCanvasElement = createMockGLCanvas({'experimental-webgl': gl});
+
+      const glViz: TestWebGLVisualization = new TestWebGLVisualization({canvas: glCanvas, analyser});
+
+      expect(glViz.testGl).toBe(gl);
+    });
+
+    it('throws when the canvas cannot supply a WebGL context', (): void => {
+      const glCanvas: HTMLCanvasElement = createMockGLCanvas({});
+
+      expect((): TestWebGLVisualization => new TestWebGLVisualization({canvas: glCanvas, analyser})).toThrow(
+        'Failed to get WebGL context'
+      );
+    });
+
+    it('releases the GPU context on destroy', (): void => {
+      const loseContext = vi.fn();
+      const gl: WebGLRenderingContext = {
+        getExtension: vi.fn().mockReturnValue({loseContext}),
+      } as unknown as WebGLRenderingContext;
+      const glViz: TestWebGLVisualization = new TestWebGLVisualization({canvas: createMockGLCanvas({webgl: gl}), analyser});
+
+      glViz.destroy();
+
+      expect(gl.getExtension).toHaveBeenCalledWith('WEBGL_lose_context');
+      expect(loseContext).toHaveBeenCalledTimes(1);
+    });
+
+    it('destroys cleanly when the lose-context extension is unavailable', (): void => {
+      const gl: WebGLRenderingContext = {
+        getExtension: vi.fn().mockReturnValue(null),
+      } as unknown as WebGLRenderingContext;
+      const glViz: TestWebGLVisualization = new TestWebGLVisualization({canvas: createMockGLCanvas({webgl: gl}), analyser});
+
+      expect((): void => glViz.destroy()).not.toThrow();
+      expect(gl.getExtension).toHaveBeenCalledWith('WEBGL_lose_context');
+    });
+
+  });
+
+  // ==========================================================================
+  // Subclasses that do not override the change hooks
+  // ==========================================================================
+
+  describe('a subclass without change hooks', (): void => {
+    let plain: TestWebGLVisualization;
+
+    beforeEach((): void => {
+      const gl: WebGLRenderingContext = {getExtension: vi.fn()} as unknown as WebGLRenderingContext;
+      plain = new TestWebGLVisualization({canvas: createMockGLCanvas({webgl: gl}), analyser});
+    });
+
+    it('still applies an FFT size change to the analyser', (): void => {
+      plain.setFftSize(512);
+
+      expect(plain.getFftSize()).toBe(512);
+      expect(analyser.fftSize).toBe(512);
+    });
+
+    it('still records a bar density change', (): void => {
+      plain.setBarDensity('high');
+
+      expect(plain.getBarDensity()).toBe('high');
+    });
+
+    it('still records bar colour changes', (): void => {
+      plain.setBarColorBottom('#010101');
+      plain.setBarColorMiddle('#020202');
+      plain.setBarColorTop('#030303');
+
+      expect([plain.getBarColorBottom(), plain.getBarColorMiddle(), plain.getBarColorTop()]).toEqual([
+        '#010101',
+        '#020202',
+        '#030303',
+      ]);
+    });
+
+    it('resizes the canvas without a resize hook', (): void => {
+      const gl: WebGLRenderingContext = {getExtension: vi.fn()} as unknown as WebGLRenderingContext;
+      const glCanvas: HTMLCanvasElement = createMockGLCanvas({webgl: gl});
+      const unhooked: TestWebGLVisualization = new TestWebGLVisualization({canvas: glCanvas, analyser});
+
+      unhooked.resize(1280, 720);
+
+      expect([glCanvas.width, glCanvas.height]).toEqual([1280, 720]);
     });
   });
 });

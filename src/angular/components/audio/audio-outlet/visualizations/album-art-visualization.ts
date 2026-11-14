@@ -160,7 +160,7 @@ export class AlbumArtVisualization extends Canvas2DVisualization {
 
     ctx.clearRect(0, 0, width, height);
     const artwork: HTMLImageElement | null = this.artwork;
-    if (!artwork || artwork.naturalWidth === 0) return;
+    if (!artwork || artwork.naturalWidth === 0 || artwork.naturalHeight === 0) return;
 
     this.drawBackground(artwork);
 
@@ -200,6 +200,9 @@ export class AlbumArtVisualization extends Canvas2DVisualization {
   private drawShadow(x: number, y: number, width: number, height: number, radius: number): void {
     const roundedWidth: number = Math.round(width);
     const roundedHeight: number = Math.round(height);
+    // Artwork thinner than a pixel casts no shadow worth drawing, and a shadow
+    // surface with a zero dimension cannot be drawn from at all.
+    if (roundedWidth <= 0 || roundedHeight <= 0) return;
     if (!this.shadow || roundedWidth !== this.shadowForWidth || roundedHeight !== this.shadowForHeight) {
       this.buildShadow(roundedWidth, roundedHeight, radius);
     }
