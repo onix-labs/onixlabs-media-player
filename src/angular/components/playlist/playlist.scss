@@ -252,8 +252,9 @@
 // =============================================================================
 //
 // The playlist is part of the outlet's raised Pebble card (see
-// layout-outlet.scss), set off from the media by a hairline. Rows sit inset
-// from the playlist's sides with nothing between them; a hovered row and the
+// layout-outlet.scss), set off from the media by a hairline. Nothing divides
+// the header from the rows or the rows from each other, which sit inset from
+// the playlist's sides; a hovered row and the
 // current track are rounded tiles, the current track raised off the card in
 // the button surface with its icon in the status colour.
 @include player-theme.pebble {
@@ -272,8 +273,6 @@
   }
 
   .playlist-header {
-    box-shadow: inset 0 calc(-1 * var(--pebble-border-width)) 0 var(--pebble-border);
-
     .playlist-title {
       color: var(--pebble-heading);
     }
