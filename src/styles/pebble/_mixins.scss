@@ -9,6 +9,8 @@
 // Everything reads the --pebble-* custom properties, which exist only inside a
 // Pebble window (html.pebble); the main player window never uses these.
 
+@use '../mixins' as *;
+
 /// A raised surface: a matte panel lifted off the page, with a light top edge,
 /// a dark bottom edge and a soft shadow.
 ///
@@ -161,7 +163,7 @@
   }
 
   &:disabled {
-    background: var(--pebble-surface-alt);
+    background-color: var(--pebble-surface-alt);
     color: var(--pebble-text-muted);
     cursor: not-allowed;
   }
@@ -174,15 +176,8 @@
 /// A native select drawn as a Pebble field, with a chevron.
 @mixin select {
   @include field;
-  appearance: none;
-  padding-right: 2.25rem;
+  @include select-chevron(0.75rem, $color: var(--pebble-text-muted));
   cursor: pointer;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--pebble-text-muted) 50%),
-    linear-gradient(135deg, var(--pebble-text-muted) 50%, transparent 50%);
-  background-position: calc(100% - 1.15rem) 55%, calc(100% - 0.85rem) 55%;
-  background-size: 0.3rem 0.3rem;
-  background-repeat: no-repeat;
 
   option {
     background: var(--pebble-surface);

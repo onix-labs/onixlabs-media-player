@@ -66,19 +66,20 @@
   }
 
   .media-bar-select {
-    background: $white-10;
+    background-color: $white-10;
     border: none;
     border-radius: 3px;
     color: $white-70;
     font-size: 0.75rem;
     padding: 0.25rem 0.5rem;
+    @include select-chevron(0.5rem, 0.25rem, 0.375rem);
     cursor: pointer;
     outline: none;
-    transition: color 0.2s ease, background 0.2s ease;
+    transition: color 0.2s ease, background-color 0.2s ease;
 
     &:hover {
       color: white;
-      background: $white-15;
+      background-color: $white-15;
     }
 
     &:focus {
@@ -263,6 +264,19 @@
     outline: none;
   }
 
+  // The media's top corners follow the card's, just inside its edge; square,
+  // they would be cut off by the card's rounding instead.
+  .content-area {
+    border-top-left-radius: calc(var(--pebble-radius-md) - 0.0625rem);
+    border-top-right-radius: calc(var(--pebble-radius-md) - 0.0625rem);
+    corner-shape: var(--pebble-corner-shape);
+  }
+
+  &.fullscreen .content-area,
+  &.miniplayer .content-area {
+    border-radius: 0;
+  }
+
   // Edge to edge, as in the other themes.
   &.fullscreen div.container,
   &.miniplayer div.container {
@@ -293,14 +307,14 @@
     // border, so the select keeps its size.
     .media-bar-select {
       color: var(--pebble-text);
-      background: var(--pebble-field);
+      background-color: var(--pebble-field);
       border-radius: var(--pebble-radius-sm);
       box-shadow: inset 0 0 0 var(--pebble-border-width) var(--pebble-field-border);
       font-family: var(--pebble-font);
 
       &:hover {
         color: var(--pebble-heading);
-        background: color-mix(in srgb, var(--pebble-field), var(--pebble-heading) 6%);
+        background-color: color-mix(in srgb, var(--pebble-field), var(--pebble-heading) 6%);
       }
 
       &:focus {
