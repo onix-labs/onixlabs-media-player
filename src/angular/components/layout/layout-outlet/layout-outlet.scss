@@ -294,6 +294,9 @@
     // The bar's controls sit in the card's bottom corners, so their corners
     // are the card's, less the card's edge and the bar's padding: concentric.
     --media-bar-radius: calc(var(--pebble-radius-md) - 0.0625rem - 0.25rem);
+    // The card's dark bottom edge reads as part of the gap below the controls,
+    // so the sides give up the same pixel to look as wide as the bottom.
+    padding-inline: calc(0.25rem - 0.0625rem);
     border-top-color: var(--pebble-border);
 
     button {
@@ -307,19 +310,21 @@
       }
     }
 
-    // A Pebble field at the bar's compact size; the ring is a shadow, not a
-    // border, so the select keeps its size.
+    // Raised like the transport buttons, on the playlist toggle's fill; the
+    // edges are inset shadows, so the select keeps its size.
     .media-bar-select {
+      --pebble-edge-top: var(--pebble-edge-light);
+      --pebble-edge-bottom: var(--pebble-edge-button);
       color: var(--pebble-text);
-      background-color: var(--pebble-field);
+      background-color: color-mix(in srgb, var(--pebble-heading) 8%, transparent);
       border-radius: var(--media-bar-radius);
       corner-shape: var(--pebble-corner-shape);
-      box-shadow: inset 0 0 0 var(--pebble-border-width) var(--pebble-field-border);
+      box-shadow: var(--pebble-edge-shadow);
       font-family: var(--pebble-font);
 
       &:hover {
         color: var(--pebble-heading);
-        background-color: color-mix(in srgb, var(--pebble-field), var(--pebble-heading) 6%);
+        background-color: color-mix(in srgb, var(--pebble-heading) 14%, transparent);
       }
 
       &:focus {
@@ -340,7 +345,11 @@
       color: var(--pebble-text-muted);
     }
 
+    // As tall as the selects, and square, so it sits the same distance from
+    // the card's bottom edge as they do.
     .playlist-toggle {
+      align-self: stretch;
+      aspect-ratio: 1;
       color: var(--pebble-text-muted);
 
       &:hover {
