@@ -329,7 +329,7 @@ describe('SettingsService', (): void => {
         'coral:Coral:#f37055',
         'rose:Rose:#ef4e7b',
         'violet:Violet:#a166ab',
-        'blue:Blue:#5073b8',
+        'blue:Blue:#3a6fd8',
         'cyan:Cyan:#1098ad',
         'teal:Teal:#07b39b',
         'green:Green:#6fba82',

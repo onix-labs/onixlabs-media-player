@@ -1323,7 +1323,7 @@ describe('ConfigurationView', (): void => {
       it('paints each swatch its brand colour', (): void => {
         expect(all<HTMLElement>('.accent-options .accent-swatch').map((swatch: HTMLElement): string => swatch.style.background)).toEqual([
           'rgb(247, 149, 51)', 'rgb(243, 112, 85)', 'rgb(239, 78, 123)', 'rgb(161, 102, 171)',
-          'rgb(80, 115, 184)', 'rgb(16, 152, 173)', 'rgb(7, 179, 155)', 'rgb(111, 186, 130)',
+          'rgb(58, 111, 216)', 'rgb(16, 152, 173)', 'rgb(7, 179, 155)', 'rgb(111, 186, 130)',
         ]);
       });
 

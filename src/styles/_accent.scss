@@ -18,13 +18,14 @@
 // Keys are quoted: bare, some (green, teal) would parse as colours.
 // The brand stops, as in pebble/_tokens.scss's --pebble-brand-* (repeated as
 // values: those tokens exist only in Pebble windows, and the accent applies in
-// solid and glass too).
+// solid and glass too). Blue is the exception: the brand's #5073b8 (42%
+// saturated) reads pastel as a fill, so the accent keeps its hue at 67%.
 $brand: (
   'amber': #f79533,
   'coral': #f37055,
   'rose': #ef4e7b,
   'violet': #a166ab,
-  'blue': #5073b8,
+  'blue': #3a6fd8,
   'cyan': #1098ad,
   'teal': #07b39b,
   'green': #6fba82,
@@ -47,9 +48,10 @@ $pebble-light: (
 );
 
 // Fills for the Pebble theme's dark palette. Blue is 2.8:1 on the dark
-// --pebble-surface-alt (#2b3036); a touch lighter it is 3.8:1. The rest pass.
+// --pebble-surface-alt (#2b3036); lighter, at the same hue, it is 4.0:1. The
+// rest pass.
 $pebble-dark: (
-  'blue': #6a88c3,
+  'blue': #5a8bf0,
 );
 
 $pebble-player: "html[data-player-theme='pebble']";

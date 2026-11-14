@@ -323,7 +323,7 @@ export const ACCENT_OPTIONS: readonly AccentOption[] = [
   {id: 'coral', name: 'Coral', swatch: '#f37055'},
   {id: 'rose', name: 'Rose', swatch: '#ef4e7b'},
   {id: 'violet', name: 'Violet', swatch: '#a166ab'},
-  {id: 'blue', name: 'Blue', swatch: '#5073b8'},
+  {id: 'blue', name: 'Blue', swatch: '#3a6fd8'},
   {id: 'cyan', name: 'Cyan', swatch: '#1098ad'},
   {id: 'teal', name: 'Teal', swatch: '#07b39b'},
   {id: 'green', name: 'Green', swatch: '#6fba82'},
