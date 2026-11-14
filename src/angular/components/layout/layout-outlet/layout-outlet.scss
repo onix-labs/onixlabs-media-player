@@ -291,12 +291,16 @@
   }
 
   .media-bar {
+    // The bar's controls sit in the card's bottom corners, so their corners
+    // are the card's, less the card's edge and the bar's padding: concentric.
+    --media-bar-radius: calc(var(--pebble-radius-md) - 0.0625rem - 0.25rem);
     border-top-color: var(--pebble-border);
 
     button {
       color: var(--pebble-text-muted);
       background: color-mix(in srgb, var(--pebble-heading) 8%, transparent);
-      border-radius: var(--pebble-radius-sm);
+      border-radius: var(--media-bar-radius);
+      corner-shape: var(--pebble-corner-shape);
 
       &:hover {
         color: var(--pebble-heading);
@@ -308,7 +312,8 @@
     .media-bar-select {
       color: var(--pebble-text);
       background-color: var(--pebble-field);
-      border-radius: var(--pebble-radius-sm);
+      border-radius: var(--media-bar-radius);
+      corner-shape: var(--pebble-corner-shape);
       box-shadow: inset 0 0 0 var(--pebble-border-width) var(--pebble-field-border);
       font-family: var(--pebble-font);
 
