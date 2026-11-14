@@ -139,17 +139,17 @@ export class PlaylistManager {
     const startIndex: number = this.items.length;
     this.items.push(...itemsWithIds);
 
-    if (this.shuffleEnabled) {
-      this.regenerateShuffleOrder();
-    }
-
     let selectionChanged: boolean = false;
     if (this.currentIndex === -1 && this.items.length > 0) {
       this.currentIndex = 0;
       selectionChanged = true;
-      if (this.shuffleEnabled) {
-        this.shufflePosition = this.shuffleOrder.indexOf(0);
-      }
+    }
+
+    // Regenerated only once the selection is settled: the order is built
+    // around the current track, and one built before the first track is
+    // selected leaves that track mid-order with everything ahead of it unplayed.
+    if (this.shuffleEnabled) {
+      this.regenerateShuffleOrder();
     }
 
     // Broadcast delta update instead of full playlist
@@ -401,7 +401,6 @@ export class PlaylistManager {
    * Checks if there's a next track available (without repeat).
    */
   private canGoNext(): boolean {
-    if (this.items.length === 0) return false;
     if (this.shuffleEnabled) {
       return this.shufflePosition < this.shuffleOrder.length - 1;
     }
@@ -412,7 +411,6 @@ export class PlaylistManager {
    * Checks if there's a previous track available (without repeat).
    */
   private canGoPrevious(): boolean {
-    if (this.items.length === 0) return false;
     if (this.shuffleEnabled) {
       return this.shufflePosition > 0;
     }
@@ -441,12 +439,21 @@ export class PlaylistManager {
     }
 
     // Move current track to front
-    const currentIdx: number = this.currentIndex;
-    if (currentIdx >= 0) {
-      const posInShuffle: number = this.shuffleOrder.indexOf(currentIdx);
-      if (posInShuffle > 0) {
-        [this.shuffleOrder[0], this.shuffleOrder[posInShuffle]] = [this.shuffleOrder[posInShuffle], this.shuffleOrder[0]];
-      }
+    this.restartShuffleFrom(this.currentIndex);
+  }
+
+  /**
+   * Moves a track to the front of the shuffle order and restarts from there.
+   *
+   * A track that starts playing out of turn can sit anywhere in the order;
+   * left where it is, every track ahead of it would never be reached.
+   *
+   * @param index - The playlist index of the track now playing (-1 if none)
+   */
+  private restartShuffleFrom(index: number): void {
+    const posInShuffle: number = this.shuffleOrder.indexOf(index);
+    if (posInShuffle > 0) {
+      [this.shuffleOrder[0], this.shuffleOrder[posInShuffle]] = [this.shuffleOrder[posInShuffle], this.shuffleOrder[0]];
     }
 
     this.shufflePosition = 0;
@@ -458,11 +465,6 @@ export class PlaylistManager {
    */
   private generateId(): string {
     return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-  }
-
-  /** Broadcasts full playlist state to all clients */
-  private broadcastPlaylistUpdate(): void {
-    this.sse.broadcast('playlist:updated', this.getState());
   }
 
   /** Broadcasts current selection change to all clients */

@@ -282,6 +282,18 @@ describe('preload', (): void => {
       expect(fake.invoke.mock.calls).toEqual([['app:fadeOutComplete']]);
       expect(result).toBeUndefined();
     });
+
+    it('notifyFadeOutComplete logs a failed notification instead of leaving the rejection unhandled', async (): Promise<void> => {
+      const failure: Error = new Error('no handler registered');
+      const logged: Mock<(...args: unknown[]) => void> = vi.spyOn(console, 'error').mockImplementation((): void => undefined);
+      fake.invoke.mockRejectedValue(failure);
+
+      call('notifyFadeOutComplete');
+      await Promise.resolve();
+
+      expect(logged.mock.calls).toEqual([['Failed to notify fade-out completion:', failure]]);
+      logged.mockRestore();
+    });
   });
 
   // ========================================================================
@@ -468,12 +480,17 @@ describe('preload', (): void => {
     });
 
     it.each(['', 'not a url', '/etc/passwd', 'onixlabs.io'])('never opens %j, which is not an absolute URL', async (text: string): Promise<void> => {
-      // Deferred so that the assertion holds whether the failure is thrown or
-      // returned as a rejection.
-      const attempt: Promise<void> = Promise.resolve().then((): Promise<void> => exposedApi().openExternal(text));
-
-      await expect(attempt).rejects.toThrow();
+      await expect(exposedApi().openExternal(text)).rejects.toThrow();
       expect(fake.openExternal).not.toHaveBeenCalled();
+    });
+
+    it('reports text that is not a URL as a rejection, not a synchronous throw', async (): Promise<void> => {
+      let attempt: Promise<void> | undefined;
+
+      expect((): void => {
+        attempt = exposedApi().openExternal('not a url');
+      }).not.toThrow();
+      await expect(attempt).rejects.toThrow('Blocked openExternal with invalid URL');
     });
   });
 

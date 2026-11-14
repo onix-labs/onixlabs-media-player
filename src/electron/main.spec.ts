@@ -1077,6 +1077,16 @@ describe('main', (): void => {
       expect(await invoke('setup:validatePort', port)).toBe(true);
     });
 
+    it('should never call require(), which does not exist in the bundled ES module', async (): Promise<void> => {
+      // Under Vitest a require() call works, so the behavioural tests above
+      // cannot see this; in the packaged bundle it throws on first use.
+      const {readFileSync}: typeof import('fs') = await vi.importActual<typeof import('fs')>('fs');
+      const source: string = readFileSync(path.join(process.cwd(), 'src', 'electron', 'main.ts'), 'utf8');
+      const code: string[] = source.split('\n').filter((line: string): boolean => !/^\s*(\/\/|\/\*|\*)/.test(line));
+
+      expect(code.filter((line: string): boolean => /\brequire\s*\(/.test(line))).toEqual([]);
+    });
+
     it('should report the platform to the wizard', async (): Promise<void> => {
       await bootIntoWizard({platform: 'win32'});
 
@@ -1119,7 +1129,7 @@ describe('main', (): void => {
       expect(mainWindow().options.webPreferences?.preload).toBe(path.join('/opt/onixplayer/app', 'src', 'electron', 'dist', 'preload.js'));
     });
 
-    it.each(['main', 'configuration', 'about', 'open-url'] as WindowKind[])('should lock pinch-zoom in the %s window', async (kind: WindowKind): Promise<void> => {
+    it.each(WINDOW_KINDS)('should lock pinch-zoom in the %s window', async (kind: WindowKind): Promise<void> => {
       const window: FakeWindow = await bootWithWindow(kind);
 
       expect(window.webContents.setVisualZoomLevelLimits).toHaveBeenCalledWith(1, 1);
@@ -1133,6 +1143,8 @@ describe('main', (): void => {
       {kind: 'configuration' as WindowKind, input: {control: true, meta: false, key: '+'}},
       {kind: 'about' as WindowKind, input: {control: false, meta: true, key: '0'}},
       {kind: 'open-url' as WindowKind, input: {control: true, meta: false, key: '-'}},
+      {kind: 'setup-wizard' as WindowKind, input: {control: true, meta: false, key: '+'}},
+      {kind: 'setup-wizard' as WindowKind, input: {control: false, meta: true, key: '0'}},
     ])('should swallow the zoom shortcut $input in the $kind window', async ({kind, input}): Promise<void> => {
       const window: FakeWindow = await bootWithWindow(kind);
       const event: {preventDefault: Mock<() => void>} = createEvent();
@@ -1148,6 +1160,7 @@ describe('main', (): void => {
       {kind: 'configuration' as WindowKind, input: {control: false, meta: false, key: '0'}},
       {kind: 'about' as WindowKind, input: {control: true, meta: false, key: 'a'}},
       {kind: 'open-url' as WindowKind, input: {control: false, meta: true, key: 'v'}},
+      {kind: 'setup-wizard' as WindowKind, input: {control: false, meta: false, key: '+'}},
     ])('should let the ordinary key press $input through in the $kind window', async ({kind, input}): Promise<void> => {
       const window: FakeWindow = await bootWithWindow(kind);
       const event: {preventDefault: Mock<() => void>} = createEvent();
@@ -1303,6 +1316,38 @@ describe('main', (): void => {
       await boot({files: {[target]: 'file'}});
 
       const response: Response = await requestMedia(`media://${target}`);
+
+      expect(response.status).toBe(403);
+      expect(h.electron.net.fetch).not.toHaveBeenCalled();
+    });
+
+    it('should serve a file whose name merely contains two dots', async (): Promise<void> => {
+      const dotted: string = path.resolve('/media/library/song..mp3');
+      await boot({files: {[dotted]: 'file'}});
+
+      const response: Response = await requestMedia(mediaUrl(dotted));
+
+      expect(h.electron.net.fetch).toHaveBeenCalledWith(`file://${dotted}`);
+      expect(await response.text()).toBe('file-bytes');
+    });
+
+    it('should refuse a path that ends in a .. segment', async (): Promise<void> => {
+      const target: string = `${folder}${path.sep}..`;
+      await boot({files: {[target]: 'file'}});
+
+      const response: Response = await requestMedia(mediaUrl(target));
+
+      expect(response.status).toBe(403);
+      expect(h.electron.net.fetch).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a .. segment separated by backslashes on any platform', async (): Promise<void> => {
+      // On POSIX a backslash is an ordinary filename character, so this path is
+      // already in normalized form; only the segment check stands in its way.
+      const target: string = `${folder}\\..\\secret.txt`;
+      await boot({files: {[target]: 'file'}});
+
+      const response: Response = await requestMedia(mediaUrl(target));
 
       expect(response.status).toBe(403);
       expect(h.electron.net.fetch).not.toHaveBeenCalled();
@@ -1522,6 +1567,19 @@ describe('main', (): void => {
       await invoke('window:showConfigurationWindow', 'dependencies');
 
       expect(windowTitled(CONFIG_TITLE).loadURL).toHaveBeenCalledWith(`${APP_ORIGIN}/?window=configuration&category=dependencies`);
+    });
+
+    it('should not let the requested category add parameters of its own to the URL', async (): Promise<void> => {
+      await boot({config: {packaged: true}});
+
+      await invoke('window:showConfigurationWindow', 'dependencies&window=setup-wizard#top');
+
+      const loaded: URL = new URL(windowTitled(CONFIG_TITLE).loadURL.mock.calls[0][0]);
+      expect([...loaded.searchParams.entries()]).toEqual([
+        ['window', 'configuration'],
+        ['category', 'dependencies&window=setup-wizard#top'],
+      ]);
+      expect(loaded.hash).toBe('');
     });
 
     it('should open from the Settings menu item', async (): Promise<void> => {
@@ -2778,14 +2836,14 @@ describe('main', (): void => {
       expect(openUrl.setContentSize).toHaveBeenCalledWith(460, 1080);
     });
 
-    it.each([0, -50])('should never collapse the window for a content height of %i', async (height: number): Promise<void> => {
+    it.each([0, -50, NaN, Infinity, -Infinity, '340', null, undefined])('should ignore a content height of %s', async (height: unknown): Promise<void> => {
       await boot();
       await invoke('window:showOpenUrlWindow');
       const openUrl: FakeWindow = windowTitled(OPEN_URL_TITLE);
 
       await invokeFrom(openUrl, 'window:setContentHeight', height);
 
-      expect(openUrl.setContentSize).toHaveBeenCalledWith(460, 1);
+      expect(openUrl.setContentSize).not.toHaveBeenCalled();
     });
 
     it('should ignore a content height request from a sender with no window', async (): Promise<void> => {
@@ -3186,6 +3244,17 @@ describe('main', (): void => {
       expect(windowTitled(ABOUT_TITLE).isDestroyed()).toBe(true);
     });
 
+    it('should take the Open URL window down with the main window', async (): Promise<void> => {
+      await boot();
+      await invoke('window:showOpenUrlWindow');
+      vi.useFakeTimers();
+
+      mainWindow().close();
+      await vi.advanceTimersByTimeAsync(FADE_TIMEOUT);
+
+      expect(windowTitled(OPEN_URL_TITLE).isDestroyed()).toBe(true);
+    });
+
     it('should discard the MIDI cache when the window closes', async (): Promise<void> => {
       await boot();
       vi.useFakeTimers();
@@ -3303,6 +3372,18 @@ describe('main', (): void => {
       vi.useFakeTimers();
       mainWindow().close();
       await invoke('app:fadeOutComplete');
+      await vi.advanceTimersByTimeAsync(250);
+      h.world.appEvents.emit('activate');
+
+      mainWindow().close();
+
+      expect(sent(mainWindow(), 'app:prepareForClose')).toEqual([[150]]);
+    });
+
+    it('should let a reopened window be closed after a fade the renderer never acknowledged', async (): Promise<void> => {
+      await boot({platform: 'darwin'});
+      vi.useFakeTimers();
+      mainWindow().close();
       await vi.advanceTimersByTimeAsync(250);
       h.world.appEvents.emit('activate');
 
