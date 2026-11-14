@@ -101,8 +101,10 @@
     color: var(--pebble-primary);
     background: color-mix(in srgb, var(--pebble-button-surface) 92%, transparent);
     box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-md);
-    border-left-color: transparent;
-    border-right-color: var(--pebble-border);
+    // One divider per seam, the button's right edge, soft enough to sit close
+    // to the button's own colour; no left edge.
+    border-left: none;
+    border-right-color: color-mix(in srgb, var(--pebble-button-surface), var(--pebble-edge-dark) 30%);
 
     &:hover:not(:disabled) {
       color: var(--pebble-heading);
