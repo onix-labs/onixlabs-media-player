@@ -145,6 +145,7 @@ describe('getLicenseLocations', () => {
     expect(locations).toEqual({
       application: path.join(RESOURCES, 'licenses', 'ONIXPlayer-LICENSE.txt'),
       javascript: path.join(RESOURCES, 'licenses', 'JavaScript-libraries.txt'),
+      font: path.join(RESOURCES, 'licenses', 'Poppins-OFL.txt'),
       bundled: path.join(RESOURCES, 'bin', 'licenses'),
       electron: path.dirname(EXECUTABLE),
     });
@@ -170,6 +171,7 @@ describe('getLicenseLocations', () => {
     expect(locations).toEqual({
       application: path.join(REPOSITORY, 'LICENSE'),
       javascript: path.join(REPOSITORY, 'dist', 'onixlabs-media-player', '3rdpartylicenses.txt'),
+      font: path.join(REPOSITORY, 'public', 'fonts', 'poppins', 'OFL.txt'),
       bundled: path.join(REPOSITORY, 'vendor', 'bin', 'mac-arm64', 'licenses'),
       electron: path.join(REPOSITORY, 'node_modules', 'electron', 'dist'),
     });

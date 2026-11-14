@@ -25,6 +25,7 @@ const BINARIES = ['ffmpeg', 'ffprobe', 'fluidsynth'];
 const LICENSES = [
   'LICENSE',
   'dist/onixlabs-media-player/3rdpartylicenses.txt',
+  'public/fonts/poppins/OFL.txt',
 ];
 
 exports.default = async function verifyBundledResources(context) {

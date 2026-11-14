@@ -65,6 +65,7 @@ const h = vi.hoisted(() => {
     glassEnabled?: boolean;
     macOSVisualEffectState?: string;
     backgroundColor?: string;
+    colorScheme?: string;
   }
 
   interface RecentEntry {
