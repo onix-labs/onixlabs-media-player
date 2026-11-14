@@ -258,6 +258,8 @@
 @include player-theme.pebble {
   div.container {
     @include pebble.recessed(md);
+    // A little deeper than a recessed panel's usual top edge.
+    --pebble-edge-top: color-mix(in srgb, var(--pebble-edge-dark), black 15%);
     // A shade darker than the window, as a sunken area should be.
     background: var(--pebble-well);
     position: relative;
