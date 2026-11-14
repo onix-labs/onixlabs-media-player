@@ -355,10 +355,17 @@
       background: color-mix(in srgb, var(--pebble-button-surface), var(--pebble-heading) 8%);
     }
 
-    // !important only to match the base rules for these states.
+    // Shuffle and repeat, when on: marked like play/pause, by the icon in the
+    // accent on the ordinary button fill. !important only to match the base
+    // rules for these states.
     &.active {
-      color: var(--pebble-heading);
-      background: color-mix(in srgb, var(--pebble-button-surface), var(--pebble-primary) 16%) !important;
+      color: var(--player-accent);
+      background: var(--pebble-button-surface) !important;
+
+      &:hover:not(:disabled) {
+        color: var(--player-accent);
+        background: color-mix(in srgb, var(--pebble-button-surface), var(--pebble-heading) 8%) !important;
+      }
     }
 
     &.muted {
