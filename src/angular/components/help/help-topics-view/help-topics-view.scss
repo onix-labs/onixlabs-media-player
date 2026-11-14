@@ -1,4 +1,6 @@
 @use 'variables' as *;
+@use 'player-theme';
+@use 'pebble/mixins' as pebble;
 
 :host {
   display: flex;
@@ -235,5 +237,112 @@
   .shortcut-action {
     font-size: 0.8125rem;
     color: var(--text-60);
+  }
+}
+
+// =============================================================================
+// Pebble player theme
+// =============================================================================
+//
+// Help opens in the main window, so it follows the player theme: in Pebble the
+// sidebar is a raised card whose current topic is a raised tile, and the
+// shortcut and visualization entries are raised rows on the page. Same layout
+// as the other themes; every colour comes from the --pebble-* tokens.
+@include player-theme.pebble {
+  .help-sidebar {
+    @include pebble.surface(lg);
+    outline: none;
+
+    .topic-item {
+      color: var(--pebble-text);
+      border-radius: var(--pebble-radius-md);
+      corner-shape: var(--pebble-corner-shape);
+      font-family: var(--pebble-font);
+
+      i {
+        color: var(--pebble-text-muted);
+      }
+
+      &:hover {
+        color: var(--pebble-heading);
+        background: color-mix(in srgb, var(--pebble-heading) 6%, transparent);
+
+        i { color: var(--pebble-text); }
+      }
+
+      &.active {
+        --pebble-edge-top: var(--pebble-edge-light);
+        --pebble-edge-bottom: var(--pebble-edge-button);
+        color: var(--pebble-heading);
+        background: var(--pebble-button-surface);
+        box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-sm);
+        font-weight: var(--pebble-weight-medium);
+
+        i { color: var(--pebble-heading); }
+      }
+    }
+  }
+
+  .help-panel .panel-header {
+    h2 {
+      color: var(--pebble-heading);
+      letter-spacing: -0.02em;
+    }
+
+    .panel-description {
+      color: var(--pebble-text-muted);
+    }
+  }
+
+  .topic-section {
+    h3 {
+      color: var(--pebble-heading);
+    }
+
+    p {
+      color: var(--pebble-text);
+    }
+  }
+
+  .help-list {
+    color: var(--pebble-text);
+
+    strong {
+      color: var(--pebble-heading);
+    }
+  }
+
+  .format-tag {
+    color: var(--pebble-text);
+    background: var(--pebble-surface-alt);
+    border-radius: var(--pebble-radius-sm);
+    corner-shape: var(--pebble-corner-shape);
+    font-family: var(--pebble-font-mono);
+  }
+
+  .viz-item,
+  .shortcut-row {
+    @include pebble.surface(md);
+  }
+
+  .viz-item {
+    .viz-name {
+      color: var(--pebble-heading);
+    }
+
+    .viz-description {
+      color: var(--pebble-text-muted);
+    }
+  }
+
+  .shortcut-row {
+    .shortcut-keys {
+      color: var(--pebble-heading);
+      font-family: var(--pebble-font-mono);
+    }
+
+    .shortcut-action {
+      color: var(--pebble-text-muted);
+    }
   }
 }

@@ -1,11 +1,12 @@
 @use 'pebble';
+@use 'accent';
+@use 'player-backgrounds';
 
 
 :root {
-  // Background color when glass effect is disabled (set dynamically by root component)
+  // Page background, set by the root component (transparent in the player,
+  // whose theme paints the page: see styles/_player-backgrounds.scss)
   --app-background-color: transparent;
-  // Tint overlay when glass effect is enabled (set dynamically by root component)
-  --app-tint-color: transparent;
 
   // =============================================================================
   // Theme Colors (Dark Mode - Default)

@@ -1,0 +1,27 @@
+// =============================================================================
+// Player theme selectors (no CSS output: safe to @use from any component)
+// =============================================================================
+//
+// In the main window <html> carries data-player-theme="solid|glass|pebble"
+// (the effective theme) and data-accent="<id>"; for pebble it also carries the
+// `pebble` class, which brings in the Pebble tokens (see _pebble.scss).
+// Secondary windows have html.pebble but never data-player-theme, so every
+// player-theme rule is gated on the attribute and cannot reach them; and
+// solid/glass never carry .pebble, so Pebble-window rules cannot reach those.
+
+/// The Pebble player theme. Both the class and the attribute: the class is what
+/// defines the --pebble-* tokens, and the extra selector weight lets a themed
+/// rule outrank the base rules' light-mode overrides (`:root[data-color-scheme]
+/// :host ...`), which would otherwise win on specificity.
+$pebble: "html.pebble[data-player-theme='pebble']";
+
+/// Wraps a component's rules so they apply only under the Pebble player theme.
+/// Emulated encapsulation needs :host-context to look past the host to <html>;
+/// it compiles to `html.pebble[...] [_nghost-x] ...`.
+///
+/// @content Rules relative to the host (bare declarations style the host itself)
+@mixin pebble {
+  :host-context(#{$pebble}) {
+    @content;
+  }
+}

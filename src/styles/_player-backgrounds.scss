@@ -1,0 +1,38 @@
+// =============================================================================
+// The player window's page background, per player theme
+// =============================================================================
+//
+// The root component leaves --app-background-color transparent in every theme;
+// the page is painted here, so it follows a live colour scheme change with no
+// script. Gated on data-player-theme, which only the main window carries.
+//
+//   solid   a fixed neutral, dark or light with the colour scheme
+//   glass   transparent, so the native vibrancy/acrylic shows through
+//   pebble  --pebble-bg, painted by _pebble.scss on html.pebble and its body
+
+// Solid follows the same light/dark selectors as the --text-* colours in
+// styles.scss (dark unless the scheme is light, or system with a light OS), so
+// the page and the text on it always switch together.
+html[data-player-theme='solid'] {
+  --player-solid-bg: #1e1e1e;
+}
+
+@media (prefers-color-scheme: light) {
+  html[data-player-theme='solid'][data-color-scheme='system'] {
+    --player-solid-bg: #e0e0e0;
+  }
+}
+
+html[data-player-theme='solid'][data-color-scheme='light'] {
+  --player-solid-bg: #e0e0e0;
+}
+
+html[data-player-theme='solid'],
+html[data-player-theme='solid'] body {
+  background-color: var(--player-solid-bg);
+}
+
+html[data-player-theme='glass'],
+html[data-player-theme='glass'] body {
+  background-color: transparent;
+}

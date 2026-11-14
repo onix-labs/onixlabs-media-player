@@ -1,5 +1,7 @@
 @use 'variables' as *;
 @use 'mixins' as *;
+@use 'player-theme';
+@use 'pebble/mixins' as pebble;
 
 :host {
   display: flex;
@@ -241,5 +243,142 @@
   p {
     margin: 0;
     font-size: 0.875rem;
+  }
+}
+
+// =============================================================================
+// Pebble player theme
+// =============================================================================
+//
+// The container is a raised Pebble card holding the media, the playlist and
+// the media bar; with nothing loaded the card itself is the empty state. The
+// media stays on black, as it does in fullscreen: the visualizations and video
+// are drawn for a dark screen, so only the chrome around them changes.
+@include player-theme.pebble {
+  div.container {
+    @include pebble.surface(md);
+    // The base border's width, as padding: the content box is today's, and the
+    // surface's inset edges show in it.
+    padding: 0.0625rem;
+    outline: none;
+  }
+
+  // Edge to edge, as in the other themes.
+  &.fullscreen div.container,
+  &.miniplayer div.container {
+    padding: 0;
+    border-radius: 0;
+    background: black;
+    box-shadow: none;
+  }
+
+  app-audio-outlet {
+    background: black;
+  }
+
+  .media-bar {
+    border-top-color: var(--pebble-border);
+
+    button {
+      color: var(--pebble-text-muted);
+      background: color-mix(in srgb, var(--pebble-heading) 8%, transparent);
+      border-radius: var(--pebble-radius-sm);
+
+      &:hover {
+        color: var(--pebble-heading);
+      }
+    }
+
+    // A Pebble field at the bar's compact size; the ring is a shadow, not a
+    // border, so the select keeps its size.
+    .media-bar-select {
+      color: var(--pebble-text);
+      background: var(--pebble-field);
+      border-radius: var(--pebble-radius-sm);
+      box-shadow: inset 0 0 0 var(--pebble-border-width) var(--pebble-field-border);
+      font-family: var(--pebble-font);
+
+      &:hover {
+        color: var(--pebble-heading);
+        background: color-mix(in srgb, var(--pebble-field), var(--pebble-heading) 6%);
+      }
+
+      &:focus {
+        color: var(--pebble-heading);
+      }
+
+      &:focus-visible {
+        @include pebble.focus-ring;
+      }
+
+      option {
+        color: var(--pebble-text);
+        background: var(--pebble-surface);
+      }
+    }
+
+    .media-title {
+      color: var(--pebble-text-muted);
+    }
+
+    .playlist-toggle {
+      color: var(--pebble-text-muted);
+
+      &:hover {
+        color: var(--pebble-heading);
+      }
+    }
+  }
+
+  .idle-state {
+    color: var(--pebble-text-muted);
+
+    // logo.png has white lettering; the wordmark token swaps in the dark-lettered
+    // one on the light palette (see _pebble.scss's img.pebble-wordmark).
+    img {
+      content: var(--pebble-wordmark);
+    }
+
+    p {
+      color: var(--pebble-text);
+    }
+
+    .hint {
+      color: var(--pebble-text-muted);
+    }
+
+    &.drag-over {
+      background: color-mix(in srgb, var(--pebble-heading) 6%, transparent);
+    }
+
+    &.drag-invalid {
+      background: color-mix(in srgb, var(--pebble-danger) 10%, transparent);
+    }
+
+    .dependency-warning {
+      color: var(--pebble-danger);
+      background: var(--pebble-danger-subtle);
+      border-color: color-mix(in srgb, var(--pebble-danger) 45%, transparent);
+      border-radius: var(--pebble-radius-md);
+
+      .dependency-warning-text {
+        color: var(--pebble-danger);
+      }
+
+      .dependency-settings-link {
+        --pebble-edge-top: color-mix(in srgb, var(--pebble-danger), white 25%);
+        --pebble-edge-bottom: color-mix(in srgb, var(--pebble-danger), black 25%);
+        color: var(--pebble-danger-contrast);
+        background: var(--pebble-danger);
+        border-radius: var(--pebble-radius-sm);
+        box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-sm);
+        font-family: var(--pebble-font);
+        font-weight: var(--pebble-weight-medium);
+
+        &:hover {
+          background: color-mix(in srgb, var(--pebble-danger), black 12%);
+        }
+      }
+    }
   }
 }

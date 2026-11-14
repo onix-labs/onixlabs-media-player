@@ -1,4 +1,5 @@
 @use 'variables' as *;
+@use 'player-theme';
 
 :host {
   height: 38px;
@@ -31,6 +32,21 @@
     &:hover {
       color: var(--text-primary);
       background: var(--text-10);
+    }
+  }
+}
+
+// Pebble: the strip is the bare page, like the other Pebble windows' title
+// strips; only its buttons take the Pebble muted text and ghost hover.
+@include player-theme.pebble {
+  .header-button {
+    color: var(--pebble-text-muted);
+    font-family: var(--pebble-font);
+    border-radius: var(--pebble-radius-sm);
+
+    &:hover {
+      color: var(--pebble-heading);
+      background: color-mix(in srgb, var(--pebble-heading) 8%, transparent);
     }
   }
 }

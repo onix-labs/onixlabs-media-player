@@ -32,7 +32,6 @@ $black-90: rgba(0, 0, 0, 0.9);
 
 // Primary blue
 $color-primary-light: #6db3f2;
-$color-primary-dark: #1e69de;
 
 // Status colors
 $color-success: #4ade80;
@@ -57,5 +56,6 @@ $btn-glass-hover: linear-gradient(to bottom,
   rgba(181, 198, 208, 0.4) 51%,
   rgba(224, 239, 249, 0.4) 100%);
 
-// Primary gradient (seek bar, volume thumb)
-$gradient-primary: linear-gradient(to bottom, $color-primary-light 0%, $color-primary-dark 100%);
+// Accent gradient (seek bar, volume fill and thumb in solid and glass): the
+// player accent lit from above. The tokens are in _accent.scss.
+$gradient-accent: linear-gradient(to bottom, var(--player-accent-highlight) 0%, var(--player-accent) 100%);

@@ -1,0 +1,112 @@
+// =============================================================================
+// Player accent colour
+// =============================================================================
+//
+// The main window's <html> carries data-accent: `mono` (Pebble's monochrome
+// primary) or one of the eight ONIXLabs brand colours. For now it colours only
+// the seek bar and the volume slider, fill and thumb, in every player theme.
+//
+//   --player-accent            the fill
+//   --player-accent-highlight  the top stop of the solid/glass gradient fill,
+//                              which keeps today's lit-from-above look
+//
+// Everything is declared on <html>, so the color-mix() below resolves against
+// that element's own --player-accent and inherits as a plain colour.
+
+@use 'sass:map';
+
+// Keys are quoted: bare, some (green, teal) would parse as colours.
+// The brand stops, as in pebble/_tokens.scss's --pebble-brand-* (repeated as
+// values: those tokens exist only in Pebble windows, and the accent applies in
+// solid and glass too).
+$brand: (
+  'amber': #f79533,
+  'coral': #f37055,
+  'rose': #ef4e7b,
+  'violet': #a166ab,
+  'blue': #5073b8,
+  'cyan': #1098ad,
+  'teal': #07b39b,
+  'green': #6fba82,
+);
+
+// Fills for the Pebble theme's light palette. Its track is the light
+// --pebble-surface-alt (#dee2e6), where most brand colours fall below the 3:1
+// a control needs against what it sits on (amber 1.7:1, green 1.8:1, teal
+// 2.0:1, coral 2.2:1, cyan 2.6:1, rose 2.7:1), so those are deepened, keeping
+// their hue, to 3.2-4.2:1. Violet (3.2:1) and blue (3.6:1) pass as they are.
+// Solid and glass keep the brand values in light too: their tracks stay the
+// dark translucent well they are today, which a deeper fill would vanish into.
+$pebble-light: (
+  'amber': #b8621a,
+  'coral': #c4462d,
+  'rose': #c42d5a,
+  'cyan': #0d7a8a,
+  'teal': #06806f,
+  'green': #3f8a54,
+);
+
+// Fills for the Pebble theme's dark palette. Blue is 2.8:1 on the dark
+// --pebble-surface-alt (#2b3036); a touch lighter it is 3.8:1. The rest pass.
+$pebble-dark: (
+  'blue': #6a88c3,
+);
+
+$pebble-player: "html[data-player-theme='pebble']";
+
+// Blue when the attribute is absent (before settings load) or unknown.
+html {
+  --player-accent: #{map.get($brand, 'blue')};
+  --player-accent-highlight: color-mix(in srgb, var(--player-accent), white 35%);
+}
+
+@each $id, $color in $brand {
+  html[data-accent='#{$id}'] {
+    --player-accent: #{$color};
+  }
+}
+
+@each $id, $color in $pebble-light {
+  #{$pebble-player}[data-accent='#{$id}'] {
+    --player-accent: #{$color};
+  }
+}
+
+// Pebble dark: back to the brand value (or its dark lift). Same light/dark
+// selectors as _pebble.scss, so the fill switches with the Pebble palette.
+@each $id, $color in $brand {
+  $dark: $color;
+  @if map.has-key($pebble-dark, $id) {
+    $dark: map.get($pebble-dark, $id);
+  }
+
+  @if map.has-key($pebble-light, $id) or map.has-key($pebble-dark, $id) {
+    @media (prefers-color-scheme: dark) {
+      #{$pebble-player}[data-accent='#{$id}']:not([data-color-scheme='light']) {
+        --player-accent: #{$dark};
+      }
+    }
+
+    #{$pebble-player}[data-accent='#{$id}'][data-color-scheme='dark'] {
+      --player-accent: #{$dark};
+    }
+  }
+}
+
+// Mono is Pebble's primary: near-black in light, near-white in dark, in every
+// theme. It is flat: a highlight mixed towards white would wash the near-black
+// out to the grey of the solid light track.
+html[data-accent='mono'] {
+  --player-accent: #212529;
+  --player-accent-highlight: var(--player-accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-accent='mono']:not([data-color-scheme='light']) {
+    --player-accent: #f8f9fa;
+  }
+}
+
+html[data-accent='mono'][data-color-scheme='dark'] {
+  --player-accent: #f8f9fa;
+}

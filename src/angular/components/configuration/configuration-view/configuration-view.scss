@@ -202,7 +202,7 @@ $row-padding-inline: 1.1rem;
 
 // Rows inside a card are split by a hairline; insets (notices, wells) separate
 // themselves by their own edge, so they take none.
-.setting-group > :is(.setting-row, .setting-box, .dependency-row) + :is(.setting-row, .setting-box, .dependency-row) {
+.setting-group > :is(.setting-row, .dependency-row) + :is(.setting-row, .dependency-row) {
   border-top: var(--pebble-border-width) solid var(--pebble-border);
 }
 
@@ -219,8 +219,7 @@ $row-padding-inline: 1.1rem;
 // Rows: label and description on the left, the control on the right
 // =============================================================================
 
-.setting-row,
-.setting-box-header {
+.setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -296,25 +295,12 @@ $row-padding-inline: 1.1rem;
   }
 }
 
-// Every slider in the window, in rows and in the window colour box.
-.slider-control,
-.inline-slider-row {
+// Every slider in the window.
+.slider-control {
   input[type='range'] {
     @include pebble.range;
     flex: 1;
     min-width: 0;
-
-    // The hue slider's track is the spectrum it chooses from; no fill.
-    &.hue-slider::-webkit-slider-runnable-track {
-      background: linear-gradient(to right,
-        hsl(0, 100%, 50%),
-        hsl(60, 100%, 50%),
-        hsl(120, 100%, 50%),
-        hsl(180, 100%, 50%),
-        hsl(240, 100%, 50%),
-        hsl(300, 100%, 50%),
-        hsl(360, 100%, 50%));
-    }
   }
 }
 
@@ -349,38 +335,58 @@ $row-padding-inline: 1.1rem;
   @include pebble.switch-track('input');
 }
 
-// =============================================================================
-// Window colour: a row with its HSL(A) sliders beneath
-// =============================================================================
+// Accent colour: a row of round swatches, one per accent. Each is a label
+// around a hidden radio (kept for keyboard and screen readers) and the swatch,
+// whose inline background is the colour. The chosen one wears a primary ring
+// clear of its edge; keyboard focus adds the Pebble focus ring.
+.accent-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pebble-space-2);
 
-.setting-box {
-  .setting-box-content {
-    display: flex;
-    flex-direction: column;
-    gap: var(--pebble-space-1);
-    padding: 0 $row-padding-inline $row-padding-block;
+  label {
+    position: relative;
+    display: inline-flex;
+    cursor: pointer;
   }
 
-  .inline-slider-row {
-    display: flex;
-    align-items: center;
-    gap: var(--pebble-space-3);
-    padding: var(--pebble-space-1) 0;
-
-    label {
-      min-width: 5.5rem;
-      color: var(--pebble-text-muted);
-      font-size: var(--pebble-text-xs);
-    }
+  input {
+    @include pebble.visually-hidden-input;
   }
 
-  // The resulting colour, framed like the colour wells.
-  .color-preview {
-    width: 2.5rem;
-    height: 2rem;
-    border: var(--pebble-border-width) solid var(--pebble-field-border);
-    border-radius: var(--pebble-radius-sm);
-    corner-shape: var(--pebble-corner-shape);
+  .accent-swatch {
+    display: block;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: var(--pebble-radius-pill);
+    corner-shape: round;
+    // A hairline so the mono swatch, near the page in either palette, still
+    // shows its edge.
+    box-shadow: inset 0 0 0 var(--pebble-border-width) color-mix(in srgb, var(--pebble-heading) 20%, transparent), var(--pebble-shadow-sm);
+    transition: transform var(--pebble-transition), box-shadow var(--pebble-transition), outline-color var(--pebble-transition);
+  }
+
+  label:hover .accent-swatch {
+    transform: translateY(-1px) scale(1.08);
+    box-shadow: inset 0 0 0 var(--pebble-border-width) color-mix(in srgb, var(--pebble-heading) 20%, transparent), var(--pebble-shadow-md);
+  }
+
+  input:checked + .accent-swatch {
+    outline: 2px solid var(--pebble-primary);
+    outline-offset: 2px;
+  }
+
+  input:focus-visible + .accent-swatch {
+    @include pebble.focus-ring;
+  }
+
+  // Focused and chosen: both rings, the focus halo outside the choice ring.
+  // (The focus ring clears the outline, so the choice ring is restated.)
+  input:checked:focus-visible + .accent-swatch {
+    outline: 2px solid var(--pebble-primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 7px var(--pebble-focus-ring);
   }
 }
 
