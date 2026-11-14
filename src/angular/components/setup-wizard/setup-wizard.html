@@ -42,7 +42,7 @@
       <!-- Welcome Step -->
       @case ('welcome') {
         <div class="step-content welcome-step">
-          <img src="logo.png" alt="ONIXPlayer" class="welcome-logo">
+          <img src="logo.png" alt="ONIXPlayer" class="welcome-logo pebble-wordmark">
           <h1>Let's get started</h1>
           <p class="welcome-subtitle">
             Your new media player for audio and video files.
@@ -135,7 +135,7 @@
                       @switch (dep.source) {
                         @case ('bundled') { Built in }
                         @case (null) { Missing from this build }
-                        @default { Using {{ dep.path }} }
+                        @default { Using <span class="dependency-path">{{ dep.path }}</span> }
                       }
                     </span>
                   </div>
@@ -200,7 +200,7 @@
                     <span class="dependency-status-text">
                       @switch (ytdlp.source) {
                         @case ('downloaded') { Downloaded }
-                        @case ('system') { Using {{ ytdlp.path }} }
+                        @case ('system') { Using <span class="dependency-path">{{ ytdlp.path }}</span> }
                         @default { Not downloaded (optional) }
                       }
                     </span>

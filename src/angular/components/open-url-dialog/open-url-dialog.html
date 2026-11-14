@@ -116,7 +116,7 @@
         @if (submitting() && mode() === 'download') {
           <button type="button" class="url-btn" (click)="cancel()">Cancel Download</button>
         } @else {
-          <button type="button" class="url-btn" (click)="close()" [disabled]="submitting()">Cancel</button>
+          <button type="button" class="url-btn url-btn-ghost" (click)="close()" [disabled]="submitting()">Cancel</button>
           <button type="button" class="url-btn url-btn-primary" (click)="submit()" [disabled]="!canSubmit()">
             {{ mode() === 'stream' ? 'Play' : 'Download & Play' }}
           </button>

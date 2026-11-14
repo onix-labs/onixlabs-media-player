@@ -1,5 +1,4 @@
-@use 'variables' as *;
-@use 'mixins' as *;
+@use 'pebble/mixins' as pebble;
 
 :host {
   display: flex;
@@ -19,31 +18,24 @@
   overflow: hidden;
 }
 
-// Header (drag region for traffic lights)
+// Title strip: the window's drag region, clear of the macOS traffic lights
 .wizard-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 2.5rem;
-  min-height: 2.5rem;
-  -webkit-app-region: drag;
+  @include pebble.window-header;
+  flex-shrink: 0;
 
   .header-title {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--text-70);
     pointer-events: none;
     user-select: none;
   }
 }
 
-// Body: left column (stepper + nav) + content
+// Body: stepper (left) + main column
 .wizard-body {
   display: flex;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  gap: 1.25rem;
+  gap: var(--pebble-space-5);
 }
 
 // Right column: content area + navigation buttons
@@ -54,28 +46,26 @@
   min-width: 0;
 }
 
-// Vertical stepper — left column, bordered box, recessed (darker) background
+// =============================================================================
+// Stepper
+// =============================================================================
+
+// A raised panel, so the future steps' recessed dots have something to sink
+// into.
 .wizard-stepper {
+  @include pebble.surface(xl);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   box-sizing: border-box;
   width: 13rem;
   padding: 1.5rem 1.25rem;
-  border: 1px solid var(--text-12);
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.22);
   overflow-y: auto;
-
-  @include light-mode {
-    background: rgba(0, 0, 0, 0.05);
-    border-color: var(--text-10);
-  }
 }
 
 .stepper-item {
   display: flex;
-  gap: 0.75rem;
+  gap: var(--pebble-space-3);
 }
 
 .stepper-marker {
@@ -85,54 +75,39 @@
   flex-shrink: 0;
 }
 
+// Future steps are recessed; the current one is a filled primary dot; completed
+// ones are filled with success and carry a check.
 .stepper-dot {
+  @include pebble.recessed(pill);
+  // A squircle at pill radius is not a circle; dots stay round.
+  corner-shape: round;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   width: 1.5rem;
   height: 1.5rem;
-  border-radius: 50%;
-  border: 2px solid var(--text-20);
-  background: var(--text-5);
   color: transparent;
   font-size: 0.625rem;
-  flex-shrink: 0;
-  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition: background-color var(--pebble-transition), color var(--pebble-transition), box-shadow var(--pebble-transition);
 
   .current & {
-    border-color: rgb(96, 165, 250);
-    background: rgba(96, 165, 250, 0.18);
-    box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.12);
-
-    @include light-mode {
-      border-color: rgb(59, 130, 246);
-      background: rgba(59, 130, 246, 0.15);
-      box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
-    }
+    background: var(--pebble-primary);
+    box-shadow: var(--pebble-shadow-sm);
 
     &::after {
       content: '';
       width: 0.5rem;
       height: 0.5rem;
       border-radius: 50%;
-      background: rgb(96, 165, 250);
-
-      @include light-mode {
-        background: rgb(59, 130, 246);
-      }
+      background: var(--pebble-primary-contrast);
     }
   }
 
   .completed & {
-    border-color: rgb(74, 222, 128);
-    background: rgb(74, 222, 128);
-    color: #0b3d1c;
-
-    @include light-mode {
-      border-color: rgb(34, 197, 94);
-      background: rgb(34, 197, 94);
-      color: white;
-    }
+    background: var(--pebble-success);
+    color: var(--pebble-success-contrast);
+    box-shadow: var(--pebble-shadow-sm);
   }
 }
 
@@ -140,46 +115,44 @@
   flex: 1;
   width: 2px;
   min-height: 1.25rem;
-  margin: 0.25rem 0;
-  background: var(--text-15);
-  transition: background 0.2s ease;
+  margin: var(--pebble-space-1) 0;
+  border-radius: var(--pebble-radius-pill);
+  background: var(--pebble-border-strong);
+  transition: background-color var(--pebble-transition);
 
   &.completed {
-    background: rgba(74, 222, 128, 0.5);
-
-    @include light-mode {
-      background: rgba(34, 197, 94, 0.55);
-    }
+    background: var(--pebble-success);
   }
 }
 
 .stepper-label {
   padding-top: 0.1875rem;
   padding-bottom: 1.25rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--text-40);
+  color: var(--pebble-text-muted);
+  font-size: var(--pebble-text-sm);
+  font-weight: var(--pebble-weight-medium);
   user-select: none;
-  transition: color 0.2s ease;
+  transition: color var(--pebble-transition);
 
   .current & {
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-
-  .completed & {
-    color: var(--text-60);
+    color: var(--pebble-heading);
+    font-weight: var(--pebble-weight-semibold);
   }
 }
 
-// Content area
+// =============================================================================
+// Content
+// =============================================================================
+
+// The padding is only as wide as the cards' shadows, selection ring and focus
+// ring, which the scroll container would otherwise clip.
 .wizard-content {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 1rem 1.5rem 1.5rem;
+  padding: 0.25rem 0.5rem 1rem;
 }
 
 .step-content {
@@ -188,25 +161,15 @@
   flex-direction: column;
   width: 100%;
 
-  h1, h2 {
-    margin: 0 0 0.5rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  h1 {
-    font-size: 1.75rem;
-    text-align: center;
-  }
-
   h2 {
-    font-size: 1.25rem;
+    @include pebble.heading(xl);
+    margin-bottom: var(--pebble-space-2);
   }
 
   .step-description {
-    margin: 0 0 1.5rem;
-    font-size: 0.875rem;
-    color: var(--text-50);
+    margin: 0 0 var(--pebble-space-5);
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-sm);
     line-height: 1.5;
   }
 }
@@ -214,63 +177,70 @@
 // Welcome step
 .welcome-step {
   align-items: center;
-  text-align: center;
   justify-content: center;
+  text-align: center;
 
   .welcome-logo {
-    max-width: 400px;
     width: 100%;
+    max-width: 400px;
     height: auto;
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--pebble-space-5);
+  }
+
+  // The window's one brand-gradient moment. The item shrinks to its text (the
+  // column centers its children), so the whole gradient spans the words.
+  h1 {
+    @include pebble.heading(2xl);
+    // Room for the descender, which would fall outside the clipped background.
+    padding-bottom: 0.15em;
+    margin-bottom: calc(var(--pebble-space-2) - 0.15em);
+
+    @supports (background-clip: text) or (-webkit-background-clip: text) {
+      background: var(--pebble-brand-gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
   }
 
   .welcome-subtitle {
-    margin: 0 0 1rem;
-    font-size: 1rem;
-    color: var(--text-60);
+    margin: 0 0 var(--pebble-space-4);
+    color: var(--pebble-text);
+    font-size: var(--pebble-text-md);
   }
 
   .welcome-description {
-    margin: 0;
-    font-size: 0.875rem;
-    color: var(--text-50);
-    line-height: 1.6;
     max-width: 400px;
+    margin: 0;
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-sm);
+    line-height: 1.6;
   }
 }
 
+// =============================================================================
 // Port step
+// =============================================================================
+
 .port-step {
   .port-options {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--pebble-space-4);
   }
 
+  // A selected card is ringed in the primary rather than filled.
   .port-option {
-    padding: 1rem;
-    background: var(--text-3);
-    border: 1px solid var(--text-10);
-    border-radius: 8px;
-    transition: border-color 0.2s ease, background 0.2s ease;
+    @include pebble.surface(lg);
+    padding: var(--pebble-space-4);
+    transition: box-shadow var(--pebble-transition);
 
     &.selected {
-      border-color: rgba(96, 165, 250, 0.4);
-      background: rgba(96, 165, 250, 0.05);
-
-      @include light-mode {
-        border-color: rgba(59, 130, 246, 0.5);
-        background: rgba(59, 130, 246, 0.08);
-      }
+      box-shadow: 0 0 0 2px var(--pebble-primary), var(--pebble-edge-shadow), var(--pebble-shadow-sm);
 
       .option-radio {
-        border-color: rgb(96, 165, 250);
-        background: rgb(96, 165, 250);
-
-        @include light-mode {
-          border-color: rgb(59, 130, 246);
-          background: rgb(59, 130, 246);
-        }
+        border-color: var(--pebble-primary);
+        background: var(--pebble-primary);
 
         &::after {
           opacity: 1;
@@ -279,49 +249,67 @@
     }
 
     &:hover:not(.selected) {
-      background: var(--text-5);
+      box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-md);
+    }
+
+    // The Automatic card's button fills it, so the card shows its focus.
+    &:has(.port-option-button:focus-visible) {
+      box-shadow: 0 0 0 3px var(--pebble-focus-ring), var(--pebble-edge-shadow), var(--pebble-shadow-sm);
+    }
+
+    &.selected:has(.port-option-button:focus-visible) {
+      box-shadow: 0 0 0 2px var(--pebble-primary), 0 0 0 5px var(--pebble-focus-ring), var(--pebble-edge-shadow), var(--pebble-shadow-sm);
     }
   }
 
   .port-option-button {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--pebble-space-3);
     width: 100%;
-    background: none;
+    padding: 0;
     border: none;
-    cursor: pointer;
+    background: none;
+    color: inherit;
     text-align: left;
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: none;
+    }
   }
 
   .port-option-header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
+    gap: var(--pebble-space-3);
+    margin-bottom: var(--pebble-space-3);
   }
 
+  // A radio indicator drawn to match the field controls.
   .option-radio {
+    position: relative;
+    flex-shrink: 0;
+    box-sizing: border-box;
     width: 1.25rem;
     height: 1.25rem;
+    border: 2px solid var(--pebble-field-border);
     border-radius: 50%;
-    border: 2px solid var(--text-30);
-    flex-shrink: 0;
-    position: relative;
-    transition: border-color 0.2s ease, background 0.2s ease;
+    background: var(--pebble-field);
+    transition: border-color var(--pebble-transition), background-color var(--pebble-transition);
 
     &::after {
       content: '';
       position: absolute;
       top: 50%;
       left: 50%;
-      transform: translate(-50%, -50%);
       width: 0.5rem;
       height: 0.5rem;
       border-radius: 50%;
-      background: white;
+      background: var(--pebble-primary-contrast);
       opacity: 0;
-      transition: opacity 0.2s ease;
+      transform: translate(-50%, -50%);
+      transition: opacity var(--pebble-transition);
     }
   }
 
@@ -332,63 +320,41 @@
   }
 
   .option-label {
-    font-size: 0.9375rem;
-    font-weight: 500;
-    color: var(--text-primary);
+    color: var(--pebble-heading);
+    font-size: var(--pebble-text-md);
+    font-weight: var(--pebble-weight-medium);
   }
 
   .option-description {
-    font-size: 0.8125rem;
-    color: var(--text-50);
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-sm);
   }
 
+  // Indented to line up with the option's text, past the radio.
   .port-input-container {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--pebble-space-2);
     margin-left: 2rem;
   }
 
   .port-input {
-    width: 120px;
-    padding: 0.5rem 0.75rem;
-    background: var(--text-8);
-    border: 1px solid var(--text-15);
-    border-radius: 6px;
-    color: var(--text-primary);
-    font-size: 0.875rem;
+    @include pebble.field;
+    width: 8rem;
+    font-family: var(--pebble-font-mono);
     font-variant-numeric: tabular-nums;
-    transition: border-color 0.2s ease;
-
-    @include light-mode {
-      background: var(--text-5);
-      border-color: var(--text-20);
-    }
-
-    &:focus {
-      outline: none;
-      border-color: var(--text-40);
-    }
+    -moz-appearance: textfield;
 
     &.invalid {
-      border-color: rgba(239, 68, 68, 0.5);
-
-      @include light-mode {
-        border-color: rgba(220, 38, 38, 0.6);
-      }
+      border-color: var(--pebble-danger);
     }
 
-    &::placeholder {
-      color: var(--text-30);
-    }
-
-    // Hide spinner buttons
+    // The arrows are too small to use and crowd the number.
     &::-webkit-outer-spin-button,
     &::-webkit-inner-spin-button {
       -webkit-appearance: none;
       margin: 0;
     }
-    -moz-appearance: textfield;
   }
 
   .port-status {
@@ -399,89 +365,66 @@
     height: 1.5rem;
 
     &.validating {
-      color: var(--text-40);
+      color: var(--pebble-text-muted);
     }
 
     &.valid {
-      color: rgb(74, 222, 128);
-
-      @include light-mode {
-        color: rgb(34, 197, 94);
-      }
+      color: var(--pebble-success);
     }
 
     &.invalid {
-      color: rgb(239, 68, 68);
-
-      @include light-mode {
-        color: rgb(220, 38, 38);
-      }
+      color: var(--pebble-danger);
     }
   }
 
   .port-error {
     display: block;
+    margin-top: var(--pebble-space-1);
     margin-left: 2rem;
-    margin-top: 0.25rem;
-    font-size: 0.75rem;
-    color: rgb(239, 68, 68);
-
-    @include light-mode {
-      color: rgb(220, 38, 38);
-    }
+    color: var(--pebble-danger);
+    font-size: var(--pebble-text-xs);
   }
 }
 
-// Dependencies step
+// =============================================================================
+// Components step
+// =============================================================================
+
 .dependencies-step {
   .dependency-list {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    margin-bottom: 1rem;
+    gap: var(--pebble-space-4);
+    margin-bottom: var(--pebble-space-4);
   }
 
-  .dependency-card {
-    padding: 1rem;
-    background: var(--text-3);
-    border: 1px solid var(--text-10);
-    border-radius: 8px;
-
-    &.installed {
-      border-color: rgba(74, 222, 128, 0.3);
-
-      @include light-mode {
-        border-color: rgba(34, 197, 94, 0.4);
-      }
-    }
+  // Cards: the indicator says whether a component is there, so the card itself
+  // stays neutral either way.
+  .dependency-card,
+  .soundfont-section {
+    @include pebble.surface(lg);
+    padding: var(--pebble-space-4);
   }
 
   .dependency-header {
     display: flex;
     align-items: flex-start;
-    gap: 0.75rem;
-    margin-bottom: 0.5rem;
+    gap: var(--pebble-space-3);
+    margin-bottom: var(--pebble-space-2);
   }
 
   .dependency-indicator {
-    font-size: 1.25rem;
     flex-shrink: 0;
     margin-top: 0.125rem;
+    font-size: 1.25rem;
+    line-height: 1;
 
     &.installed i {
-      color: rgb(74, 222, 128);
-
-      @include light-mode {
-        color: rgb(34, 197, 94);
-      }
+      color: var(--pebble-success);
     }
 
     &.missing i {
-      color: rgb(239, 68, 68);
-
-      @include light-mode {
-        color: rgb(220, 38, 38);
-      }
+      color: var(--pebble-danger);
     }
   }
 
@@ -493,127 +436,71 @@
     min-width: 0;
   }
 
-  .dependency-name {
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--text-primary);
+  .dependency-name,
+  .soundfont-title {
+    color: var(--pebble-heading);
+    font-size: var(--pebble-text-md);
+    font-weight: var(--pebble-weight-semibold);
   }
 
+  // One line: a long path is cut short rather than pushing the buttons away.
   .dependency-status-text {
-    font-size: 0.75rem;
-    color: var(--text-50);
+    overflow: hidden;
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .dependency-path {
-    font-size: 0.6875rem;
-    color: var(--text-40);
-    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-family: var(--pebble-font-mono);
   }
 
   .dependency-actions {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--pebble-space-2);
     flex-shrink: 0;
   }
 
   .dep-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.375rem;
-    padding: 0.375rem 0.75rem;
-    border-radius: 6px;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s ease, opacity 0.2s ease;
-
     &.install {
-      background: rgb(96, 165, 250);
-      border: none;
-      color: white;
+      @include pebble.button(secondary, sm);
+    }
 
-      @include light-mode {
-        background: rgb(59, 130, 246);
-      }
+    // Icon-only: a square ghost button.
+    &.link {
+      @include pebble.button(ghost, sm);
+      width: 2rem;
+      padding: 0;
+      color: var(--pebble-text-muted);
 
       &:hover:not(:disabled) {
-        background: rgb(79, 148, 233);
-
-        @include light-mode {
-          background: rgb(42, 113, 229);
-        }
-      }
-
-      &:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-    }
-
-    &.secondary {
-      background: var(--text-8);
-      border: 1px solid var(--text-15);
-      color: var(--text-70);
-
-      &:hover {
-        background: var(--text-12);
-        color: var(--text-primary);
-      }
-    }
-
-    &.link {
-      width: 2rem;
-      height: 2rem;
-      padding: 0;
-      background: var(--text-8);
-      border: 1px solid var(--text-15);
-      color: var(--text-50);
-
-      &:hover {
-        background: var(--text-12);
-        color: var(--text-70);
+        color: var(--pebble-heading);
       }
     }
   }
 
   .dependency-description {
-    margin: 0 0 0.5rem;
-    font-size: 0.8125rem;
-    color: var(--text-50);
-    line-height: 1.4;
+    margin: 0;
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-sm);
+    line-height: 1.45;
   }
 
-  // Install progress
+  // Download progress: a recessed well; a failure is a danger notice.
   .install-progress {
-    padding: 0.75rem;
-    background: var(--text-5);
-    border-radius: 6px;
-    margin-top: 0.5rem;
-
-    @include light-mode {
-      background: var(--text-8);
+    &:not(.error) {
+      @include pebble.recessed(md);
+      padding: var(--pebble-space-3) var(--pebble-space-4);
     }
 
     &.error {
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-
-      @include light-mode {
-        background: rgba(220, 38, 38, 0.1);
-        border-color: rgba(220, 38, 38, 0.3);
-      }
+      @include pebble.notice(danger);
 
       i {
-        color: rgb(239, 68, 68);
-
-        @include light-mode {
-          color: rgb(220, 38, 38);
-        }
+        flex-shrink: 0;
+        margin-top: 0.2em;
       }
     }
   }
@@ -621,179 +508,124 @@
   .install-progress-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-    color: var(--text-70);
+    gap: var(--pebble-space-2);
+    color: var(--pebble-text);
+    font-size: var(--pebble-text-sm);
 
     i {
-      color: rgb(96, 165, 250);
-
-      @include light-mode {
-        color: rgb(59, 130, 246);
-      }
+      color: var(--pebble-text-muted);
     }
   }
 
-  // Download progress bar
   .install-progress-bar {
-    height: 4px;
-    margin-top: 0.5rem;
-    background: var(--text-10);
-    border-radius: 2px;
-    overflow: hidden;
+    @include pebble.progress-track;
+    margin-top: var(--pebble-space-2);
 
     .install-progress-fill {
-      height: 100%;
-      background: rgb(96, 165, 250);
-      transition: width 0.2s ease;
-
-      @include light-mode {
-        background: rgb(59, 130, 246);
-      }
-    }
-  }
-
-  .install-output {
-    margin: 0.5rem 0 0;
-    padding: 0.5rem;
-    background: var(--text-8);
-    border-radius: 4px;
-    font-size: 0.6875rem;
-    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-    color: var(--text-60);
-    max-height: 100px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-
-    @include light-mode {
-      background: var(--text-12);
+      @include pebble.progress-fill;
     }
   }
 
   // SoundFont section
-  .soundfont-section {
-    padding: 1rem;
-    background: var(--text-3);
-    border: 1px solid var(--text-10);
-    border-radius: 8px;
-  }
-
   .soundfont-header {
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--pebble-space-3);
   }
 
   .soundfont-title {
     display: block;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 0.25rem;
+    margin-bottom: var(--pebble-space-1);
   }
 
   .soundfont-subtitle {
     display: block;
-    font-size: 0.75rem;
-    color: var(--text-50);
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-sm);
+    line-height: 1.45;
   }
 
   .soundfont-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
+    gap: var(--pebble-space-2);
+    margin-bottom: var(--pebble-space-3);
   }
 
+  // Chosen SoundFonts sit recessed in their card.
   .soundfont-item {
+    @include pebble.recessed(sm);
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    background: var(--text-5);
-    border-radius: 6px;
-
-    @include light-mode {
-      background: var(--text-8);
-    }
+    gap: var(--pebble-space-2);
+    padding: var(--pebble-space-1) var(--pebble-space-1) var(--pebble-space-1) var(--pebble-space-3);
 
     > i {
-      color: var(--text-40);
-      font-size: 0.875rem;
+      color: var(--pebble-text-muted);
+      font-size: var(--pebble-text-sm);
     }
   }
 
   .soundfont-name {
     flex: 1;
-    font-size: 0.8125rem;
-    color: var(--text-primary);
+    min-width: 0;
     overflow: hidden;
+    color: var(--pebble-text);
+    font-family: var(--pebble-font-mono);
+    font-size: var(--pebble-text-sm);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .soundfont-size {
-    font-size: 0.75rem;
-    color: var(--text-40);
     flex-shrink: 0;
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-xs);
+    font-variant-numeric: tabular-nums;
   }
 
   .soundfont-remove {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
+    @include pebble.button(ghost, sm);
+    width: 2rem;
     padding: 0;
-    background: none;
-    border: none;
-    color: var(--text-30);
-    cursor: pointer;
-    transition: color 0.2s ease;
+    color: var(--pebble-text-muted);
 
-    &:hover {
-      color: rgb(239, 68, 68);
-
-      @include light-mode {
-        color: rgb(220, 38, 38);
-      }
+    &:hover:not(:disabled) {
+      color: var(--pebble-danger);
     }
   }
 
   .soundfont-empty {
-    margin: 0 0 0.75rem;
-    font-size: 0.8125rem;
-    color: var(--text-40);
+    margin: 0 0 var(--pebble-space-3);
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-sm);
+  }
+
+  .soundfont-section .install-progress {
+    margin-bottom: var(--pebble-space-3);
   }
 
   .soundfont-actions {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--pebble-space-2);
   }
 
   .info-notice {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    background: rgba(96, 165, 250, 0.08);
-    border: 1px solid rgba(96, 165, 250, 0.2);
-    border-radius: 6px;
-    font-size: 0.8125rem;
-    color: rgba(96, 165, 250, 0.9);
+    @include pebble.notice(info);
 
-    @include light-mode {
-      background: rgba(59, 130, 246, 0.12);
-      border-color: rgba(59, 130, 246, 0.5);
-      color: #1d4ed8;
+    i {
+      flex-shrink: 0;
+      margin-top: 0.2em;
     }
   }
 }
 
+// =============================================================================
 // Complete step
+// =============================================================================
+
 .complete-step {
   align-items: center;
-  text-align: center;
   justify-content: center;
+  text-align: center;
 
   .complete-icon {
     display: flex;
@@ -801,142 +633,103 @@
     justify-content: center;
     width: 4rem;
     height: 4rem;
+    margin-bottom: var(--pebble-space-5);
     border-radius: 50%;
-    background: rgba(74, 222, 128, 0.15);
-    margin-bottom: 1.5rem;
-
-    @include light-mode {
-      background: rgba(34, 197, 94, 0.15);
-    }
+    background: var(--pebble-success-subtle);
 
     i {
+      color: var(--pebble-success);
       font-size: 2rem;
-      color: rgb(74, 222, 128);
-
-      @include light-mode {
-        color: rgb(34, 197, 94);
-      }
     }
   }
 
+  h2 {
+    @include pebble.heading(2xl);
+    margin-bottom: var(--pebble-space-2);
+  }
+
   .complete-description {
-    margin: 0 0 2rem;
-    font-size: 0.875rem;
-    color: var(--text-50);
+    margin: 0 0 var(--pebble-space-6);
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-sm);
     line-height: 1.5;
   }
 
   .summary {
+    @include pebble.surface(lg);
+    box-sizing: border-box;
     width: 100%;
-    max-width: 300px;
-    padding: 1rem;
-    background: var(--text-3);
-    border: 1px solid var(--text-10);
-    border-radius: 8px;
+    max-width: 320px;
+    padding: var(--pebble-space-4) var(--pebble-space-5);
     text-align: left;
 
     h3 {
-      margin: 0 0 0.75rem;
-      font-size: 0.875rem;
-      font-weight: 600;
-      color: var(--text-70);
+      @include pebble.label;
+      margin-bottom: var(--pebble-space-2);
     }
   }
 
   .summary-item {
     display: flex;
     justify-content: space-between;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--text-8);
+    gap: var(--pebble-space-3);
+    padding: var(--pebble-space-2) 0;
+    border-bottom: var(--pebble-border-width) solid var(--pebble-border);
 
     &:last-child {
       border-bottom: none;
     }
 
     .summary-label {
-      font-size: 0.8125rem;
-      color: var(--text-50);
+      color: var(--pebble-text-muted);
+      font-size: var(--pebble-text-sm);
     }
 
     .summary-value {
-      font-size: 0.8125rem;
-      font-weight: 500;
-      color: var(--text-primary);
+      color: var(--pebble-heading);
+      font-size: var(--pebble-text-sm);
+      font-weight: var(--pebble-weight-medium);
 
       &.installed {
-        color: rgb(74, 222, 128);
-
-        @include light-mode {
-          color: rgb(34, 197, 94);
-        }
+        color: var(--pebble-success);
       }
 
       &.missing {
-        color: var(--text-40);
+        color: var(--pebble-text-muted);
       }
     }
   }
 }
 
+// =============================================================================
 // Footer
+// =============================================================================
+
+// Inset to line up with the cards, inside the content's shadow padding.
 .wizard-footer {
   display: flex;
   justify-content: flex-end;
-  margin-top: 1rem;
+  flex-shrink: 0;
+  margin-top: var(--pebble-space-3);
+  padding: 0 0.5rem;
 }
 
 .nav-buttons {
   display: flex;
-  gap: 0.75rem;
+  gap: var(--pebble-space-3);
 }
 
 .nav-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, opacity 0.2s ease;
-
   &.back {
-    background: var(--text-8);
-    border: 1px solid var(--text-15);
-    color: var(--text-70);
-
-    &:hover {
-      background: var(--text-12);
-      color: var(--text-primary);
-    }
+    @include pebble.button(secondary);
   }
 
+  // The forward action is the one primary button.
   &.primary {
-    background: rgb(96, 165, 250);
-    border: none;
-    color: white;
-
-    @include light-mode {
-      background: rgb(59, 130, 246);
-    }
-
-    &:hover:not(:disabled) {
-      background: rgb(79, 148, 233);
-
-      @include light-mode {
-        background: rgb(42, 113, 229);
-      }
-    }
-
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
+    @include pebble.button(primary);
   }
 
   i {
-    font-size: 0.75rem;
+    font-size: var(--pebble-text-xs);
   }
 }

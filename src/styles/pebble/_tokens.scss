@@ -72,10 +72,8 @@
   --pebble-shadow-md: 0 0.5rem 1rem rgba(16, 24, 40, 0.12);
   --pebble-shadow-lg: 0 1rem 3rem rgba(16, 24, 40, 0.175);
   --pebble-shadow-button-hover: 0 0.5rem 1rem rgba(16, 24, 40, 0.22);
-  // A raised surface's light top edge and dark bottom edge, as inset shadows:
-  // they follow a rounded corner, where a top and bottom border taper away and
-  // render jagged. Elements set --pebble-edge-top and --pebble-edge-bottom.
-  --pebble-edge-shadow: inset 0 var(--pebble-border-width) 0 var(--pebble-edge-top), inset 0 calc(-1 * var(--pebble-border-width)) 0 var(--pebble-edge-bottom);
+  // --pebble-edge-shadow is not here: see _pebble.scss for why it is declared
+  // on every element.
 
   // Motion
   --pebble-duration: 200ms;
@@ -91,6 +89,10 @@
   --pebble-bg: #d8dde2;
   --pebble-surface: #e9ecef;
   --pebble-surface-alt: #dee2e6;
+  // A secondary button: a step above the surface, so it still reads as raised
+  // on a card (Stride's outline button is the surface itself, and vanishes
+  // into one).
+  --pebble-button-surface: #f3f5f7;
   --pebble-field: color-mix(in srgb, #dee2e6, white 25%);
   --pebble-field-border: #6a7178;      // AA: Stride uses #bcbec1 (1.6:1); a control's edge needs 3:1
 
@@ -132,6 +134,9 @@
 
   --pebble-scrollbar-thumb: rgba(33, 37, 41, 0.25);
   --pebble-scrollbar-thumb-hover: rgba(33, 37, 41, 0.4);
+
+  // The ONIXPlayer wordmark with dark lettering; logo.png's is white.
+  --pebble-wordmark: url('/logo-light.png');
 }
 
 /// The dark palette.
@@ -141,6 +146,7 @@
   --pebble-bg: #212529;
   --pebble-surface: #343a40;
   --pebble-surface-alt: #2b3036;
+  --pebble-button-surface: #3f464d;
   --pebble-field: #2b3036;
   --pebble-field-border: #858b92;      // AA: Stride uses #494d52
 
@@ -180,6 +186,8 @@
 
   --pebble-scrollbar-thumb: rgba(248, 249, 250, 0.2);
   --pebble-scrollbar-thumb-hover: rgba(248, 249, 250, 0.35);
+
+  --pebble-wordmark: url('/logo.png');
 }
 
 /// The widened radius scale for squircle corners.

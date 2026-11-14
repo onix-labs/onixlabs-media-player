@@ -51,7 +51,7 @@
 ///   primary (the monochrome brand), danger, or ghost (content only)
 /// @param {String} $size - sm, md or lg
 @mixin button($variant: secondary, $size: md) {
-  --pebble-button-bg: var(--pebble-surface);
+  --pebble-button-bg: var(--pebble-button-surface);
   --pebble-button-text: var(--pebble-primary);
   --pebble-edge-top: var(--pebble-edge-light);
   --pebble-edge-bottom: var(--pebble-edge-button);
@@ -388,7 +388,9 @@
   line-height: 1;
   white-space: nowrap;
   @if $intent == neutral {
-    background: var(--pebble-secondary-subtle);
+    // surface-alt rather than secondary-subtle: in dark, secondary-subtle is
+    // the surface itself, so a badge on a card would lose its fill.
+    background: var(--pebble-surface-alt);
     color: var(--pebble-text);
   } @else {
     background: var(--pebble-#{$intent});

@@ -133,14 +133,16 @@
                     </div>
                   }
                 }
+              </div>
 
-                <!-- SoundFont Section -->
-                @if (fluidsynthInstalled()) {
-                  <div class="soundfont-section">
-                    <div class="soundfont-header">
-                      <span class="soundfont-title">SoundFonts</span>
-                      <span class="soundfont-subtitle">SoundFont files are required for MIDI playback synthesis. Select one to use for playback.</span>
-                    </div>
+              <!-- SoundFont Section: its own group, titled above its card -->
+              @if (fluidsynthInstalled()) {
+                <section class="setting-section soundfont-section">
+                  <div class="setting-group-header soundfont-header">
+                    <h3 class="soundfont-title">SoundFonts</h3>
+                    <p class="setting-group-description soundfont-subtitle">SoundFont files are required for MIDI playback synthesis. Select one to use for playback.</p>
+                  </div>
+                  <div class="setting-group">
                     @if (soundFontError(); as error) {
                       <div class="install-progress error">
                         <i class="fa-solid fa-circle-xmark"></i>
@@ -170,8 +172,8 @@
                       Install SoundFont
                     </button>
                   </div>
-                }
-              </div>
+                </section>
+              }
             }
 
             @case ('visualisations') {
@@ -427,8 +429,8 @@
                 </div>
               </div>
 
-              <!-- File Associations Section -->
-              <div class="setting-group">
+              <!-- File Associations Section: the title sits above its card -->
+              <section class="setting-section">
                 <div class="setting-group-header">
                   <h3>File Associations</h3>
                   <p class="setting-group-description">
@@ -436,45 +438,47 @@
                   </p>
                 </div>
 
-                <div class="file-associations-info">
-                  <div class="extension-category">
-                    <span class="extension-category-label">Audio Files</span>
-                    <div class="extension-badges">
-                      @for (ext of supportedAudioExtensions; track ext) {
-                        <span class="extension-badge">.{{ ext }}</span>
-                      }
+                <div class="setting-group">
+                  <div class="file-associations-info">
+                    <div class="extension-category">
+                      <span class="extension-category-label">Audio Files</span>
+                      <div class="extension-badges">
+                        @for (ext of supportedAudioExtensions; track ext) {
+                          <span class="extension-badge">.{{ ext }}</span>
+                        }
+                      </div>
                     </div>
-                  </div>
 
-                  <div class="extension-category">
-                    <span class="extension-category-label">Video Files</span>
-                    <div class="extension-badges">
-                      @for (ext of supportedVideoExtensions; track ext) {
-                        <span class="extension-badge">.{{ ext }}</span>
-                      }
+                    <div class="extension-category">
+                      <span class="extension-category-label">Video Files</span>
+                      <div class="extension-badges">
+                        @for (ext of supportedVideoExtensions; track ext) {
+                          <span class="extension-badge">.{{ ext }}</span>
+                        }
+                      </div>
                     </div>
-                  </div>
 
-                  <div class="extension-category">
-                    <span class="extension-category-label">Playlists</span>
-                    <div class="extension-badges">
-                      <span class="extension-badge">.opp</span>
+                    <div class="extension-category">
+                      <span class="extension-category-label">Playlists</span>
+                      <div class="extension-badges">
+                        <span class="extension-badge">.opp</span>
+                      </div>
                     </div>
-                  </div>
 
-                  @if (isMacOS()) {
-                    <div class="file-associations-hint">
-                      <i class="fa-solid fa-info-circle"></i>
-                      <span>To set ONIXPlayer as your default application, right-click a file in Finder, select "Get Info", then choose ONIXPlayer under "Open with".</span>
-                    </div>
-                  } @else {
-                    <div class="file-associations-hint">
-                      <i class="fa-solid fa-info-circle"></i>
-                      <span>To set ONIXPlayer as your default application, right-click a file, select "Open with", then choose ONIXPlayer and set as default.</span>
-                    </div>
-                  }
+                    @if (isMacOS()) {
+                      <div class="file-associations-hint">
+                        <i class="fa-solid fa-info-circle"></i>
+                        <span>To set ONIXPlayer as your default application, right-click a file in Finder, select "Get Info", then choose ONIXPlayer under "Open with".</span>
+                      </div>
+                    } @else {
+                      <div class="file-associations-hint">
+                        <i class="fa-solid fa-info-circle"></i>
+                        <span>To set ONIXPlayer as your default application, right-click a file, select "Open with", then choose ONIXPlayer and set as default.</span>
+                      </div>
+                    }
+                  </div>
                 </div>
-              </div>
+              </section>
             }
 
             @case ('playback') {
@@ -494,6 +498,7 @@
                       max="10"
                       step="1"
                       [value]="currentPreviousTrackThreshold()"
+                      [style.--pebble-range-percent]="rangeFill(currentPreviousTrackThreshold(), 0, 10)"
                       (input)="onPreviousTrackThresholdChange($event)"
                     />
                     <span class="slider-value">{{ formatPreviousTrackThreshold() }}</span>
@@ -515,6 +520,7 @@
                       max="60"
                       step="1"
                       [value]="currentSkipDuration()"
+                      [style.--pebble-range-percent]="rangeFill(currentSkipDuration(), 1, 60)"
                       (input)="onSkipDurationChange($event)"
                     />
                     <span class="slider-value">{{ formatSkipDuration() }}</span>
@@ -559,6 +565,7 @@
                       max="1"
                       step="0.05"
                       [value]="currentDefaultVolume()"
+                      [style.--pebble-range-percent]="rangeFill(currentDefaultVolume(), 0, 1)"
                       (input)="onDefaultVolumeChange($event)"
                     />
                     <span class="slider-value">{{ formatDefaultVolume() }}</span>
@@ -580,6 +587,7 @@
                       max="500"
                       step="50"
                       [value]="currentCrossfadeDuration()"
+                      [style.--pebble-range-percent]="rangeFill(currentCrossfadeDuration(), 0, 500)"
                       (input)="onCrossfadeDurationChange($event)"
                     />
                     <span class="slider-value">{{ formatCrossfadeDuration() }}</span>
@@ -675,6 +683,7 @@
                           [max]="equalizerGainMax"
                           step="1"
                           [value]="currentEqualizerBands()[i]"
+                          [style.--pebble-range-percent]="rangeFill(currentEqualizerBands()[i], equalizerGainMin, equalizerGainMax)"
                           (input)="onEqualizerBandChange(i, $event)"
                           [attr.aria-label]="formatFrequency(frequency) + 'Hz band'"
                         />
@@ -755,6 +764,7 @@
                       max="30"
                       step="1"
                       [value]="currentAutoHideDelay()"
+                      [style.--pebble-range-percent]="rangeFill(currentAutoHideDelay(), 0, 30)"
                       (input)="onAutoHideDelayChange($event)"
                     />
                     <span class="slider-value">{{ formatAutoHideDelay() }}</span>
@@ -861,6 +871,7 @@
                           [max]="control.max"
                           step="1"
                           [value]="videoAdjustmentValue(control.key)"
+                          [style.--pebble-range-percent]="rangeFill(videoAdjustmentValue(control.key), control.min, control.max)"
                           (input)="onVideoAdjustmentChange(control.key, $event)"
                         />
                         <span class="slider-value">{{ videoAdjustmentValue(control.key) }}{{ control.unit }}</span>
@@ -923,6 +934,7 @@
                       max="300"
                       step="10"
                       [value]="currentSubtitleFontSize()"
+                      [style.--pebble-range-percent]="rangeFill(currentSubtitleFontSize(), 50, 300)"
                       (input)="onSubtitleFontSizeChange($event)"
                     />
                     <span class="slider-value">{{ formatSubtitleFontSize() }}</span>
@@ -983,6 +995,7 @@
                       max="1"
                       step="0.05"
                       [value]="currentSubtitleBackgroundOpacity()"
+                      [style.--pebble-range-percent]="rangeFill(currentSubtitleBackgroundOpacity(), 0, 1)"
                       (input)="onSubtitleBackgroundOpacityChange($event)"
                     />
                     <span class="slider-value">{{ formatSubtitleBackgroundOpacity() }}</span>
@@ -1047,6 +1060,7 @@
                         max="3"
                         step="0.5"
                         [value]="currentSubtitleShadowSpread()"
+                        [style.--pebble-range-percent]="rangeFill(currentSubtitleShadowSpread(), 1, 3)"
                         (input)="onSubtitleShadowSpreadChange($event)"
                       />
                       <span class="slider-value">{{ formatSubtitleShadowSpread() }}</span>
@@ -1069,6 +1083,7 @@
                         max="10"
                         step="1"
                         [value]="currentSubtitleShadowBlur()"
+                        [style.--pebble-range-percent]="rangeFill(currentSubtitleShadowBlur(), 0, 10)"
                         (input)="onSubtitleShadowBlurChange($event)"
                       />
                       <span class="slider-value">{{ formatSubtitleShadowBlur() }}</span>
@@ -1117,7 +1132,7 @@
                     <label for="glass-enabled">Glass Effect</label>
                     <p class="setting-description">
                       @if (supportsGlass()) {
-                        Enables window transparency with blur effect.
+                        Enables transparency with blur behind the player window.
                       } @else {
                         Glass effects are not supported on this platform.
                       }
@@ -1143,7 +1158,7 @@
                     <div class="setting-label">
                       <label for="macos-visual-effect-state">Visual Effect State</label>
                       <p class="setting-description">
-                        Controls when the glass effect is active. "Always Active" keeps the effect even when the window is in the background.
+                        Controls when the player window's glass effect is active. "Always Active" keeps the effect even when the player is in the background.
                       </p>
                     </div>
                     <div class="setting-control">
@@ -1192,9 +1207,9 @@
                       <label>Window Color</label>
                       <p class="setting-description">
                         @if (currentGlassEnabled() && supportsGlass()) {
-                          Color tint over the glass effect. Use Alpha to control tint intensity.
+                          Color tint over the player window's glass effect. Use Alpha to control tint intensity.
                         } @else {
-                          Window background color.
+                          The player window's background color.
                         }
                       </p>
                     </div>
@@ -1226,6 +1241,7 @@
                         max="100"
                         step="1"
                         [value]="windowColorSaturation()"
+                        [style.--pebble-range-percent]="rangeFill(windowColorSaturation(), 0, 100)"
                         (input)="onWindowColorSaturationChange($event)"
                       />
                       <span class="slider-value">{{ windowColorSaturation() }}%</span>
@@ -1239,6 +1255,7 @@
                         max="100"
                         step="1"
                         [value]="windowColorLightness()"
+                        [style.--pebble-range-percent]="rangeFill(windowColorLightness(), 0, 100)"
                         (input)="onWindowColorLightnessChange($event)"
                       />
                       <span class="slider-value">{{ windowColorLightness() }}%</span>
@@ -1253,6 +1270,7 @@
                           max="1"
                           step="0.05"
                           [value]="currentWindowTintAlpha()"
+                          [style.--pebble-range-percent]="rangeFill(currentWindowTintAlpha(), 0, 1)"
                           (input)="onWindowTintAlphaChange($event)"
                         />
                         <span class="slider-value">{{ (currentWindowTintAlpha() * 100).toFixed(0) }}%</span>

@@ -700,7 +700,7 @@ describe('ConfigurationView', (): void => {
     });
 
     it.each([
-      ['Appearance', 'Configure window transparency and background.'],
+      ['Appearance', 'Configure the player window\'s transparency and background.'],
       ['Dependencies', 'Manage required external dependencies for media playback.'],
       ['Playback', 'Configure shared playback behaviour.'],
       ['Audio Playback', 'Configure audio playback and output.'],
@@ -962,6 +962,26 @@ describe('ConfigurationView', (): void => {
       await fixture.whenStable();
 
       expect(row.read(host)).toBe(row.expected);
+    });
+
+    it('fills a slider\'s track up to its value', async (): Promise<void> => {
+      await open('Audio Playback');
+
+      settings.defaultVolume.set(0.75);
+      await fixture.whenStable();
+
+      expect(get<HTMLInputElement>('#default-volume').style.getPropertyValue('--pebble-range-percent')).toBe('75%');
+    });
+  });
+
+  describe('range fill', (): void => {
+    it.each([
+      [5, 0, 10, '50%'],
+      [-5, 0, 10, '0%'],
+      [15, 0, 10, '100%'],
+      [3, 3, 3, '0%'],
+    ])('places %d between %d and %d at %s', (value: number, min: number, max: number, expected: string): void => {
+      expect(component.rangeFill(value, min, max)).toBe(expected);
     });
   });
 
@@ -1278,7 +1298,7 @@ describe('ConfigurationView', (): void => {
 
     describe('with glass enabled and supported', (): void => {
       it('describes the window colour as a tint', (): void => {
-        expect(get('.setting-box .setting-description').textContent).toContain('Color tint over the glass effect');
+        expect(get('.setting-box .setting-description').textContent).toContain('Color tint over the player window\'s glass effect');
       });
 
       it('shows the tint values on the colour sliders', (): void => {
@@ -1305,7 +1325,7 @@ describe('ConfigurationView', (): void => {
 
       it('enables the glass toggle', (): void => {
         expect(get<HTMLInputElement>('#glass-enabled').disabled).toBe(false);
-        expect(get('.setting-description').textContent).toContain('Enables window transparency with blur effect.');
+        expect(get('.setting-description').textContent).toContain('Enables transparency with blur behind the player window.');
       });
     });
 
@@ -1316,7 +1336,7 @@ describe('ConfigurationView', (): void => {
       });
 
       it('describes the window colour as a background', (): void => {
-        expect(get('.setting-box .setting-description').textContent).toContain('Window background color.');
+        expect(get('.setting-box .setting-description').textContent).toContain('The player window\'s background color.');
       });
 
       it('shows the background values on the colour sliders', (): void => {

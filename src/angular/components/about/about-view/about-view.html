@@ -6,31 +6,22 @@
   <div class="about-content">
     <!-- Logo and Title -->
     <div class="about-hero">
-      <img src="logo.png" alt="ONIXPlayer" class="about-logo" draggable="false"/>
-      <table class="version-table">
-        <tr>
-          <td>ONIXPlayer</td>
-          <td data-testid="app-version">{{ version() }}</td>
-        </tr>
+      <img src="logo.png" alt="ONIXPlayer" class="about-logo pebble-wordmark" draggable="false"/>
+      <!-- A definition list rather than a table: each row is a name and its value -->
+      <dl class="version-table">
+        <dt>ONIXPlayer</dt>
+        <dd data-testid="app-version">{{ version() }}</dd>
         @if (versionInfo) {
-          <tr>
-            <td>Electron</td>
-            <td>{{ versionInfo.electron }}</td>
-          </tr>
-          <tr>
-            <td>Node</td>
-            <td>{{ versionInfo.node }}</td>
-          </tr>
-          <tr>
-            <td>Chrome</td>
-            <td>{{ versionInfo.chrome }}</td>
-          </tr>
-          <tr>
-            <td>V8</td>
-            <td>{{ versionInfo.v8 }}</td>
-          </tr>
+          <dt>Electron</dt>
+          <dd>{{ versionInfo.electron }}</dd>
+          <dt>Node</dt>
+          <dd>{{ versionInfo.node }}</dd>
+          <dt>Chrome</dt>
+          <dd>{{ versionInfo.chrome }}</dd>
+          <dt>V8</dt>
+          <dd>{{ versionInfo.v8 }}</dd>
         }
-      </table>
+      </dl>
       <p class="license">Released under the MIT License</p>
     </div>
 

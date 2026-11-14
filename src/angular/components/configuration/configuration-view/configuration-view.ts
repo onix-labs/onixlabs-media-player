@@ -145,7 +145,7 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     id: 'appearance',
     name: 'Appearance',
     icon: 'fa-solid fa-palette',
-    description: 'Configure window transparency and background.',
+    description: 'Configure the player window\'s transparency and background.',
   },
   {
     id: 'dependencies',
@@ -1017,6 +1017,25 @@ export class ConfigurationView {
    */
   public formatFrequency(hz: number): string {
     return hz >= 1000 ? `${hz / 1000}k` : `${hz}`;
+  }
+
+  /**
+   * How far a range input's value sits between its bounds, as a CSS percentage.
+   * The Pebble range track fills up to --pebble-range-percent, because WebKit has
+   * no pseudo-element for a range's progress.
+   *
+   * @param value - The current value
+   * @param min - The range's minimum
+   * @param max - The range's maximum
+   * @returns The filled share of the track, e.g. "42%"
+   */
+  public rangeFill(value: number, min: number, max: number): string {
+    if (max <= min) {
+      return '0%';
+    }
+
+    const percent: number = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
+    return `${percent}%`;
   }
 
   /**

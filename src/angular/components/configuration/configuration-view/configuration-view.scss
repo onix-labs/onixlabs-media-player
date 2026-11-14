@@ -1,5 +1,17 @@
-@use 'variables' as *;
-@use 'mixins' as *;
+// =============================================================================
+// Settings window, in Pebble
+// =============================================================================
+//
+// A category sidebar on the page background and a scrolling panel of setting
+// groups, each group a raised card whose rows are split by hairlines. Every
+// colour comes from the --pebble-* tokens, so light and dark need no rules here.
+
+@use 'pebble/mixins' as pebble;
+
+// Row padding inside a group card, shared by everything that lines up with the
+// rows (insets, the window colour sliders) so their edges align.
+$row-padding-block: 0.85rem;
+$row-padding-inline: 1.1rem;
 
 :host {
   display: flex;
@@ -17,105 +29,137 @@
   overflow: hidden;
 }
 
-// Header (drag region for traffic lights)
+// Title strip (macOS only): the drag region, clear of the traffic lights.
 .configuration-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 2.5rem;
-  min-height: 2.5rem;
-  -webkit-app-region: drag;
+  @include pebble.window-header;
+  flex: none;
 
   .header-title {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--text-70);
     pointer-events: none;
     user-select: none;
   }
 }
 
-// Content area
 .configuration-content {
   display: flex;
   flex: 1;
+  gap: var(--pebble-space-3);
   min-height: 0;
-  padding: 0 1rem 1rem;
+  padding: 0 0 0 var(--pebble-space-4);
+
+  // Without the macOS title strip, the content would otherwise touch the frame.
+  &:first-child {
+    padding-top: var(--pebble-space-4);
+  }
 }
 
-// Sidebar
+// =============================================================================
+// Buttons. Each variant is expanded once for every element that wears it, to
+// keep the stylesheet inside its size budget, and comes before the rules that
+// size particular buttons so those win at equal specificity.
+// =============================================================================
+
+// Ordinary actions: Download, Update, Install SoundFont, and the text buttons
+// that restore defaults (equalizer, video adjustments).
+.dependency-button,
+.setting-control:not(.port-control) > .reset-button {
+  @include pebble.button(secondary, sm);
+}
+
+// Remove deletes a download: the danger intent, over the same button.
+.dependency-button.uninstall {
+  --pebble-button-bg: var(--pebble-danger);
+  --pebble-button-text: var(--pebble-danger-contrast);
+  --pebble-edge-top: color-mix(in srgb, var(--pebble-danger), white 25%);
+  --pebble-edge-bottom: color-mix(in srgb, var(--pebble-danger), black 25%);
+}
+
+// Icon buttons.
+.configuration-sidebar .accordion-toggle,
+.setting-control.port-control .reset-button,
+.dependency-link,
+.soundfont-remove {
+  @include pebble.button(ghost, sm);
+  color: var(--pebble-text-muted);
+}
+
+// =============================================================================
+// Sidebar: navigation on the page, the selected item raised as a surface
+// =============================================================================
+
 .configuration-sidebar {
-  min-width: 160px;
-  flex: none;
   display: flex;
+  flex: none;
   flex-direction: column;
-  gap: 1rem;
-  border-right: 0.0625rem solid var(--text-20);
-  padding-right: 1rem;
+  width: 11.5rem;
+  // Room for the selected item's shadow, which overflow would otherwise clip.
+  padding: var(--pebble-space-1) var(--pebble-space-1) var(--pebble-space-4);
   overflow-y: auto;
 
   .category-list {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--pebble-space-1);
   }
 
-  .category-item {
+  .category-item,
+  .category-child {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.65rem 1rem;
-    background: none;
+    width: 100%;
     border: none;
-    border-radius: 4px;
-    color: var(--text-70);
-    font-size: 0.875rem;
-    cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease;
+    border-radius: var(--pebble-radius-md);
+    corner-shape: var(--pebble-corner-shape);
+    background: none;
+    color: var(--pebble-text-muted);
+    font-family: var(--pebble-font);
     text-align: left;
+    cursor: pointer;
+    transition: background-color var(--pebble-transition), color var(--pebble-transition), box-shadow var(--pebble-transition);
 
     &:hover {
-      background: var(--text-8);
-      color: var(--text-primary);
+      background: color-mix(in srgb, var(--pebble-heading) 6%, transparent);
+      color: var(--pebble-heading);
     }
 
     &.active {
-      background: var(--text-10);
-      color: var(--text-primary);
-    }
-
-    &.has-accordion {
-      padding-right: 0.5rem;
+      @include pebble.surface(md);
+      color: var(--pebble-heading);
     }
   }
 
-  // Accordion category
+  .category-item {
+    padding: 0.6rem 0.85rem;
+    font-size: var(--pebble-text-sm);
+    font-weight: var(--pebble-weight-medium);
+
+    &.has-accordion {
+      padding-right: 0.4rem;
+    }
+
+    // The Visualizations row is a div whose label is the focusable control.
+    > span[role='button'] {
+      flex: 1;
+      border-radius: var(--pebble-radius-sm);
+    }
+  }
+
   .accordion-category {
     display: flex;
     flex-direction: column;
   }
 
   .accordion-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     width: 1.5rem;
+    min-height: 1.5rem;
     height: 1.5rem;
-    background: none;
-    border: none;
-    border-radius: 4px;
-    color: var(--text-40);
-    cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease, transform 0.2s ease;
+    padding: 0;
+    border-radius: var(--pebble-radius-sm);
 
     i {
       font-size: 0.625rem;
-      transition: transform 0.2s ease;
-    }
-
-    &:hover {
-      background: var(--text-10);
-      color: var(--text-80);
+      transition: transform var(--pebble-transition);
     }
 
     &.expanded i {
@@ -127,1128 +171,678 @@
     display: flex;
     flex-direction: column;
     gap: 0.125rem;
-    padding: 0.25rem 0 0.25rem 1rem;
+    padding: var(--pebble-space-1) 0 var(--pebble-space-1) var(--pebble-space-3);
   }
 
   .category-child {
-    display: block;
-    width: 100%;
-    padding: 0.5rem 1rem;
-    background: none;
-    border: none;
-    border-radius: 4px;
-    color: var(--text-50);
-    font-size: 0.8125rem;
-    cursor: pointer;
-    text-align: left;
-    transition: background 0.15s ease, color 0.15s ease;
-
-    &:hover {
-      background: var(--text-5);
-      color: var(--text-80);
-    }
-
-    &.active {
-      background: var(--text-8);
-      color: var(--text-primary);
-    }
+    padding: 0.45rem 0.85rem;
+    font-size: var(--pebble-text-xs);
+    font-weight: var(--pebble-weight-normal);
   }
-
 }
 
+// =============================================================================
 // Settings panel
+// =============================================================================
+
 .settings-panel {
-  flex: 1;
   display: flex;
+  flex: 1;
   flex-direction: column;
-  padding: 1.5rem 2rem;
+  min-width: 0;
+  // Inline padding keeps the cards' shadows clear of the scroll clip.
+  padding: var(--pebble-space-1) var(--pebble-space-4) var(--pebble-space-5) var(--pebble-space-2);
   overflow-y: auto;
 
   .panel-header {
-    margin-bottom: 2rem;
+    margin-bottom: var(--pebble-space-5);
 
     h2 {
-      margin: 0 0 0.5rem;
-      font-size: 1.5rem;
-      font-weight: 600;
-      color: var(--text-primary);
+      @include pebble.heading(xl);
+      margin-bottom: var(--pebble-space-1);
     }
 
     .panel-description {
       margin: 0;
-      font-size: 0.875rem;
-      color: var(--text-50);
+      color: var(--pebble-text-muted);
+      font-size: var(--pebble-text-sm);
     }
   }
 
   .settings-content {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: var(--pebble-space-5);
+  }
+}
+
+// A titled group: the coral label and its description sit above the card.
+.setting-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pebble-space-3);
+}
+
+.setting-group-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pebble-space-1);
+  padding: 0 var(--pebble-space-1);
+
+  h3 {
+    @include pebble.label;
   }
 
-  .setting-group {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  // Boxed setting with nested sliders inside
-  .setting-box {
-    background: var(--text-3);
-    border: 1px solid var(--text-8);
-    border-radius: 8px;
-    transition: background 0.2s ease, border-color 0.2s ease;
-
-    &:hover {
-      background: var(--text-5);
-      border-color: var(--text-12);
-    }
-
-    .setting-box-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 2rem;
-      padding: 1rem;
-
-      .setting-label {
-        flex: 1;
-
-        label {
-          display: block;
-          color: var(--text-primary);
-          font-size: 0.9375rem;
-          font-weight: 500;
-          margin-bottom: 0.25rem;
-        }
-
-        .setting-description {
-          color: var(--text-50);
-          font-size: 0.8125rem;
-          line-height: 1.4;
-          margin: 0;
-        }
-      }
-    }
-
-    .setting-box-content {
-      padding: 0 1rem 1rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .inline-slider-row {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.5rem 0.75rem;
-      background: var(--text-3);
-      border-radius: 6px;
-
-      label {
-        font-size: 0.8125rem;
-        font-weight: 400;
-        color: var(--text-70);
-        min-width: 70px;
-      }
-
-      input[type='range'] {
-        flex: 1;
-        height: 4px;
-        background: var(--text-15);
-        border-radius: 2px;
-        appearance: none;
-        cursor: pointer;
-        @include slider-thumb(16px, 1.1, true);
-
-        // Rainbow gradient for hue sliders
-        &.hue-slider {
-          background: linear-gradient(
-            to right,
-            hsl(0, 100%, 50%),
-            hsl(60, 100%, 50%),
-            hsl(120, 100%, 50%),
-            hsl(180, 100%, 50%),
-            hsl(240, 100%, 50%),
-            hsl(300, 100%, 50%),
-            hsl(360, 100%, 50%)
-          );
-        }
-      }
-
-      .slider-value {
-        min-width: 45px;
-        text-align: right;
-        font-size: 0.8125rem;
-        color: var(--text-70);
-        font-variant-numeric: tabular-nums;
-      }
-    }
-  }
-
-  .setting-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 2rem;
-    padding: 1rem;
-    background: var(--text-3);
-    border: 1px solid var(--text-8);
-    border-radius: 8px;
-    transition: background 0.2s ease, border-color 0.2s ease;
-
-    &:hover {
-      background: var(--text-5);
-      border-color: var(--text-12);
-    }
-
-    // Compact HSL/HSLA sub-slider rows
-    &.hsl-slider-row {
-      padding: 0.5rem 1rem;
-      margin-left: 1rem;
-
-      .setting-label label {
-        font-size: 0.8125rem;
-        font-weight: 400;
-        color: var(--text-70);
-        margin-bottom: 0;
-      }
-    }
-
-    .setting-label {
-      flex: 1;
-
-      label {
-        display: block;
-        color: var(--text-primary);
-        font-size: 0.9375rem;
-        font-weight: 500;
-        margin-bottom: 0.25rem;
-      }
-
-      .setting-description {
-        margin: 0;
-        font-size: 0.8125rem;
-        color: var(--text-50);
-        line-height: 1.4;
-      }
-    }
-
-    .setting-control {
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-
-      select {
-        min-width: 180px;
-        padding: 0.5rem 2rem 0.5rem 0.75rem;
-        background: var(--text-8);
-        border: 1px solid var(--text-15);
-        border-radius: 6px;
-        color: var(--text-primary);
-        font-size: 0.875rem;
-        cursor: pointer;
-        appearance: none;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(255,255,255,0.5)' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-        background-repeat: no-repeat;
-        background-position: right 0.75rem center;
-        transition: border-color 0.2s ease, background 0.2s ease;
-
-        @include light-mode {
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(0,0,0,0.5)' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-        }
-
-        &:hover {
-          border-color: var(--text-20);
-        }
-
-        &:focus {
-          outline: none;
-          border-color: var(--text-50);
-        }
-
-        option {
-          background: #1a1a2e;
-          color: white;
-        }
-      }
-
-      > .reset-button {
-        padding: 0.5rem;
-        background: var(--text-5);
-        border: 1px solid var(--text-10);
-        border-radius: 4px;
-        color: var(--text-40);
-        cursor: pointer;
-        transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-
-        i {
-          font-size: 0.75rem;
-        }
-
-        &:hover {
-          color: var(--text-80);
-          background: var(--text-10);
-          border-color: var(--text-20);
-        }
-      }
-
-      // Slider control styles
-      &.slider-control {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        min-width: 180px;
-
-        input[type="range"] {
-          flex: 1;
-          height: 4px;
-          background: var(--text-15);
-          border-radius: 2px;
-          appearance: none;
-          cursor: pointer;
-          @include slider-thumb(16px, 1.1, true);
-
-          // Rainbow gradient for hue sliders
-          &.hue-slider {
-            background: linear-gradient(
-              to right,
-              hsl(0, 100%, 50%),
-              hsl(60, 100%, 50%),
-              hsl(120, 100%, 50%),
-              hsl(180, 100%, 50%),
-              hsl(240, 100%, 50%),
-              hsl(300, 100%, 50%),
-              hsl(360, 100%, 50%)
-            );
-          }
-        }
-
-        .slider-value {
-          min-width: 3rem;
-          text-align: right;
-          color: var(--text-70);
-          font-size: 0.875rem;
-          font-variant-numeric: tabular-nums;
-        }
-      }
-
-      // Color preview swatch
-      .color-preview {
-        width: 40px;
-        height: 28px;
-        border: 2px solid var(--text-30);
-        border-radius: 4px;
-        transition: background 0.1s ease;
-      }
-
-      // Toggle switch styles
-      .toggle {
-        position: relative;
-        display: inline-block;
-        width: 48px;
-        height: 24px;
-
-        input {
-          opacity: 0;
-          width: 0;
-          height: 0;
-
-          &:checked + .toggle-slider {
-            background: rgba(74, 222, 128, 0.6);
-
-            @include light-mode {
-              background: rgba(34, 197, 94, 0.9);
-            }
-          }
-
-          &:checked + .toggle-slider::before {
-            transform: translateX(24px);
-          }
-
-          &:disabled + .toggle-slider {
-            opacity: 0.4;
-            cursor: not-allowed;
-          }
-        }
-
-        .toggle-slider {
-          position: absolute;
-          cursor: pointer;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: var(--text-15);
-          border-radius: 24px;
-          transition: background 0.2s ease;
-
-          &::before {
-            position: absolute;
-            content: "";
-            height: 20px;
-            width: 20px;
-            left: 2px;
-            bottom: 2px;
-            background: white;
-            border-radius: 50%;
-            transition: transform 0.2s ease;
-          }
-        }
-      }
-
-      // Color value with optional monospace
-      .color-value {
-        color: var(--text-70);
-        font-size: 0.875rem;
-
-        &.mono {
-          font-family: monospace;
-          text-transform: uppercase;
-        }
-      }
-
-      // Port control styles
-      &.port-control {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-
-        input[type="number"] {
-          width: 100px;
-          padding: 0.5rem 0.75rem;
-          background: var(--text-8);
-          border: 1px solid var(--text-15);
-          border-radius: 6px;
-          color: var(--text-primary);
-          font-size: 0.875rem;
-          font-variant-numeric: tabular-nums;
-          transition: border-color 0.2s ease, background 0.2s ease;
-
-          &::placeholder {
-            color: var(--text-40);
-          }
-
-          &:hover {
-            border-color: var(--text-20);
-          }
-
-          &:focus {
-            outline: none;
-            border-color: var(--text-50);
-          }
-
-          // Hide spinner buttons
-          &::-webkit-outer-spin-button,
-          &::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-          }
-          -moz-appearance: textfield;
-        }
-
-        .reset-button {
-          padding: 0.5rem;
-          background: var(--text-5);
-          border: 1px solid var(--text-10);
-          border-radius: 4px;
-          color: var(--text-50);
-          cursor: pointer;
-          transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-
-          &:hover {
-            color: var(--text-80);
-            background: var(--text-10);
-            border-color: var(--text-20);
-          }
-        }
-      }
-    }
-  }
-
-  // Restart notice
-  .restart-notice {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    background: rgba(251, 191, 36, 0.08);
-    border: 1px solid rgba(251, 191, 36, 0.2);
-    border-radius: 6px;
-    color: rgba(251, 191, 36, 0.9);
-    font-size: 0.8125rem;
-
-    @include light-mode {
-      background: rgba(245, 158, 11, 0.15);
-      border-color: rgba(245, 158, 11, 0.5);
-      color: #b45309;
-    }
-
-    i {
-      font-size: 0.875rem;
-    }
-  }
-
-  // Info notice
-  .info-notice {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    background: rgba(96, 165, 250, 0.08);
-    border: 1px solid rgba(96, 165, 250, 0.2);
-    border-radius: 6px;
-    color: rgba(96, 165, 250, 0.9);
-    font-size: 0.8125rem;
-
-    @include light-mode {
-      background: rgba(59, 130, 246, 0.12);
-      border-color: rgba(59, 130, 246, 0.5);
-      color: #1d4ed8;
-    }
-
-    i {
-      font-size: 0.875rem;
-    }
-  }
-
-  // Expandable section for per-visualization settings
-  .expandable-section {
-    border: 1px solid var(--text-8);
-    border-radius: 8px;
-    overflow: hidden;
-
-    .expandable-header {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      width: 100%;
-      padding: 1rem;
-      background: var(--text-2);
-      border: none;
-      color: var(--text-80);
-      font-size: 0.9375rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.2s ease;
-
-      &:hover {
-        background: var(--text-5);
-      }
-
-      &.expanded {
-        border-bottom: 1px solid var(--text-8);
-      }
-
-      i {
-        font-size: 0.75rem;
-        color: var(--text-50);
-        transition: transform 0.2s ease;
-      }
-
-      .expandable-hint {
-        margin-left: auto;
-        font-size: 0.8125rem;
-        font-weight: 400;
-        color: var(--text-40);
-      }
-    }
-
-    .expandable-content {
-      padding: 0.5rem;
-      background: $black-20;
-    }
-  }
-
-  // Per-visualization sensitivity rows
-  .per-viz-row {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.625rem 0.75rem;
-    border-radius: 4px;
-    transition: background 0.15s ease;
-
-    &:hover {
-      background: var(--text-3);
-    }
-
-    .per-viz-label {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      min-width: 140px;
-
-      .per-viz-name {
-        color: var(--text-70);
-        font-size: 0.8125rem;
-      }
-
-      .reset-button {
-        padding: 0.25rem;
-        background: none;
-        border: none;
-        color: var(--text-30);
-        font-size: 0.6875rem;
-        cursor: pointer;
-        border-radius: 3px;
-        transition: color 0.15s ease, background 0.15s ease;
-
-        &:hover {
-          color: var(--text-70);
-          background: var(--text-10);
-        }
-      }
-    }
-
-    .per-viz-control {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-
-      input[type="range"] {
-        flex: 1;
-        height: 3px;
-        background: var(--text-12);
-        border-radius: 2px;
-        appearance: none;
-        cursor: pointer;
-        @include slider-thumb(12px, 1.15);
-      }
-
-      .slider-value {
-        min-width: 2.5rem;
-        text-align: right;
-        color: var(--text-50);
-        font-size: 0.75rem;
-        font-variant-numeric: tabular-nums;
-
-        &.custom {
-          color: rgba(74, 222, 128, 0.8);
-        }
-      }
-    }
-  }
-
-  // Standalone subtitle preview (simple, no container box)
-  .subtitle-preview-standalone {
-    display: flex;
-    justify-content: center;
-    padding: 1.5rem 1rem;
-    margin-top: 0.5rem;
-
-    .subtitle-preview-text {
-      padding: 0.25rem 0.5rem;
-      border-radius: 3px;
-      white-space: nowrap;
-    }
-  }
-
-  // ============================================================================
-  // Dependencies Panel
-  // ============================================================================
-
-  .dependency-row {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    background: var(--text-2);
-    border: 1px solid var(--text-8);
-    border-radius: 6px;
-
-    .dependency-indicator {
-      font-size: 1.25rem;
-      flex-shrink: 0;
-
-      &.installed {
-        color: $color-success;
-
-        @include light-mode {
-          color: #22c55e; // Vibrant green for light mode
-        }
-      }
-
-      &.missing {
-        color: $color-danger;
-      }
-    }
-
-    .dependency-info {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 0.125rem;
-      min-width: 0;
-
-      .dependency-name {
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: var(--text-90);
-      }
-
-      .dependency-description {
-        font-size: 0.75rem;
-        color: var(--text-50);
-      }
-
-      .dependency-path {
-        font-size: 0.6875rem;
-        color: var(--text-30);
-        font-family: monospace;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-    }
-
-    .dependency-actions {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      flex-shrink: 0;
-    }
-  }
-
-  .dependency-button {
-    padding: 0.375rem 0.75rem;
-    border: 1px solid;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease, opacity 0.2s ease;
-
-    &.install {
-      background: rgba(74, 222, 128, 0.15);
-      border-color: rgba(74, 222, 128, 0.3);
-      color: $color-success;
-
-      @include light-mode {
-        background: rgba(34, 197, 94, 0.2);
-        border-color: rgba(34, 197, 94, 0.6);
-        color: #16a34a;
-      }
-
-      &:hover:not(:disabled) {
-        background: rgba(74, 222, 128, 0.25);
-
-        @include light-mode {
-          background: rgba(34, 197, 94, 0.3);
-        }
-      }
-    }
-
-    &.uninstall {
-      background: rgba(239, 68, 68, 0.15);
-      border-color: rgba(239, 68, 68, 0.3);
-      color: $color-danger;
-
-      &:hover:not(:disabled) {
-        background: rgba(239, 68, 68, 0.25);
-      }
-    }
-
-    &.update {
-      background: rgba(109, 179, 242, 0.15);
-      border-color: rgba(109, 179, 242, 0.35);
-      color: $color-primary-light;
-
-      &:hover:not(:disabled) {
-        background: rgba(109, 179, 242, 0.25);
-      }
-    }
-
-    &:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-  }
-
-  .dependency-link {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    background: var(--text-5);
-    border: 1px solid var(--text-10);
-    border-radius: 4px;
-    color: var(--text-40);
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease;
-
-    &:hover {
-      background: var(--text-10);
-      color: var(--text-70);
-    }
-  }
-
-  .install-progress {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    background: rgba(251, 191, 36, 0.08);
-    border: 1px solid rgba(251, 191, 36, 0.2);
-    border-radius: 6px;
-    color: rgba(251, 191, 36, 0.9);
-    font-size: 0.8125rem;
-
-    @include light-mode {
-      background: rgba(245, 158, 11, 0.15);
-      border-color: rgba(245, 158, 11, 0.5);
-      color: #b45309;
-    }
-
-    &.success {
-      background: rgba(74, 222, 128, 0.08);
-      border-color: rgba(74, 222, 128, 0.2);
-      color: rgba(74, 222, 128, 0.9);
-      flex-direction: row;
-      align-items: center;
-
-      @include light-mode {
-        background: rgba(34, 197, 94, 0.15);
-        border-color: rgba(34, 197, 94, 0.5);
-        color: #16a34a;
-      }
-    }
-
-    &.error {
-      background: rgba(239, 68, 68, 0.08);
-      border-color: rgba(239, 68, 68, 0.2);
-      color: rgba(239, 68, 68, 0.9);
-    }
-
-    .install-progress-header {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-  }
-
-  .install-output {
+  .setting-group-description {
     margin: 0;
-    padding: 0.5rem;
-    background: $black-30;
-    border-radius: 4px;
-    font-size: 0.6875rem;
-    font-family: monospace;
-    color: var(--text-60);
-    max-height: 12rem;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-xs);
+    line-height: 1.5;
+  }
+}
+
+// One raised card per group.
+.setting-group {
+  @include pebble.surface(lg);
+  display: flex;
+  flex-direction: column;
+}
+
+// Rows inside a card are split by a hairline; insets (notices, wells) separate
+// themselves by their own edge, so they take none.
+.setting-group > :is(.setting-row, .setting-box, .dependency-row) + :is(.setting-row, .setting-box, .dependency-row) {
+  border-top: var(--pebble-border-width) solid var(--pebble-border);
+}
+
+// Content set into a card between its rows, aligned with the rows' text.
+.setting-group > :is(.restart-notice, .info-notice, .install-progress, .equalizer-bands, .subtitle-preview-standalone) {
+  margin: var(--pebble-space-1) $row-padding-inline $row-padding-block;
+
+  &:first-child {
+    margin-top: $row-padding-block;
+  }
+}
+
+// =============================================================================
+// Rows: label and description on the left, the control on the right
+// =============================================================================
+
+.setting-row,
+.setting-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pebble-space-5);
+  padding: $row-padding-block $row-padding-inline;
+}
+
+.setting-label {
+  flex: 1;
+  min-width: 0;
+
+  label {
+    display: block;
+    color: var(--pebble-heading);
+    font-size: var(--pebble-text-sm);
+    font-weight: var(--pebble-weight-medium);
+    line-height: 1.4;
   }
 
-  .soundfont-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--text-8);
-    margin-top: 0.5rem;
+  .setting-description {
+    margin: 0.15rem 0 0;
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-xs);
+    line-height: 1.5;
+  }
+}
 
-    .soundfont-header {
-      display: flex;
-      flex-direction: column;
-      gap: 0.125rem;
-    }
+.setting-control {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--pebble-space-2);
 
-    .soundfont-title {
-      font-size: 0.875rem;
-      font-weight: 600;
-      color: var(--text-80);
-    }
-
-    .soundfont-subtitle {
-      font-size: 0.75rem;
-      color: var(--text-40);
-    }
-
-    .soundfont-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.375rem;
-    }
-
-    .soundfont-item {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 0.75rem;
-      background: var(--text-2);
-      border: 1px solid var(--text-8);
-      border-radius: 4px;
-      transition: background 0.15s ease, border-color 0.15s ease;
-
-      &.selected {
-        background: rgba(74, 222, 128, 0.05);
-        border-color: rgba(74, 222, 128, 0.2);
-
-        @include light-mode {
-          background: rgba(34, 197, 94, 0.08);
-          border-color: rgba(34, 197, 94, 0.3);
-        }
-      }
-
-      .soundfont-select {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-        background: none;
-        border: none;
-        cursor: pointer;
-      }
-
-      .soundfont-radio {
-        width: 14px;
-        height: 14px;
-        border: 2px solid var(--text-30);
-        border-radius: 50%;
-        transition: border-color 0.15s ease, background 0.15s ease;
-        position: relative;
-
-        &::after {
-          content: '';
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-          background: transparent;
-          transition: background 0.15s ease;
-        }
-
-        &.active {
-          border-color: $color-success;
-
-          @include light-mode {
-            border-color: #22c55e;
-          }
-
-          &::after {
-            background: $color-success;
-
-            @include light-mode {
-              background: #22c55e;
-            }
-          }
-        }
-
-        .soundfont-select:hover & {
-          border-color: var(--text-50);
-        }
-
-        .soundfont-select:hover &.active {
-          border-color: $color-success;
-
-          @include light-mode {
-            border-color: #22c55e;
-          }
-        }
-      }
-
-      > i {
-        color: var(--text-30);
-        font-size: 0.75rem;
-      }
-
-      .soundfont-name {
-        flex: 1;
-        font-size: 0.8125rem;
-        color: var(--text-70);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .soundfont-size {
-        font-size: 0.6875rem;
-        color: var(--text-30);
-        font-variant-numeric: tabular-nums;
-      }
-
-      .soundfont-remove {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 1.5rem;
-        height: 1.5rem;
-        background: none;
-        border: none;
-        color: var(--text-30);
-        font-size: 0.6875rem;
-        cursor: pointer;
-        border-radius: 3px;
-        transition: color 0.2s ease, background 0.2s ease;
-
-        &:hover {
-          color: $color-danger;
-          background: rgba(239, 68, 68, 0.1);
-        }
-      }
-    }
-
-    .soundfont-empty {
-      font-size: 0.75rem;
-      color: var(--text-30);
-      margin: 0;
-      padding: 0.5rem 0;
-    }
-
-    .soundfont-install {
-      align-self: flex-start;
-      display: flex;
-      align-items: center;
-      gap: 0.375rem;
-    }
+  select {
+    @include pebble.select;
+    width: auto;
+    min-width: 11rem;
+    max-width: 14rem;
   }
 
-  // File Associations Section
-  .setting-group-header {
-    margin-bottom: 0.75rem;
+  &.slider-control {
+    gap: var(--pebble-space-3);
+    width: 13rem;
+  }
 
-    h3 {
-      font-size: 0.875rem;
-      font-weight: 600;
-      color: var(--text-80);
-      margin: 0 0 0.25rem;
-    }
+  &.color-control input[type='color'] {
+    @include pebble.color-swatch;
+  }
 
-    .setting-group-description {
-      font-size: 0.75rem;
-      color: var(--text-40);
+  &.port-control input[type='number'] {
+    @include pebble.field;
+    width: 6.5rem;
+    font-family: var(--pebble-font-mono);
+    font-variant-numeric: tabular-nums;
+    appearance: textfield;
+
+    // The spinner buttons are native chrome that ignores the theme.
+    &::-webkit-outer-spin-button,
+    &::-webkit-inner-spin-button {
+      -webkit-appearance: none;
       margin: 0;
     }
   }
 
-  .file-associations-info {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
+  // The port's reset is an icon beside the field.
+  &.port-control .reset-button {
+    width: 2rem;
+    padding: 0;
 
-  .extension-category {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-
-    .extension-category-label {
-      font-size: 0.75rem;
-      font-weight: 500;
-      color: var(--text-50);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .extension-badges {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.375rem;
-    }
-  }
-
-  .extension-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.25rem 0.5rem;
-    background: var(--text-8);
-    border: 1px solid var(--text-15);
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-    color: var(--text-70);
-  }
-
-  .file-associations-hint {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    padding: 0.75rem;
-    background: var(--text-5);
-    border-radius: 6px;
-    margin-top: 0.25rem;
-
-    > i {
-      color: var(--text-40);
-      font-size: 0.75rem;
-      margin-top: 0.125rem;
-      flex-shrink: 0;
-    }
-
-    > span {
-      font-size: 0.75rem;
-      color: var(--text-50);
-      line-height: 1.4;
+    i {
+      font-size: var(--pebble-text-xs);
     }
   }
 }
 
-// Equalizer band sliders (vertical) shown under the Audio Playback category
+// Every slider in the window, in rows and in the window colour box.
+.slider-control,
+.inline-slider-row {
+  input[type='range'] {
+    @include pebble.range;
+    flex: 1;
+    min-width: 0;
+
+    // The hue slider's track is the spectrum it chooses from; no fill.
+    &.hue-slider::-webkit-slider-runnable-track {
+      background: linear-gradient(to right,
+        hsl(0, 100%, 50%),
+        hsl(60, 100%, 50%),
+        hsl(120, 100%, 50%),
+        hsl(180, 100%, 50%),
+        hsl(240, 100%, 50%),
+        hsl(300, 100%, 50%),
+        hsl(360, 100%, 50%));
+    }
+  }
+}
+
+// Numeric readouts beside the sliders.
+.slider-value {
+  min-width: 3rem;
+  color: var(--pebble-text-muted);
+  font-family: var(--pebble-font-mono);
+  font-size: var(--pebble-text-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.color-value {
+  color: var(--pebble-text-muted);
+  font-family: var(--pebble-font-mono);
+  font-size: var(--pebble-text-xs);
+  text-transform: uppercase;
+}
+
+// Switches: the native checkbox stays, hidden, for keyboard and screen readers.
+.toggle {
+  position: relative;
+  display: inline-flex;
+
+  input {
+    @include pebble.visually-hidden-input;
+  }
+}
+
+.toggle-slider {
+  @include pebble.switch-track('input');
+}
+
+// =============================================================================
+// Window colour: a row with its HSL(A) sliders beneath
+// =============================================================================
+
+.setting-box {
+  .setting-box-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pebble-space-1);
+    padding: 0 $row-padding-inline $row-padding-block;
+  }
+
+  .inline-slider-row {
+    display: flex;
+    align-items: center;
+    gap: var(--pebble-space-3);
+    padding: var(--pebble-space-1) 0;
+
+    label {
+      min-width: 5.5rem;
+      color: var(--pebble-text-muted);
+      font-size: var(--pebble-text-xs);
+    }
+  }
+
+  // The resulting colour, framed like the colour wells.
+  .color-preview {
+    width: 2.5rem;
+    height: 2rem;
+    border: var(--pebble-border-width) solid var(--pebble-field-border);
+    border-radius: var(--pebble-radius-sm);
+    corner-shape: var(--pebble-corner-shape);
+  }
+}
+
+// =============================================================================
+// Notices
+// =============================================================================
+
+.restart-notice {
+  @include pebble.notice(warning);
+}
+
+.info-notice {
+  @include pebble.notice(info);
+}
+
+.restart-notice,
+.info-notice,
+.install-progress {
+  font-size: var(--pebble-text-xs);
+
+  i {
+    flex: none;
+    margin-top: 0.2rem;
+  }
+}
+
+// =============================================================================
+// Equalizer: vertical band sliders in a recessed well
+// =============================================================================
+
 .equalizer-bands {
+  @include pebble.recessed(md);
   display: flex;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 1.25rem 1rem;
-  background: var(--text-3);
-  border: 1px solid var(--text-8);
-  border-radius: 8px;
+  gap: var(--pebble-space-2);
+  padding: var(--pebble-space-4) var(--pebble-space-3);
 }
 
 .equalizer-band {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  flex: 1;
+  gap: var(--pebble-space-2);
+}
+
+.equalizer-band-gain,
+.equalizer-band-freq {
+  min-height: 1em;
+  font-family: var(--pebble-font-mono);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .equalizer-band-gain {
-  font-size: 0.6875rem;
-  color: var(--text-70);
-  font-variant-numeric: tabular-nums;
-  min-height: 1em;
-}
-
-.equalizer-band-slider {
-  writing-mode: vertical-lr;
-  direction: rtl; // max gain at the top
-  width: 4px;
-  height: 110px;
-  background: var(--text-15);
-  border-radius: 2px;
-  appearance: none;
-  cursor: pointer;
-  @include slider-thumb(16px, 1.1, true);
+  color: var(--pebble-text);
 }
 
 .equalizer-band-freq {
+  color: var(--pebble-text-muted);
+}
+
+// The vertical slider is drawn on the input itself (the input is the track),
+// because the range mixin's track pseudo-element is sized for horizontal
+// sliders. The fill rises from the bottom to the band's gain.
+.equalizer-band-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  writing-mode: vertical-lr;
+  direction: rtl; // max gain at the top
+  width: 0.375rem;
+  height: 110px;
+  margin: 0;
+  border-radius: var(--pebble-radius-pill);
+  background: linear-gradient(to top,
+    var(--pebble-primary) var(--pebble-range-percent, 0%),
+    var(--pebble-border-strong) var(--pebble-range-percent, 0%));
+  cursor: pointer;
+
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    width: 1.125rem;
+    height: 1.125rem;
+    border: 3px solid var(--pebble-surface);
+    border-radius: var(--pebble-radius-pill);
+    background: var(--pebble-primary);
+    box-shadow: var(--pebble-shadow-sm);
+    transition: transform var(--pebble-transition);
+  }
+
+  &:hover::-webkit-slider-thumb {
+    transform: scale(1.1);
+  }
+
+  &:focus {
+    outline: none;
+  }
+
+  &:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px var(--pebble-focus-ring);
+  }
+}
+
+// =============================================================================
+// Subtitle preview
+// =============================================================================
+
+// A stand-in for the video frame the subtitles appear over. It is dark in both
+// themes on purpose: the default subtitle style (light text, transparent or
+// dark background) only reads the way it will in playback against a dark
+// picture, and a themed well would make it vanish in light mode.
+.subtitle-preview-standalone {
+  @include pebble.recessed(md);
+  display: flex;
+  justify-content: center;
+  padding: var(--pebble-space-5) var(--pebble-space-4);
+  overflow: hidden;
+  background: #16181b;
+
+  .subtitle-preview-text {
+    max-width: 100%;
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+}
+
+// =============================================================================
+// Dependencies
+// =============================================================================
+
+.dependency-row {
+  display: flex;
+  align-items: center;
+  gap: var(--pebble-space-3);
+  padding: $row-padding-block $row-padding-inline;
+
+  .dependency-indicator {
+    flex-shrink: 0;
+    font-size: 1.125rem;
+
+    &.installed {
+      color: var(--pebble-success);
+    }
+
+    &.missing {
+      color: var(--pebble-danger);
+    }
+  }
+
+  .dependency-info {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+
+    .dependency-name {
+      color: var(--pebble-heading);
+      font-size: var(--pebble-text-sm);
+      font-weight: var(--pebble-weight-medium);
+    }
+
+    .dependency-description {
+      color: var(--pebble-text-muted);
+      font-size: var(--pebble-text-xs);
+    }
+
+    .dependency-path {
+      overflow: hidden;
+      color: var(--pebble-text-muted);
+      font-family: var(--pebble-font-mono);
+      font-size: 0.6875rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .dependency-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--pebble-space-2);
+  }
+}
+
+.dependency-link {
+  width: 2rem;
+  padding: 0;
+  font-size: var(--pebble-text-xs);
+}
+
+// Download/update/remove progress, and errors (including SoundFont errors).
+.install-progress {
+  @include pebble.notice(info);
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: var(--pebble-text-xs);
+
+  &.error {
+    @include pebble.notice(danger);
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: var(--pebble-text-xs);
+  }
+
+  .install-progress-header {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--pebble-space-2);
+  }
+
+  > span {
+    flex: 1;
+    min-width: 0;
+  }
+
+  i {
+    margin-top: 0;
+  }
+}
+
+// The tool's raw output, in a well on its own line beneath the message.
+.install-output {
+  @include pebble.recessed(sm);
+  flex: 1 0 100%;
+  max-height: 12rem;
+  margin: 0;
+  padding: var(--pebble-space-2) var(--pebble-space-3);
+  overflow-y: auto;
+  color: var(--pebble-text);
+  font-family: var(--pebble-font-mono);
   font-size: 0.6875rem;
-  color: var(--text-50);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+// =============================================================================
+// SoundFonts: a recessed list, the active SoundFont raised out of it
+// =============================================================================
+
+.soundfont-section .setting-group {
+  gap: var(--pebble-space-3);
+  padding: $row-padding-block $row-padding-inline;
+
+  > .install-progress {
+    margin: 0;
+  }
+}
+
+.soundfont-list {
+  @include pebble.recessed(md);
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: var(--pebble-space-1);
+}
+
+.soundfont-item {
+  display: flex;
+  align-items: center;
+  gap: var(--pebble-space-2);
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--pebble-radius-sm);
+  corner-shape: var(--pebble-corner-shape);
+
+  &.selected {
+    @include pebble.surface(sm);
+  }
+
+  > i {
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-xs);
+  }
+}
+
+.soundfont-select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.125rem;
+  border: none;
+  border-radius: var(--pebble-radius-pill);
+  background: none;
+  cursor: pointer;
+}
+
+// A radio drawn to match the native ones elsewhere: a ring, filled when chosen.
+.soundfont-radio {
+  position: relative;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--pebble-field-border);
+  border-radius: var(--pebble-radius-pill);
+  transition: border-color var(--pebble-transition);
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: var(--pebble-radius-pill);
+    background: transparent;
+    transform: translate(-50%, -50%);
+    transition: background-color var(--pebble-transition);
+  }
+
+  &.active {
+    border-color: var(--pebble-primary);
+
+    &::after {
+      background: var(--pebble-primary);
+    }
+  }
+}
+
+.soundfont-select:hover .soundfont-radio:not(.active) {
+  border-color: var(--pebble-heading);
+}
+
+.soundfont-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pebble-text);
+  font-size: var(--pebble-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.soundfont-size {
+  color: var(--pebble-text-muted);
+  font-family: var(--pebble-font-mono);
+  font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
 }
 
-.reset-button {
-  padding: 0.4rem 0.85rem;
-  background: var(--text-8);
-  color: var(--text-primary);
-  border: 1px solid var(--text-15);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.8125rem;
-  transition: background 0.2s ease;
+.soundfont-remove {
+  width: 1.75rem;
+  min-height: 1.75rem;
+  padding: 0;
+  font-size: 0.6875rem;
 
-  &:hover {
-    background: var(--text-15);
+  &:hover:not(:disabled) {
+    color: var(--pebble-danger);
+  }
+}
+
+.soundfont-empty {
+  margin: 0;
+  color: var(--pebble-text-muted);
+  font-size: var(--pebble-text-xs);
+}
+
+.soundfont-install {
+  align-self: flex-start;
+}
+
+// =============================================================================
+// File associations
+// =============================================================================
+
+.file-associations-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pebble-space-4);
+  padding: 1rem $row-padding-inline;
+}
+
+.extension-category {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pebble-space-2);
+
+  .extension-category-label {
+    color: var(--pebble-heading);
+    font-size: var(--pebble-text-xs);
+    font-weight: var(--pebble-weight-medium);
+  }
+
+  .extension-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+}
+
+.extension-badge {
+  @include pebble.badge(neutral);
+  font-family: var(--pebble-font-mono);
+}
+
+.file-associations-hint {
+  @include pebble.recessed(md);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pebble-space-2);
+  padding: var(--pebble-space-3);
+
+  > i {
+    flex-shrink: 0;
+    margin-top: 0.15rem;
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-xs);
+  }
+
+  > span {
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-xs);
+    line-height: 1.5;
   }
 }
