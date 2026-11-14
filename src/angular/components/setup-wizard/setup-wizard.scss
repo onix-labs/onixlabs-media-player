@@ -15,7 +15,6 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
 }
 
 // Title strip: the window's drag region, clear of the macOS traffic lights
@@ -29,12 +28,13 @@
   }
 }
 
-// Body: stepper (left) + main column
+// Body: stepper (left) + main column. It does not clip, so a button's hover
+// shadow can spill into the window's padding; the content area scrolls on its
+// own.
 .wizard-body {
   display: flex;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
   gap: var(--pebble-space-5);
 }
 
@@ -706,12 +706,15 @@
 // =============================================================================
 
 // Inset to line up with the cards, inside the content's shadow padding.
+// Lifted off the bottom and in from the side so a hovered button's zoom and
+// shadow (0.5rem down, 1rem blur) land in this padding rather than at the
+// window's edge.
 .wizard-footer {
   display: flex;
   justify-content: flex-end;
   flex-shrink: 0;
   margin-top: var(--pebble-space-3);
-  padding: 0 0.5rem;
+  padding: 0 0.75rem 0.75rem;
 }
 
 .nav-buttons {
