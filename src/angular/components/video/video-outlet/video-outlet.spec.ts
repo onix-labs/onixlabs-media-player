@@ -1929,6 +1929,97 @@ describe('VideoOutlet (rendered)', (): void => {
     });
 
     // ------------------------------------------------------------------------
+    // Switching video before the next video's media info arrives
+    // ------------------------------------------------------------------------
+
+    describe('when a different video starts loading', (): void => {
+      const NEXT: string = '/movies/b.mp4';
+
+      /** Plays FILE into a cue of its default track, so the overlay is showing. */
+      async function showFirstVideoCue(): Promise<void> {
+        serve(0, 'From the previous video');
+        mount();
+        await loadWithSubtitles([subtitleTrack(0, {default: true})]);
+        await playTo(1);
+      }
+
+      it('stops showing the previous video\'s cue before the new media info arrives', async (): Promise<void> => {
+        await showFirstVideoCue();
+
+        await loadTrack(NEXT);
+
+        expect(subtitleOverlay()).toBeNull();
+      });
+
+      it('does not bring the previous video\'s cues back as the new video plays', async (): Promise<void> => {
+        await showFirstVideoCue();
+        await loadTrack(NEXT);
+
+        await playTo(2);
+
+        expect(subtitleOverlay()).toBeNull();
+      });
+
+      it('turns the selection off until the new video\'s tracks are known', async (): Promise<void> => {
+        await showFirstVideoCue();
+
+        await loadTrack(NEXT);
+
+        expect(component.selectedSubtitleTrack()).toBe(-1);
+      });
+
+      it('does not request the previous video\'s tracks from the new file', async (): Promise<void> => {
+        await showFirstVideoCue();
+
+        await loadTrack(NEXT);
+
+        expect(electron.requests.map((r: SubtitleRequest): string => `${r.path}#${r.track}`)).toEqual([`${FILE}#0`]);
+      });
+
+      it('loads the new video\'s tracks once its media info arrives', async (): Promise<void> => {
+        serve(0, 'From the new video', NEXT);
+        await showFirstVideoCue();
+        await loadTrack(NEXT);
+
+        await announceMedia(NEXT, {subtitleTracks: [subtitleTrack(0, {default: true})]});
+        await playTo(2);
+
+        expect(subtitleOverlay()?.textContent).toBe('From the new video');
+      });
+
+      it('requests the new video\'s tracks from the new file when its media info arrives first', async (): Promise<void> => {
+        serve(0, 'From the new video', NEXT);
+        await showFirstVideoCue();
+
+        await announceMedia(NEXT, {subtitleTracks: [subtitleTrack(0, {default: true})]});
+        await loadTrack(NEXT);
+
+        expect(electron.requests.map((r: SubtitleRequest): string => `${r.path}#${r.track}`)).toEqual([`${FILE}#0`, `${NEXT}#0`]);
+      });
+
+      it('shows the new video\'s cues when its media info arrives first', async (): Promise<void> => {
+        serve(0, 'From the new video', NEXT);
+        await showFirstVideoCue();
+        await announceMedia(NEXT, {subtitleTracks: [subtitleTrack(0, {default: true})]});
+
+        await loadTrack(NEXT);
+        await playTo(2);
+
+        expect(subtitleOverlay()?.textContent).toBe('From the new video');
+      });
+
+      it('keeps the cues when the same video is restarted', async (): Promise<void> => {
+        await showFirstVideoCue();
+        await setState('playing');
+
+        await setState('loading');
+        await playTo(2);
+
+        expect(subtitleOverlay()?.textContent).toBe('From the previous video');
+      });
+    });
+
+    // ------------------------------------------------------------------------
     // Switching video while a load is in flight
     // ------------------------------------------------------------------------
 
@@ -2356,6 +2447,175 @@ describe('VideoOutlet (rendered)', (): void => {
       await playTo(1);
 
       expect(subtitleOverlay()).toBeNull();
+    });
+
+    it('keeps the loaded file when a later dialog is cancelled', async (): Promise<void> => {
+      chooseFile();
+      await component.loadExternalSubtitle();
+      electron.openSubtitleDialog.mockResolvedValue(null);
+
+      await component.loadExternalSubtitle();
+      await settle();
+
+      expect(component.hasExternalSubtitle()).toBe(true);
+      expect(subtitleOverlay()?.textContent).toBe('From the file');
+    });
+
+    // ------------------------------------------------------------------------
+    // Loading another file
+    // ------------------------------------------------------------------------
+
+    describe('when another file is chosen', (): void => {
+      const OTHER: string = '/subs/a (full).srt';
+
+      it('shows the new file\'s cues in place of the previous file\'s', async (): Promise<void> => {
+        chooseFile('From the first file');
+        await component.loadExternalSubtitle();
+        electron.openSubtitleDialog.mockResolvedValue(OTHER);
+        electron.subtitleFiles.set(subtitleKey(OTHER, 'external'), vtt([0, 10, 'From the second file']));
+
+        await component.loadExternalSubtitle();
+        await settle();
+
+        expect(subtitleOverlay()?.textContent).toBe('From the second file');
+      });
+
+      it('aborts the request for a file still loading', async (): Promise<void> => {
+        electron.openSubtitleDialog.mockResolvedValue(SUBS);
+        const first: Promise<void> = component.loadExternalSubtitle();
+        await settle();
+        electron.openSubtitleDialog.mockResolvedValue(OTHER);
+
+        const second: Promise<void> = component.loadExternalSubtitle();
+        await settle();
+        electron.requests[1].respond(vtt([0, 10, 'From the second file']));
+        await Promise.all([first, second]);
+
+        expect(electron.requests[0].signal?.aborted).toBe(true);
+        expect(electron.requests[1].signal?.aborted).toBe(false);
+      });
+
+      it('shows the file chosen last when the earlier one answers afterwards', async (): Promise<void> => {
+        let finishBody: (body: string) => void = (): void => {};
+        const body: Promise<string> = new Promise<string>((resolve: (value: string) => void): void => {
+          finishBody = resolve;
+        });
+        electron.openSubtitleDialog.mockResolvedValue(SUBS);
+        const first: Promise<void> = component.loadExternalSubtitle();
+        await settle();
+        electron.requests[0].respondWith({ok: true, status: 200, text: (): Promise<string> => body} as Response);
+        await settle();
+        electron.openSubtitleDialog.mockResolvedValue(OTHER);
+        electron.subtitleFiles.set(subtitleKey(OTHER, 'external'), vtt([0, 10, 'From the second file']));
+        await component.loadExternalSubtitle();
+
+        finishBody(vtt([0, 10, 'From the first file']));
+        await first;
+        await settle();
+
+        expect(subtitleOverlay()?.textContent).toBe('From the second file');
+      });
+    });
+
+    // ------------------------------------------------------------------------
+    // Switching video
+    // ------------------------------------------------------------------------
+
+    describe('when a different video starts loading', (): void => {
+      const NEXT: string = '/movies/b.mp4';
+
+      it('is cleared from the display before the new media info arrives', async (): Promise<void> => {
+        chooseFile();
+        await component.loadExternalSubtitle();
+        await settle();
+
+        await loadTrack(NEXT);
+
+        expect(subtitleOverlay()).toBeNull();
+      });
+
+      it('no longer reports an external subtitle', async (): Promise<void> => {
+        chooseFile();
+        await component.loadExternalSubtitle();
+
+        await loadTrack(NEXT);
+
+        expect(component.hasExternalSubtitle()).toBe(false);
+      });
+
+      it('aborts the request for a file still loading', async (): Promise<void> => {
+        electron.openSubtitleDialog.mockResolvedValue(SUBS);
+        const loading: Promise<void> = component.loadExternalSubtitle();
+        await settle();
+
+        await loadTrack(NEXT);
+        await loading;
+
+        expect(electron.requests[0].signal?.aborted).toBe(true);
+      });
+
+      it('does not report the deliberate abort as a failure', async (): Promise<void> => {
+        electron.openSubtitleDialog.mockResolvedValue(SUBS);
+        const loading: Promise<void> = component.loadExternalSubtitle();
+        await settle();
+
+        await loadTrack(NEXT);
+        await loading;
+
+        expect(consoleError).not.toHaveBeenCalled();
+      });
+
+      it('never puts the file on the new video when its response lands just as the video changes', async (): Promise<void> => {
+        electron.openSubtitleDialog.mockResolvedValue(SUBS);
+        const loading: Promise<void> = component.loadExternalSubtitle();
+        await settle();
+        // The response arrives, but the switch is processed before its continuation runs
+        electron.requests[0].respond(vtt([0, 10, 'For the previous video']));
+        mediaPlayer.currentTrack.set(videoItem(NEXT));
+        fixture.detectChanges();
+
+        await loading;
+        await settle();
+        await playTo(1);
+
+        expect(component.selectedSubtitleTrack()).toBe(-1);
+        expect(subtitleOverlay()).toBeNull();
+      });
+
+      it('never puts the file on the new video when its body finishes downloading after the change', async (): Promise<void> => {
+        let finishBody: (body: string) => void = (): void => {};
+        const body: Promise<string> = new Promise<string>((resolve: (value: string) => void): void => {
+          finishBody = resolve;
+        });
+        electron.openSubtitleDialog.mockResolvedValue(SUBS);
+        const loading: Promise<void> = component.loadExternalSubtitle();
+        await settle();
+        electron.requests[0].respondWith({ok: true, status: 200, text: (): Promise<string> => body} as Response);
+        await settle();
+        await loadTrack(NEXT);
+
+        finishBody(vtt([0, 10, 'For the previous video']));
+        await loading;
+        await settle();
+        await playTo(1);
+
+        expect(component.selectedSubtitleTrack()).toBe(-1);
+        expect(subtitleOverlay()).toBeNull();
+      });
+
+      it('does not report an external subtitle for the new video when the file answers late', async (): Promise<void> => {
+        electron.openSubtitleDialog.mockResolvedValue(SUBS);
+        const loading: Promise<void> = component.loadExternalSubtitle();
+        await settle();
+        electron.requests[0].respond(vtt([0, 10, 'For the previous video']));
+        mediaPlayer.currentTrack.set(videoItem(NEXT));
+        fixture.detectChanges();
+
+        await loading;
+        await settle();
+
+        expect(component.hasExternalSubtitle()).toBe(false);
+      });
     });
   });
 

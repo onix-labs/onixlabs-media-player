@@ -252,6 +252,15 @@ export class VideoOutlet implements OnInit, OnDestroy {
   /** Path of the currently loaded video file */
   private currentFilePath: string | null = null;
 
+  /**
+   * Path of the video the loaded subtitle state belongs to. Mirrors
+   * currentFilePath as a signal so the subtitle-load effect re-runs the moment
+   * the source changes rather than when the next media info arrives. Unlike
+   * currentFilePath it is not nulled for a re-selection, so replaying the same
+   * file keeps its cues.
+   */
+  private readonly subtitleFilePath: ReturnType<typeof signal<string | null>> = signal<string | null>(null);
+
   /** Path of the last successfully loaded video (state reached 'playing') */
   private readonly resume: ResumePositionTracker = new ResumePositionTracker();
 
@@ -347,6 +356,13 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /** Aborts the in-flight subtitle fetch when its load is superseded. */
   private subtitleLoadAbort: AbortController | null = null;
+
+  /**
+   * Aborts the in-flight external subtitle fetch when its load is superseded.
+   * Separate from subtitleLoadAbort because the two loads overlap: an external
+   * file can be chosen while the embedded tracks are still downloading.
+   */
+  private externalSubtitleLoadAbort: AbortController | null = null;
 
   /** Video timeupdate handler (stored for cleanup) */
   private videoTimeUpdateHandler: (() => void) | null = null;
@@ -565,13 +581,17 @@ export class VideoOutlet implements OnInit, OnDestroy {
     // Load subtitle tracks when they change (custom rendering approach)
     effect((): void => {
       const tracks: readonly SubtitleTrack[] = this.subtitleTracks();
-      const filePath: string | null = this.currentFilePath;
+      const filePath: string | null = this.subtitleFilePath();
       const serverUrl: string = this.mediaPlayer.serverUrl();
+      // The source and its media info change separately, in either order. Until
+      // both name the same file the track list describes a different video, and
+      // its indices must not be fetched against this one.
+      const mediaFilePath: string | undefined = this.electron.currentMedia()?.filePath;
 
       // Clean up existing tracks
       this.cleanupSubtitleTracks();
 
-      if (!filePath || !serverUrl || tracks.length === 0) {
+      if (!filePath || !serverUrl || tracks.length === 0 || mediaFilePath !== filePath) {
         this.selectedSubtitleTrack.set(-1);
         this.subtitleText.set('');
         return;
@@ -793,7 +813,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
   /**
    * Opens a file dialog to load an external subtitle file.
-   * Clears any previously loaded external subtitle if cancelled.
+   * Cancelling the dialog leaves any previously loaded external subtitle in
+   * place: backing out of a file picker must not discard what is showing.
    */
   public async loadExternalSubtitle(): Promise<void> {
     const filePath: string | null = await this.electron.openSubtitleDialog();
@@ -1076,6 +1097,7 @@ export class VideoOutlet implements OnInit, OnDestroy {
     }
 
     this.currentFilePath = filePath;
+    this.subtitleFilePath.set(filePath);
     this.mediaLoadedAt = Date.now();
 
     // Remote streams take a while to spin up (yt-dlp URL fetch + FFmpeg) —
@@ -1479,9 +1501,18 @@ export class VideoOutlet implements OnInit, OnDestroy {
 
     if (!serverUrl) return;
 
+    // Claim this load. Choosing another file, or cleanupSubtitleTracks for a
+    // video the user has already moved on from, aborts the controller, so a
+    // superseded load stops before it can deposit its cues and select the
+    // external track on whatever is playing by the time it answers.
+    this.externalSubtitleLoadAbort?.abort();
+    const abort: AbortController = new AbortController();
+    this.externalSubtitleLoadAbort = abort;
+
     try {
       const url: string = `${serverUrl}/media/subtitles/external?path=${encodeURIComponent(subtitlePath)}`;
-      const response: Response = await this.electron.authFetch(url);
+      const response: Response = await this.electron.authFetch(url, {signal: abort.signal});
+      if (abort.signal.aborted) return;
 
       if (!response.ok) {
         console.error(`Failed to load external subtitle: ${response.status}`);
@@ -1489,8 +1520,15 @@ export class VideoOutlet implements OnInit, OnDestroy {
       }
 
       const webvttContent: string = await response.text();
+      if (abort.signal.aborted) return;
+
       const cues: ParsedSubtitleCue[] = parseWebVTT(webvttContent);
 
+      // Only one external file is loaded at a time, and tracks are looked up by
+      // index — a previous file left in the list would keep being the one shown.
+      this.loadedSubtitleTracks = this.loadedSubtitleTracks.filter(
+        (t: LoadedSubtitleTrack): boolean => t.index !== EXTERNAL_SUBTITLE_TRACK_INDEX
+      );
       this.loadedSubtitleTracks.push({
         index: EXTERNAL_SUBTITLE_TRACK_INDEX,
         cues,
@@ -1503,6 +1541,8 @@ export class VideoOutlet implements OnInit, OnDestroy {
       const video: HTMLVideoElement = this.videoRef.nativeElement;
       this.updateSubtitleDisplay(video.currentTime);
     } catch (error: unknown) {
+      // A superseded load's fetch is aborted deliberately; that is not a failure.
+      if (abort.signal.aborted) return;
       console.error('Error loading external subtitle:', error);
     }
   }
@@ -1556,8 +1596,12 @@ export class VideoOutlet implements OnInit, OnDestroy {
     this.subtitleLoadGeneration++;
     this.subtitleLoadAbort?.abort();
     this.subtitleLoadAbort = null;
+    this.externalSubtitleLoadAbort?.abort();
+    this.externalSubtitleLoadAbort = null;
 
     this.loadedSubtitleTracks = [];
     this.subtitleText.set('');
+    // The external file's cues went with the rest, so it is no longer on offer
+    this.externalSubtitlePath.set(null);
   }
 }
