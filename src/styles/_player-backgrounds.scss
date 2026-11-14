@@ -6,7 +6,8 @@
 // the page is painted here, so it follows a live colour scheme change with no
 // script. Gated on data-player-theme, which only the main window carries.
 //
-//   solid   a fixed neutral, dark or light with the colour scheme
+//   solid   Pebble's page colour, dark or light with the colour scheme: Solid
+//           and Pebble share the page and differ only in their controls
 //   glass   transparent, so the native vibrancy/acrylic shows through
 //   pebble  --pebble-bg, painted by _pebble.scss on html.pebble and its body
 
@@ -14,17 +15,17 @@
 // styles.scss (dark unless the scheme is light, or system with a light OS), so
 // the page and the text on it always switch together.
 html[data-player-theme='solid'] {
-  --player-solid-bg: #1e1e1e;
+  --player-solid-bg: #212529; // --pebble-bg in dark
 }
 
 @media (prefers-color-scheme: light) {
   html[data-player-theme='solid'][data-color-scheme='system'] {
-    --player-solid-bg: #e0e0e0;
+    --player-solid-bg: #d8dde2; // --pebble-bg in light
   }
 }
 
 html[data-player-theme='solid'][data-color-scheme='light'] {
-  --player-solid-bg: #e0e0e0;
+  --player-solid-bg: #d8dde2;
 }
 
 html[data-player-theme='solid'],

@@ -279,7 +279,7 @@ Based on independent review with all 31 action items resolved:
 - **Playback controls**: Media title, transport controls, volume, fullscreen toggle
 - Track title displayed in playback controls (format: "Artist - Title" or just title)
 - **Player themes** (Settings > Appearance > Theme): restyle the player window only, never move its controls; the Settings/About/Setup/Open URL windows are always Pebble
-  - **Solid**: opaque neutral background (#1e1e1e dark, #e0e0e0 light); default on Windows and Linux
+  - **Solid**: opaque background, the same as Pebble's page (#212529 dark, #d8dde2 light); default on Windows and Linux
   - **Glass**: translucent with blur (requires app restart to switch to or from); default on macOS
     - macOS: Uses vibrancy (`fullscreen-ui`) with hidden inset title bar
     - Windows 11: Uses acrylic blur via `backgroundMaterial`

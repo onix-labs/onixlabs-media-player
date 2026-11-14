@@ -1432,7 +1432,7 @@ describe('main', (): void => {
     it('should replace vibrancy with the Solid background on macOS for the Solid theme', async (): Promise<void> => {
       await boot({platform: 'darwin', config: {dark: true, appearance: {theme: 'solid'}}});
 
-      expect(mainWindow().options.backgroundColor).toBe('#1e1e1e');
+      expect(mainWindow().options.backgroundColor).toBe('#212529');
       expect(mainWindow().options.vibrancy).toBeUndefined();
       expect(mainWindow().options.visualEffectState).toBeUndefined();
       expect(mainWindow().options).toMatchObject({titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 12, y: 13}});
@@ -1447,8 +1447,8 @@ describe('main', (): void => {
     });
 
     it.each([
-      {theme: 'solid', dark: true, expected: '#1e1e1e'},
-      {theme: 'solid', dark: false, expected: '#e0e0e0'},
+      {theme: 'solid', dark: true, expected: '#212529'},
+      {theme: 'solid', dark: false, expected: '#d8dde2'},
       {theme: 'pebble', dark: true, expected: '#212529'},
       {theme: 'pebble', dark: false, expected: '#d8dde2'},
     ])('should paint the $theme theme $expected when the system is dark=$dark', async ({theme, dark, expected}): Promise<void> => {
@@ -1459,8 +1459,8 @@ describe('main', (): void => {
     });
 
     it.each([
-      {theme: 'solid', colorScheme: 'light', dark: true, expected: '#e0e0e0'},
-      {theme: 'solid', colorScheme: 'dark', dark: false, expected: '#1e1e1e'},
+      {theme: 'solid', colorScheme: 'light', dark: true, expected: '#d8dde2'},
+      {theme: 'solid', colorScheme: 'dark', dark: false, expected: '#212529'},
       {theme: 'pebble', colorScheme: 'light', dark: true, expected: '#d8dde2'},
       {theme: 'pebble', colorScheme: 'dark', dark: false, expected: '#212529'},
     ])('should follow the $colorScheme colour scheme setting over the system for the $theme theme', async ({theme, colorScheme, dark, expected}): Promise<void> => {
@@ -1491,7 +1491,7 @@ describe('main', (): void => {
       await boot({platform: 'win32'});
 
       expect(mainWindow().options.backgroundMaterial).toBeUndefined();
-      expect(mainWindow().options.backgroundColor).toBe('#1e1e1e');
+      expect(mainWindow().options.backgroundColor).toBe('#212529');
     });
 
     it('should use acrylic on Windows for the Glass theme', async (): Promise<void> => {
@@ -1504,7 +1504,7 @@ describe('main', (): void => {
     it('should treat the Glass theme as Solid on Linux and never request a blur effect', async (): Promise<void> => {
       await boot({platform: 'linux', config: {dark: false, appearance: {theme: 'glass'}}});
 
-      expect(mainWindow().options).toMatchObject({backgroundColor: '#e0e0e0', autoHideMenuBar: true});
+      expect(mainWindow().options).toMatchObject({backgroundColor: '#d8dde2', autoHideMenuBar: true});
       expect(mainWindow().options.vibrancy).toBeUndefined();
       expect(mainWindow().options.backgroundMaterial).toBeUndefined();
     });
@@ -1512,19 +1512,19 @@ describe('main', (): void => {
     it('should fall back to a dark background when the system theme is dark', async (): Promise<void> => {
       await boot({platform: 'linux', config: {dark: true}});
 
-      expect(mainWindow().options.backgroundColor).toBe('#1e1e1e');
+      expect(mainWindow().options.backgroundColor).toBe('#212529');
     });
 
     it('should fall back to a light background when the system theme is light', async (): Promise<void> => {
       await boot({platform: 'linux', config: {dark: false}});
 
-      expect(mainWindow().options.backgroundColor).toBe('#e0e0e0');
+      expect(mainWindow().options.backgroundColor).toBe('#d8dde2');
     });
 
     it('should fall back to a dark background when the system theme cannot be read', async (): Promise<void> => {
       await boot({platform: 'linux', config: {themeThrows: true}});
 
-      expect(mainWindow().options.backgroundColor).toBe('#1e1e1e');
+      expect(mainWindow().options.backgroundColor).toBe('#212529');
     });
   });
 

@@ -118,17 +118,15 @@ class Program {
    */
   private static readonly DEVELOPMENT_SERVER_URL: string = process.env["DEV_SERVER_URL"] || "http://localhost:4300";
 
-  /** Pebble's page colour in light, the window background before the page paints. */
+  /**
+   * Pebble's page colour in light: the background, before the page paints, of
+   * every opaque window. The Solid and Pebble player themes share it; only
+   * their controls differ.
+   */
   private static readonly PEBBLE_BACKGROUND_LIGHT: string = '#d8dde2';
 
   /** Pebble's page colour in dark. */
   private static readonly PEBBLE_BACKGROUND_DARK: string = '#212529';
-
-  /** The Solid theme's neutral background in light, before the page paints. */
-  private static readonly SOLID_BACKGROUND_LIGHT: string = '#e0e0e0';
-
-  /** The Solid theme's neutral background in dark. */
-  private static readonly SOLID_BACKGROUND_DARK: string = '#1e1e1e';
 
   /**
    * Calculates the project root directory path.
@@ -655,9 +653,8 @@ class Program {
     const glassEnabled: boolean = theme === 'glass';
     const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
     const dark: boolean = this.isDarkColorScheme();
-    const backgroundColor: string = theme === 'pebble'
-      ? (dark ? Program.PEBBLE_BACKGROUND_DARK : Program.PEBBLE_BACKGROUND_LIGHT)
-      : (dark ? Program.SOLID_BACKGROUND_DARK : Program.SOLID_BACKGROUND_LIGHT);
+    // Solid and Pebble share Pebble's page colour; only their controls differ.
+    const backgroundColor: string = dark ? Program.PEBBLE_BACKGROUND_DARK : Program.PEBBLE_BACKGROUND_LIGHT;
 
     if (process.platform === 'darwin') {
       // macOS: native vibrancy with hidden title bar
