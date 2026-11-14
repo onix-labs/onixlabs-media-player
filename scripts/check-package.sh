@@ -58,6 +58,7 @@ fi
 for file in \
   "${RESOURCES}/licenses/ONIXPlayer-LICENSE.txt" \
   "${RESOURCES}/licenses/JavaScript-libraries.txt" \
+  "${RESOURCES}/licenses/Poppins-OFL.txt" \
   "${RESOURCES}/bin/licenses/components.json" \
   "${ELECTRON_LICENSES}/LICENSE.electron.txt" \
   "${ELECTRON_LICENSES}/LICENSES.chromium.html"; do

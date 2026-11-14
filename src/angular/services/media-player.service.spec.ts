@@ -76,7 +76,6 @@ function createMockSettingsService(): Record<string, WritableSignal<unknown>> {
     crossfadeDuration: signal<number>(100),
     fftSize: signal<number>(2048),
     videoAspectMode: signal<string>('default'),
-    perVisualizationSettings: signal<Record<string, unknown>>({}),
   };
 }
 

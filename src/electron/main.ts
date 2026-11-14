@@ -19,7 +19,7 @@ import * as path from "path";
 import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.js';
 import {createApplicationMenu, updateMenuState} from './application-menu.js';
-import type {WindowBounds, MacOSVisualEffectState, AppearanceSettings, RecentItem, RecentItemsSettings} from './settings-manager.js';
+import type {WindowBounds, MacOSVisualEffectState, AppearanceSettings, PlayerTheme, RecentItem, RecentItemsSettings} from './settings-manager.js';
 import type {SettingsManager} from './settings-manager.js';
 import type {DependencyState} from './dependency-manager.js';
 import {initializeLogger, mainLogger, ipcLogger, windowLogger, getLogFilePath} from './logger.js';
@@ -119,6 +119,16 @@ class Program {
   private static readonly DEVELOPMENT_SERVER_URL: string = process.env["DEV_SERVER_URL"] || "http://localhost:4300";
 
   /**
+   * Pebble's page colour in light: the background, before the page paints, of
+   * every opaque window. The Solid and Pebble player themes share it; only
+   * their controls differ.
+   */
+  private static readonly PEBBLE_BACKGROUND_LIGHT: string = '#d8dde2';
+
+  /** Pebble's page colour in dark. */
+  private static readonly PEBBLE_BACKGROUND_DARK: string = '#212529';
+
+  /**
    * Calculates the project root directory path.
    *
    * Handles different scenarios:
@@ -200,17 +210,58 @@ class Program {
   private mainWindowBoundsBeforeConfig: Electron.Rectangle | null = null;
 
   /**
-   * Gets the default background color based on system theme.
-   * Used when glass is disabled or on platforms without glass support.
+   * Whether windows should be drawn dark: the colour scheme setting when it
+   * forces one, otherwise the operating system's preference. Dark when the
+   * system preference cannot be read, as the player has always defaulted dark.
    *
-   * @returns Dark gray (#1e1e1e) for dark mode, light gray (#e0e0e0) for light mode
+   * @returns True for the dark scheme, false for light
    */
-  private getDefaultBackgroundColor(): string {
-    try {
-      return nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#e0e0e0';
-    } catch {
-      return '#1e1e1e'; // Fallback to dark
+  private isDarkColorScheme(): boolean {
+    const scheme: string | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance?.colorScheme;
+    if (scheme === 'dark' || scheme === 'light') {
+      return scheme === 'dark';
     }
+    try {
+      return nativeTheme.shouldUseDarkColors;
+    } catch {
+      return true;
+    }
+  }
+
+  /**
+   * Gets the theme the main window actually wears: the theme setting, with
+   * Glass falling back to Solid where the platform has no glass effect
+   * (anything but macOS and Windows), matching the renderer's effective theme.
+   *
+   * @returns The effective player theme
+   */
+  private getEffectivePlayerTheme(): PlayerTheme {
+    const defaultTheme: PlayerTheme = process.platform === 'darwin' ? 'glass' : 'solid';
+    const theme: PlayerTheme = this.mediaServer?.getSettingsManager().getSettings().appearance?.theme ?? defaultTheme;
+    const supportsGlass: boolean = process.platform === 'darwin' || process.platform === 'win32';
+    return theme === 'glass' && !supportsGlass ? 'solid' : theme;
+  }
+
+  /**
+   * Gets the window chrome for every window but the main player: the settings,
+   * About, Open URL and setup wizard windows.
+   *
+   * They wear the ONIXLabs brand style, Pebble (src/styles/_pebble.scss), which
+   * paints an opaque page, so unlike the player they never take vibrancy or
+   * acrylic, whatever the player theme is. The background is Pebble's page
+   * colour for the colour scheme in use, so nothing flashes before the page
+   * paints. On macOS the title bar is hidden behind inset traffic lights, as on
+   * the player; elsewhere the platform's own frame is kept.
+   *
+   * @returns Options to spread into the window's constructor options
+   */
+  private getPebbleWindowOptions(): Electron.BrowserWindowConstructorOptions {
+    const backgroundColor: string = this.isDarkColorScheme() ? Program.PEBBLE_BACKGROUND_DARK : Program.PEBBLE_BACKGROUND_LIGHT;
+
+    if (process.platform === 'darwin') {
+      return {titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 12, y: 13}, backgroundColor};
+    }
+    return {backgroundColor};
   }
 
   /**
@@ -593,11 +644,17 @@ class Program {
     // Platform-specific transparency and window chrome options
     let platformOptions: Electron.BrowserWindowConstructorOptions = {};
 
-    // Get appearance settings
+    // Get appearance settings. Glass is fixed into the window here, so moving
+    // into or out of the Glass theme needs a restart; Solid and Pebble are
+    // painted by the page from data-player-theme, so they swap live and the
+    // background colour below only covers the moment before the page paints.
     const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
+    const theme: PlayerTheme = this.getEffectivePlayerTheme();
+    const glassEnabled: boolean = theme === 'glass';
     const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
-    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
+    const dark: boolean = this.isDarkColorScheme();
+    // Solid and Pebble share Pebble's page colour; only their controls differ.
+    const backgroundColor: string = dark ? Program.PEBBLE_BACKGROUND_DARK : Program.PEBBLE_BACKGROUND_LIGHT;
 
     if (process.platform === 'darwin') {
       // macOS: native vibrancy with hidden title bar
@@ -606,21 +663,21 @@ class Program {
         titleBarStyle: 'hiddenInset',
         trafficLightPosition: {x: 12, y: 13},
         fullscreenable: false,
-        // Apply vibrancy if glass enabled, otherwise use background color
+        // Apply vibrancy for the Glass theme, otherwise the theme's background colour
         ...(glassEnabled
           ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
           : { backgroundColor }
         )
       };
     } else if (process.platform === 'win32') {
-      // Windows 11: acrylic blur effect when glass enabled
+      // Windows 11: acrylic blur effect for the Glass theme
       // Note: Do NOT use transparent:true with backgroundMaterial - it removes the native frame
       // Auto-hide menu bar for cleaner look (press Alt to show)
       platformOptions = glassEnabled
         ? { backgroundMaterial: 'acrylic' as const, autoHideMenuBar: true }
         : { backgroundColor, autoHideMenuBar: true };
     } else {
-      // Linux: no native blur support, always use background color
+      // Linux: no native blur support (Glass has already fallen back to Solid)
       // Auto-hide menu bar for cleaner look (press Alt to show)
       platformOptions = { backgroundColor, autoHideMenuBar: true };
     }
@@ -720,31 +777,7 @@ class Program {
     const configWindowWidth: number = 800;
     const configWindowHeight: number = 600;
 
-    // Platform-specific options for hidden title bar with traffic lights (macOS only)
-    // Windows/Linux use the default window frame with title bar and controls
-    // Also apply glass/vibrancy/acrylic effects to match main window
-    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
-    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
-    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
-
-    let configPlatformOptions: Electron.BrowserWindowConstructorOptions = {};
-    if (process.platform === 'darwin') {
-      configPlatformOptions = {
-        titleBarStyle: 'hiddenInset',
-        trafficLightPosition: {x: 12, y: 13},
-        ...(glassEnabled
-          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
-          : { backgroundColor }
-        )
-      };
-    } else if (process.platform === 'win32') {
-      configPlatformOptions = glassEnabled
-        ? { backgroundMaterial: 'acrylic' as const }
-        : { backgroundColor };
-    } else {
-      configPlatformOptions = { backgroundColor };
-    }
+    const configPlatformOptions: Electron.BrowserWindowConstructorOptions = this.getPebbleWindowOptions();
 
     // Determine if we should do side-by-side positioning
     // Only in normal windowed mode (not fullscreen, not miniplayer)
@@ -892,29 +925,7 @@ class Program {
     const aboutWindowWidth: number = 480;
     const aboutWindowHeight: number = 640;
 
-    // Platform-specific options for hidden title bar with traffic lights (macOS only)
-    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
-    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
-    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
-
-    let aboutPlatformOptions: Electron.BrowserWindowConstructorOptions = {};
-    if (process.platform === 'darwin') {
-      aboutPlatformOptions = {
-        titleBarStyle: 'hiddenInset',
-        trafficLightPosition: {x: 12, y: 13},
-        ...(glassEnabled
-          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
-          : { backgroundColor }
-        )
-      };
-    } else if (process.platform === 'win32') {
-      aboutPlatformOptions = glassEnabled
-        ? { backgroundMaterial: 'acrylic' as const }
-        : { backgroundColor };
-    } else {
-      aboutPlatformOptions = { backgroundColor };
-    }
+    const aboutPlatformOptions: Electron.BrowserWindowConstructorOptions = this.getPebbleWindowOptions();
 
     this.aboutWindow = new BrowserWindow({
       width: aboutWindowWidth,
@@ -995,29 +1006,7 @@ class Program {
     // Initial content height; the renderer resizes this to fit its content.
     const openUrlWindowHeight: number = 200;
 
-    // Platform-specific chrome (mirrors the About window) for native glass.
-    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
-    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
-    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
-
-    let openUrlPlatformOptions: Electron.BrowserWindowConstructorOptions = {};
-    if (process.platform === 'darwin') {
-      openUrlPlatformOptions = {
-        titleBarStyle: 'hiddenInset',
-        trafficLightPosition: {x: 12, y: 13},
-        ...(glassEnabled
-          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
-          : { backgroundColor }
-        )
-      };
-    } else if (process.platform === 'win32') {
-      openUrlPlatformOptions = glassEnabled
-        ? { backgroundMaterial: 'acrylic' as const }
-        : { backgroundColor };
-    } else {
-      openUrlPlatformOptions = { backgroundColor };
-    }
+    const openUrlPlatformOptions: Electron.BrowserWindowConstructorOptions = this.getPebbleWindowOptions();
 
     this.openUrlWindow = new BrowserWindow({
       width: openUrlWindowWidth,
@@ -1106,29 +1095,7 @@ class Program {
     const wizardWidth: number = 800;
     const wizardHeight: number = 600;
 
-    // Get appearance settings for consistent styling
-    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
-    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
-    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
-
-    let wizardPlatformOptions: Electron.BrowserWindowConstructorOptions = {};
-    if (process.platform === 'darwin') {
-      wizardPlatformOptions = {
-        titleBarStyle: 'hiddenInset',
-        trafficLightPosition: {x: 12, y: 13},
-        ...(glassEnabled
-          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
-          : { backgroundColor }
-        )
-      };
-    } else if (process.platform === 'win32') {
-      wizardPlatformOptions = glassEnabled
-        ? { backgroundMaterial: 'acrylic' as const }
-        : { backgroundColor };
-    } else {
-      wizardPlatformOptions = { backgroundColor };
-    }
+    const wizardPlatformOptions: Electron.BrowserWindowConstructorOptions = this.getPebbleWindowOptions();
 
     this.setupWizardWindow = new BrowserWindow({
       width: wizardWidth,
@@ -1198,6 +1165,21 @@ class Program {
   }
 
   /**
+   * Gets the window a native dialog should belong to: the one that asked for
+   * it, falling back to the main window.
+   *
+   * Dialogs used to be parented on the main window only, so one asked for by
+   * the setup wizard, which runs before the main window exists, never opened,
+   * and one asked for by the settings window appeared on the player instead.
+   *
+   * @param event - The IPC event of the request
+   * @returns The window to show the dialog on, or null if there is none
+   */
+  private getDialogParent(event: Readonly<Electron.IpcMainInvokeEvent>): BrowserWindow | null {
+    return BrowserWindow.fromWebContents(event.sender) ?? this.window;
+  }
+
+  /**
    * Sets up IPC handlers for communication with the renderer process.
    *
    * Handlers registered:
@@ -1212,154 +1194,6 @@ class Program {
    */
   private setupIpcHandlers(): void {
     ipcLogger.debug('Setting up IPC handlers');
-
-    // File dialog - requires native dialog
-    ipcMain.handle("dialog:openFile", async (_: Readonly<Electron.IpcMainInvokeEvent>, options: Readonly<{
-      filters: readonly Electron.FileFilter[];
-      multiSelections: boolean
-    }>): Promise<string[]> => {
-      ipcLogger.debug(`dialog:openFile - multiSelections=${options.multiSelections}`);
-      if (!this.window) {
-        ipcLogger.warn('dialog:openFile - no window available');
-        return [];
-      }
-
-      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
-        properties: options.multiSelections
-          ? ["openFile", "multiSelections"]
-          : ["openFile"],
-        filters: options.filters as Electron.FileFilter[]
-      });
-
-      ipcLogger.info(`dialog:openFile - selected ${result.filePaths.length} file(s)`);
-      return result.filePaths;
-    });
-
-    // Open SoundFont file dialog - scoped to .sf2 files
-    ipcMain.handle("dialog:openSoundFont", async (): Promise<string[]> => {
-      ipcLogger.debug('dialog:openSoundFont');
-      if (!this.window) {
-        ipcLogger.warn('dialog:openSoundFont - no window available');
-        return [];
-      }
-
-      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
-        title: 'Select SoundFont File',
-        properties: ['openFile'],
-        filters: [{name: 'SoundFont Files', extensions: ['sf2']}],
-      });
-
-      ipcLogger.info(`dialog:openSoundFont - selected ${result.filePaths.length} file(s)`);
-      return result.canceled ? [] : result.filePaths;
-    });
-
-    // Open playlist file dialog - scoped to .opp files
-    ipcMain.handle("dialog:openPlaylist", async (): Promise<string | null> => {
-      ipcLogger.debug('dialog:openPlaylist');
-      if (!this.window) {
-        ipcLogger.warn('dialog:openPlaylist - no window available');
-        return null;
-      }
-
-      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
-        title: 'Open Playlist',
-        properties: ['openFile'],
-        filters: [{name: 'ONIXPlayer Playlist', extensions: ['opp']}],
-      });
-
-      if (result.canceled || result.filePaths.length === 0) {
-        ipcLogger.info('dialog:openPlaylist - cancelled');
-        return null;
-      }
-
-      ipcLogger.info(`dialog:openPlaylist - selected: ${result.filePaths[0]}`);
-      return result.filePaths[0];
-    });
-
-    // Save playlist file dialog - scoped to .opp files
-    ipcMain.handle("dialog:savePlaylist", async (): Promise<string | null> => {
-      ipcLogger.debug('dialog:savePlaylist');
-      if (!this.window) {
-        ipcLogger.warn('dialog:savePlaylist - no window available');
-        return null;
-      }
-
-      const result: Electron.SaveDialogReturnValue = await dialog.showSaveDialog(this.window, {
-        title: 'Save Playlist',
-        defaultPath: 'playlist.opp',
-        filters: [{name: 'ONIXPlayer Playlist', extensions: ['opp']}],
-      });
-
-      if (result.canceled || !result.filePath) {
-        ipcLogger.info('dialog:savePlaylist - cancelled');
-        return null;
-      }
-
-      ipcLogger.info(`dialog:savePlaylist - selected: ${result.filePath}`);
-      return result.filePath;
-    });
-
-    // Save downloaded media dialog - asked by the Open URL window before a
-    // yt-dlp download starts, so the user picks where the file lands.
-    ipcMain.handle("dialog:saveMedia", async (event: Readonly<Electron.IpcMainInvokeEvent>, options: Readonly<{
-      title: string;
-      format: 'video' | 'audio';
-    }>): Promise<string | null> => {
-      ipcLogger.debug(`dialog:saveMedia - format=${options.format}`);
-
-      // Parent on the window that asked (the Open URL window), so the dialog
-      // is attached to what the user is looking at rather than the player.
-      const parent: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender) ?? this.window;
-      if (!parent) {
-        ipcLogger.warn('dialog:saveMedia - no window available');
-        return null;
-      }
-
-      const isAudio: boolean = options.format === 'audio';
-      const extension: string = isAudio ? 'mp3' : 'mp4';
-      const suggestedName: string = options.title
-        .replace(ILLEGAL_FILENAME_CHARS, '')
-        .trim()
-        .slice(0, MAX_SUGGESTED_FILENAME_LENGTH)
-        .trim() || FALLBACK_MEDIA_FILENAME;
-
-      const result: Electron.SaveDialogReturnValue = await dialog.showSaveDialog(parent, {
-        title: 'Save Media As',
-        defaultPath: `${suggestedName}.${extension}`,
-        filters: [{name: isAudio ? 'MP3 Audio' : 'MP4 Video', extensions: [extension]}],
-      });
-
-      if (result.canceled || !result.filePath) {
-        ipcLogger.info('dialog:saveMedia - cancelled');
-        return null;
-      }
-
-      ipcLogger.info(`dialog:saveMedia - selected: ${result.filePath}`);
-      return result.filePath;
-    });
-
-    // Open external subtitle file dialog - scoped to subtitle formats
-    ipcMain.handle("dialog:openSubtitle", async (): Promise<string | null> => {
-      ipcLogger.debug('dialog:openSubtitle');
-      if (!this.window) {
-        ipcLogger.warn('dialog:openSubtitle - no window available');
-        return null;
-      }
-
-      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
-        title: 'Open Subtitle File',
-        properties: ['openFile'],
-        filters: [{name: 'Subtitle Files', extensions: ['srt', 'vtt', 'ass', 'ssa']}],
-      });
-
-      if (result.canceled || result.filePaths.length === 0) {
-        ipcLogger.info('dialog:openSubtitle - cancelled');
-        return null;
-      }
-
-      ipcLogger.info(`dialog:openSubtitle - selected: ${result.filePaths[0]}`);
-      return result.filePaths[0];
-    });
 
     // Get log file path - for debugging/support
     ipcMain.handle("app:getLogFilePath", (): string => {
@@ -1595,6 +1429,10 @@ class Program {
   private setupCoreIpcHandlers(): void {
     ipcLogger.debug('Setting up core IPC handlers');
 
+    // Native dialogs: here rather than with the main window's handlers because
+    // the setup wizard, which opens before the main window, needs them too.
+    this.setupDialogIpcHandlers();
+
     // Get server port - needed for renderer to connect to HTTP API
     ipcMain.handle("app:getServerPort", (): number => {
       const port: number = this.mediaServer?.getPort() || 0;
@@ -1618,6 +1456,164 @@ class Program {
       };
       ipcLogger.debug(`app:getPlatformInfo - ${JSON.stringify(info)}`);
       return info;
+    });
+  }
+
+  /**
+   * Sets up the native file dialogs. Each is shown on the window that asked
+   * for it (see getDialogParent), so any window can use them, including the
+   * setup wizard before the main window exists.
+   */
+  private setupDialogIpcHandlers(): void {
+    // File dialog - requires native dialog
+    ipcMain.handle("dialog:openFile", async (event: Readonly<Electron.IpcMainInvokeEvent>, options: Readonly<{
+      filters: readonly Electron.FileFilter[];
+      multiSelections: boolean
+    }>): Promise<string[]> => {
+      ipcLogger.debug(`dialog:openFile - multiSelections=${options.multiSelections}`);
+      const parent: BrowserWindow | null = this.getDialogParent(event);
+      if (!parent) {
+        ipcLogger.warn('dialog:openFile - no window available');
+        return [];
+      }
+
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(parent, {
+        properties: options.multiSelections
+          ? ["openFile", "multiSelections"]
+          : ["openFile"],
+        filters: options.filters as Electron.FileFilter[]
+      });
+
+      ipcLogger.info(`dialog:openFile - selected ${result.filePaths.length} file(s)`);
+      return result.filePaths;
+    });
+
+    // Open SoundFont file dialog - scoped to .sf2 files
+    ipcMain.handle("dialog:openSoundFont", async (event: Readonly<Electron.IpcMainInvokeEvent>): Promise<string[]> => {
+      ipcLogger.debug('dialog:openSoundFont');
+      const parent: BrowserWindow | null = this.getDialogParent(event);
+      if (!parent) {
+        ipcLogger.warn('dialog:openSoundFont - no window available');
+        return [];
+      }
+
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(parent, {
+        title: 'Select SoundFont File',
+        properties: ['openFile'],
+        filters: [{name: 'SoundFont Files', extensions: ['sf2']}],
+      });
+
+      ipcLogger.info(`dialog:openSoundFont - selected ${result.filePaths.length} file(s)`);
+      return result.canceled ? [] : result.filePaths;
+    });
+
+    // Open playlist file dialog - scoped to .opp files
+    ipcMain.handle("dialog:openPlaylist", async (event: Readonly<Electron.IpcMainInvokeEvent>): Promise<string | null> => {
+      ipcLogger.debug('dialog:openPlaylist');
+      const parent: BrowserWindow | null = this.getDialogParent(event);
+      if (!parent) {
+        ipcLogger.warn('dialog:openPlaylist - no window available');
+        return null;
+      }
+
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(parent, {
+        title: 'Open Playlist',
+        properties: ['openFile'],
+        filters: [{name: 'ONIXPlayer Playlist', extensions: ['opp']}],
+      });
+
+      if (result.canceled || result.filePaths.length === 0) {
+        ipcLogger.info('dialog:openPlaylist - cancelled');
+        return null;
+      }
+
+      ipcLogger.info(`dialog:openPlaylist - selected: ${result.filePaths[0]}`);
+      return result.filePaths[0];
+    });
+
+    // Save playlist file dialog - scoped to .opp files
+    ipcMain.handle("dialog:savePlaylist", async (event: Readonly<Electron.IpcMainInvokeEvent>): Promise<string | null> => {
+      ipcLogger.debug('dialog:savePlaylist');
+      const parent: BrowserWindow | null = this.getDialogParent(event);
+      if (!parent) {
+        ipcLogger.warn('dialog:savePlaylist - no window available');
+        return null;
+      }
+
+      const result: Electron.SaveDialogReturnValue = await dialog.showSaveDialog(parent, {
+        title: 'Save Playlist',
+        defaultPath: 'playlist.opp',
+        filters: [{name: 'ONIXPlayer Playlist', extensions: ['opp']}],
+      });
+
+      if (result.canceled || !result.filePath) {
+        ipcLogger.info('dialog:savePlaylist - cancelled');
+        return null;
+      }
+
+      ipcLogger.info(`dialog:savePlaylist - selected: ${result.filePath}`);
+      return result.filePath;
+    });
+
+    // Save downloaded media dialog - asked by the Open URL window before a
+    // yt-dlp download starts, so the user picks where the file lands.
+    ipcMain.handle("dialog:saveMedia", async (event: Readonly<Electron.IpcMainInvokeEvent>, options: Readonly<{
+      title: string;
+      format: 'video' | 'audio';
+    }>): Promise<string | null> => {
+      ipcLogger.debug(`dialog:saveMedia - format=${options.format}`);
+
+      const parent: BrowserWindow | null = this.getDialogParent(event);
+      if (!parent) {
+        ipcLogger.warn('dialog:saveMedia - no window available');
+        return null;
+      }
+
+      const isAudio: boolean = options.format === 'audio';
+      const extension: string = isAudio ? 'mp3' : 'mp4';
+      const suggestedName: string = options.title
+        .replace(ILLEGAL_FILENAME_CHARS, '')
+        .trim()
+        .slice(0, MAX_SUGGESTED_FILENAME_LENGTH)
+        .trim() || FALLBACK_MEDIA_FILENAME;
+
+      const result: Electron.SaveDialogReturnValue = await dialog.showSaveDialog(parent, {
+        title: 'Save Media As',
+        defaultPath: `${suggestedName}.${extension}`,
+        filters: [{name: isAudio ? 'MP3 Audio' : 'MP4 Video', extensions: [extension]}],
+      });
+
+      if (result.canceled || !result.filePath) {
+        ipcLogger.info('dialog:saveMedia - cancelled');
+        return null;
+      }
+
+      ipcLogger.info(`dialog:saveMedia - selected: ${result.filePath}`);
+      return result.filePath;
+    });
+
+    // Open external subtitle file dialog - scoped to subtitle formats
+    ipcMain.handle("dialog:openSubtitle", async (event: Readonly<Electron.IpcMainInvokeEvent>): Promise<string | null> => {
+      ipcLogger.debug('dialog:openSubtitle');
+      const parent: BrowserWindow | null = this.getDialogParent(event);
+      if (!parent) {
+        ipcLogger.warn('dialog:openSubtitle - no window available');
+        return null;
+      }
+
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(parent, {
+        title: 'Open Subtitle File',
+        properties: ['openFile'],
+        filters: [{name: 'Subtitle Files', extensions: ['srt', 'vtt', 'ass', 'ssa']}],
+      });
+
+      if (result.canceled || result.filePaths.length === 0) {
+        ipcLogger.info('dialog:openSubtitle - cancelled');
+        return null;
+      }
+
+      ipcLogger.info(`dialog:openSubtitle - selected: ${result.filePaths[0]}`);
+      return result.filePaths[0];
     });
   }
 

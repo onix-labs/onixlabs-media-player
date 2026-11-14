@@ -979,7 +979,7 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
       total += this.freqArray[i];
     }
 
-    const level: number = (total / bins / RGB_MAX) * this.sensitivityFactor;
+    const level: number = total / bins / RGB_MAX;
     this.bass += (level - this.bass) * BASS_SMOOTHING;
     // Wrapped rather than left to grow: the sweep feeds a shader mod and would
     // lose angular precision over a long session if it ran away.
@@ -1044,7 +1044,7 @@ export abstract class AmbienceVisualization extends WebGLVisualization {
     gl.uniform3f(this.warpUniforms['uTraceColor'], rgb.r / RGB_MAX, rgb.g / RGB_MAX, rgb.b / RGB_MAX);
     gl.uniform1f(
       this.warpUniforms['uWaveAmplitude'],
-      WAVE_AMPLITUDE * this.sensitivityFactor * (1 + this.bass * BASS_FLEX)
+      WAVE_AMPLITUDE * (1 + this.bass * BASS_FLEX)
     );
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);

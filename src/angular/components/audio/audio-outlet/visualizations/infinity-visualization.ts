@@ -16,6 +16,7 @@
  */
 
 import {Canvas2DVisualization, OffscreenCanvasPair, VisualizationConfig} from './visualization';
+import {WAVEFORM_LINE_WIDTH} from './visualization-constants';
 
 /**
  * Infinity visualization with dual circular waveforms fading in opposite directions.
@@ -30,8 +31,11 @@ export class InfinityVisualization extends Canvas2DVisualization {
   /** Per-frame outward zoom applied to the trails. */
   private static readonly ZOOM_SCALE: number = 1.03;
 
-  /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 15;
+  /** Glow blur radius in pixels. */
+  private static readonly GLOW_BLUR: number = 15;
+
+  /** Gain applied to the waveform samples before they are drawn. */
+  private static readonly SENSITIVITY_FACTOR: number = 0.5;
 
   /** Number of points sampled around each circle. */
   private static readonly CIRCLE_POINTS: number = 96;
@@ -86,13 +90,6 @@ export class InfinityVisualization extends Canvas2DVisualization {
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
-    // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
-    this.sensitivity = 0.25;      // 25%
-    this.trailIntensity = 0.5;    // 50%
-    this.lineWidth = 1;           // 1px
-    this.glowIntensity = 1;       // 100%
-    this.waveformSmoothing = 1;   // 100%
-
     // Pre-allocate point arrays
     this.leftPoints = [];
     this.rightPoints = [];
@@ -149,7 +146,7 @@ export class InfinityVisualization extends Canvas2DVisualization {
     this.drawPathWithLayers(
       (): void => { this.buildSmoothPath(this.leftTrailCtx!, this.leftPoints, InfinityVisualization.CIRCLE_POINTS); },
       color1.main, color1.glow, InfinityVisualization.COLOR_HIGHLIGHT,
-      {ctx: this.leftTrailCtx!, baseGlowBlur: InfinityVisualization.BASE_GLOW_BLUR, closePath: true}
+      {ctx: this.leftTrailCtx!, glowBlur: InfinityVisualization.GLOW_BLUR, closePath: true}
     );
 
     // Process second circle (trails expand outward from center)
@@ -163,7 +160,7 @@ export class InfinityVisualization extends Canvas2DVisualization {
     this.drawPathWithLayers(
       (): void => { this.buildSmoothPath(this.rightTrailCtx!, this.rightPoints, InfinityVisualization.CIRCLE_POINTS); },
       color2.main, color2.glow, InfinityVisualization.COLOR_HIGHLIGHT,
-      {ctx: this.rightTrailCtx!, baseGlowBlur: InfinityVisualization.BASE_GLOW_BLUR, closePath: true}
+      {ctx: this.rightTrailCtx!, glowBlur: InfinityVisualization.GLOW_BLUR, closePath: true}
     );
 
     // Composite both trail canvases to main canvas with additive blending
@@ -181,13 +178,6 @@ export class InfinityVisualization extends Canvas2DVisualization {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
 
-  // Fixed visual parameters: ignore the global controls (values set in constructor).
-  public override setSensitivity(): void { /* fixed */ }
-  public override setTrailIntensity(): void { /* fixed */ }
-  public override setLineWidth(): void { /* fixed */ }
-  public override setGlowIntensity(): void { /* fixed */ }
-  public override setWaveformSmoothing(): void { /* fixed */ }
-
   protected override onResize(): void {
     const width: number = this.width;
     const height: number = this.height;
@@ -200,8 +190,8 @@ export class InfinityVisualization extends Canvas2DVisualization {
     this.baseRadius = Math.min(width, height) * 0.18;
 
     // Orbit radius - distance from center to each circle
-    // Set to base radius plus half the line width so circles are separated by the stroke width
-    this.orbitRadius = this.baseRadius + this.lineWidth;
+    // Set to base radius plus the line width so circles are separated by the stroke width
+    this.orbitRadius = this.baseRadius + WAVEFORM_LINE_WIDTH;
 
     // Create trail canvases if needed
     if (!this.leftTrailCanvas) {
@@ -247,7 +237,7 @@ export class InfinityVisualization extends Canvas2DVisualization {
 
       // Map point to data index with offset for variation between circles
       const dataIndex: number = Math.floor(((i + dataOffset) % numPoints) / numPoints * dataLength);
-      const sample: number = ((this.dataArray[dataIndex] - 128) / 128) * this.sensitivityFactor;
+      const sample: number = ((this.dataArray[dataIndex] - 128) / 128) * InfinityVisualization.SENSITIVITY_FACTOR;
 
       const radius: number = this.baseRadius + sample * amplitudeScale;
 

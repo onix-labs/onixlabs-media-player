@@ -8,12 +8,12 @@
  * conversion fails here.
  *
  * Tests cover:
- * - Category navigation, the visualizations accordion, the initialCategory
+ * - Category navigation, the visualizations category, the initialCategory
  *   input and the standalone-window URL parameter
  * - Every select, slider, colour picker and toggle writing the converted
  *   value to its setter
  * - Service signals being reflected in the rendered controls
- * - Conditional sections (macOS, glass support, equalizer, video adjustments,
+ * - Conditional sections (macOS, the Glass theme and glass support, equalizer, video adjustments,
  *   text shadow, hardware encoders, FluidSynth)
  * - Dependency rows, progress, SoundFonts and external links
  * - Handlers ignoring events that carry no usable value
@@ -25,8 +25,8 @@ import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {signal, type WritableSignal} from '@angular/core';
 
 import {ConfigurationView} from './configuration-view';
-import {SettingsService, VISUALIZATION_METADATA} from '../../../services/settings.service';
-import type {AudioBitrate, ColorScheme, CrossfadeDuration, CrossfadeStyle, FftSize, HardwareAcceleration, LocalSettingKey, MacOSVisualEffectState, PerVisualizationSettings, PreferredAudioLanguage, PreferredSubtitleLanguage, RenderResolution, SeekMode, SubtitleFontFamily, VideoAspectMode, VideoQuality, VisualizationMetadata} from '../../../services/settings.service';
+import {SettingsService} from '../../../services/settings.service';
+import type {AccentColor, AudioBitrate, ColorScheme, CrossfadeDuration, CrossfadeStyle, FftSize, HardwareAcceleration, MacOSVisualEffectState, PlayerTheme, PreferredAudioLanguage, PreferredSubtitleLanguage, RenderResolution, SeekMode, SubtitleFontFamily, VideoAspectMode, VideoQuality} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import type {DependencyState, DependencyStatus, HardwareEncoderInfo, InstallProgress, SoundFontInfo} from '../../../services/dependency.service';
@@ -54,7 +54,6 @@ interface SettingsSignals {
   renderResolution: WritableSignal<RenderResolution>;
   visualizationCrossfadeDuration: WritableSignal<CrossfadeDuration>;
   visualizationCrossfadeStyle: WritableSignal<CrossfadeStyle>;
-  perVisualizationSettings: WritableSignal<PerVisualizationSettings>;
   defaultVolume: WritableSignal<number>;
   crossfadeDuration: WritableSignal<number>;
   videoQuality: WritableSignal<VideoQuality>;
@@ -76,16 +75,10 @@ interface SettingsSignals {
   preferredAudioLanguage: WritableSignal<PreferredAudioLanguage>;
   preferredSubtitleLanguage: WritableSignal<PreferredSubtitleLanguage>;
   colorScheme: WritableSignal<ColorScheme>;
-  glassEnabled: WritableSignal<boolean>;
-  backgroundColor: WritableSignal<string>;
+  theme: WritableSignal<PlayerTheme>;
+  accentColor: WritableSignal<AccentColor>;
+  isLoaded: WritableSignal<boolean>;
   macOSVisualEffectState: WritableSignal<MacOSVisualEffectState>;
-  backgroundHue: WritableSignal<number>;
-  backgroundSaturation: WritableSignal<number>;
-  backgroundLightness: WritableSignal<number>;
-  windowTintHue: WritableSignal<number>;
-  windowTintSaturation: WritableSignal<number>;
-  windowTintLightness: WritableSignal<number>;
-  windowTintAlpha: WritableSignal<number>;
   subtitleFontSize: WritableSignal<number>;
   subtitleFontColor: WritableSignal<string>;
   subtitleBackgroundColor: WritableSignal<string>;
@@ -100,29 +93,25 @@ interface SettingsSignals {
 /** Every SettingsService method the view writes through. */
 const SETTINGS_METHODS: readonly [
   'setMaxFrameRate', 'setFftSize', 'setRenderResolution', 'setVisualizationCrossfadeDuration',
-  'setVisualizationCrossfadeStyle', 'setVisualizationSetting', 'resetVisualizationSetting',
-  'resetAllVisualizationSettings', 'setServerPort', 'setControlsAutoHideDelay', 'setMiniplayerOnFocusLoss',
+  'setVisualizationCrossfadeStyle', 'setServerPort', 'setControlsAutoHideDelay', 'setMiniplayerOnFocusLoss',
   'setSeekMode', 'setPreviousTrackThreshold', 'setSkipDuration', 'setDefaultVolume', 'setCrossfadeDuration',
   'setEqualizerEnabled', 'setEqualizerPreset', 'setEqualizerBand', 'resetEqualizer',
   'setVideoAdjustmentsEnabled', 'setVideoAdjustmentPreset', 'setVideoAdjustment', 'resetVideoAdjustments',
   'setVideoQuality', 'setAudioBitrate', 'setHardwareAcceleration', 'setVideoAspectMode',
-  'setPreferredAudioLanguage', 'setPreferredSubtitleLanguage', 'setGlassEnabled', 'setMacOSVisualEffectState',
-  'setColorScheme', 'setBackgroundColor', 'setBackgroundHue', 'setBackgroundSaturation', 'setBackgroundLightness',
-  'setWindowTintHue', 'setWindowTintSaturation', 'setWindowTintLightness', 'setWindowTintAlpha',
+  'setPreferredAudioLanguage', 'setPreferredSubtitleLanguage', 'setTheme', 'setMacOSVisualEffectState',
+  'setColorScheme', 'setAccentColor',
   'setSubtitleFontSize', 'setSubtitleFontColor', 'setSubtitleBackgroundColor', 'setSubtitleBackgroundOpacity',
   'setSubtitleFontFamily', 'setSubtitleTextShadow', 'setSubtitleShadowSpread', 'setSubtitleShadowBlur',
   'setSubtitleShadowColor',
 ] = [
   'setMaxFrameRate', 'setFftSize', 'setRenderResolution', 'setVisualizationCrossfadeDuration',
-  'setVisualizationCrossfadeStyle', 'setVisualizationSetting', 'resetVisualizationSetting',
-  'resetAllVisualizationSettings', 'setServerPort', 'setControlsAutoHideDelay', 'setMiniplayerOnFocusLoss',
+  'setVisualizationCrossfadeStyle', 'setServerPort', 'setControlsAutoHideDelay', 'setMiniplayerOnFocusLoss',
   'setSeekMode', 'setPreviousTrackThreshold', 'setSkipDuration', 'setDefaultVolume', 'setCrossfadeDuration',
   'setEqualizerEnabled', 'setEqualizerPreset', 'setEqualizerBand', 'resetEqualizer',
   'setVideoAdjustmentsEnabled', 'setVideoAdjustmentPreset', 'setVideoAdjustment', 'resetVideoAdjustments',
   'setVideoQuality', 'setAudioBitrate', 'setHardwareAcceleration', 'setVideoAspectMode',
-  'setPreferredAudioLanguage', 'setPreferredSubtitleLanguage', 'setGlassEnabled', 'setMacOSVisualEffectState',
-  'setColorScheme', 'setBackgroundColor', 'setBackgroundHue', 'setBackgroundSaturation', 'setBackgroundLightness',
-  'setWindowTintHue', 'setWindowTintSaturation', 'setWindowTintLightness', 'setWindowTintAlpha',
+  'setPreferredAudioLanguage', 'setPreferredSubtitleLanguage', 'setTheme', 'setMacOSVisualEffectState',
+  'setColorScheme', 'setAccentColor',
   'setSubtitleFontSize', 'setSubtitleFontColor', 'setSubtitleBackgroundColor', 'setSubtitleBackgroundOpacity',
   'setSubtitleFontFamily', 'setSubtitleTextShadow', 'setSubtitleShadowSpread', 'setSubtitleShadowBlur',
   'setSubtitleShadowColor',
@@ -131,11 +120,8 @@ const SETTINGS_METHODS: readonly [
 /** Name of a SettingsService method the view writes through. */
 type SettingsMethod = (typeof SETTINGS_METHODS)[number];
 
-/** The fake SettingsService: writable signals, spied setters and the two real lookups. */
-type FakeSettings = SettingsSignals & Record<SettingsMethod, Spy> & {
-  hasApplicableSetting: Spy;
-  getVisualizationMetadata: Spy;
-};
+/** The fake SettingsService: writable signals and spied setters. */
+type FakeSettings = SettingsSignals & Record<SettingsMethod, Spy>;
 
 /** The fake DependencyService. */
 interface FakeDeps {
@@ -169,7 +155,7 @@ interface MockApi {
  * Creates the fake SettingsService.
  *
  * Defaults enable every optional section (equalizer, video adjustments, text
- * shadow, glass) so that their controls are rendered unless a test turns
+ * shadow, the Glass theme) so that their controls are rendered unless a test turns
  * them off.
  *
  * @returns The fake, so tests can set signals and assert against setters
@@ -181,7 +167,6 @@ function createFakeSettings(): FakeSettings {
     renderResolution: signal<RenderResolution>('native'),
     visualizationCrossfadeDuration: signal<CrossfadeDuration>(1000),
     visualizationCrossfadeStyle: signal<CrossfadeStyle>('fade'),
-    perVisualizationSettings: signal<PerVisualizationSettings>({}),
     defaultVolume: signal<number>(0.5),
     crossfadeDuration: signal<number>(100),
     videoQuality: signal<VideoQuality>('medium'),
@@ -203,16 +188,10 @@ function createFakeSettings(): FakeSettings {
     preferredAudioLanguage: signal<PreferredAudioLanguage>('default'),
     preferredSubtitleLanguage: signal<PreferredSubtitleLanguage>('default'),
     colorScheme: signal<ColorScheme>('system'),
-    glassEnabled: signal<boolean>(true),
-    backgroundColor: signal<string>('#1e1e1e'),
+    theme: signal<PlayerTheme>('glass'),
+    accentColor: signal<AccentColor>('blue'),
+    isLoaded: signal<boolean>(true),
     macOSVisualEffectState: signal<MacOSVisualEffectState>('followWindow'),
-    backgroundHue: signal<number>(10),
-    backgroundSaturation: signal<number>(20),
-    backgroundLightness: signal<number>(30),
-    windowTintHue: signal<number>(210),
-    windowTintSaturation: signal<number>(60),
-    windowTintLightness: signal<number>(40),
-    windowTintAlpha: signal<number>(0.5),
     subtitleFontSize: signal<number>(100),
     subtitleFontColor: signal<string>('#ffffff'),
     subtitleBackgroundColor: signal<string>('#000000'),
@@ -232,10 +211,6 @@ function createFakeSettings(): FakeSettings {
   return {
     ...signals,
     ...(methods as Record<SettingsMethod, Spy>),
-    hasApplicableSetting: vi.fn((vizId: string, setting: LocalSettingKey): boolean =>
-      VISUALIZATION_METADATA.find((v: VisualizationMetadata): boolean => v.id === vizId)?.applicableSettings.includes(setting) ?? false),
-    getVisualizationMetadata: vi.fn((vizId: string): VisualizationMetadata | undefined =>
-      VISUALIZATION_METADATA.find((v: VisualizationMetadata): boolean => v.id === vizId)),
   };
 }
 
@@ -400,6 +375,7 @@ const SELECT_CASES: readonly WriteCase[] = [
   {category: 'Video Subtitles', id: 'subtitle-font-family', value: 'serif', method: 'setSubtitleFontFamily', args: ['serif']},
   {category: 'Appearance', id: 'color-scheme', value: 'light', method: 'setColorScheme', args: ['light']},
   {category: 'Appearance', id: 'macos-visual-effect-state', value: 'active', method: 'setMacOSVisualEffectState', args: ['active']},
+  {category: 'Appearance', id: 'player-theme', value: 'pebble', method: 'setTheme', args: ['pebble']},
 ];
 
 const INPUT_CASES: readonly WriteCase[] = [
@@ -419,7 +395,6 @@ const INPUT_CASES: readonly WriteCase[] = [
   {category: 'Video Subtitles', id: 'subtitle-shadow-spread', value: '2.5', method: 'setSubtitleShadowSpread', args: [2.5]},
   {category: 'Video Subtitles', id: 'subtitle-shadow-blur', value: '4', method: 'setSubtitleShadowBlur', args: [4]},
   {category: 'Video Subtitles', id: 'subtitle-shadow-color', value: '#00ff00', method: 'setSubtitleShadowColor', args: ['#00ff00']},
-  {category: 'Appearance', id: 'window-color-alpha', value: '0.35', method: 'setWindowTintAlpha', args: [0.35]},
 ];
 
 const TOGGLE_CASES: readonly ToggleCase[] = [
@@ -428,7 +403,6 @@ const TOGGLE_CASES: readonly ToggleCase[] = [
   {category: 'Video Playback', id: 'video-adjustments-enabled', method: 'setVideoAdjustmentsEnabled', args: [true]},
   {category: 'Video Playback', id: 'video-adj-invert', method: 'setVideoAdjustment', args: ['invert', true]},
   {category: 'Video Subtitles', id: 'subtitle-text-shadow', method: 'setSubtitleTextShadow', args: [true]},
-  {category: 'Appearance', id: 'glass-enabled', method: 'setGlassEnabled', args: [true]},
 ];
 
 /**
@@ -512,10 +486,9 @@ const REFLECT_CASES: readonly ReflectCase[] = [
   {name: 'the subtitle shadow blur in pixels', category: 'Video Subtitles', arrange: (s: FakeSettings): void => s.subtitleShadowBlur.set(3), read: labelOf('subtitle-shadow-blur'), expected: '3px'},
   {name: 'the subtitle shadow colour as its hex code', category: 'Video Subtitles', arrange: (s: FakeSettings): void => s.subtitleShadowColor.set('#445566'), read: labelOf('subtitle-shadow-color'), expected: '#445566'},
   // Appearance
-  {name: 'a disabled glass effect as an unchecked toggle', category: 'Appearance', arrange: (s: FakeSettings): void => s.glassEnabled.set(false), read: checkedOf('glass-enabled'), expected: false},
+  {name: 'the theme as the selected option', category: 'Appearance', arrange: (s: FakeSettings): void => s.theme.set('pebble'), read: valueOf('player-theme'), expected: 'pebble'},
   {name: 'the colour scheme as the selected option', category: 'Appearance', arrange: (s: FakeSettings): void => s.colorScheme.set('dark'), read: valueOf('color-scheme'), expected: 'dark'},
   {name: 'the visual effect state as the selected option', category: 'Appearance', arrange: (s: FakeSettings): void => s.macOSVisualEffectState.set('inactive'), read: valueOf('macos-visual-effect-state'), expected: 'inactive'},
-  {name: 'the window tint alpha as a percentage', category: 'Appearance', arrange: (s: FakeSettings): void => s.windowTintAlpha.set(0.35), read: labelOf('window-color-alpha'), expected: '35%'},
 ];
 
 // ============================================================================
@@ -572,26 +545,6 @@ describe('ConfigurationView', (): void => {
       .find((item: HTMLButtonElement): boolean => item.querySelector('span')?.textContent.trim() === name);
     if (!button) throw new Error(`No category named ${name}`);
     button.click();
-    await fixture.whenStable();
-  }
-
-  /** Expands or collapses the visualizations accordion. */
-  async function toggleAccordion(): Promise<void> {
-    get<HTMLButtonElement>('.accordion-toggle').click();
-    await fixture.whenStable();
-  }
-
-  /**
-   * Opens the per-visualization settings for a visualization.
-   *
-   * @param name - The visualization's display name
-   */
-  async function openVisualization(name: string): Promise<void> {
-    await toggleAccordion();
-    const child: HTMLButtonElement | undefined = all<HTMLButtonElement>('.category-child')
-      .find((item: HTMLButtonElement): boolean => item.textContent.trim() === name);
-    if (!child) throw new Error(`No visualization named ${name}`);
-    child.click();
     await fixture.whenStable();
   }
 
@@ -700,7 +653,7 @@ describe('ConfigurationView', (): void => {
     });
 
     it.each([
-      ['Appearance', 'Configure window transparency and background.'],
+      ['Appearance', 'Configure the player window\'s theme, color scheme and accent color.'],
       ['Dependencies', 'Manage required external dependencies for media playback.'],
       ['Playback', 'Configure shared playback behaviour.'],
       ['Audio Playback', 'Configure audio playback and output.'],
@@ -750,6 +703,16 @@ describe('ConfigurationView', (): void => {
       await fixture.whenStable();
 
       expect(get('.panel-header h2').textContent).toBe('Dependencies');
+    });
+
+    it('opens the visualizations category named in the URL', async (): Promise<void> => {
+      window.history.replaceState({}, '', '?category=visualisations');
+
+      fixture.componentRef.setInput('isStandaloneWindow', true);
+      await fixture.whenStable();
+
+      expect(get('.panel-header h2').textContent).toBe('Audio Visualizations');
+      expect(host.querySelector('#max-frame-rate')).not.toBeNull();
     });
 
     it('stays on the default category when the URL names none', async (): Promise<void> => {
@@ -805,90 +768,26 @@ describe('ConfigurationView', (): void => {
     });
   });
 
-  describe('visualizations accordion', (): void => {
-    it('is collapsed to begin with', (): void => {
-      expect(host.querySelector('.accordion-children')).toBeNull();
-      expect(get('.accordion-toggle').classList.contains('expanded')).toBe(false);
-    });
-
-    it('lists only the visualizations that have their own settings', async (): Promise<void> => {
-      await toggleAccordion();
-
-      expect(texts('.category-child')).toEqual(['Analyzer']);
-      expect(get('.accordion-toggle').classList.contains('expanded')).toBe(true);
-    });
-
-    it('does not nest the toggle inside another button', (): void => {
-      expect(host.querySelector('button button')).toBeNull();
-    });
-
-    it('offers the category name as a keyboard stop of its own', (): void => {
-      const name: HTMLElement = get<HTMLElement>('.category-item.has-accordion > span');
-
-      expect(name.getAttribute('role')).toBe('button');
-      expect(name.tabIndex).toBe(0);
-    });
-
-    it.each([['Enter'], [' ']])('opens the category when "%s" is pressed on its name', async (key: string): Promise<void> => {
-      get<HTMLElement>('.category-item.has-accordion > span').dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true}));
-      await fixture.whenStable();
-
-      expect(get('.panel-header h2').textContent).toBe('Audio Visualizations');
-    });
-
-    it('keeps Space on the category name from scrolling the sidebar', (): void => {
-      const event: KeyboardEvent = new KeyboardEvent('keydown', {key: ' ', bubbles: true, cancelable: true});
-
-      get<HTMLElement>('.category-item.has-accordion > span').dispatchEvent(event);
-
-      expect(event.defaultPrevented).toBe(true);
-    });
-
-    it('names the category as it appears in the sidebar when pointing at the accordion', async (): Promise<void> => {
+  describe('visualizations category', (): void => {
+    it('shows only the settings shared by every visualization', async (): Promise<void> => {
       await open('Audio Visualizations');
 
-      expect(texts('.info-notice span')).toContain(
-        'Expand "Audio Visualizations" in the sidebar to configure individual visualization settings.',
-      );
+      expect(texts('.setting-label label')).toEqual(['Max Frame Rate', 'FFT Size', 'Render Resolution', 'Crossfade Duration', 'Crossfade Style']);
     });
 
-    it('expands without leaving the current category', async (): Promise<void> => {
-      await toggleAccordion();
+    it('is an ordinary sidebar entry with nothing nested beneath it', (): void => {
+      const entry: HTMLButtonElement | undefined = all<HTMLButtonElement>('.category-item')
+        .find((item: HTMLButtonElement): boolean => item.querySelector('span')?.textContent.trim() === 'Audio Visualizations');
 
-      expect(get('.panel-header h2').textContent).toBe('Application');
+      expect(entry?.tagName).toBe('BUTTON');
+      expect(entry?.querySelector('button')).toBeNull();
+      expect(entry?.nextElementSibling?.classList.contains('category-item')).toBe(true);
     });
 
-    it('collapses when toggled again', async (): Promise<void> => {
-      await toggleAccordion();
-
-      await toggleAccordion();
-
-      expect(host.querySelector('.accordion-children')).toBeNull();
-    });
-
-    it('shows a visualization\'s own settings when it is picked', async (): Promise<void> => {
-      await openVisualization('Analyzer');
-
-      expect(get('.panel-header h2').textContent).toBe('Audio Visualizations');
-      expect(texts('.setting-label label')).toEqual(['Bar Density', 'Bar Color (Bottom)', 'Bar Color (Middle)', 'Bar Color (Top)']);
-      expect(host.querySelector('#max-frame-rate')).toBeNull();
-    });
-
-    it('highlights the picked visualization rather than its parent category', async (): Promise<void> => {
-      await openVisualization('Analyzer');
-
-      expect(get('.category-child').classList.contains('active')).toBe(true);
-      expect(host.querySelector('.category-item.active')).toBeNull();
-    });
-
-    it('returns to the global settings when the category itself is clicked', async (): Promise<void> => {
-      await openVisualization('Analyzer');
-
+    it('points nowhere for settings of individual visualizations', async (): Promise<void> => {
       await open('Audio Visualizations');
 
-      expect(host.querySelector('#max-frame-rate')).not.toBeNull();
-      expect(get('.category-child').classList.contains('active')).toBe(false);
-      expect(texts('.category-item.active > span')).toEqual(['Audio Visualizations']);
+      expect(host.querySelector('.info-notice')).toBeNull();
     });
   });
 
@@ -962,6 +861,26 @@ describe('ConfigurationView', (): void => {
       await fixture.whenStable();
 
       expect(row.read(host)).toBe(row.expected);
+    });
+
+    it('fills a slider\'s track up to its value', async (): Promise<void> => {
+      await open('Audio Playback');
+
+      settings.defaultVolume.set(0.75);
+      await fixture.whenStable();
+
+      expect(get<HTMLInputElement>('#default-volume').style.getPropertyValue('--pebble-range-percent')).toBe('75%');
+    });
+  });
+
+  describe('range fill', (): void => {
+    it.each([
+      [5, 0, 10, '50%'],
+      [-5, 0, 10, '0%'],
+      [15, 0, 10, '100%'],
+      [3, 3, 3, '0%'],
+    ])('places %d between %d and %d at %s', (value: number, min: number, max: number, expected: string): void => {
+      expect(component.rangeFill(value, min, max)).toBe(expected);
     });
   });
 
@@ -1276,74 +1195,152 @@ describe('ConfigurationView', (): void => {
       await open('Appearance');
     });
 
-    describe('with glass enabled and supported', (): void => {
-      it('describes the window colour as a tint', (): void => {
-        expect(get('.setting-box .setting-description').textContent).toContain('Color tint over the glass effect');
+    /** The accent radio inputs, in display order. */
+    function accentInputs(): HTMLInputElement[] {
+      return all<HTMLInputElement>('.accent-options input[type="radio"]');
+    }
+
+    it('lays the page out as Theme, Visual Effect State, Color Scheme, Accent Color', (): void => {
+      expect(texts('.setting-row .setting-label > label')).toEqual(['Theme', 'Visual Effect State', 'Color Scheme', 'Accent Color']);
+    });
+
+    it('has neither a glass toggle nor a window colour picker any more', (): void => {
+      expect(host.querySelector('#glass-enabled')).toBeNull();
+      expect(host.querySelector('#window-color-hue')).toBeNull();
+      expect(host.querySelector('.color-preview')).toBeNull();
+    });
+
+    describe('theme', (): void => {
+      it('offers Solid, Glass and Pebble in that order', (): void => {
+        expect(texts('#player-theme option')).toEqual(['Solid', 'Glass', 'Pebble']);
+        expect(all<HTMLOptionElement>('#player-theme option').map((option: HTMLOptionElement): string => option.value)).toEqual(['solid', 'glass', 'pebble']);
       });
 
-      it('shows the tint values on the colour sliders', (): void => {
-        expect(get<HTMLInputElement>('#window-color-hue').value).toBe('210');
-        expect(get<HTMLInputElement>('#window-color-saturation').value).toBe('60');
-        expect(get<HTMLInputElement>('#window-color-lightness').value).toBe('40');
-        expect(texts('.inline-slider-row .slider-value')).toEqual(['210°', '60%', '40%', '50%']);
+      it('enables every theme where glass is supported', (): void => {
+        expect(all<HTMLOptionElement>('#player-theme option').some((option: HTMLOptionElement): boolean => option.disabled)).toBe(false);
+        expect(get('#player-theme').closest('.setting-row')?.textContent).not.toContain('not supported');
       });
 
-      it('previews the tint including its alpha', (): void => {
-        expect(get<HTMLElement>('.color-preview').style.background).toBe('rgba(41, 102, 163, 0.5)');
+      it('shows no restart notice while unchanged', (): void => {
+        expect(host.querySelector('.restart-notice')).toBeNull();
       });
 
-      it.each([
-        ['window-color-hue', '200', 'setWindowTintHue', 'setBackgroundHue'],
-        ['window-color-saturation', '80', 'setWindowTintSaturation', 'setBackgroundSaturation'],
-        ['window-color-lightness', '25', 'setWindowTintLightness', 'setBackgroundLightness'],
-      ] as const)('writes #%s to the tint, not the background', async (id: string, value: string, tint: SettingsMethod, background: SettingsMethod): Promise<void> => {
-        await enter(`#${id}`, value);
+      it.each(['solid', 'pebble'] as const)('warns that leaving Glass for %s needs a restart', async (theme: PlayerTheme): Promise<void> => {
+        settings.theme.set(theme);
+        await fixture.whenStable();
 
-        expect(settings[tint]).toHaveBeenCalledWith(Number(value));
-        expect(settings[background]).not.toHaveBeenCalled();
+        expect(get('.restart-notice').textContent).toContain('Switching to or from the Glass theme requires an application restart');
       });
 
-      it('enables the glass toggle', (): void => {
-        expect(get<HTMLInputElement>('#glass-enabled').disabled).toBe(false);
-        expect(get('.setting-description').textContent).toContain('Enables window transparency with blur effect.');
+      it('withdraws the notice when Glass is chosen again', async (): Promise<void> => {
+        settings.theme.set('solid');
+        await fixture.whenStable();
+        settings.theme.set('glass');
+        await fixture.whenStable();
+
+        expect(host.querySelector('.restart-notice')).toBeNull();
+      });
+
+      describe('starting from a theme other than Glass', (): void => {
+        beforeEach(async (): Promise<void> => {
+          // Recreate the view so that it first sees Solid.
+          fixture.destroy();
+          settings.theme.set('solid');
+          fixture = TestBed.createComponent(ConfigurationView);
+          component = fixture.componentInstance;
+          host = fixture.nativeElement as HTMLElement;
+          await fixture.whenStable();
+          await open('Appearance');
+        });
+
+        it('swaps Solid and Pebble live, without a restart notice', async (): Promise<void> => {
+          settings.theme.set('pebble');
+          await fixture.whenStable();
+
+          expect(host.querySelector('.restart-notice')).toBeNull();
+        });
+
+        it('warns that moving to Glass needs a restart', async (): Promise<void> => {
+          settings.theme.set('glass');
+          await fixture.whenStable();
+
+          expect(get('.restart-notice').textContent).toContain('Switching to or from the Glass theme requires an application restart');
+        });
+
+        it('offers no visual effect state', (): void => {
+          expect(host.querySelector('#macos-visual-effect-state')).toBeNull();
+        });
+      });
+
+      describe('before the settings have loaded', (): void => {
+        beforeEach(async (): Promise<void> => {
+          // The window starts on the built-in default and learns the real theme later.
+          fixture.destroy();
+          settings.isLoaded.set(false);
+          settings.theme.set('glass');
+          fixture = TestBed.createComponent(ConfigurationView);
+          component = fixture.componentInstance;
+          host = fixture.nativeElement as HTMLElement;
+          await fixture.whenStable();
+          await open('Appearance');
+        });
+
+        it('takes the loaded theme, not the placeholder, as the starting point', async (): Promise<void> => {
+          settings.theme.set('solid');
+          settings.isLoaded.set(true);
+          await fixture.whenStable();
+
+          expect(host.querySelector('.restart-notice')).toBeNull();
+        });
+
+        it('shows no notice while nothing is loaded', async (): Promise<void> => {
+          settings.theme.set('pebble');
+          await fixture.whenStable();
+
+          expect(host.querySelector('.restart-notice')).toBeNull();
+        });
       });
     });
 
-    describe('with glass disabled', (): void => {
-      beforeEach(async (): Promise<void> => {
-        settings.glassEnabled.set(false);
+    describe('accent color', (): void => {
+      it('labels the radio group', (): void => {
+        const group: HTMLElement = get<HTMLElement>('.accent-options');
+
+        expect(group.getAttribute('role')).toBe('radiogroup');
+        expect(host.querySelector(`#${group.getAttribute('aria-labelledby')}`)?.textContent.trim()).toBe('Accent Color');
+      });
+
+      it('offers the eight accent colours as named swatches in order', (): void => {
+        expect(accentInputs().map((input: HTMLInputElement): string | null => input.getAttribute('aria-label'))).toEqual([
+          'Amber', 'Coral', 'Rose', 'Violet', 'Blue', 'Cyan', 'Teal', 'Green',
+        ]);
+        expect(all<HTMLLabelElement>('.accent-options > label').map((label: HTMLLabelElement): string => label.title)).toEqual([
+          'Amber', 'Coral', 'Rose', 'Violet', 'Blue', 'Cyan', 'Teal', 'Green',
+        ]);
+        expect(accentInputs().every((input: HTMLInputElement): boolean => input.name === 'accent-color')).toBe(true);
+      });
+
+      it('paints each swatch its brand colour', (): void => {
+        expect(all<HTMLElement>('.accent-options .accent-swatch').map((swatch: HTMLElement): string => swatch.style.background)).toEqual([
+          'rgb(247, 149, 51)', 'rgb(243, 112, 85)', 'rgb(239, 78, 123)', 'rgb(161, 102, 171)',
+          'rgb(58, 111, 216)', 'rgb(16, 152, 173)', 'rgb(7, 179, 155)', 'rgb(111, 186, 130)',
+        ]);
+      });
+
+      it('checks the current accent colour', async (): Promise<void> => {
+        settings.accentColor.set('rose');
         await fixture.whenStable();
+
+        expect(accentInputs().filter((input: HTMLInputElement): boolean => input.checked).map((input: HTMLInputElement): string => input.value)).toEqual(['rose']);
       });
 
-      it('describes the window colour as a background', (): void => {
-        expect(get('.setting-box .setting-description').textContent).toContain('Window background color.');
-      });
+      it('saves the chosen accent colour', async (): Promise<void> => {
+        const teal: HTMLInputElement = accentInputs().find((input: HTMLInputElement): boolean => input.value === 'teal')!;
 
-      it('shows the background values on the colour sliders', (): void => {
-        expect(texts('.inline-slider-row .slider-value')).toEqual(['10°', '20%', '30%']);
-      });
+        teal.click();
+        await fixture.whenStable();
 
-      it('previews the opaque background colour', (): void => {
-        expect(get<HTMLElement>('.color-preview').style.background).toBe('rgb(92, 66, 61)');
-      });
-
-      it('offers no alpha slider', (): void => {
-        expect(host.querySelector('#window-color-alpha')).toBeNull();
-      });
-
-      it('offers no visual effect state', (): void => {
-        expect(host.querySelector('#macos-visual-effect-state')).toBeNull();
-      });
-
-      it.each([
-        ['window-color-hue', '200', 'setBackgroundHue', 'setWindowTintHue'],
-        ['window-color-saturation', '80', 'setBackgroundSaturation', 'setWindowTintSaturation'],
-        ['window-color-lightness', '25', 'setBackgroundLightness', 'setWindowTintLightness'],
-      ] as const)('writes #%s to the background, not the tint', async (id: string, value: string, background: SettingsMethod, tint: SettingsMethod): Promise<void> => {
-        await enter(`#${id}`, value);
-
-        expect(settings[background]).toHaveBeenCalledWith(Number(value));
-        expect(settings[tint]).not.toHaveBeenCalled();
+        expect(settings.setAccentColor).toHaveBeenCalledExactlyOnceWith('teal');
       });
     });
 
@@ -1353,26 +1350,32 @@ describe('ConfigurationView', (): void => {
         await fixture.whenStable();
       });
 
-      it('disables the glass toggle and says why', (): void => {
-        expect(get<HTMLInputElement>('#glass-enabled').disabled).toBe(true);
-        expect(get('.setting-description').textContent).toContain('Glass effects are not supported on this platform.');
+      it('disables Glass and says why', (): void => {
+        const glass: HTMLOptionElement = get<HTMLOptionElement>('#player-theme option[value="glass"]');
+
+        expect(glass.disabled).toBe(true);
+        expect(get<HTMLOptionElement>('#player-theme option[value="solid"]').disabled).toBe(false);
+        expect(get<HTMLOptionElement>('#player-theme option[value="pebble"]').disabled).toBe(false);
+        expect(get('#player-theme').closest('.setting-row')?.textContent).toContain('Glass is not supported on this platform.');
       });
 
-      it('treats the window colour as a background even if glass is switched on', (): void => {
-        expect(texts('.inline-slider-row .slider-value')).toEqual(['10°', '20%', '30%']);
-        expect(host.querySelector('#window-color-alpha')).toBeNull();
-      });
+      it('never asks for a restart, as Glass is shown as Solid here', async (): Promise<void> => {
+        settings.theme.set('pebble');
+        await fixture.whenStable();
 
-      it('writes the hue slider to the background even if glass is switched on', async (): Promise<void> => {
-        await enter('#window-color-hue', '200');
-
-        expect(settings.setBackgroundHue).toHaveBeenCalledWith(200);
-        expect(settings.setWindowTintHue).not.toHaveBeenCalled();
+        expect(host.querySelector('.restart-notice')).toBeNull();
       });
 
       it('offers no visual effect state', (): void => {
         expect(host.querySelector('#macos-visual-effect-state')).toBeNull();
       });
+    });
+
+    it('offers no visual effect state off macOS, even with the Glass theme', async (): Promise<void> => {
+      electron.platformInfo.set({platform: 'win32', supportsGlass: true, systemTheme: 'dark'});
+      await fixture.whenStable();
+
+      expect(host.querySelector('#macos-visual-effect-state')).toBeNull();
     });
 
     describe('visual effect state', (): void => {
@@ -1390,107 +1393,6 @@ describe('ConfigurationView', (): void => {
 
         expect(get('.restart-notice').textContent).toContain('Visual Effect State setting requires an application restart');
       });
-    });
-  });
-
-  // ==========================================================================
-  // Per-visualization settings
-  // ==========================================================================
-
-  describe('per-visualization settings', (): void => {
-    beforeEach(async (): Promise<void> => {
-      await openVisualization('Analyzer');
-    });
-
-    it('shows the defaults for a visualization with no custom settings', (): void => {
-      expect(get<HTMLSelectElement>('.setting-control select').value).toBe('medium');
-      expect(texts('.color-value')).toEqual(['#00cc00', '#cccc00', '#cc0000']);
-    });
-
-    it('shows the visualization\'s custom settings', async (): Promise<void> => {
-      settings.perVisualizationSettings.set({bars: {barDensity: 'high', barColorBottom: '#111111', barColorTop: '#333333'}});
-      await fixture.whenStable();
-
-      expect(get<HTMLSelectElement>('.setting-control select').value).toBe('high');
-      expect(texts('.color-value')).toEqual(['#111111', '#cccc00', '#333333']);
-    });
-
-    it('ignores custom settings that belong to another visualization', async (): Promise<void> => {
-      settings.perVisualizationSettings.set({waveform: {barDensity: 'low'}});
-      await fixture.whenStable();
-
-      expect(get<HTMLSelectElement>('.setting-control select').value).toBe('medium');
-    });
-
-    it('saves a picked bar density against the visualization', async (): Promise<void> => {
-      await choose('.setting-control select', 'low');
-
-      expect(settings.setVisualizationSetting).toHaveBeenCalledWith('bars', 'barDensity', 'low');
-    });
-
-    it.each([
-      [0, 'barColorBottom'],
-      [1, 'barColorMiddle'],
-      [2, 'barColorTop'],
-    ] as const)('saves colour picker %i as %s', async (index: number, setting: LocalSettingKey): Promise<void> => {
-      const picker: HTMLInputElement = all<HTMLInputElement>('input[type="color"]')[index];
-      picker.value = '#123456';
-
-      picker.dispatchEvent(new Event('input', {bubbles: true}));
-      await fixture.whenStable();
-
-      expect(settings.setVisualizationSetting).toHaveBeenCalledTimes(1);
-      expect(settings.setVisualizationSetting).toHaveBeenCalledWith('bars', setting, '#123456');
-    });
-
-    it('hides the controls the visualization does not support', async (): Promise<void> => {
-      settings.hasApplicableSetting.mockImplementation((_vizId: string, setting: LocalSettingKey): boolean => setting === 'barDensity');
-      settings.perVisualizationSettings.set({bars: {}});
-      await fixture.whenStable();
-
-      expect(texts('.setting-label label')).toEqual(['Bar Density']);
-    });
-
-    it('reports whether a setting has been customised', async (): Promise<void> => {
-      settings.perVisualizationSettings.set({bars: {barDensity: 'high'}});
-      await fixture.whenStable();
-
-      expect(component.hasCustomSetting('bars', 'barDensity')).toBe(true);
-      expect(component.hasCustomSetting('bars', 'barColorTop')).toBe(false);
-    });
-
-    it('reports a customised setting of a visualization other than the one shown', async (): Promise<void> => {
-      settings.perVisualizationSettings.set({waveform: {lineWidth: 3}});
-      await fixture.whenStable();
-
-      expect(component.hasCustomSetting('waveform', 'lineWidth')).toBe(true);
-    });
-
-    it('does not credit the shown visualization\'s customised setting to another visualization', async (): Promise<void> => {
-      settings.perVisualizationSettings.set({bars: {barDensity: 'high'}});
-      await fixture.whenStable();
-
-      expect(component.hasCustomSetting('waveform', 'barDensity')).toBe(false);
-    });
-
-    it('resets a single setting through the service', async (): Promise<void> => {
-      await component.onResetPerVizSetting('bars', 'barDensity');
-
-      expect(settings.resetVisualizationSetting).toHaveBeenCalledWith('bars', 'barDensity');
-    });
-
-    it('resets all of a visualization\'s settings through the service', async (): Promise<void> => {
-      await component.onResetAllVisualizationSettings('bars');
-
-      expect(settings.resetAllVisualizationSettings).toHaveBeenCalledWith('bars');
-    });
-
-    it('names a known visualization by its display name', (): void => {
-      expect(component.getVisualizationName('bars')).toBe('Analyzer');
-    });
-
-    it('names an unknown visualization by its id', (): void => {
-      expect(component.getVisualizationName('nonsense')).toBe('nonsense');
     });
   });
 
@@ -1890,41 +1792,17 @@ describe('ConfigurationView', (): void => {
       ['onSubtitleShadowSpreadChange', 'setSubtitleShadowSpread'],
       ['onSubtitleShadowBlurChange', 'setSubtitleShadowBlur'],
       ['onSubtitleShadowColorChange', 'setSubtitleShadowColor'],
-      ['onWindowTintAlphaChange', 'setWindowTintAlpha'],
-      ['onBackgroundColorChange', 'setBackgroundColor'],
-      ['onBackgroundHueChange', 'setBackgroundHue'],
-      ['onBackgroundSaturationChange', 'setBackgroundSaturation'],
-      ['onBackgroundLightnessChange', 'setBackgroundLightness'],
-      ['onWindowTintHueChange', 'setWindowTintHue'],
-      ['onWindowTintSaturationChange', 'setWindowTintSaturation'],
-      ['onWindowTintLightnessChange', 'setWindowTintLightness'],
       ['onEqualizerToggle', 'setEqualizerEnabled'],
       ['onVideoAdjustmentsToggle', 'setVideoAdjustmentsEnabled'],
       ['onVideoAdjustmentInvertToggle', 'setVideoAdjustment'],
-      ['onGlassEnabledChange', 'setGlassEnabled'],
       ['onMiniplayerOnFocusLossToggle', 'setMiniplayerOnFocusLoss'],
     ] as const)('%s ignores an event that did not come from an input', async (
-      handler: 'onDefaultVolumeChange' | 'onCrossfadeDurationChange' | 'onAutoHideDelayChange' | 'onPreviousTrackThresholdChange' | 'onSkipDurationChange' | 'onSubtitleFontSizeChange' | 'onSubtitleFontColorChange' | 'onSubtitleBackgroundColorChange' | 'onSubtitleBackgroundOpacityChange' | 'onSubtitleShadowSpreadChange' | 'onSubtitleShadowBlurChange' | 'onSubtitleShadowColorChange' | 'onWindowTintAlphaChange' | 'onBackgroundColorChange' | 'onBackgroundHueChange' | 'onBackgroundSaturationChange' | 'onBackgroundLightnessChange' | 'onWindowTintHueChange' | 'onWindowTintSaturationChange' | 'onWindowTintLightnessChange' | 'onEqualizerToggle' | 'onVideoAdjustmentsToggle' | 'onVideoAdjustmentInvertToggle' | 'onGlassEnabledChange' | 'onMiniplayerOnFocusLossToggle',
+      handler: 'onDefaultVolumeChange' | 'onCrossfadeDurationChange' | 'onAutoHideDelayChange' | 'onPreviousTrackThresholdChange' | 'onSkipDurationChange' | 'onSubtitleFontSizeChange' | 'onSubtitleFontColorChange' | 'onSubtitleBackgroundColorChange' | 'onSubtitleBackgroundOpacityChange' | 'onSubtitleShadowSpreadChange' | 'onSubtitleShadowBlurChange' | 'onSubtitleShadowColorChange' | 'onEqualizerToggle' | 'onVideoAdjustmentsToggle' | 'onVideoAdjustmentInvertToggle' | 'onMiniplayerOnFocusLossToggle',
       method: SettingsMethod,
     ): Promise<void> => {
       await component[handler](eventFrom('div', 'input'));
 
       expect(settings[method]).not.toHaveBeenCalled();
-    });
-
-    it.each([
-      ['onWindowColorHueChange', 'setWindowTintHue', 'setBackgroundHue'],
-      ['onWindowColorSaturationChange', 'setWindowTintSaturation', 'setBackgroundSaturation'],
-      ['onWindowColorLightnessChange', 'setWindowTintLightness', 'setBackgroundLightness'],
-    ] as const)('%s writes neither colour for an event that did not come from an input', async (
-      handler: 'onWindowColorHueChange' | 'onWindowColorSaturationChange' | 'onWindowColorLightnessChange',
-      tint: SettingsMethod,
-      background: SettingsMethod,
-    ): Promise<void> => {
-      await component[handler](eventFrom('div', 'input'));
-
-      expect(settings[tint]).not.toHaveBeenCalled();
-      expect(settings[background]).not.toHaveBeenCalled();
     });
 
     it('ignores an equalizer band event that did not come from an input', async (): Promise<void> => {
@@ -1943,45 +1821,6 @@ describe('ConfigurationView', (): void => {
       await component.onSubtitleTextShadowChange(eventFrom('input', 'change', 'on'));
 
       expect(settings.setSubtitleTextShadow).toHaveBeenCalledWith(false);
-    });
-  });
-
-  // ==========================================================================
-  // Handlers with no control in the template
-  // ==========================================================================
-
-  describe('colour handlers that are not bound to a control', (): void => {
-    it.each([
-      ['onBackgroundColorChange', '#abcdef', 'setBackgroundColor', '#abcdef'],
-      ['onBackgroundHueChange', '120', 'setBackgroundHue', 120],
-      ['onBackgroundSaturationChange', '45.5', 'setBackgroundSaturation', 45.5],
-      ['onBackgroundLightnessChange', '12', 'setBackgroundLightness', 12],
-      ['onWindowTintHueChange', '300', 'setWindowTintHue', 300],
-      ['onWindowTintSaturationChange', '70', 'setWindowTintSaturation', 70],
-      ['onWindowTintLightnessChange', '55', 'setWindowTintLightness', 55],
-    ] as const)('%s saves the value %s', async (
-      handler: 'onBackgroundColorChange' | 'onBackgroundHueChange' | 'onBackgroundSaturationChange' | 'onBackgroundLightnessChange' | 'onWindowTintHueChange' | 'onWindowTintSaturationChange' | 'onWindowTintLightnessChange',
-      value: string,
-      method: SettingsMethod,
-      expected: string | number,
-    ): Promise<void> => {
-      await component[handler](eventFrom('input', 'input', value));
-
-      expect(settings[method]).toHaveBeenCalledWith(expected);
-    });
-
-    it('exposes the background colour from the service', (): void => {
-      settings.backgroundColor.set('#0a0b0c');
-
-      expect(component.currentBackgroundColor()).toBe('#0a0b0c');
-    });
-  });
-
-  describe('custom visualization settings with no visualization picked', (): void => {
-    it('reports a customised setting of the visualization asked about', (): void => {
-      settings.perVisualizationSettings.set({bars: {barDensity: 'high'}});
-
-      expect(component.hasCustomSetting('bars', 'barDensity')).toBe(true);
     });
   });
 

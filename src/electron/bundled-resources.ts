@@ -62,6 +62,8 @@ export interface LicenseLocations {
   readonly application: string;
   /** Licences of the JavaScript libraries bundled into the renderer (production builds only) */
   readonly javascript: string;
+  /** The SIL Open Font License of Poppins, the typeface of the Pebble windows */
+  readonly font: string;
   /** Directory with the bundled programs' licences and components.json */
   readonly bundled: string | null;
   /** Directory with Electron's LICENSE and Chromium's LICENSES.chromium.html */
@@ -84,6 +86,7 @@ export function getLicenseLocations(): LicenseLocations {
     return {
       application: path.join(licenses, 'ONIXPlayer-LICENSE.txt'),
       javascript: path.join(licenses, 'JavaScript-libraries.txt'),
+      font: path.join(licenses, 'Poppins-OFL.txt'),
       bundled,
       electron: process.platform === 'darwin' ? process.resourcesPath : path.dirname(process.execPath),
     };
@@ -93,6 +96,7 @@ export function getLicenseLocations(): LicenseLocations {
   return {
     application: path.join(root, 'LICENSE'),
     javascript: path.join(root, 'dist', 'onixlabs-media-player', '3rdpartylicenses.txt'),
+    font: path.join(root, 'public', 'fonts', 'poppins', 'OFL.txt'),
     bundled,
     electron: path.join(root, 'node_modules', 'electron', 'dist'),
   };

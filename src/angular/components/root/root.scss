@@ -1,4 +1,5 @@
 @use 'variables' as *;
+@use 'player-theme';
 
 :host {
   display: flex;
@@ -6,7 +7,6 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: var(--app-tint-color);
 
   // Hide cursor when controls are auto-hidden in fullscreen/miniplayer mode
   &.cursor-hidden {
@@ -82,6 +82,19 @@
         }
       }
     }
+  }
+}
+
+// Pebble: over fullscreen media the controls stay a Pebble surface (see
+// layout-controls.scss) rather than sitting on the dark scrim, so they read the
+// same in light and dark. This rule outranks the surface's own background, so
+// the translucency is set here: just enough of the picture shows through to
+// keep the overlay light, with no backdrop blur to re-run on every frame. The
+// room the scrim faded over goes too.
+@include player-theme.pebble {
+  &.fullscreen app-layout-controls.fullscreen-overlay {
+    background: color-mix(in srgb, var(--pebble-surface) 90%, transparent);
+    padding-top: 0.5rem;
   }
 }
 

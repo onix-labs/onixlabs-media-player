@@ -17,7 +17,6 @@
  *
  * All visualizations share common functionality:
  * - Canvas and analyser node management
- * - Sensitivity control (amplitude scaling independent of volume)
  * - Fade in/out on play/pause transitions
  * - Resize handling
  *
@@ -25,17 +24,12 @@
  */
 
 import {
-  DEFAULT_SENSITIVITY,
-  DEFAULT_TRAIL_INTENSITY,
   DEFAULT_FFT_SIZE,
-  DEFAULT_LINE_WIDTH,
-  DEFAULT_GLOW_INTENSITY,
-  DEFAULT_WAVEFORM_SMOOTHING,
-  DEFAULT_STROBE_FREQUENCY,
   GLOW_BLUR_RADIUS,
   GLOW_OPACITY_MULTIPLIER,
   GLOW_LINE_WIDTH_OFFSET,
   HIGHLIGHT_LINE_WIDTH,
+  WAVEFORM_LINE_WIDTH,
   RGB_MAX,
   PERCENT_100,
   DEGREES_FULL_CIRCLE,
@@ -45,7 +39,6 @@ import {
   DEGREES_FOUR_SEXTANTS,
   DEGREES_FIVE_SEXTANTS,
   FADE_IN_DURATION_MS,
-  HALF,
   MULTIPLIER_DOUBLE,
 } from './visualization-constants';
 
@@ -73,7 +66,6 @@ export interface VisualizationConfig {
  *
  * Provides common functionality that all visualizations need:
  * - Canvas and analyser node references
- * - Sensitivity control for amplitude scaling
  * - Fade transition handling for pause/stop
  * - Resize handling
  *
@@ -120,82 +112,11 @@ export abstract class Visualization {
   protected height: number = 0;
 
   /**
-   * Sensitivity controls visualization amplitude (0-1, default 0.25).
-   * This is independent of the master volume, allowing visualizations
-   * to remain responsive even at low volume.
-   */
-  protected sensitivity: number = DEFAULT_SENSITIVITY;
-
-  /**
-   * Pre-computed sensitivity scaling factor (sensitivity * 2).
-   * Used by all visualizations to scale audio data amplitude.
-   */
-  protected get sensitivityFactor(): number {
-    return this.sensitivity * 2;
-  }
-
-  /**
-   * Trail intensity controls how long visual trails persist (0-1, default 0.5).
-   * 0 = fast fade (minimal trails), 1 = slow fade (long trails).
-   * Only affects visualizations with trail effects (Tunnel, Pulsar, Water, Infinity).
-   */
-  protected trailIntensity: number = DEFAULT_TRAIL_INTENSITY;
-
-  /**
    * Current FFT size for audio analysis.
    * Larger values give more frequency resolution but require more processing.
    * Valid values: 256, 512, 1024, 2048, 4096
    */
   protected fftSize: number = DEFAULT_FFT_SIZE;
-
-  /**
-   * Current bar density level for bar-based visualizations.
-   * Only affects the Analyzer visualization.
-   */
-  protected barDensity: 'low' | 'medium' | 'high' = 'medium';
-
-  /**
-   * Line width for waveform visualizations (1.0 - 5.0, default 2.0).
-   * Affects visualizations that draw lines (Waveform, Plasma, Neon, Water, Infinity).
-   */
-  protected lineWidth: number = 2.0;
-
-  /**
-   * Glow intensity for visualizations with glow effects (0.0 - 1.0, default 0.5).
-   * 0 = no glow, 1 = full glow intensity.
-   */
-  protected glowIntensity: number = DEFAULT_GLOW_INTENSITY;
-
-  /**
-   * Waveform smoothing controls curve interpolation (0.0 - 1.0, default 0.5).
-   * 0 = straight lines (jagged), 1 = maximum smoothing (rounded curves).
-   * Affects visualizations that draw waveforms (Waveform, Plasma, Neon, Infinity).
-   */
-  protected waveformSmoothing: number = DEFAULT_WAVEFORM_SMOOTHING;
-
-  /**
-   * Bar gradient bottom color (hex format).
-   * Only affects Analyzer visualization.
-   */
-  protected barColorBottom: string = '#00cc00';
-
-  /**
-   * Bar gradient middle color (hex format).
-   * Only affects Analyzer visualization.
-   */
-  protected barColorMiddle: string = '#cccc00';
-
-  /**
-   * Bar gradient top color (hex format).
-   * Only affects Analyzer visualization.
-   */
-  protected barColorTop: string = '#cc0000';
-
-  /**
-   * Strobe frequency in Hz (1-20, default 5).
-   * Only affects visualizations with strobe effects.
-   */
-  protected strobeFrequency: number = DEFAULT_STROBE_FREQUENCY;
 
   /**
    * Current fade alpha level (0 = fully visible, 1 = fully transparent).
@@ -221,58 +142,6 @@ export abstract class Visualization {
     this.canvas = config.canvas;
     this.analyser = config.analyser;
     this.lastFrameTime = performance.now();
-  }
-
-  /**
-   * Sets the visualization sensitivity.
-   *
-   * @param value - Sensitivity level (0 to 1)
-   */
-  public setSensitivity(value: number): void {
-    this.sensitivity = Math.max(0, Math.min(1, value));
-  }
-
-  /**
-   * Gets the current sensitivity level.
-   *
-   * @returns Current sensitivity (0 to 1)
-   */
-  public getSensitivity(): number {
-    return this.sensitivity;
-  }
-
-  /**
-   * Sets the trail intensity.
-   *
-   * @param value - Trail intensity level (0 to 1)
-   */
-  public setTrailIntensity(value: number): void {
-    this.trailIntensity = Math.max(0, Math.min(1, value));
-  }
-
-  /**
-   * Gets the current trail intensity level.
-   *
-   * @returns Current trail intensity (0 to 1)
-   */
-  public getTrailIntensity(): number {
-    return this.trailIntensity;
-  }
-
-  /**
-   * Calculates the fade rate multiplier based on trail intensity.
-   *
-   * Converts the user-friendly trail intensity (0=short, 1=long trails)
-   * to a fade rate multiplier. Uses exponential scaling for smooth control.
-   *
-   * - trailIntensity 0: multiplier = 2.0 (fast fade, short trails)
-   * - trailIntensity 0.5: multiplier = 1.0 (default)
-   * - trailIntensity 1: multiplier = 0.5 (slow fade, long trails)
-   *
-   * @returns Fade rate multiplier to apply to base fade rates
-   */
-  protected getFadeMultiplier(): number {
-    return Math.pow(MULTIPLIER_DOUBLE, (HALF - this.trailIntensity) * MULTIPLIER_DOUBLE);
   }
 
   /**
@@ -347,174 +216,6 @@ export abstract class Visualization {
   }
 
   /**
-   * Sets the bar density for bar-based visualizations.
-   *
-   * @param density - Bar density level ('low', 'medium', or 'high')
-   */
-  public setBarDensity(density: 'low' | 'medium' | 'high'): void {
-    const validDensities: readonly string[] = ['low', 'medium', 'high'];
-    if (!validDensities.includes(density)) return;
-
-    this.barDensity = density;
-    this.onBarDensityChanged();
-  }
-
-  /**
-   * Gets the current bar density level.
-   *
-   * @returns Current bar density
-   */
-  public getBarDensity(): 'low' | 'medium' | 'high' {
-    return this.barDensity;
-  }
-
-  /**
-   * Called when bar density changes. Override in subclass to recalculate bar counts.
-   *
-   * Subclasses that render bars (Analyzer) should override
-   * this method to update their bar counts based on the new density.
-   */
-  protected onBarDensityChanged(): void {
-    // Override in subclass to recalculate bar counts
-  }
-
-  /**
-   * Sets the line width for waveform visualizations.
-   *
-   * @param width - Line width value (1.0 to 5.0)
-   */
-  public setLineWidth(width: number): void {
-    this.lineWidth = Math.max(1, Math.min(5, width));
-  }
-
-  /**
-   * Gets the current line width.
-   *
-   * @returns Current line width (1.0 to 5.0)
-   */
-  public getLineWidth(): number {
-    return this.lineWidth;
-  }
-
-  /**
-   * Sets the glow intensity for visualizations.
-   *
-   * @param intensity - Glow intensity value (0.0 to 1.0)
-   */
-  public setGlowIntensity(intensity: number): void {
-    this.glowIntensity = Math.max(0, Math.min(1, intensity));
-  }
-
-  /**
-   * Gets the current glow intensity.
-   *
-   * @returns Current glow intensity (0.0 to 1.0)
-   */
-  public getGlowIntensity(): number {
-    return this.glowIntensity;
-  }
-
-  /**
-   * Sets the waveform smoothing level.
-   *
-   * @param smoothing - Smoothing value (0.0 to 1.0)
-   */
-  public setWaveformSmoothing(smoothing: number): void {
-    this.waveformSmoothing = Math.max(0, Math.min(1, smoothing));
-  }
-
-  /**
-   * Gets the current waveform smoothing level.
-   *
-   * @returns Current waveform smoothing (0.0 to 1.0)
-   */
-  public getWaveformSmoothing(): number {
-    return this.waveformSmoothing;
-  }
-
-  /**
-   * Sets the bar gradient bottom color.
-   *
-   * @param color - Hex color string (e.g., '#00cc00')
-   */
-  public setBarColorBottom(color: string): void {
-    this.barColorBottom = color;
-    this.onBarColorsChanged();
-  }
-
-  /**
-   * Gets the current bar gradient bottom color.
-   *
-   * @returns Current bar color bottom (hex format)
-   */
-  public getBarColorBottom(): string {
-    return this.barColorBottom;
-  }
-
-  /**
-   * Sets the bar gradient middle color.
-   *
-   * @param color - Hex color string (e.g., '#cccc00')
-   */
-  public setBarColorMiddle(color: string): void {
-    this.barColorMiddle = color;
-    this.onBarColorsChanged();
-  }
-
-  /**
-   * Gets the current bar gradient middle color.
-   *
-   * @returns Current bar color middle (hex format)
-   */
-  public getBarColorMiddle(): string {
-    return this.barColorMiddle;
-  }
-
-  /**
-   * Sets the bar gradient top color.
-   *
-   * @param color - Hex color string (e.g., '#cc0000')
-   */
-  public setBarColorTop(color: string): void {
-    this.barColorTop = color;
-    this.onBarColorsChanged();
-  }
-
-  /**
-   * Gets the current bar gradient top color.
-   *
-   * @returns Current bar color top (hex format)
-   */
-  public getBarColorTop(): string {
-    return this.barColorTop;
-  }
-
-  /**
-   * Called when bar colors change. Override in subclasses to regenerate gradients.
-   */
-  protected onBarColorsChanged(): void {
-    // Override in subclasses that use bar colors
-  }
-
-  /**
-   * Sets the strobe frequency for strobe-based visualizations.
-   *
-   * @param frequency - Strobe frequency in Hz (1-20)
-   */
-  public setStrobeFrequency(frequency: number): void {
-    this.strobeFrequency = Math.max(1, Math.min(20, frequency));
-  }
-
-  /**
-   * Gets the current strobe frequency.
-   *
-   * @returns Current strobe frequency in Hz (1-20)
-   */
-  public getStrobeFrequency(): number {
-    return this.strobeFrequency;
-  }
-
-  /**
    * Tells the visualization where the current track's embedded artwork can be
    * fetched. Override in visualizations that show it (e.g. Album Art).
    *
@@ -522,16 +223,6 @@ export abstract class Visualization {
    */
   public setArtworkUrl(_url: string | null): void {
     // Override in visualizations that show the track's artwork
-  }
-
-  /**
-   * Calculates the glow blur radius based on intensity and base value.
-   *
-   * @param baseBlur - The base blur radius (when intensity is 1.0)
-   * @returns Scaled blur radius
-   */
-  protected getScaledGlowBlur(baseBlur: number): number {
-    return baseBlur * this.glowIntensity;
   }
 
   /**
@@ -863,17 +554,16 @@ export abstract class Canvas2DVisualization extends Visualization {
   /**
    * Applies an LCD-style persistence fade to the main canvas.
    *
-   * Fills the canvas with a destination-out black at the given (trail-intensity
-   * adjusted) rate, fading existing content toward transparent each frame to
-   * create a ghosting/persistence trail.
+   * Fills the canvas with a destination-out black at the given rate, fading
+   * existing content toward transparent each frame to create a
+   * ghosting/persistence trail.
    *
-   * @param fadeRate - Base per-frame fade rate (scaled by getFadeMultiplier()).
+   * @param fadeRate - Per-frame fade rate.
    */
   protected applyPersistenceFade(fadeRate: number): void {
-    const effectiveFadeRate: number = fadeRate * this.getFadeMultiplier();
     this.ctx.save();
     this.ctx.globalCompositeOperation = 'destination-out';
-    this.ctx.fillStyle = `rgba(0, 0, 0, ${effectiveFadeRate})`;
+    this.ctx.fillStyle = `rgba(0, 0, 0, ${fadeRate})`;
     this.ctx.fillRect(0, 0, this.width, this.height);
     this.ctx.restore();
   }
@@ -1059,11 +749,10 @@ export abstract class Canvas2DVisualization extends Visualization {
     trailCtx.clearRect(0, 0, width, height);
 
     // Draw back scaled from the specified zoom center with fade
-    const effectiveFadeRate: number = fadeRate * this.getFadeMultiplier();
     trailCtx.save();
     trailCtx.imageSmoothingEnabled = true;
     trailCtx.imageSmoothingQuality = 'high';
-    trailCtx.globalAlpha = 1 - effectiveFadeRate;
+    trailCtx.globalAlpha = 1 - fadeRate;
     // Use floor to avoid sub-pixel center point which causes quadrant artifacts
     const centerX: number = Math.floor(zoomCenterX);
     const centerY: number = Math.floor(zoomCenterY);
@@ -1151,7 +840,7 @@ export abstract class Canvas2DVisualization extends Visualization {
     highlightColor?: string,
     options: {
       ctx?: CanvasRenderingContext2D;
-      baseGlowBlur?: number;
+      glowBlur?: number;
       closePath?: boolean;
       fill?: boolean;
       glowLineWidthOffset?: number;
@@ -1160,13 +849,13 @@ export abstract class Canvas2DVisualization extends Visualization {
   ): void {
     const ctx: CanvasRenderingContext2D = options.ctx ?? this.ctx;
     const {
-      baseGlowBlur = GLOW_BLUR_RADIUS,
+      glowBlur = GLOW_BLUR_RADIUS,
       closePath = false,
       fill = false,
       glowLineWidthOffset = GLOW_LINE_WIDTH_OFFSET,
       highlightLineWidth = HIGHLIGHT_LINE_WIDTH
     }: {
-      baseGlowBlur?: number;
+      glowBlur?: number;
       closePath?: boolean;
       fill?: boolean;
       glowLineWidthOffset?: number;
@@ -1181,14 +870,14 @@ export abstract class Canvas2DVisualization extends Visualization {
 
     // Glow layer
     ctx.save();
-    ctx.shadowBlur = this.getScaledGlowBlur(baseGlowBlur);
+    ctx.shadowBlur = glowBlur;
     ctx.shadowColor = glowColor;
 
     if (fill) {
       ctx.fillStyle = glowStrokeColor;
     } else {
       ctx.strokeStyle = glowStrokeColor;
-      ctx.lineWidth = this.lineWidth + glowLineWidthOffset;
+      ctx.lineWidth = WAVEFORM_LINE_WIDTH + glowLineWidthOffset;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
     }
@@ -1203,7 +892,7 @@ export abstract class Canvas2DVisualization extends Visualization {
       ctx.fillStyle = mainColor;
     } else {
       ctx.strokeStyle = mainColor;
-      ctx.lineWidth = this.lineWidth;
+      ctx.lineWidth = WAVEFORM_LINE_WIDTH;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
     }
@@ -1245,7 +934,7 @@ export abstract class Canvas2DVisualization extends Visualization {
     highlightColor?: string,
     options: {
       ctx?: CanvasRenderingContext2D;
-      baseGlowBlur?: number;
+      glowBlur?: number;
       closePath?: boolean;
       fill?: boolean;
       glowLineWidthOffset?: number;
@@ -1274,9 +963,9 @@ export abstract class Canvas2DVisualization extends Visualization {
   /**
    * Builds a smooth path through the given points using quadratic bezier curves.
    *
-   * The smoothing is controlled by the waveformSmoothing property:
-   * - 0 = straight lines between points (no smoothing)
-   * - 1 = maximum smoothing using quadratic curves through midpoints
+   * Each point is the control point of a curve running between the midpoints
+   * either side of it, which rounds every corner fully while still passing
+   * through the first and last points.
    *
    * @param ctx - The canvas rendering context to draw on
    * @param points - Array of {x, y} points defining the path
@@ -1292,37 +981,24 @@ export abstract class Canvas2DVisualization extends Visualization {
   ): void {
     const count: number = numPoints ?? points.length - 1;
     const start: number = startIndex;
-    const smoothing: number = this.waveformSmoothing;
 
     ctx.beginPath();
     ctx.moveTo(points[start].x, points[start].y);
 
-    if (smoothing === 0) {
-      // Straight lines (no smoothing)
-      for (let i: number = start + 1; i <= count; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
-    } else {
-      // Smooth curves using quadratic bezier
-      for (let i: number = start; i < count; i++) {
-        const current: {x: number; y: number} = points[i];
-        const next: {x: number; y: number} = points[i + 1];
+    for (let i: number = start; i < count; i++) {
+      const current: {x: number; y: number} = points[i];
+      const next: {x: number; y: number} = points[i + 1];
 
-        // Calculate midpoint between current and next
-        const midX: number = (current.x + next.x) / 2;
-        const midY: number = (current.y + next.y) / 2;
+      // Curve to the midpoint between current and next, bending through current
+      const midX: number = (current.x + next.x) / 2;
+      const midY: number = (current.y + next.y) / 2;
 
-        // Control point interpolated between midpoint (no curve) and current point (max curve)
-        const cpX: number = midX + (current.x - midX) * smoothing;
-        const cpY: number = midY + (current.y - midY) * smoothing;
-
-        ctx.quadraticCurveTo(cpX, cpY, midX, midY);
-      }
-
-      // Final segment to the last point
-      const lastPoint: {x: number; y: number} = points[count];
-      ctx.lineTo(lastPoint.x, lastPoint.y);
+      ctx.quadraticCurveTo(current.x, current.y, midX, midY);
     }
+
+    // Final segment to the last point
+    const lastPoint: {x: number; y: number} = points[count];
+    ctx.lineTo(lastPoint.x, lastPoint.y);
   }
 }
 

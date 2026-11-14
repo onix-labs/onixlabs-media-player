@@ -27,12 +27,8 @@ import {ElectronService} from '../../../services/electron.service';
 import {FileDropService} from '../../../services/file-drop.service';
 import {
   SettingsService,
-  VISUALIZATION_LOCAL_DEFAULTS,
   type CrossfadeStyle,
-  type LocalSettingKey,
-  type PerVisualizationSettings,
   type RenderResolution,
-  type VisualizationLocalSettings,
 } from '../../../services/settings.service';
 import type {PlaylistItem} from '../../../types/electron';
 import {
@@ -339,7 +335,6 @@ interface MockSettings {
   readonly defaultVisualization: WritableSignal<string>;
   readonly equalizerEnabled: WritableSignal<boolean>;
   readonly equalizerBands: WritableSignal<readonly number[]>;
-  readonly perVisualizationSettings: WritableSignal<PerVisualizationSettings>;
   readonly fftSize: WritableSignal<number>;
   readonly renderResolution: WritableSignal<RenderResolution>;
   readonly maxFrameRate: WritableSignal<number>;
@@ -347,7 +342,6 @@ interface MockSettings {
   readonly visualizationCrossfadeDuration: WritableSignal<number>;
   readonly visualizationCrossfadeStyle: WritableSignal<CrossfadeStyle>;
   readonly setDefaultVisualization: Mock<(type: string) => Promise<void>>;
-  getEffectiveSetting<K extends LocalSettingKey>(vizId: string, setting: K): VisualizationLocalSettings[K];
 }
 
 /** Creates the MediaPlayerService fake: stopped, nothing loaded, no server yet. */
@@ -385,13 +379,11 @@ function createMockElectron(): MockElectron {
 
 /** Creates the SettingsService fake: settings not yet loaded, everything at defaults. */
 function createMockSettings(): MockSettings {
-  const perVisualizationSettings: WritableSignal<PerVisualizationSettings> = signal<PerVisualizationSettings>({});
   return {
     isLoaded: signal<boolean>(false),
     defaultVisualization: signal<string>('bars'),
     equalizerEnabled: signal<boolean>(false),
     equalizerBands: signal<readonly number[]>([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-    perVisualizationSettings,
     fftSize: signal<number>(2048),
     renderResolution: signal<RenderResolution>('native'),
     maxFrameRate: signal<number>(0),
@@ -399,10 +391,6 @@ function createMockSettings(): MockSettings {
     visualizationCrossfadeDuration: signal<number>(VIZ_CROSSFADE_MS),
     visualizationCrossfadeStyle: signal<CrossfadeStyle>('fade'),
     setDefaultVisualization: vi.fn((): Promise<void> => Promise.resolve()),
-    getEffectiveSetting: <K extends LocalSettingKey>(vizId: string, setting: K): VisualizationLocalSettings[K] => {
-      const custom: VisualizationLocalSettings[K] | undefined = perVisualizationSettings()[vizId]?.[setting];
-      return custom !== undefined ? custom : VISUALIZATION_LOCAL_DEFAULTS[setting];
-    },
   };
 }
 
@@ -1852,42 +1840,14 @@ describe('AudioOutlet', (): void => {
   // ==========================================================================
 
   describe('visualization settings', (): void => {
-    let lineWidthSpy: MockInstance<(width: number) => void>;
     let artworkSpy: MockInstance<(url: string | null) => void>;
 
     beforeEach(async (): Promise<void> => {
-      // Blank overrides none of the base setters, so they can be observed directly.
-      lineWidthSpy = vi.spyOn(BlankVisualization.prototype, 'setLineWidth');
+      // Blank does not override setArtworkUrl, so it can be observed directly.
       artworkSpy = vi.spyOn(BlankVisualization.prototype, 'setArtworkUrl');
       settings.defaultVisualization.set('blank');
       settings.isLoaded.set(true);
       await settle();
-    });
-
-    it('applies the default per-visualization settings to a new visualization', (): void => {
-      gesture();
-
-      expect(lineWidthSpy).toHaveBeenLastCalledWith(VISUALIZATION_LOCAL_DEFAULTS.lineWidth);
-    });
-
-    it('applies a customised setting for the active visualization', async (): Promise<void> => {
-      gesture();
-
-      settings.perVisualizationSettings.set({blank: {lineWidth: 4}});
-      await settle();
-
-      expect(lineWidthSpy).toHaveBeenLastCalledWith(4);
-    });
-
-    it('does not re-apply settings when a broadcast changes nothing for this visualization', async (): Promise<void> => {
-      gesture();
-      await settle();
-      lineWidthSpy.mockClear();
-
-      settings.perVisualizationSettings.set({bars: {lineWidth: 4}});
-      await settle();
-
-      expect(lineWidthSpy).not.toHaveBeenCalled();
     });
 
     it('applies the configured FFT size to the analyser when a visualization is created', async (): Promise<void> => {

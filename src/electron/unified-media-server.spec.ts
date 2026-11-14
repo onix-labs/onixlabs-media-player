@@ -802,13 +802,14 @@ describe('UnifiedMediaServer', () => {
   describe('PUT /settings/appearance', () => {
     it('updates appearance settings', async () => {
       const { status, body } = await request('PUT', '/settings/appearance', {
-        backgroundColor: '#1a1a2e',
+        theme: 'pebble',
+        accentColor: 'violet',
       });
       expect(status).toBe(200);
       expect(body.success).toBe(true);
 
       const settings = await request('GET', '/settings');
-      expect((settings.body.appearance as Record<string, unknown>).backgroundColor).toBe('#1a1a2e');
+      expect(settings.body.appearance as Record<string, unknown>).toMatchObject({ theme: 'pebble', accentColor: 'violet' });
     });
   });
 

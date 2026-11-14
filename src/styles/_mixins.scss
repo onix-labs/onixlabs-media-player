@@ -19,6 +19,28 @@
   }
 }
 
+/// Replaces a select's native arrow with a chevron drawn in the text colour,
+/// inset from the right edge by the select's left padding so the two sides
+/// match. Set backgrounds on the select with background-color, not the
+/// background shorthand, or the chevron is reset.
+///
+/// @param {Length} $inset - The select's left padding
+/// @param {Length} $size - Half the chevron's width (and its height)
+/// @param {Length} $gap - Space between the text and the chevron
+/// @param {Color} $color - The chevron's colour
+@mixin select-chevron($inset, $size: 0.3rem, $gap: 0.5rem, $color: currentColor) {
+  appearance: none;
+  padding-right: calc(#{$inset} + 2 * #{$size} + #{$gap});
+  background-image:
+    linear-gradient(45deg, transparent 50%, #{$color} 50%),
+    linear-gradient(135deg, #{$color} 50%, transparent 50%);
+  background-position:
+    right calc(#{$inset} + #{$size}) top 55%,
+    right #{$inset} top 55%;
+  background-size: $size $size;
+  background-repeat: no-repeat;
+}
+
 /// Generates cross-browser slider thumb styles (webkit + moz).
 /// The webkit thumb includes hover and optional focus-ring support.
 ///

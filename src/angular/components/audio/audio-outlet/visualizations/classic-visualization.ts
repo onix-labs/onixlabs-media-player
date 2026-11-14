@@ -10,7 +10,7 @@
  * - Higher FFT size (2048) for smoother waveform
  * - Persistence effect via slow fade and transparent background
  * - Multi-layer rendering: glow, main line, highlight
- * - Sensitivity scales the waveform amplitude
+ * - A fixed gain scales the waveform amplitude
  *
  * @module app/components/audio/audio-outlet/visualizations/classic-visualization
  */
@@ -24,11 +24,14 @@ import {Canvas2DVisualization, VisualizationConfig} from './visualization';
  * ghosting effect that creates visual trails.
  */
 export class ClassicVisualization extends Canvas2DVisualization {
-  /** Very slow fade for the LCD ghosting effect. */
-  private static readonly FADE_RATE: number = 0.03;
+  /** Per-frame fade for the LCD ghosting effect; fast enough to keep the trails short. */
+  private static readonly FADE_RATE: number = 0.06;
 
-  /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 15;
+  /** Gain applied to the waveform samples before they are drawn. */
+  private static readonly SENSITIVITY_FACTOR: number = 0.4;
+
+  /** Glow blur radius in pixels. None: Classic's glow is the wider translucent stroke alone. */
+  private static readonly GLOW_BLUR: number = 0;
 
   /** Number of points sampled across the waveform. */
   private static readonly WAVEFORM_POINTS: number = 32;
@@ -56,13 +59,6 @@ export class ClassicVisualization extends Canvas2DVisualization {
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
-    // Hard-coded look; the matching setters are overridden to no-ops so the
-    // (removed) global controls cannot change these.
-    this.sensitivity = 0.2;       // 20%
-    this.trailIntensity = 0;      // fastest fade / minimal trails
-    this.lineWidth = 1;           // 1px
-    this.glowIntensity = 0;       // no glow
-    this.waveformSmoothing = 1;   // 100%
     this.preserveContentOnResize = true;
 
     // Pre-allocate point array
@@ -95,7 +91,7 @@ export class ClassicVisualization extends Canvas2DVisualization {
     const centerY: number = height / 2;
     const numPoints: number = ClassicVisualization.WAVEFORM_POINTS;
     const amplitudeScale: number = height * 0.4;
-    const sensitivityFactor: number = this.sensitivityFactor;
+    const sensitivityFactor: number = ClassicVisualization.SENSITIVITY_FACTOR;
     const dataLength: number = dataArray.length;
 
     // Calculate waveform points - use ratio to ensure full width coverage
@@ -113,7 +109,7 @@ export class ClassicVisualization extends Canvas2DVisualization {
     };
 
     this.drawPathWithLayers(buildPath, ClassicVisualization.COLOR_MAIN, ClassicVisualization.COLOR_GLOW, ClassicVisualization.COLOR_HIGHLIGHT, {
-      baseGlowBlur: ClassicVisualization.BASE_GLOW_BLUR
+      glowBlur: ClassicVisualization.GLOW_BLUR
     });
 
     this.applyFadeOverlay();
@@ -125,11 +121,4 @@ export class ClassicVisualization extends Canvas2DVisualization {
   protected override onFftSizeChanged(): void {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
-
-  // Fixed visual parameters: ignore the global controls (values set in constructor).
-  public override setSensitivity(): void { /* fixed at 20% */ }
-  public override setTrailIntensity(): void { /* fixed at 0 */ }
-  public override setLineWidth(): void { /* fixed at 1px */ }
-  public override setGlowIntensity(): void { /* fixed at 0 */ }
-  public override setWaveformSmoothing(): void { /* fixed at 100% */ }
 }

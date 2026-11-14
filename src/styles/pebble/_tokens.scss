@@ -1,0 +1,208 @@
+// =============================================================================
+// Pebble design tokens
+// =============================================================================
+//
+// Pebble is the ONIXLabs brand style: the Stride design system (onixlabs-stride),
+// as the ONIXLabs website applies it. A soft-UI language: matte surfaces sit
+// raised above a mid-grey page, with a light top edge, a dark bottom edge and a
+// soft shadow; corners are very round (squircles where the browser has them);
+// the primary is monochrome (near-black in light, near-white in dark); Poppins
+// is the one typeface.
+//
+// Every window except the main player wears it. The player keeps its glass.
+//
+// Values are the website's, which deepen Stride's where they fall below WCAG AA
+// (4.5:1 for text, 3:1 for a control's edge); each such value is marked "AA".
+//
+// The palettes are mixins rather than selectors so _pebble.scss decides where
+// they apply: light by default, dark when the app's colour scheme says so.
+
+/// Tokens that do not change with the theme.
+@mixin pebble-constants {
+  // Brand: the eight stops of the logo orb, for the rare marketing moment.
+  --pebble-brand-amber: #f79533;
+  --pebble-brand-coral: #f37055;
+  --pebble-brand-rose: #ef4e7b;
+  --pebble-brand-violet: #a166ab;
+  --pebble-brand-blue: #5073b8;
+  --pebble-brand-cyan: #1098ad;
+  --pebble-brand-teal: #07b39b;
+  --pebble-brand-green: #6fba82;
+  --pebble-brand-gradient: linear-gradient(90deg, var(--pebble-brand-amber), var(--pebble-brand-coral), var(--pebble-brand-rose), var(--pebble-brand-violet), var(--pebble-brand-blue), var(--pebble-brand-cyan), var(--pebble-brand-teal), var(--pebble-brand-green));
+
+  // Type
+  --pebble-font: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --pebble-font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
+
+  --pebble-text-xs: 0.75rem;
+  --pebble-text-sm: 0.875rem;
+  --pebble-text-md: 1rem;
+  --pebble-text-lg: 1.125rem;
+  --pebble-text-xl: 1.375rem;
+  --pebble-text-2xl: 1.75rem;
+  --pebble-text-3xl: 2.25rem;
+
+  --pebble-weight-normal: 400;
+  --pebble-weight-medium: 500;
+  --pebble-weight-semibold: 600;
+  --pebble-weight-bold: 700;
+
+  // Spacing
+  --pebble-space-1: 0.25rem;
+  --pebble-space-2: 0.5rem;
+  --pebble-space-3: 0.75rem;
+  --pebble-space-4: 1rem;
+  --pebble-space-5: 1.5rem;
+  --pebble-space-6: 2rem;
+  --pebble-space-7: 3rem;
+
+  // Radius. A squircle corner pulls in tighter than a circular one, so the
+  // scale widens where corner-shape is supported (see _pebble.scss) and these
+  // narrower values apply elsewhere. The pill is the same either way.
+  --pebble-radius-sm: 0.5rem;
+  --pebble-radius-md: 0.875rem;
+  --pebble-radius-lg: 1.25rem;
+  --pebble-radius-xl: 1.75rem;
+  --pebble-radius-pill: 9999px;
+  --pebble-corner-shape: round;
+
+  // Borders and shadows
+  --pebble-border-width: 1px;
+  --pebble-shadow-sm: 0 0.125rem 0.25rem rgba(16, 24, 40, 0.075);
+  --pebble-shadow-md: 0 0.5rem 1rem rgba(16, 24, 40, 0.12);
+  --pebble-shadow-lg: 0 1rem 3rem rgba(16, 24, 40, 0.175);
+  --pebble-shadow-button-hover: 0 0.5rem 1rem rgba(16, 24, 40, 0.22);
+  // --pebble-edge-shadow is not here: see _pebble.scss for why it is declared
+  // on every element.
+
+  // Motion
+  --pebble-duration: 200ms;
+  --pebble-transition: var(--pebble-duration) ease;
+  --pebble-ease-out: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/// The light palette (Stride's default theme).
+@mixin pebble-light {
+  color-scheme: light;
+
+  // Surfaces: a mid-grey page, so surfaces read as raised.
+  --pebble-bg: #d8dde2;
+  --pebble-well: color-mix(in srgb, #d8dde2, black 5%);  // a shade below the page, for a sunken area
+  --pebble-surface: #e9ecef;
+  --pebble-surface-alt: #dee2e6;
+  // A secondary button: a step above the surface, so it still reads as raised
+  // on a card (Stride's outline button is the surface itself, and vanishes
+  // into one).
+  --pebble-button-surface: #f3f5f7;
+  --pebble-button-surface-hover: #ffffff;  // brighter, as if lit, in both palettes
+  --pebble-field: color-mix(in srgb, #dee2e6, white 25%);
+  --pebble-field-border: #6a7178;      // AA: Stride uses #bcbec1 (1.6:1); a control's edge needs 3:1
+
+  --pebble-edge-light: #ffffff;
+  --pebble-edge-dark: #adb5bd;
+  --pebble-edge-button: #adb5bd;
+
+  // Text
+  --pebble-text: #343a40;
+  --pebble-heading: #212529;
+  --pebble-text-muted: #4f565d;        // AA: Stride uses #6c757d (3.1:1 on the page)
+  --pebble-label: #9c3a24;             // AA: brand coral, deepened for the grey page
+  --pebble-border: #c3c9cf;
+  --pebble-border-strong: #a7aeb5;
+  --pebble-focus: #212529;
+  --pebble-focus-ring: rgba(33, 37, 41, 0.3);
+  --pebble-selection: color-mix(in srgb, var(--pebble-brand-blue) 25%, transparent);
+
+  // Semantic intents: base fill, text on the fill, subtle background.
+  --pebble-primary: #212529;
+  --pebble-primary-contrast: #ffffff;
+  --pebble-primary-subtle: #dee2e6;
+  --pebble-secondary: #5c636a;         // AA: Stride uses #6c757d
+  --pebble-secondary-contrast: #ffffff;
+  --pebble-secondary-subtle: #dee2e6;
+  --pebble-success: #1e7a4f;           // AA: Stride uses #34a16e
+  --pebble-success-contrast: #ffffff;
+  --pebble-success-subtle: #d1e7dd;
+  --pebble-warning: #ffbe45;
+  --pebble-warning-contrast: #212529;
+  --pebble-warning-subtle: #fff3cd;
+  --pebble-warning-text: #7a5300;      // AA: warning as text on its subtle background
+  --pebble-danger: #a82633;            // AA: Stride uses #f1505f
+  --pebble-danger-contrast: #ffffff;
+  --pebble-danger-subtle: #f8d7da;
+  --pebble-info: #1f62cc;              // AA: Stride uses #287fff
+  --pebble-info-contrast: #ffffff;
+  --pebble-info-subtle: #d6e5ff;
+
+  --pebble-scrollbar-thumb: rgba(33, 37, 41, 0.25);
+  --pebble-scrollbar-thumb-hover: rgba(33, 37, 41, 0.4);
+
+  // The ONIXPlayer wordmark with dark lettering; logo.png's is white.
+  --pebble-wordmark: url('/logo-light.png');
+}
+
+/// The dark palette.
+@mixin pebble-dark {
+  color-scheme: dark;
+
+  --pebble-bg: #212529;
+  // Not as deep as the page's black 20% edge, so a well's dark top edge shows.
+  --pebble-well: color-mix(in srgb, #212529, black 12%);
+  --pebble-surface: #343a40;
+  --pebble-surface-alt: #2b3036;
+  --pebble-button-surface: #3f464d;
+  --pebble-button-surface-hover: #4b535b;
+  --pebble-field: #2b3036;
+  --pebble-field-border: #858b92;      // AA: Stride uses #494d52
+
+  --pebble-edge-light: rgba(255, 255, 255, 0.08);
+  // A raised panel's bottom edge: a step darker than the page (#212529), so
+  // the panel still reads as standing off it. Stride and the website use
+  // black, which is a hard line on the dark page rather than a soft fall-off.
+  --pebble-edge-dark: color-mix(in srgb, #212529, black 20%);
+  --pebble-edge-button: #14171a;       // softer than the surfaces' black edge at a button's size
+
+  --pebble-text: #e9ecef;
+  --pebble-heading: #f8f9fa;
+  --pebble-text-muted: #b4bbc2;
+  --pebble-label: #f58a73;             // AA: brand coral, lifted for the dark surfaces
+  --pebble-border: rgba(0, 0, 0, 0.6);
+  --pebble-border-strong: #5c636a;
+  --pebble-focus: #f8f9fa;
+  --pebble-focus-ring: rgba(248, 249, 250, 0.35);
+  --pebble-selection: color-mix(in srgb, var(--pebble-brand-blue) 45%, transparent);
+
+  --pebble-primary: #f8f9fa;
+  --pebble-primary-contrast: #212529;
+  --pebble-primary-subtle: #2b3036;
+  --pebble-secondary: #adb5bd;
+  --pebble-secondary-contrast: #212529;
+  --pebble-secondary-subtle: #343a40;
+  --pebble-success: #5cc993;
+  --pebble-success-contrast: #0d2a1c;
+  --pebble-success-subtle: #0d2a1c;
+  --pebble-warning: #ffbe45;
+  --pebble-warning-contrast: #212529;
+  --pebble-warning-subtle: #332701;
+  --pebble-warning-text: #ffbe45;
+  --pebble-danger: #ff7b87;
+  --pebble-danger-contrast: #2c0b0e;
+  --pebble-danger-subtle: #2c0b0e;
+  --pebble-info: #7aaeff;
+  --pebble-info-contrast: #071a3a;
+  --pebble-info-subtle: #071a3a;
+
+  --pebble-scrollbar-thumb: rgba(248, 249, 250, 0.2);
+  --pebble-scrollbar-thumb-hover: rgba(248, 249, 250, 0.35);
+
+  --pebble-wordmark: url('/logo.png');
+}
+
+/// The widened radius scale for squircle corners.
+@mixin pebble-squircle-radii {
+  --pebble-radius-sm: 0.625rem;
+  --pebble-radius-md: 1.125rem;
+  --pebble-radius-lg: 1.625rem;
+  --pebble-radius-xl: 2.25rem;
+  --pebble-corner-shape: squircle;
+}

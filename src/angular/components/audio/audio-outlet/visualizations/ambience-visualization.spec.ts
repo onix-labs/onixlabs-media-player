@@ -7,7 +7,7 @@
  * - GL setup: programs, shader source, failure handling
  * - Internal surface: sizing, reuse, recreation, ping-pong between frames
  * - Audio: bass envelope, sweep, trace amplitude, waveform texture packing
- * - Trace colour cycling, sensitivity, fade-out, idling, FFT size, destroy
+ * - Trace colour cycling, fade-out, idling, FFT size, destroy
  * - Edge inputs: zero-sized canvas, extreme spectra, an analyser with no bins
  *
  * WebGL, the analyser and the clock are faked; see
@@ -54,8 +54,8 @@ const SURFACE_HEIGHT: number = 512;
 /** Sweep advance per frame in silence, in radians. */
 const SWEEP_BASE_RATE: number = 0.012;
 
-/** Trace deflection at the default sensitivity with no bass. */
-const RESTING_WAVE_AMPLITUDE: number = 0.34 * 0.5;
+/** Trace deflection with no bass. */
+const RESTING_WAVE_AMPLITUDE: number = 0.34;
 
 /** An engine configured with nothing but the required fields. */
 class BareAmbienceVisualization extends AmbienceVisualization {
@@ -501,8 +501,8 @@ describe('AmbienceVisualization', (): void => {
 
       viz.draw();
 
-      // One frame of smoothing takes the bass envelope to 0.5 x 0.18.
-      expect(gl.uniformValue('uSweep')).toBeCloseTo(SWEEP_BASE_RATE + 0.09 * 0.06, 10);
+      // One frame of smoothing takes the bass envelope to 1 x 0.18.
+      expect(gl.uniformValue('uSweep')).toBeCloseTo(SWEEP_BASE_RATE + 0.18 * 0.06, 10);
     });
 
     it('wraps the sweep so it never exceeds a full turn', (): void => {
@@ -526,8 +526,8 @@ describe('AmbienceVisualization', (): void => {
 
       drawFrames(viz, 200);
 
-      // The envelope settles at 0.5, adding 0.5 x 0.6 to the amplitude.
-      expect(gl.uniformValue('uWaveAmplitude')).toBeCloseTo(RESTING_WAVE_AMPLITUDE * 1.3, 6);
+      // The envelope settles at 1, adding 1 x 0.6 to the amplitude.
+      expect(gl.uniformValue('uWaveAmplitude')).toBeCloseTo(RESTING_WAVE_AMPLITUDE * 1.6, 6);
     });
 
     it('ignores energy above the lowest 24 bins', (): void => {
@@ -536,14 +536,6 @@ describe('AmbienceVisualization', (): void => {
       drawFrames(viz, 20);
 
       expect(gl.uniformValue('uWaveAmplitude')).toBeCloseTo(RESTING_WAVE_AMPLITUDE, 10);
-    });
-
-    it('scales the trace amplitude with sensitivity', (): void => {
-      viz.setSensitivity(1);
-
-      viz.draw();
-
-      expect(gl.uniformValue('uWaveAmplitude')).toBeCloseTo(0.34 * 2, 10);
     });
 
     it('lets the bass envelope fall back once the bass stops', (): void => {
@@ -773,7 +765,6 @@ describe('AmbienceVisualization', (): void => {
       analyser.spectrum = spectrum;
       analyser.waveform = waveform;
       const viz: AmbienceWarpVisualization = playing(new AmbienceWarpVisualization(config()));
-      viz.setSensitivity(1);
 
       drawFrames(viz, 120);
 

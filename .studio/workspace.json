@@ -12,6 +12,17 @@
       ],
       "mode": "run",
       "default": true
+    },
+    {
+      "id": "df30c11a-9510-45c8-80ee-f4e2aef949fb",
+      "name": "Run Application (First Run)",
+      "providerKind": "node",
+      "program": "npm",
+      "args": [
+        "run",
+        "dev:first-run"
+      ],
+      "mode": "run"
     }
   ]
 }

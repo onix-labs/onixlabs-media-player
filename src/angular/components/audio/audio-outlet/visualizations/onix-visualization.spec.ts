@@ -48,7 +48,7 @@ const BASE_RADIUS: number = 180;
 /** Waveform deflection at 800x600 for a full-scale sample: 8% of the height x sensitivity factor 0.8. */
 const FULL_DEFLECTION: number = 600 * 0.08 * 0.8;
 
-/** Largest the bass circle can get at 800x600: a third of the base radius x sensitivity 0.4 x 3. */
+/** Largest the bass circle can get at 800x600: a third of the base radius x the bass gain of 1.2. */
 const MAX_BASS_RADIUS: number = (BASE_RADIUS / 3) * 1.2;
 
 /** Points sampled around the waveform circle. */
@@ -123,22 +123,6 @@ describe('OnixVisualization', (): void => {
     it('identifies itself as Onix in the Bars & Waves category', (): void => {
       expect(viz.name).toBe('Onix');
       expect(viz.category).toBe('Bars & Waves');
-    });
-
-    it('ignores the global look controls because its look is fixed', (): void => {
-      const base: Visualization = viz;
-
-      base.setSensitivity(1);
-      base.setTrailIntensity(1);
-      base.setLineWidth(5);
-      base.setGlowIntensity(1);
-      base.setWaveformSmoothing(0);
-
-      expect(viz.getSensitivity()).toBe(0.4);
-      expect(viz.getTrailIntensity()).toBe(0.1);
-      expect(viz.getLineWidth()).toBe(1);
-      expect(viz.getGlowIntensity()).toBe(0);
-      expect(viz.getWaveformSmoothing()).toBe(1);
     });
   });
 
@@ -351,7 +335,7 @@ describe('OnixVisualization', (): void => {
       expect(second).toBeCloseTo((0.55 + 0.45 * 0.55) * MAX_BASS_RADIUS, 6);
     });
 
-    it('never grows beyond a third of the waveform circle scaled by sensitivity', (): void => {
+    it('never grows beyond a third of the waveform circle scaled by the bass gain', (): void => {
       analyser.spectrum = FULL_SPECTRUM;
       const radii: number[] = [];
 

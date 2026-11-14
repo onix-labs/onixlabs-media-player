@@ -16,6 +16,7 @@ import type { LicenseLocations } from './bundled-resources.js';
 const LOCATIONS: LicenseLocations = {
   application: '/app/licenses/ONIXPlayer-LICENSE.txt',
   javascript: '/app/licenses/JavaScript-libraries.txt',
+  font: '/app/licenses/Poppins-OFL.txt',
   bundled: '/app/bin/licenses',
   electron: '/app',
 };
@@ -55,6 +56,7 @@ function fileSystem(files: Readonly<Record<string, string>>): LicenseFileSystem 
 const PACKAGED: Record<string, string> = {
   '/app/licenses/ONIXPlayer-LICENSE.txt': 'MIT',
   '/app/licenses/JavaScript-libraries.txt': 'MIT',
+  '/app/licenses/Poppins-OFL.txt': 'OFL',
   '/app/bin/licenses/components.json': MANIFEST,
   '/app/bin/licenses/FFmpeg-COPYING.GPLv2.txt': 'GPL',
   '/app/bin/licenses/FluidSynth-LICENSE.txt': 'LGPL',
@@ -63,7 +65,7 @@ const PACKAGED: Record<string, string> = {
 };
 
 describe('LicenseCatalog', () => {
-  it('lists ONIXPlayer, the bundled programs, Electron, Chromium and the JavaScript libraries', () => {
+  it('lists ONIXPlayer, the bundled programs, Electron, Chromium, the JavaScript libraries and the font', () => {
     const catalog: LicenseCatalog = new LicenseCatalog(LOCATIONS, VERSIONS, fileSystem(PACKAGED));
 
     expect(catalog.getNotices()).toEqual([
@@ -73,6 +75,7 @@ describe('LicenseCatalog', () => {
       {id: 'electron', name: 'Electron', version: '45.0.0', license: 'MIT'},
       {id: 'chromium', name: 'Chromium', version: '150.0.0.0', license: 'BSD-3-Clause and others'},
       {id: 'javascript', name: 'JavaScript libraries', version: null, license: 'MIT and others'},
+      {id: 'poppins', name: 'Poppins', version: null, license: 'OFL-1.1'},
     ]);
   });
 
@@ -133,7 +136,7 @@ describe('LicenseCatalog', () => {
       const catalog: LicenseCatalog = new LicenseCatalog(LOCATIONS, VERSIONS, fileSystem(files));
 
       const ids: string[] = catalog.getNotices().map((notice: LicenseNotice): string => notice.id);
-      expect(ids).toEqual(['onixplayer', 'electron', 'chromium', 'javascript']);
+      expect(ids).toEqual(['onixplayer', 'electron', 'chromium', 'javascript', 'poppins']);
     }
   });
 
@@ -147,7 +150,7 @@ describe('LicenseCatalog', () => {
     const catalog: LicenseCatalog = new LicenseCatalog({...LOCATIONS, bundled: null}, VERSIONS, fileSystem(PACKAGED));
 
     const ids: string[] = catalog.getNotices().map((notice: LicenseNotice): string => notice.id);
-    expect(ids).toEqual(['onixplayer', 'electron', 'chromium', 'javascript']);
+    expect(ids).toEqual(['onixplayer', 'electron', 'chromium', 'javascript', 'poppins']);
   });
 
   it('prefers Electron\'s packaged licence name when both names are present', () => {
@@ -168,7 +171,7 @@ describe('LicenseCatalog', () => {
     const catalog: LicenseCatalog = new LicenseCatalog(LOCATIONS, VERSIONS, fileSystem({...PACKAGED, '/app/bin/licenses/components.json': manifest}));
 
     const ids: string[] = catalog.getNotices().map((notice: LicenseNotice): string => notice.id);
-    expect(ids).toEqual(['onixplayer', 'fluidsynth', 'electron', 'chromium', 'javascript']);
+    expect(ids).toEqual(['onixplayer', 'fluidsynth', 'electron', 'chromium', 'javascript', 'poppins']);
   });
 
   it('does not expose where a licence file is in the notices it hands out', () => {
@@ -199,6 +202,7 @@ describe('LicenseCatalog', () => {
       const locations: LicenseLocations = {
         application: path.join(root, 'LICENSE'),
         javascript: path.join(root, 'missing', '3rdpartylicenses.txt'),
+        font: path.join(root, 'missing', 'OFL.txt'),
         bundled,
         electron: root,
       };

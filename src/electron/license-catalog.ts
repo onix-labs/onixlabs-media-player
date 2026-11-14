@@ -112,6 +112,7 @@ export class LicenseCatalog {
       {id: 'electron', name: 'Electron', version: versions.electron, license: 'MIT', file: LicenseCatalog.findElectronLicense(locations.electron, fs)},
       {id: 'chromium', name: 'Chromium', version: versions.chrome, license: 'BSD-3-Clause and others', file: path.join(locations.electron, 'LICENSES.chromium.html')},
       {id: 'javascript', name: 'JavaScript libraries', version: null, license: 'MIT and others', file: locations.javascript},
+      {id: 'poppins', name: 'Poppins', version: null, license: 'OFL-1.1', file: locations.font},
     ];
     // Development runs lack some of these (the JavaScript licences come only
     // from a production build); a licence that cannot be opened is not listed.

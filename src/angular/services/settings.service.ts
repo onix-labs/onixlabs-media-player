@@ -6,11 +6,11 @@
  *
  * Current settings:
  * - Application: server port, controls auto-hide delay
- * - Appearance: glass effects, background/tint colors
+ * - Appearance: player theme, colour scheme, accent colour
  * - Playback: volume, crossfade, skip duration, aspect mode, preferred audio language
  * - Subtitles: font size, colors, shadow effects
  * - Transcoding: video quality, audio bitrate
- * - Visualization: default type, frame rate, FFT size, per-visualization settings
+ * - Visualization: default type, frame rate, FFT size, render resolution, crossfade
  *
  * @module app/services/settings.service
  */
@@ -95,45 +95,12 @@ export const CROSSFADE_STYLES: readonly CrossfadeStyle[] = [
 ];
 
 /**
- * Bar density levels for bar-based visualizations.
- */
-export type BarDensity = 'low' | 'medium' | 'high';
-
-/**
- * Per-visualization local settings.
- * All values are optional - if not set, defaults are used.
- */
-export interface VisualizationLocalSettings {
-  readonly sensitivity?: number;
-  readonly barDensity?: BarDensity;
-  readonly trailIntensity?: number;
-  readonly lineWidth?: number;
-  readonly glowIntensity?: number;
-  readonly waveformSmoothing?: number;
-  readonly barColorBottom?: string;
-  readonly barColorMiddle?: string;
-  readonly barColorTop?: string;
-  readonly strobeFrequency?: number;
-}
-
-/**
- * Map of visualization type to its local settings.
- */
-export type PerVisualizationSettings = Partial<Record<string, VisualizationLocalSettings>>;
-
-/**
- * Keys for local settings that can be customized per visualization.
- */
-export type LocalSettingKey = keyof VisualizationLocalSettings;
-
-/**
- * Metadata for a visualization including applicable settings.
+ * Identifying metadata for a visualization: its id, display name and category.
  */
 export interface VisualizationMetadata {
   readonly id: string;
   readonly name: string;
   readonly category: 'Bars & Waves' | 'Signature' | 'Nostalgia' | 'Simple';
-  readonly applicableSettings: readonly LocalSettingKey[];
 }
 
 /**
@@ -243,8 +210,7 @@ export interface SubtitleSettings {
 
 /**
  * Visualization settings structure.
- * Global settings apply to all visualizations.
- * Per-visualization settings are stored in perVisualizationSettings.
+ * Every setting applies to all visualizations alike.
  */
 export interface VisualizationSettings {
   /** The default visualization to display on startup */
@@ -259,8 +225,6 @@ export interface VisualizationSettings {
   readonly crossfadeDuration: CrossfadeDuration;
   /** Visual style of the visualization switch transition (default 'fade') */
   readonly crossfadeStyle: CrossfadeStyle;
-  /** Per-visualization local settings (sensitivity, barDensity, trailIntensity, etc.) */
-  readonly perVisualizationSettings: PerVisualizationSettings;
 }
 
 /**
@@ -323,32 +287,65 @@ export type MacOSVisualEffectState = 'followWindow' | 'active' | 'inactive';
 export type ColorScheme = 'system' | 'dark' | 'light';
 
 /**
+ * Skin of the player window. Themes only restyle the player; they never move
+ * its controls. The Settings, About, Setup and Open URL windows wear Pebble
+ * whatever the theme.
+ * - solid: an opaque neutral background
+ * - glass: a translucent window (vibrancy on macOS, acrylic on Windows);
+ *   treated as solid where the platform has no glass effect
+ * - pebble: the ONIXLabs brand style
+ */
+export type PlayerTheme = 'solid' | 'glass' | 'pebble';
+
+/**
+ * Accent colour of the player's controls: one of the eight ONIXLabs brand
+ * colours.
+ */
+export type AccentColor = 'amber' | 'coral' | 'rose' | 'violet' | 'blue' | 'cyan' | 'teal' | 'green';
+
+/**
+ * A selectable accent colour.
+ */
+export interface AccentOption {
+  /** Stored identifier, also the value of the player's data-accent attribute */
+  readonly id: AccentColor;
+  /** Display name */
+  readonly name: string;
+  /** CSS colour of the option's swatch */
+  readonly swatch: string;
+}
+
+/**
+ * The accent colours, in display order.
+ */
+export const ACCENT_OPTIONS: readonly AccentOption[] = [
+  {id: 'amber', name: 'Amber', swatch: '#f79533'},
+  {id: 'coral', name: 'Coral', swatch: '#f37055'},
+  {id: 'rose', name: 'Rose', swatch: '#ef4e7b'},
+  {id: 'violet', name: 'Violet', swatch: '#a166ab'},
+  {id: 'blue', name: 'Blue', swatch: '#3a6fd8'},
+  {id: 'cyan', name: 'Cyan', swatch: '#1098ad'},
+  {id: 'teal', name: 'Teal', swatch: '#07b39b'},
+  {id: 'green', name: 'Green', swatch: '#6fba82'},
+];
+
+/** Valid player theme values. */
+const VALID_PLAYER_THEMES: readonly PlayerTheme[] = ['solid', 'glass', 'pebble'];
+
+/**
  * Appearance settings (cross-platform).
- * Supports glass effects (vibrancy on macOS, acrylic on Windows) and background color.
+ * The theme skins the player window; the colour scheme and accent colour apply
+ * to every theme.
  */
 export interface AppearanceSettings {
-  /** Whether glass effect (transparency/blur) is enabled */
-  readonly glassEnabled: boolean;
-  /** macOS visual effect state - only used on macOS when glassEnabled */
+  /** Player window theme */
+  readonly theme: PlayerTheme;
+  /** macOS visual effect state - only used on macOS with the glass theme */
   readonly macOSVisualEffectState: MacOSVisualEffectState;
   /** Color scheme preference (system, dark, light) */
   readonly colorScheme: ColorScheme;
-  /** Background color when glass is disabled or unsupported (hex format, derived from HSL) */
-  readonly backgroundColor: string;
-  /** Background hue (0-360) when glass is disabled */
-  readonly backgroundHue: number;
-  /** Background saturation (0-100) when glass is disabled */
-  readonly backgroundSaturation: number;
-  /** Background lightness (0-100) when glass is disabled */
-  readonly backgroundLightness: number;
-  /** Window tint hue (0-360) when glass is enabled */
-  readonly windowTintHue: number;
-  /** Window tint saturation (0-100) when glass is enabled */
-  readonly windowTintSaturation: number;
-  /** Window tint lightness (0-100) when glass is enabled */
-  readonly windowTintLightness: number;
-  /** Window tint alpha (0-1) when glass is enabled */
-  readonly windowTintAlpha: number;
+  /** Accent colour of the player's controls */
+  readonly accentColor: AccentColor;
 }
 
 /**
@@ -414,48 +411,31 @@ export interface VisualizationOption {
 // ============================================================================
 
 /**
- * Default values for per-visualization local settings.
- * Used when a setting is not customized for a visualization.
- */
-export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> = {
-  sensitivity: 0.5,
-  barDensity: 'medium',
-  trailIntensity: 0.5,
-  lineWidth: 2.0,
-  glowIntensity: 0.5,
-  waveformSmoothing: 0.5,
-  barColorBottom: '#00cc00',
-  barColorMiddle: '#cccc00',
-  barColorTop: '#cc0000',
-  strobeFrequency: 5,
-};
-
-/**
- * Metadata for all visualizations including which settings apply to each.
+ * Identifying metadata for every visualization.
  */
 export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   // Bars & Waves category
-  {id: 'bars', name: 'Analyzer', category: 'Bars & Waves', applicableSettings: ['barDensity', 'barColorBottom', 'barColorMiddle', 'barColorTop']},
-  {id: 'waveform', name: 'Classic', category: 'Bars & Waves', applicableSettings: []},
-  {id: 'modern', name: 'Modern', category: 'Bars & Waves', applicableSettings: []},
-  {id: 'tunnel', name: 'Plasma', category: 'Bars & Waves', applicableSettings: []},
-  {id: 'neon', name: 'Neon', category: 'Bars & Waves', applicableSettings: []},
-  {id: 'hawking', name: 'Hawking', category: 'Bars & Waves', applicableSettings: []},
-  {id: 'onix', name: 'Onix', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'bars', name: 'Analyzer', category: 'Bars & Waves'},
+  {id: 'waveform', name: 'Classic', category: 'Bars & Waves'},
+  {id: 'modern', name: 'Modern', category: 'Bars & Waves'},
+  {id: 'tunnel', name: 'Plasma', category: 'Bars & Waves'},
+  {id: 'neon', name: 'Neon', category: 'Bars & Waves'},
+  {id: 'hawking', name: 'Hawking', category: 'Bars & Waves'},
+  {id: 'onix', name: 'Onix', category: 'Bars & Waves'},
   // Signature category
-  {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
-  {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
-  {id: 'infinity', name: 'Infinity', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'spotlight', name: 'Spotlight', category: 'Signature'},
+  {id: 'water', name: 'Reactor', category: 'Signature'},
+  {id: 'infinity', name: 'Infinity', category: 'Bars & Waves'},
   // Nostalgia category
-  {id: 'ambience-zoom', name: 'Twirl', category: 'Nostalgia', applicableSettings: []},
-  {id: 'ambience-stretch', name: 'Warp', category: 'Nostalgia', applicableSettings: []},
-  {id: 'ambience-ripple', name: 'Ripple', category: 'Nostalgia', applicableSettings: []},
-  {id: 'pulsar', name: 'Pulsar', category: 'Nostalgia', applicableSettings: []},
-  {id: 'hallucia', name: 'Hallucia', category: 'Nostalgia', applicableSettings: []},
+  {id: 'ambience-zoom', name: 'Twirl', category: 'Nostalgia'},
+  {id: 'ambience-stretch', name: 'Warp', category: 'Nostalgia'},
+  {id: 'ambience-ripple', name: 'Ripple', category: 'Nostalgia'},
+  {id: 'pulsar', name: 'Pulsar', category: 'Nostalgia'},
+  {id: 'hallucia', name: 'Hallucia', category: 'Nostalgia'},
   // Simple category
-  {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
-  {id: 'logo', name: 'Logo', category: 'Simple', applicableSettings: []},
-  {id: 'album-art', name: 'Album Art', category: 'Simple', applicableSettings: []},
+  {id: 'blank', name: 'Blank', category: 'Simple'},
+  {id: 'logo', name: 'Logo', category: 'Simple'},
+  {id: 'album-art', name: 'Album Art', category: 'Simple'},
 ];
 
 /**
@@ -470,7 +450,6 @@ const DEFAULT_SETTINGS: AppSettings = {
     renderResolution: 'native',
     crossfadeDuration: 1000,
     crossfadeStyle: 'fade',
-    perVisualizationSettings: {},
   },
   application: {
     serverPort: 0,
@@ -493,17 +472,13 @@ const DEFAULT_SETTINGS: AppSettings = {
     hardwareAcceleration: 'auto',
   },
   appearance: {
-    glassEnabled: true,
+    // Placeholder until the server's settings arrive, which carry the real
+    // platform default; effectiveTheme shows it as solid until glass support
+    // is known.
+    theme: 'glass',
     macOSVisualEffectState: 'active',
     colorScheme: 'system',
-    backgroundColor: '#1e1e1e',
-    backgroundHue: 0,
-    backgroundSaturation: 0,
-    backgroundLightness: 12,
-    windowTintHue: 0,
-    windowTintSaturation: 0,
-    windowTintLightness: 0,
-    windowTintAlpha: 0,
+    accentColor: 'blue',
   },
   subtitles: {
     fontSize: 100,
@@ -533,7 +508,7 @@ const DEFAULT_SETTINGS: AppSettings = {
  */
 export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   // Bars & Waves category
-  {value: 'bars', label: 'Bars & Waves : Analyzer', description: 'Configurable frequency bars with gradient'},
+  {value: 'bars', label: 'Bars & Waves : Analyzer', description: 'Frequency bars with gradient'},
   {value: 'waveform', label: 'Bars & Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
   {value: 'modern', label: 'Bars & Waves : Modern', description: 'Frequency spectrum with gradient glow'},
   {value: 'tunnel', label: 'Bars & Waves : Plasma', description: 'Dual waveforms with plasma zoom effect'},
@@ -870,11 +845,6 @@ export class SettingsService implements OnDestroy {
     (): CrossfadeStyle => this.settings().visualization?.crossfadeStyle ?? 'fade'
   );
 
-  /** Per-visualization settings map */
-  public readonly perVisualizationSettings: ReturnType<typeof computed<PerVisualizationSettings>> = computed(
-    (): PerVisualizationSettings => this.settings().visualization?.perVisualizationSettings ?? {}
-  );
-
   /** Configured server port (0 = auto-assign) */
   public readonly serverPort: ReturnType<typeof computed<number>> = computed(
     (): number => this.settings().application?.serverPort ?? 0
@@ -958,9 +928,26 @@ export class SettingsService implements OnDestroy {
     (): PreferredSubtitleLanguage => this.settings().playback?.preferredSubtitleLanguage ?? 'off'
   );
 
-  /** Whether glass effect is enabled (requires restart to apply) */
-  public readonly glassEnabled: ReturnType<typeof computed<boolean>> = computed(
-    (): boolean => this.settings().appearance?.glassEnabled ?? true
+  /** Chosen player theme (a change into or out of 'glass' requires restart to apply) */
+  public readonly theme: ReturnType<typeof computed<PlayerTheme>> = computed(
+    (): PlayerTheme => this.settings().appearance?.theme ?? 'glass'
+  );
+
+  /**
+   * Theme the player actually wears: the chosen theme, except that Glass is
+   * Solid where the platform has no glass effect (Linux), since the window
+   * there is opaque whatever the setting says.
+   */
+  public readonly effectiveTheme: ReturnType<typeof computed<PlayerTheme>> = computed(
+    (): PlayerTheme => {
+      const theme: PlayerTheme = this.theme();
+      return theme === 'glass' && !this.electron.platformInfo().supportsGlass ? 'solid' : theme;
+    }
+  );
+
+  /** Accent colour of the player's controls */
+  public readonly accentColor: ReturnType<typeof computed<AccentColor>> = computed(
+    (): AccentColor => this.settings().appearance?.accentColor ?? 'blue'
   );
 
   /** macOS visual effect state (requires restart to apply) */
@@ -971,46 +958,6 @@ export class SettingsService implements OnDestroy {
   /** Color scheme preference (system, dark, light) */
   public readonly colorScheme: ReturnType<typeof computed<ColorScheme>> = computed(
     (): ColorScheme => this.settings().appearance?.colorScheme ?? 'system'
-  );
-
-  /** Background color when glass is disabled (hex, derived from HSL) */
-  public readonly backgroundColor: ReturnType<typeof computed<string>> = computed(
-    (): string => this.settings().appearance?.backgroundColor ?? '#1e1e1e'
-  );
-
-  /** Background hue (0-360) when glass is disabled */
-  public readonly backgroundHue: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.backgroundHue ?? 0
-  );
-
-  /** Background saturation (0-100) when glass is disabled */
-  public readonly backgroundSaturation: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.backgroundSaturation ?? 0
-  );
-
-  /** Background lightness (0-100) when glass is disabled */
-  public readonly backgroundLightness: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.backgroundLightness ?? 12
-  );
-
-  /** Window tint hue (0-360) when glass is enabled */
-  public readonly windowTintHue: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.windowTintHue ?? 0
-  );
-
-  /** Window tint saturation (0-100) when glass is enabled */
-  public readonly windowTintSaturation: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.windowTintSaturation ?? 0
-  );
-
-  /** Window tint lightness (0-100) when glass is enabled */
-  public readonly windowTintLightness: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.windowTintLightness ?? 0
-  );
-
-  /** Window tint alpha (0-1) when glass is enabled */
-  public readonly windowTintAlpha: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.windowTintAlpha ?? 0
   );
 
   // ============================================================================
@@ -1361,49 +1308,8 @@ export class SettingsService implements OnDestroy {
   }
 
   // ============================================================================
-  // Per-Visualization Settings Methods
+  // Visualization Metadata Methods
   // ============================================================================
-
-  /**
-   * Gets the effective value for a local setting on a specific visualization.
-   * Returns the customized value if set, otherwise the default.
-   *
-   * @param vizId - The visualization type ID
-   * @param setting - The setting key to get
-   * @returns The effective setting value
-   */
-  public getEffectiveSetting<K extends LocalSettingKey>(vizId: string, setting: K): VisualizationLocalSettings[K] {
-    const perViz: PerVisualizationSettings = this.perVisualizationSettings();
-    const vizSettings: VisualizationLocalSettings | undefined = perViz[vizId];
-    const customValue: VisualizationLocalSettings[K] | undefined = vizSettings?.[setting];
-    return customValue !== undefined ? customValue : VISUALIZATION_LOCAL_DEFAULTS[setting];
-  }
-
-  /**
-   * Checks if a setting has been customized for a visualization.
-   *
-   * @param vizId - The visualization type ID
-   * @param setting - The setting key to check
-   * @returns True if the setting has been customized
-   */
-  public hasCustomSetting(vizId: string, setting: LocalSettingKey): boolean {
-    const perViz: PerVisualizationSettings = this.perVisualizationSettings();
-    return perViz[vizId]?.[setting] !== undefined;
-  }
-
-  /**
-   * Checks if a setting is applicable to a visualization.
-   *
-   * @param vizId - The visualization type ID
-   * @param setting - The setting key to check
-   * @returns True if the setting applies to this visualization
-   */
-  public hasApplicableSetting(vizId: string, setting: LocalSettingKey): boolean {
-    const meta: VisualizationMetadata | undefined = VISUALIZATION_METADATA.find(
-      (v: VisualizationMetadata): boolean => v.id === vizId
-    );
-    return meta?.applicableSettings.includes(setting) ?? false;
-  }
 
   /**
    * Gets visualization metadata by ID.
@@ -1413,106 +1319,6 @@ export class SettingsService implements OnDestroy {
    */
   public getVisualizationMetadata(vizId: string): VisualizationMetadata | undefined {
     return VISUALIZATION_METADATA.find((v: VisualizationMetadata): boolean => v.id === vizId);
-  }
-
-  /**
-   * Sets a local setting for a specific visualization.
-   *
-   * @param vizId - The visualization type ID
-   * @param setting - The setting key to set
-   * @param value - The value to set
-   */
-  public async setVisualizationSetting<K extends LocalSettingKey>(
-    vizId: string,
-    setting: K,
-    value: VisualizationLocalSettings[K]
-  ): Promise<void> {
-    // Validate and clamp numeric values
-    let validValue: VisualizationLocalSettings[K] = value;
-    if (setting === 'sensitivity' || setting === 'trailIntensity' || setting === 'glowIntensity' || setting === 'waveformSmoothing') {
-      validValue = this.clamp(value as number, 0, 1) as VisualizationLocalSettings[K];
-    } else if (setting === 'lineWidth') {
-      validValue = this.clamp(value as number, 1, 5) as VisualizationLocalSettings[K];
-    } else if (setting === 'strobeFrequency') {
-      validValue = this.clamp(value as number, 1, 20) as VisualizationLocalSettings[K];
-    } else if (setting === 'barDensity') {
-      const validDensities: readonly BarDensity[] = ['low', 'medium', 'high'];
-      if (!validDensities.includes(value as BarDensity)) {
-        console.error(`[SettingsService] Invalid bar density: ${value}`);
-        return;
-      }
-    }
-
-    // Send the whole map with this setting merged in. The local merge and the
-    // pending-write coalescing are both shallow, so sending only {[vizId]: …}
-    // would briefly drop every other visualization's settings from the local
-    // signal, and a second change inside the debounce window would overwrite
-    // the first before it was ever sent. The server deep-merges either way.
-    const current: PerVisualizationSettings = this.perVisualizationSettings();
-    const merged: PerVisualizationSettings = {
-      ...current,
-      [vizId]: {...current[vizId], [setting]: validValue},
-    };
-    await this.updateSetting('visualization', 'perVisualizationSettings', merged);
-  }
-
-  /**
-   * Resets a single setting for a visualization to its default.
-   *
-   * @param vizId - The visualization type ID
-   * @param setting - The setting key to reset
-   */
-  public async resetVisualizationSetting(vizId: string, setting: LocalSettingKey): Promise<void> {
-    const current: PerVisualizationSettings = {...this.perVisualizationSettings()};
-    const vizSettings: VisualizationLocalSettings | undefined = current[vizId];
-
-    if (!vizSettings || vizSettings[setting] === undefined) {
-      return; // Nothing to reset
-    }
-
-    // Create new settings object without the specified setting
-    const {[setting]: _removed, ...remaining}: Partial<VisualizationLocalSettings> = vizSettings;
-
-    // If no settings left, remove the visualization entry entirely
-    if (Object.keys(remaining).length === 0) {
-      delete current[vizId];
-    } else {
-      current[vizId] = remaining;
-    }
-
-    await this.sendVisualizationReset(current);
-  }
-
-  /**
-   * Resets all settings for a visualization to defaults.
-   *
-   * @param vizId - The visualization type ID
-   */
-  public async resetAllVisualizationSettings(vizId: string): Promise<void> {
-    const current: PerVisualizationSettings = {...this.perVisualizationSettings()};
-    delete current[vizId];
-
-    await this.sendVisualizationReset(current);
-  }
-
-  /**
-   * Applies a per-visualization map that has had settings removed, and sends
-   * it straight away.
-   *
-   * The map joins the visualization category's queued write and that write
-   * is flushed now, rather than being sent on its own. A change to the same
-   * map made within the debounce interval is still queued at this point, and
-   * would otherwise be sent afterwards and put back what was just reset.
-   * Flushing rather than discarding the queue keeps anything unrelated that
-   * was waiting in it (a frame rate, say): it travels in the same request.
-   *
-   * @param perVisualizationSettings - The whole map, without the reset settings
-   * @returns A promise that resolves once the write completes
-   */
-  private sendVisualizationReset(perVisualizationSettings: PerVisualizationSettings): Promise<void> {
-    const sent: Promise<void> = this.updateSettingGroup('visualization', {perVisualizationSettings});
-    this.flushCategory('visualization');
-    return sent;
   }
 
   /**
@@ -1800,13 +1606,32 @@ export class SettingsService implements OnDestroy {
   // ============================================================================
 
   /**
-   * Sets whether glass effect is enabled.
-   * Requires application restart to take effect.
+   * Sets the player theme.
+   * Solid and Pebble swap live; a change into or out of Glass needs an
+   * application restart, as the window's vibrancy/acrylic is fixed when it is
+   * created.
    *
-   * @param enabled - Whether glass should be enabled
+   * @param theme - Player theme ('solid', 'glass', 'pebble')
    */
-  public async setGlassEnabled(enabled: boolean): Promise<void> {
-    await this.updateSetting('appearance', 'glassEnabled', enabled);
+  public async setTheme(theme: PlayerTheme): Promise<void> {
+    if (!VALID_PLAYER_THEMES.includes(theme)) {
+      console.error(`[SettingsService] Invalid theme: ${theme}`);
+      return;
+    }
+    await this.updateSetting('appearance', 'theme', theme);
+  }
+
+  /**
+   * Sets the accent colour of the player's controls.
+   *
+   * @param accentColor - One of the ACCENT_OPTIONS ids
+   */
+  public async setAccentColor(accentColor: AccentColor): Promise<void> {
+    if (!ACCENT_OPTIONS.some((option: AccentOption): boolean => option.id === accentColor)) {
+      console.error(`[SettingsService] Invalid accent color: ${accentColor}`);
+      return;
+    }
+    await this.updateSetting('appearance', 'accentColor', accentColor);
   }
 
   /**
@@ -1836,83 +1661,6 @@ export class SettingsService implements OnDestroy {
       return;
     }
     await this.updateSetting('appearance', 'colorScheme', scheme);
-  }
-
-  /**
-   * Sets the background color when glass is disabled.
-   *
-   * @param color - Hex color string (e.g., '#1e1e1e')
-   */
-  public async setBackgroundColor(color: string): Promise<void> {
-    // Validate hex color format
-    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
-      console.error(`[SettingsService] Invalid hex color: ${color}`);
-      return;
-    }
-    await this.updateSetting('appearance', 'backgroundColor', color);
-  }
-
-  /**
-   * Sets the background hue (0-360) when glass is disabled.
-   *
-   * @param hue - Hue value (0-360)
-   */
-  public async setBackgroundHue(hue: number): Promise<void> {
-    await this.updateSetting('appearance', 'backgroundHue', hue);
-  }
-
-  /**
-   * Sets the background saturation (0-100) when glass is disabled.
-   *
-   * @param saturation - Saturation value (0-100)
-   */
-  public async setBackgroundSaturation(saturation: number): Promise<void> {
-    await this.updateSetting('appearance', 'backgroundSaturation', saturation);
-  }
-
-  /**
-   * Sets the background lightness (0-100) when glass is disabled.
-   *
-   * @param lightness - Lightness value (0-100)
-   */
-  public async setBackgroundLightness(lightness: number): Promise<void> {
-    await this.updateSetting('appearance', 'backgroundLightness', lightness);
-  }
-
-  /**
-   * Sets the window tint hue (0-360) when glass is enabled.
-   *
-   * @param hue - Hue value (0-360)
-   */
-  public async setWindowTintHue(hue: number): Promise<void> {
-    await this.updateSetting('appearance', 'windowTintHue', hue);
-  }
-
-  /**
-   * Sets the window tint saturation (0-100) when glass is enabled.
-   *
-   * @param saturation - Saturation value (0-100)
-   */
-  public async setWindowTintSaturation(saturation: number): Promise<void> {
-    await this.updateSetting('appearance', 'windowTintSaturation', saturation);
-  }
-
-  /**
-   * Sets the window tint lightness (0-100) when glass is enabled.
-   *
-   * @param lightness - Lightness value (0-100)
-   */
-  public async setWindowTintLightness(lightness: number): Promise<void> {
-    await this.updateSetting('appearance', 'windowTintLightness', lightness);
-  }
-
-  /**
-   * Sets the window tint alpha (0-1) when glass is enabled.
-   *
-   * @param alpha - Alpha value (0-1)
-   */
-  public async setWindowTintAlpha(alpha: number): Promise<void> {
-    await this.updateSetting('appearance', 'windowTintAlpha', alpha);
   }
 
   // ============================================================================

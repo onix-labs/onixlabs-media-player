@@ -1,5 +1,7 @@
 @use 'variables' as *;
 @use 'mixins' as *;
+@use 'player-theme';
+@use 'pebble/mixins' as pebble;
 
 :host {
   display: flex;
@@ -64,19 +66,20 @@
   }
 
   .media-bar-select {
-    background: $white-10;
+    background-color: $white-10;
     border: none;
     border-radius: 3px;
     color: $white-70;
     font-size: 0.75rem;
     padding: 0.25rem 0.5rem;
+    @include select-chevron(0.5rem, 0.25rem, 0.375rem);
     cursor: pointer;
     outline: none;
-    transition: color 0.2s ease, background 0.2s ease;
+    transition: color 0.2s ease, background-color 0.2s ease;
 
     &:hover {
       color: white;
-      background: $white-15;
+      background-color: $white-15;
     }
 
     &:focus {
@@ -241,5 +244,177 @@
   p {
     margin: 0;
     font-size: 0.875rem;
+  }
+}
+
+// =============================================================================
+// Pebble player theme
+// =============================================================================
+//
+// The container is a recessed Pebble well, sunk into the window, holding the
+// media, the playlist and the media bar; with nothing loaded the well itself
+// is the empty state. The media stays on black, as it does in fullscreen: the visualizations and video
+// are drawn for a dark screen, so only the chrome around them changes.
+@include player-theme.pebble {
+  div.container {
+    @include pebble.recessed(md);
+    // A little deeper than a recessed panel's usual top edge.
+    --pebble-edge-top: color-mix(in srgb, var(--pebble-edge-dark), black 15%);
+    // A shade darker than the window, as a sunken area should be.
+    background: var(--pebble-well);
+    position: relative;
+    isolation: isolate;
+    outline: none;
+    // The media runs to the well's own rounded outline, which clips it; the
+    // edges are drawn over it (below), so the clip and the edges share one
+    // curve. Drawn inside the well, the edges would sit under the media, and
+    // the media's own corners never quite follow the well's.
+    box-shadow: none;
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: 100;
+      border-radius: inherit;
+      corner-shape: inherit;
+      box-shadow: var(--pebble-edge-shadow);
+      pointer-events: none;
+    }
+  }
+
+  // Edge to edge, as in the other themes.
+  &.fullscreen div.container,
+  &.miniplayer div.container {
+    border-radius: 0;
+    background: black;
+
+    &::after {
+      content: none;
+    }
+  }
+
+  app-audio-outlet {
+    background: black;
+  }
+
+  .media-bar {
+    // The bar's controls sit in the well's bottom corners, so their corners
+    // are the well's, less the bar's padding: concentric.
+    --media-bar-radius: calc(var(--pebble-radius-md) - 0.25rem);
+    // The well's bottom edge is drawn over the bar's padding, so the bottom
+    // gives it an extra pixel to look as wide as the sides.
+    padding-bottom: calc(0.25rem + 0.0625rem);
+    border-top-color: var(--pebble-border);
+
+    button {
+      color: var(--pebble-text-muted);
+      background: color-mix(in srgb, var(--pebble-heading) 8%, transparent);
+      border-radius: var(--media-bar-radius);
+      corner-shape: var(--pebble-corner-shape);
+
+      &:hover {
+        color: var(--pebble-heading);
+      }
+    }
+
+    // Raised like the transport buttons, on the playlist toggle's fill; the
+    // edges are inset shadows, so the select keeps its size.
+    .media-bar-select {
+      --pebble-edge-top: var(--pebble-edge-light);
+      --pebble-edge-bottom: var(--pebble-edge-button);
+      color: var(--pebble-text);
+      background-color: color-mix(in srgb, var(--pebble-heading) 8%, transparent);
+      border-radius: var(--media-bar-radius);
+      corner-shape: var(--pebble-corner-shape);
+      box-shadow: var(--pebble-edge-shadow);
+      font-family: var(--pebble-font);
+
+      &:hover {
+        color: var(--pebble-heading);
+        background-color: color-mix(in srgb, var(--pebble-heading) 14%, transparent);
+      }
+
+      &:focus {
+        color: var(--pebble-heading);
+      }
+
+      &:focus-visible {
+        @include pebble.focus-ring;
+      }
+
+      option {
+        color: var(--pebble-text);
+        background: var(--pebble-surface);
+      }
+    }
+
+    .media-title {
+      color: var(--pebble-text-muted);
+    }
+
+    // As tall as the selects, and square, so it sits the same distance from
+    // the well's bottom edge as they do.
+    .playlist-toggle {
+      align-self: stretch;
+      aspect-ratio: 1;
+      color: var(--pebble-text-muted);
+
+      &:hover {
+        color: var(--pebble-heading);
+      }
+    }
+  }
+
+  .idle-state {
+    color: var(--pebble-text-muted);
+
+    // logo.png has white lettering; the wordmark token swaps in the dark-lettered
+    // one on the light palette (see _pebble.scss's img.pebble-wordmark).
+    img {
+      content: var(--pebble-wordmark);
+    }
+
+    p {
+      color: var(--pebble-text);
+    }
+
+    .hint {
+      color: var(--pebble-text-muted);
+    }
+
+    &.drag-over {
+      background: color-mix(in srgb, var(--pebble-heading) 6%, transparent);
+    }
+
+    &.drag-invalid {
+      background: color-mix(in srgb, var(--pebble-danger) 10%, transparent);
+    }
+
+    .dependency-warning {
+      color: var(--pebble-danger);
+      background: var(--pebble-danger-subtle);
+      border-color: color-mix(in srgb, var(--pebble-danger) 45%, transparent);
+      border-radius: var(--pebble-radius-md);
+
+      .dependency-warning-text {
+        color: var(--pebble-danger);
+      }
+
+      .dependency-settings-link {
+        --pebble-edge-top: color-mix(in srgb, var(--pebble-danger), white 25%);
+        --pebble-edge-bottom: color-mix(in srgb, var(--pebble-danger), black 25%);
+        color: var(--pebble-danger-contrast);
+        background: var(--pebble-danger);
+        border-radius: var(--pebble-radius-sm);
+        box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-sm);
+        font-family: var(--pebble-font);
+        font-weight: var(--pebble-weight-medium);
+
+        &:hover {
+          background: color-mix(in srgb, var(--pebble-danger), black 12%);
+        }
+      }
+    }
   }
 }

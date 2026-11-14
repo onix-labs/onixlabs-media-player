@@ -1,5 +1,7 @@
 @use 'variables' as *;
 @use 'mixins' as *;
+@use 'player-theme';
+@use 'pebble/mixins' as pebble;
 
 :host(.fullscreen-overlay) {
   // In fullscreen the controls float over the live canvas. A backdrop blur
@@ -63,12 +65,12 @@
       }
 
       &::-webkit-progress-value {
-        background: $gradient-primary;
+        background: $gradient-accent;
         border-radius: 0.25rem;
       }
 
       &:not([value="0"])::-webkit-progress-value {
-        box-shadow: 0 0 8px 1px $color-primary-dark;
+        box-shadow: 0 0 8px 1px var(--player-accent);
       }
     }
   }
@@ -225,7 +227,7 @@
         }
 
         &::-webkit-progress-value {
-          background: $gradient-primary;
+          background: $gradient-accent;
           border-radius: 0.25rem;
         }
       }
@@ -238,10 +240,181 @@
         margin-top: -0.35rem;
         margin-left: -0.3rem;
         border-radius: 1rem;
-        background: $gradient-primary;
-        border: 1px solid $color-primary-light;
+        background: $gradient-accent;
+        border: 1px solid var(--player-accent-highlight);
         outline: 1px solid rgba(0, 0, 0, 0.75);
         pointer-events: none;
+      }
+    }
+  }
+}
+
+// =============================================================================
+// Pebble player theme
+// =============================================================================
+//
+// The bar sits on the window's page, seamless with it. Button groups draw
+// nothing themselves: each button is a raised Pebble button with its own light
+// top and dark bottom edge, split from its neighbour by a hairline, and
+// play/pause is marked only by its icon in the accent. The tracks are Pebble
+// ranges filled with the accent. Every
+// size, gap and border width is today's (borders go transparent rather than
+// away), so nothing moves between themes. Colours come from the --pebble-*
+// tokens, which follow the colour scheme.
+@include player-theme.pebble {
+  // No panel of its own: the controls belong to the window, not a bar on it.
+  background: transparent;
+  box-shadow: none;
+
+  .seek-bar-container {
+    // Not Pebble's 1.5 line height: the readouts set the row's height, and
+    // the taller line would lift the controls.
+    span {
+      color: var(--pebble-text-muted);
+      font-family: var(--pebble-font-mono);
+      line-height: normal;
+    }
+
+    progress {
+      border-color: transparent;
+      border-radius: var(--pebble-radius-pill);
+      outline: none;
+      backdrop-filter: none;
+
+      &::-webkit-progress-bar {
+        background-color: var(--pebble-surface-alt);
+        border-radius: var(--pebble-radius-pill);
+        box-shadow: inset 0 1px 0 var(--pebble-edge-dark);
+      }
+
+      &::-webkit-progress-value {
+        background: var(--player-accent);
+        border-radius: var(--pebble-radius-pill);
+      }
+
+      // Pebble is matte: no glow.
+      &:not([value="0"])::-webkit-progress-value {
+        box-shadow: none;
+      }
+    }
+  }
+
+  // No border or fill of its own: the buttons draw the fill and edges. The
+  // group casts the one drop shadow, so it falls from the group's outline;
+  // shadows cast by each button would bleed across their neighbours as seams.
+  // The border's width is margin instead: a transparent border would leave a
+  // strip of page between the buttons and the shadow, a pale line below them.
+  .button-group {
+    border: none;
+    margin: 0.0625rem;
+    border-radius: var(--pebble-radius-md);
+    outline: none;
+    backdrop-filter: none;
+    background: transparent;
+    box-shadow: var(--pebble-shadow-sm);
+  }
+
+  // The mute button runs into the volume slider's section, which ends the
+  // group and so takes the group's rounder corners.
+  .button-group.right button:last-of-type {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .volume-container {
+    border-top-right-radius: var(--pebble-radius-md);
+    border-bottom-right-radius: var(--pebble-radius-md);
+  }
+
+  // Each button raised on its own, and the volume slider's section with them.
+  button,
+  .volume-container {
+    --pebble-edge-top: var(--pebble-edge-light);
+    --pebble-edge-bottom: var(--pebble-edge-button);
+    background: var(--pebble-button-surface);
+    box-shadow: var(--pebble-edge-shadow);
+  }
+
+  button {
+    color: var(--pebble-primary);
+    // No dividers: the buttons of a group run together as one raised shape,
+    // a little rounder at its ends than in the other themes.
+    border-left: none;
+    border-right: none;
+
+    &:first-of-type {
+      border-top-left-radius: var(--pebble-radius-md);
+      border-bottom-left-radius: var(--pebble-radius-md);
+    }
+
+    &:last-of-type {
+      border-top-right-radius: var(--pebble-radius-md);
+      border-bottom-right-radius: var(--pebble-radius-md);
+    }
+
+
+    &:hover:not(:disabled) {
+      color: var(--pebble-heading);
+      background: var(--pebble-button-surface-hover);
+    }
+
+    // Shuffle and repeat, when on: marked like play/pause, by the icon in the
+    // accent on the ordinary button fill. !important only to match the base
+    // rules for these states.
+    &.active {
+      color: var(--player-accent);
+      background: var(--pebble-button-surface) !important;
+
+      &:hover:not(:disabled) {
+        color: var(--player-accent);
+        background: var(--pebble-button-surface-hover) !important;
+      }
+    }
+
+    &.muted {
+      color: var(--pebble-danger-contrast);
+      background: var(--pebble-danger) !important;
+    }
+
+    &:disabled {
+      color: color-mix(in srgb, var(--pebble-text-muted) 55%, transparent);
+    }
+  }
+
+  // Play/pause: a segment like its neighbours, told apart only by its icon in
+  // the accent; disabled, with nothing to play, it greys out like them.
+  .button-group.center button:nth-of-type(2):not(:disabled) {
+    color: var(--player-accent);
+  }
+
+  .volume-container {
+    .volume-slider {
+      progress {
+        border-color: transparent;
+        border-radius: var(--pebble-radius-pill);
+        outline: none;
+
+        &::-webkit-progress-bar {
+          background-color: var(--pebble-surface-alt);
+          border-radius: var(--pebble-radius-pill);
+          box-shadow: inset 0 1px 0 var(--pebble-edge-dark);
+        }
+
+        &::-webkit-progress-value {
+          background: var(--player-accent);
+          border-radius: var(--pebble-radius-pill);
+        }
+      }
+
+      // A Pebble range thumb: the accent ringed by the button surface it sits
+      // on. The ring is a 2px border, so the margins re-centre the thumb.
+      .volume-thumb {
+        margin-top: calc(-0.3rem - 2px);
+        margin-left: calc(-0.3rem - 2px);
+        background: var(--player-accent);
+        border: 2px solid var(--pebble-button-surface);
+        outline: none;
+        box-shadow: var(--pebble-shadow-sm);
       }
     }
   }

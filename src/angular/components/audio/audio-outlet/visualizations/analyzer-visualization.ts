@@ -25,12 +25,17 @@ import {Canvas2DVisualization, VisualizationConfig} from './visualization';
  * Bar heights animate smoothly via the analyser's smoothing constant.
  */
 export class AnalyzerVisualization extends Canvas2DVisualization {
-  /** Bar count for each density level. */
-  private static readonly BAR_COUNTS: Record<'low' | 'medium' | 'high', number> = {
-    low: 48,
-    medium: 96,
-    high: 144
-  };
+  /** Number of bars drawn across the canvas. */
+  private static readonly BAR_COUNT: number = 96;
+
+  /** Gradient colour at the foot of the bars (quiet). */
+  private static readonly COLOR_BOTTOM: string = '#00cc00';
+
+  /** Gradient colour halfway up the canvas. */
+  private static readonly COLOR_MIDDLE: string = '#cccc00';
+
+  /** Gradient colour at the top of the canvas (loud). */
+  private static readonly COLOR_TOP: string = '#cc0000';
 
   /** Horizontal gap between bars in pixels. */
   private static readonly BAR_GAP: number = 2;
@@ -47,7 +52,6 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
   public readonly name: string = 'Analyzer';
   public readonly category: string = 'Bars & Waves';
 
-  private barCount: number = AnalyzerVisualization.BAR_COUNTS.medium;
   private dataArray: Uint8Array<ArrayBuffer>;
   private barGradient: CanvasGradient | null = null;
   private gradientHeight: number = 0;
@@ -55,10 +59,6 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
-    // Hard-coded sensitivity (50%); setSensitivity() is overridden to a no-op so
-    // the global sensitivity control cannot change it.
-    this.sensitivity = 0.5;
-    this.barCount = AnalyzerVisualization.BAR_COUNTS[this.barDensity];
   }
 
   public draw(): void {
@@ -81,14 +81,14 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
 
     this.analyser.getByteFrequencyData(this.dataArray);
 
-    const barCount: number = this.barCount;
+    const barCount: number = AnalyzerVisualization.BAR_COUNT;
     const barWidth: number = (width - (barCount - 1) * AnalyzerVisualization.BAR_GAP) / barCount;
     const usableBins: number = Math.floor(this.dataArray.length * AnalyzerVisualization.FREQUENCY_RANGE);
-    const heightScale: number = height * AnalyzerVisualization.HEIGHT_SCALE * this.sensitivityFactor;
+    const heightScale: number = height * AnalyzerVisualization.HEIGHT_SCALE;
     const radius: number = Math.min(barWidth / 2, AnalyzerVisualization.MAX_CORNER_RADIUS);
 
     // Use gradient if available, fallback to green
-    ctx.fillStyle = this.barGradient || '#00cc00';
+    ctx.fillStyle = this.barGradient || AnalyzerVisualization.COLOR_BOTTOM;
 
     for (let i: number = 0; i < barCount; i++) {
       // Map bar index to bin range, spreading usableBins evenly across all bars
@@ -122,25 +122,8 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
     this.applyFadeOverlay();
   }
 
-  /**
-   * Sensitivity is fixed at 50% for the Analyzer (see constructor); ignore the
-   * global sensitivity control rather than letting it override the baked-in value.
-   */
-  public override setSensitivity(): void {
-    // Intentionally no-op.
-  }
-
-  protected override onBarDensityChanged(): void {
-    this.barCount = AnalyzerVisualization.BAR_COUNTS[this.barDensity];
-  }
-
   protected override onFftSizeChanged(): void {
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
-  }
-
-  protected override onBarColorsChanged(): void {
-    // Regenerate gradient when colors change
-    this.createGradient();
   }
 
   protected override onResize(): void {
@@ -154,11 +137,11 @@ export class AnalyzerVisualization extends Canvas2DVisualization {
       return;
     }
 
-    // Create gradient spanning full canvas height using configurable colors
+    // Gradient spans the full canvas height, so a bar's colour shows its level
     this.barGradient = this.ctx.createLinearGradient(0, this.height, 0, 0);
-    this.barGradient.addColorStop(0, this.barColorBottom);
-    this.barGradient.addColorStop(0.5, this.barColorMiddle);
-    this.barGradient.addColorStop(1, this.barColorTop);
+    this.barGradient.addColorStop(0, AnalyzerVisualization.COLOR_BOTTOM);
+    this.barGradient.addColorStop(0.5, AnalyzerVisualization.COLOR_MIDDLE);
+    this.barGradient.addColorStop(1, AnalyzerVisualization.COLOR_TOP);
     this.gradientHeight = this.height;
   }
 }

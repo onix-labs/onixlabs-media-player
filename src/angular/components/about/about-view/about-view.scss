@@ -1,4 +1,9 @@
-@use 'variables' as *;
+@use 'pebble/mixins' as pebble;
+
+// The About window in Pebble: the page is --pebble-bg, the logo and versions
+// sit on it, and each list (formats, dependencies, licences, links) is a raised
+// surface. The palette comes from html.pebble, so light and dark need nothing
+// here.
 
 :host {
   display: flex;
@@ -16,70 +21,65 @@
   overflow: hidden;
 }
 
-// Header (draggable region for macOS traffic lights)
+// Draggable strip that clears the macOS traffic lights; it has no title, the
+// logo below names the window.
 .about-header {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0.5rem;
-  -webkit-app-region: drag;
+  @include pebble.window-header;
+  flex: none;
 }
 
-// Content
+// Content (scrolls; the window is a fixed 480x640). The side padding leaves
+// room for the surfaces' shadows, which the scroll container would clip.
 .about-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1rem 2rem 2rem;
+  gap: var(--pebble-space-6);
+  padding: var(--pebble-space-2) var(--pebble-space-6) var(--pebble-space-6);
   overflow-y: auto;
-  gap: 2rem;
 }
 
-// Hero section
+// Hero: logo, versions and licence
 .about-hero {
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: var(--pebble-space-2);
   text-align: center;
-  gap: 0.5rem;
 
   .about-logo {
     width: clamp(0px, 50%, 320px);
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--pebble-space-2);
   }
 
-  h1 {
-    margin: 0;
-    font-size: 1.75rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
+  // A quiet two-column definition list: names muted, values in the text
+  // colour, all in mono so the version numbers line up.
   .version-table {
-    border-collapse: collapse;
-    font-size: 0.75rem;
+    display: grid;
+    grid-template-columns: max-content max-content;
+    gap: 0.125rem var(--pebble-space-4);
+    margin: 0;
+    font-family: var(--pebble-font-mono);
+    font-size: var(--pebble-text-xs);
+    line-height: 1.5;
 
-    td {
-      padding: 0.125rem 0.5rem;
+    dt {
+      color: var(--pebble-text-muted);
+      text-align: left;
+    }
 
-      &:first-child {
-        color: var(--text-50);
-        text-align: left;
-      }
-
-      &:last-child {
-        color: var(--text-70);
-        text-align: right;
-        font-family: ui-monospace, monospace;
-      }
+    dd {
+      margin: 0;
+      color: var(--pebble-text);
+      text-align: right;
     }
   }
 
   .license {
     margin: 0;
-    font-size: 0.8125rem;
-    color: var(--text-40);
+    font-size: var(--pebble-text-sm);
+    color: var(--pebble-text-muted);
   }
 }
 
@@ -89,40 +89,34 @@
   max-width: 480px;
 
   h2 {
-    margin: 0 0 1rem;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--text-50);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    @include pebble.label;
+    margin-bottom: var(--pebble-space-3);
   }
 }
 
-// Formats grid
+// Supported formats: two cards side by side
 .formats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  gap: var(--pebble-space-4);
 }
 
 .format-group {
-  background: var(--text-3);
-  border: 1px solid var(--text-8);
-  border-radius: 8px;
-  padding: 1rem;
+  @include pebble.surface(lg);
+  padding: var(--pebble-space-4);
 
   h3 {
-    margin: 0 0 0.75rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--text-70);
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--pebble-space-2);
+    margin: 0 0 var(--pebble-space-3);
+    color: var(--pebble-heading);
+    font-size: var(--pebble-text-sm);
+    font-weight: var(--pebble-weight-medium);
 
     i {
-      font-size: 0.75rem;
-      color: var(--text-50);
+      font-size: var(--pebble-text-xs);
+      color: var(--pebble-text-muted);
     }
   }
 }
@@ -134,144 +128,162 @@
 }
 
 .format-tag {
-  padding: 0.25rem 0.5rem;
-  background: var(--text-8);
-  border-radius: 4px;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  color: var(--text-70);
-  font-family: ui-monospace, monospace;
+  @include pebble.badge(neutral);
+  font-family: var(--pebble-font-mono);
 }
 
-// Dependencies list
-.dependencies-list {
+// Lists (Powered By, Licenses, Links): one raised card per list, its rows
+// full-width buttons divided by hairlines rather than separate boxes.
+.dependencies-list,
+.links-list {
+  @include pebble.surface(lg);
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+}
+
+.dependency-item,
+.link-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.85rem var(--pebble-space-4);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--pebble-text);
+  font-family: var(--pebble-font);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--pebble-transition);
+
+  & + & {
+    border-top: var(--pebble-border-width) solid var(--pebble-border);
+  }
+
+  // The end rows take the card's corners, so the hover tint and the focus
+  // ring follow its rounding instead of poking out square.
+  &:first-child {
+    border-top-left-radius: inherit;
+    border-top-right-radius: inherit;
+    corner-shape: inherit;
+  }
+
+  &:last-child {
+    border-bottom-left-radius: inherit;
+    border-bottom-right-radius: inherit;
+    corner-shape: inherit;
+  }
+
+  &:hover {
+    background: color-mix(in srgb, var(--pebble-heading) 5%, transparent);
+  }
+
+  // Drawn inside the row: outside it would run over the neighbouring rows.
+  &:focus-visible {
+    outline: 2px solid var(--pebble-focus);
+    outline-offset: -2px;
+  }
+
+  i {
+    color: var(--pebble-text-muted);
+    transition: color var(--pebble-transition);
+  }
+
+  // Trailing "opens elsewhere" icon
+  i:last-child {
+    font-size: var(--pebble-text-xs);
+  }
+
+  &:hover i:last-child,
+  &:focus-visible i:last-child {
+    color: var(--pebble-text);
+  }
 }
 
 .dependency-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  width: 100%;
-  padding: 0.875rem 1rem;
-  background: var(--text-3);
-  border: 1px solid var(--text-8);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
-  text-align: left;
-
-  &:hover {
-    background: var(--text-5);
-    border-color: var(--text-12);
-  }
+  gap: var(--pebble-space-4);
 
   .dep-name {
-    font-size: 0.9375rem;
-    font-weight: 500;
-    color: var(--text-primary);
+    flex-shrink: 0;
+    color: var(--pebble-heading);
+    font-size: var(--pebble-text-sm);
+    font-weight: var(--pebble-weight-medium);
   }
 
   .dep-version {
     margin-left: 0.375rem;
-    font-weight: 400;
-    color: var(--text-50);
+    color: var(--pebble-text-muted);
+    font-family: var(--pebble-font-mono);
+    font-size: var(--pebble-text-xs);
+    font-weight: var(--pebble-weight-normal);
   }
 
   .dep-description {
     flex: 1;
-    font-size: 0.8125rem;
-    color: var(--text-50);
+    min-width: 0;
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-xs);
   }
-
-  i {
-    font-size: 0.75rem;
-    color: var(--text-30);
-    transition: color 0.2s ease;
-  }
-
-  &:hover i {
-    color: var(--text-60);
-  }
-}
-
-// GPL source offer under the licences
-.source-notice {
-  margin: 0.75rem 0 0;
-  font-size: 0.8125rem;
-  line-height: 1.5;
-  color: var(--text-50);
-}
-
-.source-link {
-  padding: 0;
-  font: inherit;
-  color: var(--text-primary);
-  text-decoration: underline;
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-
-// Links list
-.links-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
 }
 
 .link-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.875rem 1rem;
-  background: var(--text-3);
-  border: 1px solid var(--text-8);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
-  text-align: left;
+  gap: var(--pebble-space-3);
 
-  &:hover {
-    background: var(--text-5);
-    border-color: var(--text-12);
-  }
-
+  // Leading brand/globe icon
   i:first-child {
-    font-size: 1.125rem;
-    color: var(--text-60);
     width: 1.5rem;
+    font-size: var(--pebble-text-lg);
     text-align: center;
   }
 
   span {
     flex: 1;
-    font-size: 0.9375rem;
-    color: var(--text-primary);
+    color: var(--pebble-heading);
+    font-size: var(--pebble-text-sm);
+    font-weight: var(--pebble-weight-medium);
+  }
+}
+
+// GPL source offer under the licences
+.source-notice {
+  margin: var(--pebble-space-3) 0 0;
+  color: var(--pebble-text-muted);
+  font-size: var(--pebble-text-xs);
+  line-height: 1.5;
+}
+
+// An inline text link, though it is a button (it opens the browser through
+// the main process).
+.source-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--pebble-heading);
+  font: inherit;
+  font-weight: var(--pebble-weight-medium);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration-thickness: 2px;
   }
 
-  i:last-child {
-    font-size: 0.75rem;
-    color: var(--text-30);
-    transition: color 0.2s ease;
-  }
-
-  &:hover i:last-child {
-    color: var(--text-60);
+  &:focus-visible {
+    border-radius: 0.25rem;
+    outline: 2px solid var(--pebble-focus);
+    outline-offset: 2px;
   }
 }
 
 // Footer
 .about-footer {
   margin-top: auto;
-  padding-top: 1rem;
+  padding-top: var(--pebble-space-4);
 
   p {
     margin: 0;
-    font-size: 0.75rem;
-    color: var(--text-30);
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-xs);
   }
 }

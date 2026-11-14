@@ -83,15 +83,8 @@ function createMockMediaPlayerService(): Record<string, unknown> {
 function createMockSettingsService(): Record<string, unknown> {
   return {
     controlsAutoHideDelay: signal(5),
-    glassEnabled: signal(true),
-    backgroundColor: signal('#1e1e1e'),
-    backgroundHue: signal(0),
-    backgroundSaturation: signal(0),
-    backgroundLightness: signal(12),
-    windowTintHue: signal(0),
-    windowTintSaturation: signal(0),
-    windowTintLightness: signal(0),
-    windowTintAlpha: signal(0),
+    effectiveTheme: signal('solid' as 'solid' | 'glass' | 'pebble'),
+    accentColor: signal('blue' as string),
     colorScheme: signal('system' as 'system' | 'dark' | 'light'),
   };
 }
@@ -803,9 +796,10 @@ describe('Root rendered', (): void => {
   afterEach((): void => {
     fixture.destroy();
     window.history.replaceState(null, '', originalUrl);
-    document.documentElement.style.removeProperty('--app-background-color');
-    document.documentElement.style.removeProperty('--app-tint-color');
     document.documentElement.removeAttribute('data-color-scheme');
+    document.documentElement.removeAttribute('data-player-theme');
+    document.documentElement.removeAttribute('data-accent');
+    document.documentElement.classList.remove('pebble');
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -917,59 +911,85 @@ describe('Root rendered', (): void => {
   // ============================================================================
 
   describe('appearance', (): void => {
-    const rootStyle: CSSStyleDeclaration = document.documentElement.style;
+    const root: HTMLElement = document.documentElement;
 
-    beforeEach((): void => {
-      setSignal(mockSettings, 'backgroundHue', 210);
-      setSignal(mockSettings, 'backgroundSaturation', 40);
-      setSignal(mockSettings, 'backgroundLightness', 20);
-      setSignal(mockSettings, 'windowTintHue', 120);
-      setSignal(mockSettings, 'windowTintSaturation', 30);
-      setSignal(mockSettings, 'windowTintLightness', 15);
-      setSignal(mockSettings, 'windowTintAlpha', 0.4);
-    });
-
-    it('paints a solid background when the platform has no glass support', (): void => {
-      createRoot();
-
-      expect(rootStyle.getPropertyValue('--app-background-color')).toBe('hsl(210, 40%, 20%)');
-      expect(rootStyle.getPropertyValue('--app-tint-color')).toBe('transparent');
-    });
-
-    it('paints a solid background when glass is supported but switched off', (): void => {
-      setSignal(mockElectron, 'platformInfo', {platform: 'darwin', supportsGlass: true, systemTheme: 'dark'});
-      setSignal(mockSettings, 'glassEnabled', false);
+    it.each(['solid', 'glass', 'pebble'] as const)('publishes the %s theme on the document root', (theme: 'solid' | 'glass' | 'pebble'): void => {
+      setSignal(mockSettings, 'effectiveTheme', theme);
 
       createRoot();
 
-      expect(rootStyle.getPropertyValue('--app-background-color')).toBe('hsl(210, 40%, 20%)');
+      expect(root.getAttribute('data-player-theme')).toBe(theme);
     });
 
-    it('leaves the background transparent and applies the tint when glass is on', (): void => {
-      setSignal(mockElectron, 'platformInfo', {platform: 'darwin', supportsGlass: true, systemTheme: 'dark'});
+    it('publishes the accent colour on the document root', (): void => {
+      setSignal(mockSettings, 'accentColor', 'violet');
 
       createRoot();
 
-      expect(rootStyle.getPropertyValue('--app-background-color')).toBe('transparent');
-      expect(rootStyle.getPropertyValue('--app-tint-color')).toBe('hsla(120, 30%, 15%, 0.4)');
+      expect(root.getAttribute('data-accent')).toBe('violet');
     });
 
-    it('applies no tint when the tint is fully transparent', (): void => {
-      setSignal(mockElectron, 'platformInfo', {platform: 'darwin', supportsGlass: true, systemTheme: 'dark'});
-      setSignal(mockSettings, 'windowTintAlpha', 0);
-
+    it('updates the published accent colour when the setting changes', (): void => {
       createRoot();
 
-      expect(rootStyle.getPropertyValue('--app-tint-color')).toBe('transparent');
-    });
-
-    it('repaints when the background setting changes', (): void => {
-      createRoot();
-
-      setSignal(mockSettings, 'backgroundLightness', 55);
+      setSignal(mockSettings, 'accentColor', 'teal');
       fixture.detectChanges();
 
-      expect(rootStyle.getPropertyValue('--app-background-color')).toBe('hsl(210, 40%, 55%)');
+      expect(root.getAttribute('data-accent')).toBe('teal');
+    });
+
+    it('gives the player the pebble class only for the Pebble theme', (): void => {
+      setSignal(mockSettings, 'effectiveTheme', 'pebble');
+
+      createRoot();
+
+      expect(root.classList.contains('pebble')).toBe(true);
+    });
+
+    it.each(['solid', 'glass'] as const)('leaves the pebble class off for the %s theme', (theme: 'solid' | 'glass'): void => {
+      setSignal(mockSettings, 'effectiveTheme', theme);
+
+      createRoot();
+
+      expect(root.classList.contains('pebble')).toBe(false);
+    });
+
+    it('switches between Solid and Pebble live', (): void => {
+      createRoot();
+      expect(root.getAttribute('data-player-theme')).toBe('solid');
+      expect(root.classList.contains('pebble')).toBe(false);
+
+      setSignal(mockSettings, 'effectiveTheme', 'pebble');
+      fixture.detectChanges();
+      expect(root.getAttribute('data-player-theme')).toBe('pebble');
+      expect(root.classList.contains('pebble')).toBe(true);
+
+      setSignal(mockSettings, 'effectiveTheme', 'solid');
+      fixture.detectChanges();
+      expect(root.getAttribute('data-player-theme')).toBe('solid');
+      expect(root.classList.contains('pebble')).toBe(false);
+    });
+
+    it.each(['solid', 'glass', 'pebble'] as const)('leaves the background and tint variables to the stylesheets for the %s theme', (theme: 'solid' | 'glass' | 'pebble'): void => {
+      setSignal(mockSettings, 'effectiveTheme', theme);
+
+      createRoot();
+
+      expect(root.style.getPropertyValue('--app-background-color')).toBe('');
+      expect(root.style.getPropertyValue('--app-tint-color')).toBe('');
+    });
+
+    it.each(['configuration', 'about', 'setup-wizard', 'open-url'])('keeps the %s window Pebble without a player theme, with the accent', (windowName: string): void => {
+      setSignal(mockSettings, 'effectiveTheme', 'solid');
+
+      createRoot(windowName);
+      setSignal(mockSettings, 'effectiveTheme', 'glass');
+      setSignal(mockSettings, 'accentColor', 'rose');
+      fixture.detectChanges();
+
+      expect(root.classList.contains('pebble')).toBe(true);
+      expect(root.hasAttribute('data-player-theme')).toBe(false);
+      expect(root.getAttribute('data-accent')).toBe('rose');
     });
 
     it('publishes the colour scheme on the document root', (): void => {

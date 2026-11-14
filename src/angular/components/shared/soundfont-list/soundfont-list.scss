@@ -1,0 +1,113 @@
+@use 'pebble/mixins' as pebble;
+
+:host {
+  display: block;
+}
+
+// A recessed well, the active SoundFont raised out of it.
+.soundfont-list {
+  @include pebble.recessed(md);
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: var(--pebble-space-1);
+}
+
+.soundfont-item {
+  display: flex;
+  align-items: center;
+  gap: var(--pebble-space-2);
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--pebble-radius-sm);
+  corner-shape: var(--pebble-corner-shape);
+
+  &.selected {
+    @include pebble.surface(sm);
+  }
+
+  > i {
+    color: var(--pebble-text-muted);
+    font-size: var(--pebble-text-xs);
+  }
+}
+
+.soundfont-select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.125rem;
+  border: none;
+  border-radius: var(--pebble-radius-pill);
+  corner-shape: round;
+  background: none;
+  cursor: pointer;
+}
+
+// A radio drawn to match the native ones elsewhere: a ring, filled when chosen.
+.soundfont-radio {
+  position: relative;
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  box-sizing: border-box;
+  border: 2px solid var(--pebble-field-border);
+  border-radius: var(--pebble-radius-pill);
+  corner-shape: round;
+  transition: border-color var(--pebble-transition);
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: var(--pebble-radius-pill);
+    corner-shape: round;
+    background: transparent;
+    transform: translate(-50%, -50%);
+    transition: background-color var(--pebble-transition);
+  }
+
+  &.active {
+    border-color: var(--pebble-primary);
+
+    &::after {
+      background: var(--pebble-primary);
+    }
+  }
+}
+
+.soundfont-select:hover .soundfont-radio:not(.active) {
+  border-color: var(--pebble-heading);
+}
+
+.soundfont-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pebble-text);
+  font-size: var(--pebble-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.soundfont-size {
+  color: var(--pebble-text-muted);
+  font-family: var(--pebble-font-mono);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.soundfont-remove {
+  @include pebble.button(ghost, sm);
+  width: 1.75rem;
+  min-height: 1.75rem;
+  padding: 0;
+  color: var(--pebble-text-muted);
+  font-size: 0.6875rem;
+
+  &:hover:not(:disabled) {
+    color: var(--pebble-danger);
+  }
+}

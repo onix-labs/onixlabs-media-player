@@ -334,7 +334,6 @@ uniform sampler2D uSource;
 uniform float uAspect;
 uniform float uHue;
 uniform float uBass;
-uniform float uGain;
 uniform float uSweep;
 uniform float uPivot;
 
@@ -435,7 +434,7 @@ vec3 inject(vec2 uv) {
 
   float edge = 1.0 - smoothstep(${glslFloat(INJECT_EDGE)},
                                 ${glslFloat(INJECT_EDGE)} + ${glslFloat(INJECT_FEATHER)}, rn);
-  float lift = (1.0 + uBass * ${glslFloat(BASS_LIFT)}) * uGain
+  float lift = (1.0 + uBass * ${glslFloat(BASS_LIFT)})
              * ${glslFloat(INJECT_GAIN)} * edge;
 
   float fieldHue = fract(uHue + rn * ${glslFloat(HUE_SPAN)});
@@ -568,7 +567,7 @@ export class HalluciaVisualization extends WebGLVisualization {
     this.fieldProgram = this.createProgram(VERTEX_SHADER, FIELD_FRAGMENT_SHADER);
     this.presentProgram = this.createProgram(VERTEX_SHADER, PRESENT_FRAGMENT_SHADER);
 
-    for (const key of ['uPrevious', 'uSource', 'uAspect', 'uHue', 'uBass', 'uGain', 'uSweep', 'uPivot']) {
+    for (const key of ['uPrevious', 'uSource', 'uAspect', 'uHue', 'uBass', 'uSweep', 'uPivot']) {
       this.fieldUniforms[key] = gl.getUniformLocation(this.fieldProgram!, key);
     }
     for (const key of ['uSurface', 'uAlpha']) {
@@ -738,7 +737,7 @@ export class HalluciaVisualization extends WebGLVisualization {
       total += this.freqArray[i];
     }
 
-    const level: number = (total / bins / RGB_MAX) * this.sensitivityFactor;
+    const level: number = total / bins / RGB_MAX;
     this.bass += (level - this.bass) * BASS_SMOOTHING;
 
     // Mean over the part of the spectrum the radius actually maps across, so
@@ -831,7 +830,6 @@ export class HalluciaVisualization extends WebGLVisualization {
     gl.uniform1f(this.fieldUniforms['uAspect'], this.surfaceWidth / this.surfaceHeight);
     gl.uniform1f(this.fieldUniforms['uHue'], this.hue);
     gl.uniform1f(this.fieldUniforms['uBass'], this.bass);
-    gl.uniform1f(this.fieldUniforms['uGain'], this.sensitivityFactor);
     gl.uniform1f(this.fieldUniforms['uSweep'], this.sweep);
     gl.uniform1f(this.fieldUniforms['uPivot'], this.pivot);
 

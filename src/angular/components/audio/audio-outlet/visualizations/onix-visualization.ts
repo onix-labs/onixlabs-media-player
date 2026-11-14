@@ -40,20 +40,25 @@ export class OnixVisualization extends Canvas2DVisualization {
   /** Radians the waveform circle rotates per frame. */
   private static readonly WAVEFORM_ROTATION_SPEED: number = 0.0125;
 
-  /** Per-frame trail fade rate. */
-  private static readonly FADE_RATE: number = 0.025;
+  /**
+   * Per-frame trail fade rate.
+   *
+   * 0.025 lifted by the power curve the trail was tuned on, kept to full
+   * precision so the trail's length is unchanged.
+   */
+  private static readonly FADE_RATE: number = 0.025069410897526945;
+
+  /** Gain applied to the waveform samples before they are drawn. */
+  private static readonly SENSITIVITY_FACTOR: number = 0.8;
+
+  /** Width of the waveform circle's stroke, in pixels. */
+  private static readonly LINE_WIDTH: number = 1;
 
   /** Per-frame outward zoom applied to the trail. */
   private static readonly ZOOM_SCALE: number = 1.01;
 
-  /** Exponent applied to the fade multiplier for more aggressive low-intensity fading. */
-  private static readonly FADE_POWER: number = 0.005;
-
   /** Number of points around the pulsating center circle. */
   private static readonly CENTER_CIRCLE_POINTS: number = 128;
-
-  /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 3;
 
   /**
    * Number of concentric rings the trail is redrawn in.
@@ -133,11 +138,8 @@ export class OnixVisualization extends Canvas2DVisualization {
   /** Radius, in pixels, over which the circle fades in instead of popping on. */
   private static readonly BASS_FADE_IN_RADIUS: number = 6;
 
-  /** Glow blur at full bass, in pixels. */
-  private static readonly BASS_GLOW_BLUR: number = 45;
-
-  /** Alpha of the glow around the circle, before the fade-in. */
-  private static readonly BASS_GLOW_ALPHA: number = 0.8;
+  /** Gain applied to the bass level when sizing the circle. */
+  private static readonly BASS_GAIN: number = 1.2;
 
   /** Fraction of the radius held at full white before the falloff starts. */
   private static readonly BASS_CORE_STOP: number = 0.55;
@@ -148,8 +150,11 @@ export class OnixVisualization extends Canvas2DVisualization {
   /** Alpha of the near-white filament drawn over the gradient core. */
   private static readonly FILAMENT_ALPHA: number = 0.5;
 
-  /** Width of the filament, as a fraction of the core stroke width. */
-  private static readonly FILAMENT_WIDTH_FRACTION: number = 0.5;
+  /**
+   * Width of the filament, in pixels. The same as the stroke: any thinner
+   * would be sub-pixel.
+   */
+  private static readonly FILAMENT_WIDTH: number = 1;
 
   /** Blur radius of the bloom pass, in pixels. */
   private static readonly BLOOM_BLUR: number = 64;
@@ -237,13 +242,6 @@ export class OnixVisualization extends Canvas2DVisualization {
       this.cosTable[i] = Math.cos(angle);
       this.sinTable[i] = Math.sin(angle);
     }
-
-    // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
-    this.sensitivity = 0.4;       // 40%
-    this.trailIntensity = 0.1;    // 10%
-    this.lineWidth = 1;           // 1px
-    this.glowIntensity = 0;       // no glow
-    this.waveformSmoothing = 1;   // 100%
   }
 
   public draw(): void {
@@ -273,13 +271,9 @@ export class OnixVisualization extends Canvas2DVisualization {
     trailCtx.clearRect(0, 0, width, height);
 
     // Draw back previous trails with rotation, zoom, and fade.
-    // Apply power curve to fade multiplier for more aggressive low-intensity fading.
-    const baseMultiplier: number = this.getFadeMultiplier();
-    const scaledMultiplier: number = Math.pow(baseMultiplier, OnixVisualization.FADE_POWER);
-    const effectiveFadeRate: number = OnixVisualization.FADE_RATE * scaledMultiplier;
     this.ripplePhase = (this.ripplePhase + OnixVisualization.RIPPLE_DRIFT) % TWO_PI;
     this.ringPhase = (this.ringPhase + OnixVisualization.RING_BOUNDARY_DRIFT) % 1;
-    this.drawShearedTrail(trailCtx, tempCanvas, effectiveFadeRate);
+    this.drawShearedTrail(trailCtx, tempCanvas, OnixVisualization.FADE_RATE);
 
     // Get waveform data
     this.analyser.getByteTimeDomainData(this.dataArray);
@@ -297,7 +291,7 @@ export class OnixVisualization extends Canvas2DVisualization {
     trailCtx.translate(centerX, centerY);
     trailCtx.rotate(this.waveformAngle);
     trailCtx.translate(-centerX, -centerY);
-    this.drawCenterCircle(trailCtx, false, trailScale);
+    this.drawCenterCircle(trailCtx, false);
     trailCtx.restore();
 
     // Clear main canvas and draw trails, then add a blurred copy on top. Once
@@ -313,7 +307,7 @@ export class OnixVisualization extends Canvas2DVisualization {
       ctx.translate(centerX, centerY);
       ctx.rotate(this.waveformAngle);
       ctx.translate(-centerX, -centerY);
-      this.drawCenterCircle(ctx, true, 1);
+      this.drawCenterCircle(ctx, true);
       ctx.restore();
     }
 
@@ -332,13 +326,6 @@ export class OnixVisualization extends Canvas2DVisualization {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
-
-  // Fixed visual parameters: ignore the global controls (values set in constructor).
-  public override setSensitivity(): void { /* fixed */ }
-  public override setTrailIntensity(): void { /* fixed */ }
-  public override setLineWidth(): void { /* fixed */ }
-  public override setGlowIntensity(): void { /* fixed */ }
-  public override setWaveformSmoothing(): void { /* fixed */ }
 
   protected override onResize(): void {
     // Pre-compute center values
@@ -395,7 +382,7 @@ export class OnixVisualization extends Canvas2DVisualization {
    *
    * @param trailCtx - Destination trail context
    * @param tempCanvas - Copy of the previous trail to read from
-   * @param fadeRate - Per-frame fade already scaled by trail intensity
+   * @param fadeRate - Per-frame fade
    */
   private drawShearedTrail(
     trailCtx: CanvasRenderingContext2D,
@@ -465,7 +452,7 @@ export class OnixVisualization extends Canvas2DVisualization {
     const centerY: number = this.centerY;
     const baseRadius: number = this.baseCircleRadius;
     const numPoints: number = OnixVisualization.CENTER_CIRCLE_POINTS;
-    const sensitivityFactor: number = this.sensitivityFactor;
+    const sensitivityFactor: number = OnixVisualization.SENSITIVITY_FACTOR;
     const amplitudeScale: number = height * 0.08;
     const sampleStep: number = (dataLength * 0.25) / numPoints;
     const cosTable: Float32Array = this.cosTable;
@@ -503,10 +490,8 @@ export class OnixVisualization extends Canvas2DVisualization {
    *
    * @param ctx - Destination context
    * @param coreOnly - Skip the glow layer, drawing only the stroke and filament
-   * @param shadowScale - Device pixels per canvas pixel on `ctx`; shadow blur
-   *   ignores the transform, so it has to be scaled by hand on a reduced surface
    */
-  private drawCenterCircle(ctx: CanvasRenderingContext2D, coreOnly: boolean, shadowScale: number): void {
+  private drawCenterCircle(ctx: CanvasRenderingContext2D, coreOnly: boolean): void {
     const centerX: number = this.centerX;
     const centerY: number = this.centerY;
     const numPoints: number = OnixVisualization.CENTER_CIRCLE_POINTS;
@@ -542,15 +527,13 @@ export class OnixVisualization extends Canvas2DVisualization {
       ctx.closePath();
     };
 
-    const glowBlur: number = this.getScaledGlowBlur(OnixVisualization.BASE_GLOW_BLUR) * shadowScale;
-
-    // Draw glow layer - use white shadow so glow complements all spectrum colors
+    // Draw glow layer - a wider translucent stroke with no shadow blur; the
+    // bloom pass over the trail is what spreads the light
     if (!coreOnly) {
       ctx.save();
-      ctx.shadowBlur = glowBlur;
-      ctx.shadowColor = 'rgba(255, 255, 255, 0.6)';
+      ctx.shadowBlur = 0;
       ctx.strokeStyle = glowGradient;
-      ctx.lineWidth = this.lineWidth + 3;
+      ctx.lineWidth = OnixVisualization.LINE_WIDTH + 3;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       buildPath();
@@ -560,7 +543,7 @@ export class OnixVisualization extends Canvas2DVisualization {
 
     // Draw main stroke with gradient
     ctx.strokeStyle = gradient;
-    ctx.lineWidth = this.lineWidth;
+    ctx.lineWidth = OnixVisualization.LINE_WIDTH;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     buildPath();
@@ -573,7 +556,7 @@ export class OnixVisualization extends Canvas2DVisualization {
     // source-over: the trail buffer accumulates, so an additive pass here
     // compounds frame on frame and saturates.
     ctx.strokeStyle = `rgba(255, 255, 255, ${OnixVisualization.FILAMENT_ALPHA})`;
-    ctx.lineWidth = Math.max(1, this.lineWidth * OnixVisualization.FILAMENT_WIDTH_FRACTION);
+    ctx.lineWidth = OnixVisualization.FILAMENT_WIDTH;
     buildPath();
     ctx.stroke();
   }
@@ -607,10 +590,10 @@ export class OnixVisualization extends Canvas2DVisualization {
       : OnixVisualization.BASS_RELEASE;
     this.bassLevel += (bassIntensity - this.bassLevel) * coefficient;
 
-    // Apply sensitivity and calculate radius
+    // Apply the gain and calculate radius
     // Max radius is 1/3 of the colored waveform radius
     const maxBassRadius: number = this.baseCircleRadius / 3;
-    const bassRadius: number = this.bassLevel * maxBassRadius * (this.sensitivity * 3);
+    const bassRadius: number = this.bassLevel * maxBassRadius * OnixVisualization.BASS_GAIN;
 
     if (bassRadius <= 0.5) return;
 
@@ -623,9 +606,8 @@ export class OnixVisualization extends Canvas2DVisualization {
 
     ctx.save();
 
-    // Glow scaled by the envelope, so hard kicks flare and quiet ones do not.
-    ctx.shadowBlur = this.getScaledGlowBlur(OnixVisualization.BASS_GLOW_BLUR) * this.bassLevel;
-    ctx.shadowColor = `rgba(255, 255, 255, ${OnixVisualization.BASS_GLOW_ALPHA * alpha})`;
+    // No shadow on any pass: the falloff below is what makes the circle glow.
+    ctx.shadowBlur = 0;
 
     // Radial fill: solid to the core stop, then falling off. A flat disc reads
     // as a sticker in a scene where everything else emits; the falloff makes it
@@ -645,10 +627,9 @@ export class OnixVisualization extends Canvas2DVisualization {
     ctx.fill();
 
     // Crisp rim over the falloff, so it still reads as a ring rather than a
-    // soft blob. No shadow on this pass: it is the edge, not the glow.
-    ctx.shadowBlur = 0;
+    // soft blob.
     ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
-    ctx.lineWidth = Math.max(1, this.lineWidth);
+    ctx.lineWidth = OnixVisualization.LINE_WIDTH;
     ctx.stroke();
 
     ctx.restore();

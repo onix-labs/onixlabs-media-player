@@ -6,7 +6,7 @@
  * - All public update methods and their validators
  * - Save/load persistence cycle
  * - validateAndMerge partial settings merge with defaults
- * - v1 to v2 migration (perVisualizationSensitivity -> perVisualizationSettings)
+ * - Settings files from older versions that still carry per-visualization tuning
  * - Subtitle, equalizer and video adjustment settings (update and load)
  * - Recent files and playlists (ordering, de-duplication, caps, removal)
  * - Debounced saving, flush, and failed or interrupted writes
@@ -57,11 +57,9 @@ import type {
   ApplicationSettingsUpdate,
   PlaybackSettingsUpdate,
   TranscodingSettingsUpdate,
-  AppearanceSettingsUpdate,
   SubtitleSettingsUpdate,
   EqualizerSettingsUpdate,
   VideoAdjustmentsSettingsUpdate,
-  PerVisualizationSettings,
   RecentItem,
   RecentItemsSettings,
   RenderResolution,
@@ -73,6 +71,8 @@ import type {
   ColorScheme,
   SeekMode,
   SubtitleFontFamily,
+  PlayerTheme,
+  AccentColor,
 } from './settings-manager.js';
 
 // ---------------------------------------------------------------------------
@@ -137,6 +137,9 @@ function pathsOf(items: readonly RecentItem[]): string[] {
 
 const mockedLoggerError: ReturnType<typeof vi.fn> = vi.mocked(settingsLogger.error);
 
+/** The theme the module defaults to on the platform the tests run on. */
+const PLATFORM_DEFAULT_THEME: PlayerTheme = process.platform === 'darwin' ? 'glass' : 'solid';
+
 // ---------------------------------------------------------------------------
 // Test suites
 // ---------------------------------------------------------------------------
@@ -174,9 +177,10 @@ describe('SettingsManager', () => {
       expect(settings.playback.videoAspectMode).toBe('default');
       expect(settings.transcoding.videoQuality).toBe('medium');
       expect(settings.transcoding.audioBitrate).toBe(192);
-      expect(settings.appearance.glassEnabled).toBe(process.platform !== 'win32');
+      expect(settings.appearance.theme).toBe(PLATFORM_DEFAULT_THEME);
       expect(settings.appearance.macOSVisualEffectState).toBe('active');
-      expect(settings.appearance.backgroundColor).toBe('#1e1e1e');
+      expect(settings.appearance.colorScheme).toBe('system');
+      expect(settings.appearance.accentColor).toBe('blue');
       expect(settings.windowState.miniplayerBounds).toBeNull();
     });
 
@@ -206,7 +210,6 @@ describe('SettingsManager', () => {
           defaultType: 'waveform',
           maxFrameRate: 60,
           fftSize: 1024,
-          perVisualizationSettings: {},
         },
         application: { serverPort: 3000, controlsAutoHideDelay: 10 },
         playback: {
@@ -218,9 +221,9 @@ describe('SettingsManager', () => {
         },
         transcoding: { videoQuality: 'high', audioBitrate: 320 },
         appearance: {
-          glassEnabled: false,
+          theme: 'pebble',
           macOSVisualEffectState: 'inactive',
-          backgroundColor: '#222222',
+          accentColor: 'violet',
         },
         windowState: { miniplayerBounds: null },
       };
@@ -241,9 +244,9 @@ describe('SettingsManager', () => {
       expect(settings.playback.videoAspectMode).toBe('16:9');
       expect(settings.transcoding.videoQuality).toBe('high');
       expect(settings.transcoding.audioBitrate).toBe(320);
-      expect(settings.appearance.glassEnabled).toBe(false);
+      expect(settings.appearance.theme).toBe('pebble');
       expect(settings.appearance.macOSVisualEffectState).toBe('inactive');
-      expect(settings.appearance.backgroundColor).toBe('#222222');
+      expect(settings.appearance.accentColor).toBe('violet');
     });
 
     it('should use defaults for missing top-level sections', () => {
@@ -256,7 +259,7 @@ describe('SettingsManager', () => {
       expect(settings.application.serverPort).toBe(0);
       expect(settings.playback.defaultVolume).toBe(0.5);
       expect(settings.transcoding.videoQuality).toBe('medium');
-      expect(settings.appearance.glassEnabled).toBe(process.platform !== 'win32');
+      expect(settings.appearance.theme).toBe(PLATFORM_DEFAULT_THEME);
       expect(settings.windowState.miniplayerBounds).toBeNull();
     });
 
@@ -267,7 +270,7 @@ describe('SettingsManager', () => {
         application: { serverPort: -5, controlsAutoHideDelay: 100 },
         playback: { defaultVolume: 5.0, crossfadeDuration: 9999, previousTrackThreshold: 99, skipDuration: 0, videoAspectMode: 'stretch' },
         transcoding: { videoQuality: 'ultra', audioBitrate: 64 },
-        appearance: { glassEnabled: 'yes', macOSVisualEffectState: 'turbo', backgroundColor: 'red' },
+        appearance: { theme: 'aero', glassEnabled: 'yes', macOSVisualEffectState: 'turbo', accentColor: 'red' },
       });
 
       const manager: SettingsManager = new SettingsManager();
@@ -285,10 +288,10 @@ describe('SettingsManager', () => {
       expect(settings.playback.videoAspectMode).toBe('default');
       expect(settings.transcoding.videoQuality).toBe('medium');
       expect(settings.transcoding.audioBitrate).toBe(192);
-      // glassEnabled is not boolean -> falls through to default
-      expect(settings.appearance.glassEnabled).toBe(process.platform !== 'win32');
+      // Neither theme nor glassEnabled is usable -> falls through to the platform default
+      expect(settings.appearance.theme).toBe(PLATFORM_DEFAULT_THEME);
       expect(settings.appearance.macOSVisualEffectState).toBe('active');
-      expect(settings.appearance.backgroundColor).toBe('#1e1e1e');
+      expect(settings.appearance.accentColor).toBe('blue');
     });
   });
 
@@ -374,53 +377,6 @@ describe('SettingsManager', () => {
       expect(r3.visualization.fftSize).toBe(2048);
     });
 
-    it('should deep-merge perVisualizationSettings with existing settings', () => {
-      const manager: SettingsManager = new SettingsManager();
-
-      // First update: set bars sensitivity
-      manager.updateVisualizationSettings({
-        perVisualizationSettings: { bars: { sensitivity: 0.7 } },
-      });
-
-      // Second update: set bars barDensity (should merge, not replace)
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: { bars: { barDensity: 'high' } },
-      });
-
-      expect(result.visualization.perVisualizationSettings['bars']?.sensitivity).toBe(0.7);
-      expect(result.visualization.perVisualizationSettings['bars']?.barDensity).toBe('high');
-    });
-
-    it('should strip invalid per-visualization settings keys', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          'unknownViz': { sensitivity: 0.5 },
-          'bars': { sensitivity: 0.9 },
-        },
-      });
-
-      expect(result.visualization.perVisualizationSettings['unknownViz']).toBeUndefined();
-      expect(result.visualization.perVisualizationSettings['bars']?.sensitivity).toBe(0.9);
-    });
-
-    it('should validate per-visualization local setting values', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          bars: {
-            sensitivity: 2.0,    // invalid: > 1
-            barDensity: 'ultra' as 'low',  // invalid
-            barColorBottom: '#00cc00',     // valid
-          },
-        },
-      });
-
-      const barsSettings = result.visualization.perVisualizationSettings['bars'];
-      expect(barsSettings?.sensitivity).toBeUndefined();
-      expect(barsSettings?.barDensity).toBeUndefined();
-      expect(barsSettings?.barColorBottom).toBe('#00cc00');
-    });
   });
 
   // ========================================================================
@@ -685,23 +641,57 @@ describe('SettingsManager', () => {
   // ========================================================================
 
   describe('updateAppearanceSettings', () => {
-    it('should accept valid glassEnabled boolean values', () => {
+    it.each(['solid', 'glass', 'pebble'] as const)('should accept the %s theme', (theme: PlayerTheme) => {
       const manager: SettingsManager = new SettingsManager();
 
-      const r1: AppSettings = manager.updateAppearanceSettings({ glassEnabled: false });
-      expect(r1.appearance.glassEnabled).toBe(false);
+      const result: AppSettings = manager.updateAppearanceSettings({ theme });
 
-      const r2: AppSettings = manager.updateAppearanceSettings({ glassEnabled: true });
-      expect(r2.appearance.glassEnabled).toBe(true);
+      expect(result.appearance.theme).toBe(theme);
     });
 
-    it('should reject non-boolean glassEnabled values', () => {
+    it.each([['aero'], [''], ['Glass'], [true], [1], [null]] as const)('should reject the theme %j and keep the current one', (theme: unknown) => {
       const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateAppearanceSettings({
-        glassEnabled: 'true' as unknown as boolean,
+      manager.updateAppearanceSettings({ theme: 'pebble' });
+
+      const result: AppSettings = manager.updateAppearanceSettings({ theme: theme as PlayerTheme, accentColor: 'rose' });
+
+      expect(result.appearance.theme).toBe('pebble');
+      // The whole update is rejected, so its valid fields are not applied either.
+      expect(result.appearance.accentColor).toBe('blue');
+    });
+
+    it.each(['amber', 'coral', 'rose', 'violet', 'blue', 'cyan', 'teal', 'green'] as const)(
+      'should accept the %s accent colour',
+      (accentColor: AccentColor) => {
+        const manager: SettingsManager = new SettingsManager();
+
+        const result: AppSettings = manager.updateAppearanceSettings({ accentColor });
+
+        expect(result.appearance.accentColor).toBe(accentColor);
+      },
+    );
+
+    it.each([['red'], ['#5073b8'], ['Blue'], [''], [3], [null]] as const)('should reject the accent colour %j and keep the current one', (accentColor: unknown) => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateAppearanceSettings({ accentColor: 'teal' });
+
+      const result: AppSettings = manager.updateAppearanceSettings({ accentColor: accentColor as AccentColor });
+
+      expect(result.appearance.accentColor).toBe('teal');
+    });
+
+    it('should leave the other appearance fields alone when one changes', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateAppearanceSettings({ theme: 'pebble', colorScheme: 'light', macOSVisualEffectState: 'inactive' });
+
+      const result: AppSettings = manager.updateAppearanceSettings({ accentColor: 'green' });
+
+      expect(result.appearance).toEqual({
+        theme: 'pebble',
+        macOSVisualEffectState: 'inactive',
+        colorScheme: 'light',
+        accentColor: 'green',
       });
-      // Should remain at default (true)
-      expect(result.appearance.glassEnabled).toBe(process.platform !== 'win32');
     });
 
     it('should accept valid macOSVisualEffectState values', () => {
@@ -722,34 +712,6 @@ describe('SettingsManager', () => {
         macOSVisualEffectState: 'turbo' as 'followWindow',
       });
       expect(result.appearance.macOSVisualEffectState).toBe('active');
-    });
-
-    it('should accept valid hex color for backgroundColor (#RRGGBB)', () => {
-      const validColors: readonly string[] = ['#000000', '#FFFFFF', '#1e1e1e', '#aAbBcC', '#123456'];
-
-      for (const color of validColors) {
-        const manager: SettingsManager = new SettingsManager();
-        const result: AppSettings = manager.updateAppearanceSettings({ backgroundColor: color });
-        expect(result.appearance.backgroundColor).toBe(color);
-      }
-    });
-
-    it('should reject invalid hex color formats', () => {
-      const invalidColors: readonly string[] = [
-        '#FFF',        // too short (#RGB)
-        'FF0000',      // missing hash
-        '#GGHHII',     // invalid hex chars
-        '#12345',      // 5 digits
-        '#1234567',    // 7 digits
-        'red',         // named color
-        '',            // empty
-      ];
-
-      for (const color of invalidColors) {
-        const manager: SettingsManager = new SettingsManager();
-        const result: AppSettings = manager.updateAppearanceSettings({ backgroundColor: color });
-        expect(result.appearance.backgroundColor).toBe('#1e1e1e');
-      }
     });
   });
 
@@ -850,7 +812,7 @@ describe('SettingsManager', () => {
       manager1.updateApplicationSettings({ serverPort: 4000, controlsAutoHideDelay: 10 });
       manager1.updatePlaybackSettings({ defaultVolume: 0.75, crossfadeDuration: 250, skipDuration: 15, videoAspectMode: 'fit' });
       manager1.updateTranscodingSettings({ videoQuality: 'high', audioBitrate: 320 });
-      manager1.updateAppearanceSettings({ glassEnabled: false, backgroundColor: '#333333' });
+      manager1.updateAppearanceSettings({ theme: 'pebble', accentColor: 'amber' });
       manager1.setMiniplayerBounds({ x: 10, y: 20, width: 300, height: 200 });
 
       manager1.flush();
@@ -869,30 +831,11 @@ describe('SettingsManager', () => {
       expect(settings.playback.videoAspectMode).toBe('fit');
       expect(settings.transcoding.videoQuality).toBe('high');
       expect(settings.transcoding.audioBitrate).toBe(320);
-      expect(settings.appearance.glassEnabled).toBe(false);
-      expect(settings.appearance.backgroundColor).toBe('#333333');
+      expect(settings.appearance.theme).toBe('pebble');
+      expect(settings.appearance.accentColor).toBe('amber');
       expect(settings.windowState.miniplayerBounds).toEqual({ x: 10, y: 20, width: 300, height: 200 });
     });
 
-    it('should persist perVisualizationSettings through a round trip', () => {
-      const manager1: SettingsManager = new SettingsManager();
-      manager1.updateVisualizationSettings({
-        perVisualizationSettings: {
-          bars: { sensitivity: 0.8, barDensity: 'high', barColorBottom: '#112233' },
-          waveform: { lineWidth: 3.0, glowIntensity: 0.7 },
-        },
-      });
-
-      manager1.flush();
-      const manager2: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager2.getSettings();
-
-      expect(settings.visualization.perVisualizationSettings['bars']?.sensitivity).toBe(0.8);
-      expect(settings.visualization.perVisualizationSettings['bars']?.barDensity).toBe('high');
-      expect(settings.visualization.perVisualizationSettings['bars']?.barColorBottom).toBe('#112233');
-      expect(settings.visualization.perVisualizationSettings['waveform']?.lineWidth).toBe(3.0);
-      expect(settings.visualization.perVisualizationSettings['waveform']?.glowIntensity).toBe(0.7);
-    });
   });
 
   // ========================================================================
@@ -1001,139 +944,159 @@ describe('SettingsManager', () => {
   });
 
   // ========================================================================
-  // 10. v1 -> v2 migration
+  // 10. Legacy per-visualization settings
   // ========================================================================
 
-  describe('v1 to v2 migration', () => {
-    it('should migrate perVisualizationSensitivity to perVisualizationSettings', () => {
-      writeSettingsFile({
-        version: 1,
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          perVisualizationSensitivity: {
-            bars: 0.7,
-            waveform: 0.3,
-            tunnel: 0.9,
-          },
-        },
-      });
+  describe('legacy per-visualization settings', () => {
+    /** Every global visualization setting, each away from its default, as an older version stored them. */
+    const LEGACY_VISUALIZATION: Record<string, unknown> = {
+      defaultType: 'neon',
+      maxFrameRate: 30,
+      fftSize: 512,
+      renderResolution: '640x360',
+      crossfadeDuration: 1500,
+      crossfadeStyle: 'blur',
+    };
 
-      const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
+    /** The global visualization settings LEGACY_VISUALIZATION should load as. */
+    const EXPECTED_VISUALIZATION: AppSettings['visualization'] = {
+      defaultType: 'neon',
+      maxFrameRate: 30,
+      fftSize: 512,
+      renderResolution: '640x360',
+      crossfadeDuration: 1500,
+      crossfadeStyle: 'blur',
+    };
 
-      expect(settings.visualization.perVisualizationSettings['bars']?.sensitivity).toBe(0.7);
-      expect(settings.visualization.perVisualizationSettings['waveform']?.sensitivity).toBe(0.3);
-      expect(settings.visualization.perVisualizationSettings['tunnel']?.sensitivity).toBe(0.9);
+    /** What older versions may have left under visualization.perVisualizationSettings. */
+    const LEGACY_PER_VISUALIZATION_VALUES: readonly (readonly [string, unknown])[] = [
+      ['well-formed', { bars: { barDensity: 'high', barColorTop: '#ff0000' }, neon: { glowIntensity: 0.9, sensitivity: 0.3 } }],
+      ['empty', {}],
+      ['out of range', { bars: { sensitivity: 5, barDensity: 'extreme', lineWidth: -1, strobeFrequency: 2.5 } }],
+      ['keyed by unknown visualizations', { nonexistent: { sensitivity: 0.5 } }],
+      ['holding non-object entries', { bars: 'loud', waveform: null, tunnel: 7 }],
+      ['a string', 'everything'],
+      ['a number', 42],
+      ['null', null],
+      ['an array', [{ bars: { barDensity: 'low' } }]],
+    ];
+
+    it.each(LEGACY_PER_VISUALIZATION_VALUES)('should load a file whose perVisualizationSettings is %s and keep every other visualization setting', (_label: string, legacy: unknown) => {
+      writeSettingsFile({ version: 2, visualization: { ...LEGACY_VISUALIZATION, perVisualizationSettings: legacy } });
+      mockedLoggerError.mockClear();
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.visualization).toEqual(EXPECTED_VISUALIZATION);
+      expect(mockedLoggerError).not.toHaveBeenCalled();
     });
 
-    it('should skip invalid visualization types during migration', () => {
-      writeSettingsFile({
-        version: 1,
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          perVisualizationSensitivity: {
-            bars: 0.5,
-            nonexistent: 0.8,
-          },
-        },
-      });
-
+    it.each(LEGACY_PER_VISUALIZATION_VALUES)('should not write a perVisualizationSettings that is %s back on the next save', (_label: string, legacy: unknown) => {
+      writeSettingsFile({ version: 2, visualization: { ...LEGACY_VISUALIZATION, perVisualizationSettings: legacy } });
       const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
 
-      expect(settings.visualization.perVisualizationSettings['bars']?.sensitivity).toBe(0.5);
-      expect(settings.visualization.perVisualizationSettings['nonexistent']).toBeUndefined();
+      manager.updatePlaybackSettings({ skipDuration: 15 });
+      manager.flush();
+
+      const onDisk: AppSettings = readSettingsFile();
+      expect(Object.keys(onDisk.visualization)).not.toContain('perVisualizationSettings');
+      expect(onDisk.visualization).toEqual(EXPECTED_VISUALIZATION);
+      expect(onDisk.playback.skipDuration).toBe(15);
     });
 
-    it('should skip invalid sensitivity values during migration', () => {
+    it('should drop the v1 perVisualizationSensitivity map as well', () => {
       writeSettingsFile({
         version: 1,
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          perVisualizationSensitivity: {
-            bars: 1.5,       // out of range
-            waveform: -0.1,  // out of range
-            tunnel: 'high',  // wrong type
-          },
-        },
+        visualization: { ...LEGACY_VISUALIZATION, perVisualizationSensitivity: { bars: 0.7, waveform: 0.3 } },
       });
-
       const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
 
-      expect(settings.visualization.perVisualizationSettings['bars']?.sensitivity).toBeUndefined();
-      expect(settings.visualization.perVisualizationSettings['waveform']?.sensitivity).toBeUndefined();
-      expect(settings.visualization.perVisualizationSettings['tunnel']?.sensitivity).toBeUndefined();
+      expect(manager.getSettings().visualization).toEqual(EXPECTED_VISUALIZATION);
+
+      manager.updateVisualizationSettings({ fftSize: 1024 });
+      manager.flush();
+
+      const onDisk: Record<string, unknown> = readSettingsFile().visualization as unknown as Record<string, unknown>;
+      expect(Object.keys(onDisk)).not.toContain('perVisualizationSensitivity');
+      expect(onDisk['fftSize']).toBe(1024);
     });
 
-    it('should not overwrite existing v2 perVisualizationSettings with migrated data', () => {
-      writeSettingsFile({
-        version: 1,
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          perVisualizationSettings: {
-            bars: { sensitivity: 0.6, barDensity: 'high' },
-          },
-          perVisualizationSensitivity: {
-            bars: 0.9,
-          },
-        },
-      });
-
+    it('should ignore perVisualizationSettings sent by an older renderer and apply the rest of the update', () => {
       const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
+      const update: unknown = { maxFrameRate: 15, perVisualizationSettings: { bars: { barDensity: 'high' } } };
 
-      // The v2 data is loaded first, then the v1 migration merges over it.
-      // Since the migration simply sets sensitivity, the barDensity from v2 should remain
-      // but sensitivity gets overwritten by the migration value.
-      expect(settings.visualization.perVisualizationSettings['bars']?.barDensity).toBe('high');
-      // The v1 migration overwrites sensitivity
-      expect(settings.visualization.perVisualizationSettings['bars']?.sensitivity).toBe(0.9);
+      const result: AppSettings = manager.updateVisualizationSettings(update as VisualizationSettingsUpdate);
+      manager.flush();
+
+      expect(result.visualization.maxFrameRate).toBe(15);
+      expect(Object.keys(result.visualization)).not.toContain('perVisualizationSettings');
+      expect(Object.keys(readSettingsFile().visualization)).not.toContain('perVisualizationSettings');
     });
   });
 
   // ========================================================================
-  // 11. macOSVibrancy migration (appearance)
+  // 11. Theme migration (appearance)
   // ========================================================================
 
-  describe('appearance macOSVibrancy migration', () => {
-    it('should migrate macOSVibrancy "none" to glassEnabled false', () => {
-      writeSettingsFile({
-        version: 1,
-        appearance: {
-          macOSVibrancy: 'none',
-        },
-      });
+  describe('appearance theme migration', () => {
+    it('should migrate glassEnabled true to the Glass theme', () => {
+      writeSettingsFile({ version: 2, appearance: { glassEnabled: true } });
 
-      const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
-
-      expect(settings.appearance.glassEnabled).toBe(false);
+      expect(new SettingsManager().getSettings().appearance.theme).toBe('glass');
     });
 
-    it('should migrate macOSVibrancy non-"none" to glassEnabled true', () => {
-      writeSettingsFile({
-        version: 1,
-        appearance: {
-          macOSVibrancy: 'under-window',
-        },
-      });
+    it('should migrate glassEnabled false to the Solid theme', () => {
+      writeSettingsFile({ version: 2, appearance: { glassEnabled: false } });
 
-      const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
-
-      expect(settings.appearance.glassEnabled).toBe(true);
+      expect(new SettingsManager().getSettings().appearance.theme).toBe('solid');
     });
 
-    it('should prefer glassEnabled boolean over macOSVibrancy if both present', () => {
+    it('should use the platform default theme when neither theme nor glassEnabled is stored', () => {
+      writeSettingsFile({ version: 2, appearance: { colorScheme: 'dark' } });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.appearance.theme).toBe(PLATFORM_DEFAULT_THEME);
+      expect(settings.appearance.colorScheme).toBe('dark');
+    });
+
+    it.each([['solid'], ['glass'], ['pebble']] as const)('should prefer an explicit %s theme over glassEnabled', (theme: PlayerTheme) => {
+      writeSettingsFile({ version: 2, appearance: { theme, glassEnabled: theme !== 'glass' } });
+
+      expect(new SettingsManager().getSettings().appearance.theme).toBe(theme);
+    });
+
+    it.each([['aero'], [''], ['PEBBLE'], [42], [true], [null], [{}]] as const)(
+      'should ignore the malformed theme %j and migrate glassEnabled instead',
+      (theme: unknown) => {
+        writeSettingsFile({ version: 2, appearance: { theme, glassEnabled: false } });
+
+        expect(new SettingsManager().getSettings().appearance.theme).toBe('solid');
+      },
+    );
+
+    it.each([['true'], [1], [0], [null], [[]]] as const)(
+      'should ignore the malformed glassEnabled %j and use the platform default theme',
+      (glassEnabled: unknown) => {
+        writeSettingsFile({ version: 2, appearance: { glassEnabled } });
+
+        expect(new SettingsManager().getSettings().appearance.theme).toBe(PLATFORM_DEFAULT_THEME);
+      },
+    );
+
+    it('should migrate macOSVibrancy "none" to the Solid theme', () => {
+      writeSettingsFile({ version: 1, appearance: { macOSVibrancy: 'none' } });
+
+      expect(new SettingsManager().getSettings().appearance.theme).toBe('solid');
+    });
+
+    it('should migrate macOSVibrancy non-"none" to the Glass theme', () => {
+      writeSettingsFile({ version: 1, appearance: { macOSVibrancy: 'under-window' } });
+
+      expect(new SettingsManager().getSettings().appearance.theme).toBe('glass');
+    });
+
+    it('should prefer glassEnabled over macOSVibrancy if both present', () => {
       writeSettingsFile({
         version: 2,
         appearance: {
@@ -1142,164 +1105,61 @@ describe('SettingsManager', () => {
         },
       });
 
-      const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
+      expect(new SettingsManager().getSettings().appearance.theme).toBe('solid');
+    });
 
-      expect(settings.appearance.glassEnabled).toBe(false);
+    it('should drop the old window colour, tint and glass keys and never write them back', () => {
+      writeSettingsFile({
+        version: 2,
+        appearance: {
+          glassEnabled: true,
+          macOSVisualEffectState: 'followWindow',
+          colorScheme: 'light',
+          backgroundColor: '#123456',
+          backgroundHue: 210,
+          backgroundSaturation: 40,
+          backgroundLightness: 20,
+          windowTintHue: 300,
+          windowTintSaturation: 60,
+          windowTintLightness: 45,
+          windowTintAlpha: 0.4,
+        },
+      });
+
+      const manager: SettingsManager = new SettingsManager();
+      expect(manager.getSettings().appearance).toEqual({
+        theme: 'glass',
+        macOSVisualEffectState: 'followWindow',
+        colorScheme: 'light',
+        accentColor: 'blue',
+      });
+
+      manager.updateAppearanceSettings({ accentColor: 'cyan' });
+      manager.flush();
+
+      expect(readSettingsFile().appearance).toEqual({
+        theme: 'glass',
+        macOSVisualEffectState: 'followWindow',
+        colorScheme: 'light',
+        accentColor: 'cyan',
+      });
+    });
+
+    it.each([['amber'], ['green']] as const)('should load the stored %s accent colour', (accentColor: AccentColor) => {
+      writeSettingsFile({ version: 2, appearance: { accentColor } });
+
+      expect(new SettingsManager().getSettings().appearance.accentColor).toBe(accentColor);
+    });
+
+    it.each([['mono'], ['purple'], ['#a166ab'], [''], [7], [null]] as const)('should replace the malformed accent colour %j with blue', (accentColor: unknown) => {
+      writeSettingsFile({ version: 2, appearance: { accentColor } });
+
+      expect(new SettingsManager().getSettings().appearance.accentColor).toBe('blue');
     });
   });
 
   // ========================================================================
-  // 12. Per-visualization local settings validators (via update)
-  // ========================================================================
-
-  describe('per-visualization local setting validators', () => {
-    it('should accept valid barDensity values (low, medium, high)', () => {
-      const validDensities: readonly string[] = ['low', 'medium', 'high'];
-
-      for (const density of validDensities) {
-        const manager: SettingsManager = new SettingsManager();
-        const result: AppSettings = manager.updateVisualizationSettings({
-          perVisualizationSettings: {
-            bars: { barDensity: density as 'low' | 'medium' | 'high' },
-          },
-        });
-        expect(result.visualization.perVisualizationSettings['bars']?.barDensity).toBe(density);
-      }
-    });
-
-    it('should reject invalid barDensity values', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          bars: { barDensity: 'extreme' as 'low' },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['bars']?.barDensity).toBeUndefined();
-    });
-
-    it('should accept valid trailIntensity (0.0 - 1.0)', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          tunnel: { trailIntensity: 0.75 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['tunnel']?.trailIntensity).toBe(0.75);
-    });
-
-    it('should reject invalid trailIntensity', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          tunnel: { trailIntensity: 1.5 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['tunnel']?.trailIntensity).toBeUndefined();
-    });
-
-    it('should accept valid lineWidth (1.0 - 5.0)', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          waveform: { lineWidth: 3.5 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['waveform']?.lineWidth).toBe(3.5);
-    });
-
-    it('should reject invalid lineWidth', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const r1: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: { waveform: { lineWidth: 0.5 } },
-      });
-      expect(r1.visualization.perVisualizationSettings['waveform']?.lineWidth).toBeUndefined();
-
-      const manager2: SettingsManager = new SettingsManager();
-      const r2: AppSettings = manager2.updateVisualizationSettings({
-        perVisualizationSettings: { waveform: { lineWidth: 6.0 } },
-      });
-      expect(r2.visualization.perVisualizationSettings['waveform']?.lineWidth).toBeUndefined();
-    });
-
-    it('should accept valid glowIntensity (0.0 - 1.0)', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          neon: { glowIntensity: 0.9 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['neon']?.glowIntensity).toBe(0.9);
-    });
-
-    it('should reject invalid glowIntensity', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          neon: { glowIntensity: -0.1 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['neon']?.glowIntensity).toBeUndefined();
-    });
-
-    it('should accept valid waveformSmoothing (0.0 - 1.0)', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          onix: { waveformSmoothing: 0.8 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['onix']?.waveformSmoothing).toBe(0.8);
-    });
-
-    it('should reject invalid waveformSmoothing', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          onix: { waveformSmoothing: 1.5 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['onix']?.waveformSmoothing).toBeUndefined();
-    });
-
-    it('should accept valid hex color for bar colors', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          bars: {
-            barColorBottom: '#00ff00',
-            barColorMiddle: '#ffff00',
-            barColorTop: '#ff0000',
-          },
-        },
-      });
-
-      const barsSettings = result.visualization.perVisualizationSettings['bars'];
-      expect(barsSettings?.barColorBottom).toBe('#00ff00');
-      expect(barsSettings?.barColorMiddle).toBe('#ffff00');
-      expect(barsSettings?.barColorTop).toBe('#ff0000');
-    });
-
-    it('should reject invalid hex color for bar colors', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          bars: {
-            barColorBottom: '#FFF',       // too short
-            barColorMiddle: 'FFFF00',     // missing hash
-            barColorTop: '#ZZZZZZ',       // invalid hex
-          },
-        },
-      });
-
-      const barsSettings = result.visualization.perVisualizationSettings['bars'];
-      // All invalid -> no entry should exist at all (empty object filtered out)
-      expect(barsSettings).toBeUndefined();
-    });
-  });
-
-  // ========================================================================
-  // 13. Edge cases / additional coverage
+  // 12. Edge cases / additional coverage
   // ========================================================================
 
   describe('edge cases', () => {
@@ -1320,7 +1180,7 @@ describe('SettingsManager', () => {
       expect(afterTrans.transcoding.videoQuality).toBe(before.transcoding.videoQuality);
 
       const afterAppear: AppSettings = manager.updateAppearanceSettings({});
-      expect(afterAppear.appearance.glassEnabled).toBe(before.appearance.glassEnabled);
+      expect(afterAppear.appearance).toEqual(before.appearance);
     });
 
     it('should handle rapid sequential updates correctly', () => {
@@ -1332,38 +1192,6 @@ describe('SettingsManager', () => {
 
       const settings: AppSettings = manager.getSettings();
       expect(settings.visualization.defaultType).toBe('neon');
-    });
-
-    it('should handle an empty perVisualizationSettings object in file', () => {
-      writeSettingsFile({
-        version: 2,
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          perVisualizationSettings: {},
-        },
-      });
-
-      const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
-
-      expect(settings.visualization.perVisualizationSettings).toEqual({});
-    });
-
-    it('should not include per-visualization entries with all invalid fields', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          bars: {
-            sensitivity: 5.0,       // invalid
-            barDensity: 'x' as 'low', // invalid
-          },
-        },
-      });
-
-      // The bars entry should not exist because all its fields were invalid
-      expect(result.visualization.perVisualizationSettings['bars']).toBeUndefined();
     });
 
     it('should use atomic write (temp file strategy)', () => {
@@ -1676,63 +1504,6 @@ describe('SettingsManager', () => {
       expect(settings.visualization.crossfadeStyle).toBe('fade');
     });
 
-    it('should accept a whole-number strobe frequency between 1 and 20 Hz', () => {
-      const validFrequencies: readonly number[] = [1, 10, 20];
-
-      for (const frequency of validFrequencies) {
-        const manager: SettingsManager = new SettingsManager();
-        const result: AppSettings = manager.updateVisualizationSettings({
-          perVisualizationSettings: { spotlight: { strobeFrequency: frequency } },
-        });
-        expect(result.visualization.perVisualizationSettings['spotlight']?.strobeFrequency).toBe(frequency);
-      }
-    });
-
-    it('should drop a strobe frequency that is fractional or out of range', () => {
-      const invalidFrequencies: readonly unknown[] = [0, 21, 2.5, -1, '5'];
-
-      for (const frequency of invalidFrequencies) {
-        const manager: SettingsManager = new SettingsManager();
-        const result: AppSettings = manager.updateVisualizationSettings({
-          perVisualizationSettings: { spotlight: { strobeFrequency: frequency as number, sensitivity: 0.5 } },
-        });
-        expect(result.visualization.perVisualizationSettings['spotlight']).toEqual({ sensitivity: 0.5 });
-      }
-    });
-
-    it('should skip a per-visualization entry that is not an object', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const update: unknown = { bars: 'loud', waveform: null, tunnel: { sensitivity: 0.2 } };
-
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: update as PerVisualizationSettings,
-      });
-
-      expect(result.visualization.perVisualizationSettings).toEqual({ tunnel: { sensitivity: 0.2 } });
-    });
-
-    it('should leave per-visualization settings alone when the update is not an object', () => {
-      const manager: SettingsManager = new SettingsManager();
-      manager.updateVisualizationSettings({ perVisualizationSettings: { bars: { sensitivity: 0.3 } } });
-
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: null as unknown as PerVisualizationSettings,
-      });
-
-      expect(result.visualization.perVisualizationSettings).toEqual({ bars: { sensitivity: 0.3 } });
-    });
-
-    it('should ignore perVisualizationSettings in the file when it is not an object', () => {
-      writeSettingsFile({
-        version: 2,
-        visualization: { defaultType: 'bars', perVisualizationSettings: 'everything' },
-      });
-
-      const settings: AppSettings = new SettingsManager().getSettings();
-
-      expect(settings.visualization.defaultType).toBe('bars');
-      expect(settings.visualization.perVisualizationSettings).toEqual({});
-    });
   });
 
   // ===========================================================================
@@ -2040,14 +1811,10 @@ describe('SettingsManager', () => {
   });
 
   // ===========================================================================
-  // Appearance: colour scheme, background HSL, window tint
+  // Appearance: colour scheme
   // ===========================================================================
 
-  describe('appearance colour scheme, background and tint', () => {
-    type AppearanceNumberField =
-      | 'backgroundHue' | 'backgroundSaturation' | 'backgroundLightness'
-      | 'windowTintHue' | 'windowTintSaturation' | 'windowTintLightness' | 'windowTintAlpha';
-
+  describe('appearance colour scheme', () => {
     it('should accept every colour scheme', () => {
       const schemes: readonly ColorScheme[] = ['dark', 'light', 'system'];
 
@@ -2067,157 +1834,16 @@ describe('SettingsManager', () => {
       expect(result.appearance.colorScheme).toBe('system');
     });
 
-    it.each([
-      ['backgroundHue', 0], ['backgroundHue', 360],
-      ['backgroundSaturation', 0], ['backgroundSaturation', 100],
-      ['backgroundLightness', 0], ['backgroundLightness', 100],
-      ['windowTintHue', 360], ['windowTintSaturation', 100], ['windowTintLightness', 100],
-      ['windowTintAlpha', 1], ['windowTintAlpha', 0.35],
-    ] as const)('should accept %s at %d', (field: AppearanceNumberField, value: number) => {
-      const manager: SettingsManager = new SettingsManager();
-      const update: AppearanceSettingsUpdate = { [field]: value };
+    it('should load the colour scheme from the settings file', () => {
+      writeSettingsFile({ version: 2, appearance: { colorScheme: 'light' } });
 
-      const result: AppSettings = manager.updateAppearanceSettings(update);
-
-      expect(result.appearance[field]).toBe(value);
+      expect(new SettingsManager().getSettings().appearance.colorScheme).toBe('light');
     });
 
-    it.each([
-      ['backgroundHue', -1], ['backgroundHue', 361], ['backgroundHue', 'red'],
-      ['backgroundSaturation', -1], ['backgroundSaturation', 101],
-      ['backgroundLightness', -0.5], ['backgroundLightness', 100.5],
-      ['windowTintHue', -1], ['windowTintHue', 400],
-      ['windowTintSaturation', 101], ['windowTintLightness', -10],
-      ['windowTintAlpha', -0.1], ['windowTintAlpha', 1.5], ['windowTintAlpha', Number.NaN],
-    ] as const)('should reject %s at %s', (field: AppearanceNumberField, value: number | string) => {
-      const manager: SettingsManager = new SettingsManager();
-      const before: AppSettings = manager.getSettings();
-      const update: unknown = { [field]: value, colorScheme: 'light' };
+    it('should replace an unknown colour scheme in the settings file with the default', () => {
+      writeSettingsFile({ version: 2, appearance: { colorScheme: 'neon' } });
 
-      const result: AppSettings = manager.updateAppearanceSettings(update as AppearanceSettingsUpdate);
-
-      expect(result.appearance).toEqual(before.appearance);
-    });
-
-    it.each([
-      [0, 100, 50, '#ff0000'],
-      [120, 100, 50, '#00ff00'],
-      [240, 100, 50, '#0000ff'],
-      [360, 100, 50, '#ff0000'],
-      [60, 100, 50, '#ffff00'],
-      [200, 0, 100, '#ffffff'],
-      [200, 100, 0, '#000000'],
-      [0, 0, 20, '#333333'],
-    ] as const)('should derive the background colour for hsl(%d, %d%%, %d%%) as %s', (hue: number, saturation: number, lightness: number, expected: string) => {
-      const manager: SettingsManager = new SettingsManager();
-
-      const result: AppSettings = manager.updateAppearanceSettings({
-        backgroundHue: hue,
-        backgroundSaturation: saturation,
-        backgroundLightness: lightness,
-      });
-
-      expect(result.appearance.backgroundColor).toBe(expected);
-    });
-
-    it('should derive the background colour from stored HSL values when only one changes', () => {
-      const manager: SettingsManager = new SettingsManager();
-      manager.updateAppearanceSettings({ backgroundHue: 240, backgroundSaturation: 100, backgroundLightness: 50 });
-
-      const result: AppSettings = manager.updateAppearanceSettings({ backgroundHue: 120 });
-
-      expect(result.appearance.backgroundColor).toBe('#00ff00');
-      expect(result.appearance.backgroundSaturation).toBe(100);
-      expect(result.appearance.backgroundLightness).toBe(50);
-    });
-
-    it('should prefer the HSL-derived colour over an explicit backgroundColor in the same update', () => {
-      const manager: SettingsManager = new SettingsManager();
-
-      const result: AppSettings = manager.updateAppearanceSettings({
-        backgroundColor: '#123456',
-        backgroundHue: 0,
-        backgroundSaturation: 100,
-        backgroundLightness: 50,
-      });
-
-      expect(result.appearance.backgroundColor).toBe('#ff0000');
-    });
-
-    it('should leave the background colour alone when only the window tint changes', () => {
-      const manager: SettingsManager = new SettingsManager();
-      manager.updateAppearanceSettings({ backgroundColor: '#123456' });
-
-      const result: AppSettings = manager.updateAppearanceSettings({
-        windowTintHue: 210,
-        windowTintSaturation: 80,
-        windowTintLightness: 40,
-        windowTintAlpha: 0.25,
-      });
-
-      expect(result.appearance.backgroundColor).toBe('#123456');
-      expect(result.appearance.windowTintHue).toBe(210);
-      expect(result.appearance.windowTintSaturation).toBe(80);
-      expect(result.appearance.windowTintLightness).toBe(40);
-      expect(result.appearance.windowTintAlpha).toBe(0.25);
-    });
-
-    it('should load colour scheme, background HSL and tint from the settings file', () => {
-      writeSettingsFile({
-        version: 2,
-        appearance: {
-          colorScheme: 'light',
-          backgroundHue: 200,
-          backgroundSaturation: 30,
-          backgroundLightness: 15,
-          windowTintHue: 300,
-          windowTintSaturation: 60,
-          windowTintLightness: 45,
-          windowTintAlpha: 0.4,
-        },
-      });
-
-      const settings: AppSettings = new SettingsManager().getSettings();
-
-      expect(settings.appearance).toMatchObject({
-        colorScheme: 'light',
-        backgroundHue: 200,
-        backgroundSaturation: 30,
-        backgroundLightness: 15,
-        windowTintHue: 300,
-        windowTintSaturation: 60,
-        windowTintLightness: 45,
-        windowTintAlpha: 0.4,
-      });
-    });
-
-    it('should replace out-of-range appearance values in the settings file with defaults', () => {
-      writeSettingsFile({
-        version: 2,
-        appearance: {
-          colorScheme: 'neon',
-          backgroundHue: 720,
-          backgroundSaturation: -5,
-          backgroundLightness: '12',
-          windowTintHue: -90,
-          windowTintSaturation: 250,
-          windowTintLightness: null,
-          windowTintAlpha: 2,
-        },
-      });
-
-      const settings: AppSettings = new SettingsManager().getSettings();
-
-      expect(settings.appearance).toMatchObject({
-        colorScheme: 'system',
-        backgroundHue: 0,
-        backgroundSaturation: 0,
-        backgroundLightness: 12,
-        windowTintHue: 0,
-        windowTintSaturation: 0,
-        windowTintLightness: 0,
-        windowTintAlpha: 0,
-      });
+      expect(new SettingsManager().getSettings().appearance.colorScheme).toBe('system');
     });
   });
 
@@ -3544,33 +3170,56 @@ describe('SettingsManager', () => {
       vi.resetModules();
     });
 
-    it('should disable glass by default on Windows', async () => {
-      const manager: SettingsManager = await createManagerOn('win32');
+    it.each([['win32', 'solid'], ['linux', 'solid'], ['darwin', 'glass']] as const)(
+      'should default the theme on %s to %s',
+      async (platform: NodeJS.Platform, theme: PlayerTheme) => {
+        const manager: SettingsManager = await createManagerOn(platform);
 
-      expect(manager.getSettings().appearance.glassEnabled).toBe(false);
-    });
+        expect(manager.getSettings().appearance.theme).toBe(theme);
+      },
+    );
 
-    it.each([['darwin'], ['linux']] as const)('should enable glass by default on %s', async (platform: NodeJS.Platform) => {
+    it.each([['win32', 'solid'], ['linux', 'solid'], ['darwin', 'glass']] as const)(
+      'should use the %s default theme (%s) when the file has an appearance section without a theme',
+      async (platform: NodeJS.Platform, theme: PlayerTheme) => {
+        writeSettingsFile({ version: 2, appearance: { colorScheme: 'dark' } });
+
+        const manager: SettingsManager = await createManagerOn(platform);
+
+        expect(manager.getSettings().appearance.theme).toBe(theme);
+        expect(manager.getSettings().appearance.colorScheme).toBe('dark');
+      },
+    );
+
+    it.each([['win32'], ['linux'], ['darwin']] as const)('should default to the blue accent on %s', async (platform: NodeJS.Platform) => {
       const manager: SettingsManager = await createManagerOn(platform);
 
-      expect(manager.getSettings().appearance.glassEnabled).toBe(true);
+      expect(manager.getSettings().appearance.accentColor).toBe('blue');
     });
 
-    it('should use the Windows glass default when the file has an appearance section without it', async () => {
-      writeSettingsFile({ version: 2, appearance: { colorScheme: 'dark' } });
-
-      const manager: SettingsManager = await createManagerOn('win32');
-
-      expect(manager.getSettings().appearance.glassEnabled).toBe(false);
-      expect(manager.getSettings().appearance.colorScheme).toBe('dark');
-    });
-
-    it('should honour glass enabled in the file on Windows', async () => {
+    it('should migrate glass enabled in the file to the Glass theme on Windows', async () => {
       writeSettingsFile({ version: 2, appearance: { glassEnabled: true } });
 
       const manager: SettingsManager = await createManagerOn('win32');
 
-      expect(manager.getSettings().appearance.glassEnabled).toBe(true);
+      expect(manager.getSettings().appearance.theme).toBe('glass');
+    });
+
+    // Linux has no glass; the stored choice is kept and the window treats it as Solid.
+    it('should keep the Glass theme migrated from the file on Linux', async () => {
+      writeSettingsFile({ version: 2, appearance: { glassEnabled: true } });
+
+      const manager: SettingsManager = await createManagerOn('linux');
+
+      expect(manager.getSettings().appearance.theme).toBe('glass');
+    });
+
+    it('should migrate glass disabled in the file to the Solid theme on macOS', async () => {
+      writeSettingsFile({ version: 2, appearance: { glassEnabled: false } });
+
+      const manager: SettingsManager = await createManagerOn('darwin');
+
+      expect(manager.getSettings().appearance.theme).toBe('solid');
     });
 
     it('should use the same non-appearance defaults on every platform', async () => {

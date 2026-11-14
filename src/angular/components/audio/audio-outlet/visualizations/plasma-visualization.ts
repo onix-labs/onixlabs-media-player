@@ -28,8 +28,11 @@ export class PlasmaVisualization extends Canvas2DVisualization {
   /** Per-frame outward zoom applied to the trails. */
   private static readonly ZOOM_SCALE: number = 1.02;
 
-  /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 15;
+  /** Glow blur radius in pixels. */
+  private static readonly GLOW_BLUR: number = 15;
+
+  /** Gain applied to the waveform samples before they are drawn. */
+  private static readonly SENSITIVITY_FACTOR: number = 0.6;
 
   /** Number of points sampled across each waveform. */
   private static readonly WAVEFORM_POINTS: number = 128;
@@ -80,13 +83,6 @@ export class PlasmaVisualization extends Canvas2DVisualization {
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
-    // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
-    this.sensitivity = 0.3;       // 30%
-    this.trailIntensity = 0.5;    // 50%
-    this.lineWidth = 1;           // 1px
-    this.glowIntensity = 1;       // 100%
-    this.waveformSmoothing = 1;   // 100%
-
     // Pre-allocate point arrays
     this.topPoints = [];
     this.bottomPoints = [];
@@ -132,7 +128,7 @@ export class PlasmaVisualization extends Canvas2DVisualization {
     this.drawPathWithLayers(
       (): void => { this.buildSmoothPath(this.topTrailCtx!, this.topPoints, PlasmaVisualization.WAVEFORM_POINTS); },
       color1.main, color1.glow, PlasmaVisualization.COLOR_HIGHLIGHT,
-      {ctx: this.topTrailCtx!, baseGlowBlur: PlasmaVisualization.BASE_GLOW_BLUR}
+      {ctx: this.topTrailCtx!, glowBlur: PlasmaVisualization.GLOW_BLUR}
     );
 
     // Process bottom waveform (trails expand outward from center)
@@ -146,7 +142,7 @@ export class PlasmaVisualization extends Canvas2DVisualization {
     this.drawPathWithLayers(
       (): void => { this.buildSmoothPath(this.bottomTrailCtx!, this.bottomPoints, PlasmaVisualization.WAVEFORM_POINTS); },
       color2.main, color2.glow, PlasmaVisualization.COLOR_HIGHLIGHT,
-      {ctx: this.bottomTrailCtx!, baseGlowBlur: PlasmaVisualization.BASE_GLOW_BLUR}
+      {ctx: this.bottomTrailCtx!, glowBlur: PlasmaVisualization.GLOW_BLUR}
     );
 
     // Composite both trail canvases to main canvas with additive blending
@@ -162,13 +158,6 @@ export class PlasmaVisualization extends Canvas2DVisualization {
   protected override onFftSizeChanged(): void {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
-
-  // Fixed visual parameters: ignore the global controls (values set in constructor).
-  public override setSensitivity(): void { /* fixed */ }
-  public override setTrailIntensity(): void { /* fixed */ }
-  public override setLineWidth(): void { /* fixed */ }
-  public override setGlowIntensity(): void { /* fixed */ }
-  public override setWaveformSmoothing(): void { /* fixed */ }
 
   protected override onResize(): void {
     const width: number = this.width;
@@ -226,7 +215,7 @@ export class PlasmaVisualization extends Canvas2DVisualization {
     const dataLength: number = this.dataArray.length;
     const sliceWidth: number = this.sliceWidth;
     const amplitude: number = this.waveformAmplitude;
-    const sensitivityFactor: number = this.sensitivityFactor;
+    const sensitivityFactor: number = PlasmaVisualization.SENSITIVITY_FACTOR;
 
     for (let i: number = 0; i <= numPoints; i++) {
       // Map point to data index with offset for variation between waveforms

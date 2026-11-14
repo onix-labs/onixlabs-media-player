@@ -1,4 +1,5 @@
 @use 'variables' as *;
+@use 'player-theme';
 
 :host {
   display: flex;
@@ -243,5 +244,132 @@
 
   .drag-invalid & {
     color: rgba(239, 68, 68, 0.8);
+  }
+}
+
+// =============================================================================
+// Pebble player theme
+// =============================================================================
+//
+// The playlist is part of the outlet's recessed Pebble well (see
+// layout-outlet.scss), set off from the media by a hairline. Nothing divides
+// the header from the rows or the rows from each other, which sit inset from
+// the playlist's sides; a hovered row and the
+// current track are rounded tiles, the current track raised off the well in
+// the button surface with its icon in the status colour.
+@include player-theme.pebble {
+  .playlist-container {
+    border-left-color: var(--pebble-border);
+
+    &.drag-over {
+      background: color-mix(in srgb, var(--pebble-success) 10%, transparent);
+      border-left-color: var(--pebble-success);
+    }
+
+    &.drag-invalid {
+      background: color-mix(in srgb, var(--pebble-danger) 10%, transparent);
+      border-left-color: var(--pebble-danger);
+    }
+  }
+
+  .playlist-header {
+    .playlist-title {
+      color: var(--pebble-heading);
+    }
+
+    .playlist-count-btn {
+      font-family: var(--pebble-font);
+
+      .count-text {
+        color: var(--pebble-text-muted);
+      }
+
+      .clear-text {
+        color: var(--pebble-danger-contrast);
+      }
+
+      &:hover:not(.empty) {
+        background: var(--pebble-danger);
+        border-color: var(--pebble-danger);
+      }
+    }
+  }
+
+  .playlist-items {
+    padding-inline: 0.25rem;
+  }
+
+  .playlist-item {
+    border-radius: var(--pebble-radius-sm);
+    corner-shape: var(--pebble-corner-shape);
+
+    &:hover {
+      background: color-mix(in srgb, var(--pebble-heading) 6%, transparent);
+    }
+
+    .item-icon,
+    .item-info .item-artist,
+    .item-duration,
+    .remove-btn {
+      color: var(--pebble-text-muted);
+    }
+
+    .item-info .item-title {
+      color: var(--pebble-text);
+    }
+
+    .item-duration {
+      font-family: var(--pebble-font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .remove-btn:hover {
+      color: var(--pebble-danger);
+    }
+
+    // The current track, raised. Its title stays the text colour (the status
+    // tints are not AA on the tile); the icon carries the status.
+    &.playing,
+    &.paused,
+    &.stopped {
+      --pebble-edge-top: var(--pebble-edge-light);
+      --pebble-edge-bottom: var(--pebble-edge-button);
+      background: var(--pebble-button-surface);
+      box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-sm);
+
+      .item-info .item-title {
+        color: var(--pebble-heading);
+        font-weight: var(--pebble-weight-medium);
+      }
+    }
+
+    &.playing .item-icon {
+      color: var(--pebble-success);
+    }
+
+    &.paused .item-icon {
+      color: var(--pebble-warning-text);
+    }
+
+    &.stopped .item-icon {
+      color: var(--pebble-danger);
+    }
+  }
+
+  .empty-state {
+    color: var(--pebble-text-muted);
+
+    .hint {
+      color: var(--pebble-text-muted);
+    }
+  }
+
+  // Spelled out: `.drag-over &` would put the ancestor before :host-context.
+  .drag-over .empty-state {
+    color: var(--pebble-success);
+  }
+
+  .drag-invalid .empty-state {
+    color: var(--pebble-danger);
   }
 }

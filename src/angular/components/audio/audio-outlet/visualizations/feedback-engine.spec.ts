@@ -7,7 +7,7 @@
  * - Resize: surface sizing, reuse and replacement
  * - Frame: the step divider, the pre / warp / post order, the ping-pong
  *   surfaces, blending, and what each pass is given
- * - Audio: the waveform texture, the bass envelope, phase and sensitivity
+ * - Audio: the waveform texture, the bass envelope and phase
  * - Pulse: threshold, roll, cooldown and how it runs out
  * - Idling, FFT size changes, a context that cannot create textures, destroy
  *
@@ -666,8 +666,8 @@ describe('feedback engine', (): void => {
 
       steps(viz, 1);
 
-      // 0.34 of the surface, at the default 25% sensitivity.
-      expect(floats('uAmplitude', 'trace')[0]).toBeCloseTo(0.17, 12);
+      // 0.34 of the surface.
+      expect(floats('uAmplitude', 'trace')[0]).toBeCloseTo(0.34, 12);
     });
 
     it('flexes the trace further once there is bass', (): void => {
@@ -676,9 +676,9 @@ describe('feedback engine', (): void => {
 
       steps(viz, 1);
 
-      // Three frames of smoothing toward a bass level of 0.5, at 60% flex.
-      const bass: number = 0.5 * (1 - 0.82 ** 3);
-      expect(floats('uAmplitude', 'trace')[0]).toBeCloseTo(0.17 * (1 + 0.6 * bass), 10);
+      // Three frames of smoothing toward a bass level of 1, at 60% flex.
+      const bass: number = 1 - 0.82 ** 3;
+      expect(floats('uAmplitude', 'trace')[0]).toBeCloseTo(0.34 * (1 + 0.6 * bass), 10);
     });
 
     it('builds the bass response up over several steps rather than at once', (): void => {
@@ -691,8 +691,8 @@ describe('feedback engine', (): void => {
       for (let i: number = 1; i < amplitudes.length; i++) {
         expect(amplitudes[i]).toBeGreaterThan(amplitudes[i - 1]);
       }
-      // Never beyond the fully flexed amplitude: 0.17 with half the 0.6 flex.
-      expect(amplitudes[3]).toBeLessThan(0.17 * 1.3);
+      // Never beyond the fully flexed amplitude: 0.34 with the whole 0.6 flex.
+      expect(amplitudes[3]).toBeLessThan(0.34 * 1.6);
     });
 
     it('lets the bass response die away once the bass stops', (): void => {
@@ -703,7 +703,7 @@ describe('feedback engine', (): void => {
       analyser.spectrum = flat(0);
       steps(viz, 20);
 
-      expect(floats('uAmplitude', 'trace').at(-1)).toBeCloseTo(0.17, 5);
+      expect(floats('uAmplitude', 'trace').at(-1)).toBeCloseTo(0.34, 5);
     });
 
     it('averages only the twenty-four lowest bins into the bass response', (): void => {
@@ -712,26 +712,7 @@ describe('feedback engine', (): void => {
 
       steps(viz, 2);
 
-      expect(floats('uAmplitude', 'trace').at(-1)).toBeCloseTo(0.17, 12);
-    });
-
-    it('scales the trace with the sensitivity control', (): void => {
-      const viz: Visualization = createSized();
-      viz.setSensitivity(1);
-
-      steps(viz, 1);
-
-      expect(floats('uAmplitude', 'trace')[0]).toBeCloseTo(0.68, 12);
-    });
-
-    it('flattens the trace entirely at zero sensitivity', (): void => {
-      analyser.spectrum = flat(255);
-      const viz: Visualization = createSized();
-      viz.setSensitivity(0);
-
-      steps(viz, 1);
-
-      expect(floats('uAmplitude', 'trace')[0]).toBe(0);
+      expect(floats('uAmplitude', 'trace').at(-1)).toBeCloseTo(0.34, 12);
     });
 
     it('scales the trace by its first parameter and offsets it by its second', (): void => {
@@ -739,7 +720,7 @@ describe('feedback engine', (): void => {
 
       steps(viz, 1);
 
-      expect(floats('uAmplitude', 'trace')[0]).toBeCloseTo(0.34, 12);
+      expect(floats('uAmplitude', 'trace')[0]).toBeCloseTo(0.68, 12);
       expect(floats('uCentre', 'trace')[0]).toBeCloseTo(0.3, 12);
     });
 
@@ -748,7 +729,7 @@ describe('feedback engine', (): void => {
 
       steps(viz, 1);
 
-      expect(floats('uAmplitude', 'trace')[0]).toBeCloseTo(0.17, 12);
+      expect(floats('uAmplitude', 'trace')[0]).toBeCloseTo(0.34, 12);
       expect(floats('uCentre', 'trace')[0]).toBe(0.5);
     });
 
@@ -774,17 +755,13 @@ describe('feedback engine', (): void => {
       expect(floats('uBase', 'radial')[0]).toBeCloseTo(86.4, 10);
     });
 
-    it('scales how far the ring swings with the sensitivity control', (): void => {
+    it('swings the ring by a fixed fraction of the shorter half-axis', (): void => {
       const viz: Visualization = createSized();
+
       steps(viz, 1);
 
-      viz.setSensitivity(1);
-      steps(viz, 1);
-
-      // Half of 384, times 0.22, times twice the sensitivity.
-      const swings: number[] = floats('uSwing', 'radial');
-      expect(swings[0]).toBeCloseTo(21.12, 10);
-      expect(swings[1]).toBeCloseTo(84.48, 10);
+      // Half of 384, times 0.22.
+      expect(floats('uSwing', 'radial')[0]).toBeCloseTo(42.24, 10);
     });
 
     it('advances the phase on every frame, not only on steps', (): void => {
@@ -845,7 +822,6 @@ describe('feedback engine', (): void => {
       analyser.spectrum = flat(level);
       analyser.waveform = flat(level);
       const viz: Visualization = createSized();
-      viz.setSensitivity(1);
 
       steps(viz, 5);
 
@@ -862,11 +838,16 @@ describe('feedback engine', (): void => {
   // ==========================================================================
 
   describe('pulse', (): void => {
-    /** A visualization turned up far enough for full-scale bass to clear the pulse threshold. */
+    /**
+     * A visualization fed full-scale bass for one step already.
+     *
+     * The envelope takes more than one step to climb over the pulse threshold,
+     * so priming it here leaves the next step as the first one that can roll.
+     */
     function createLoud(preset: FeedbackSpec = presetWith()): Visualization {
       const viz: Visualization = createSized(preset);
-      viz.setSensitivity(1);
       analyser.spectrum = bassHeavy(24);
+      steps(viz, 1);
       return viz;
     }
 
@@ -877,6 +858,14 @@ describe('feedback engine', (): void => {
 
       expect(new Set<number>(floats('uPaletteShift', 'present'))).toEqual(new Set<number>([0]));
       expect(new Set<number>(floats('uBackground', 'present'))).toEqual(new Set<number>([0]));
+    });
+
+    it('presents the palette at full brightness', (): void => {
+      const viz: Visualization = createSized();
+
+      steps(viz, 2);
+
+      expect(new Set<number>(floats('uAlpha', 'present'))).toEqual(new Set<number>([1]));
     });
 
     it('takes the background white when a loud bass hit wins the roll', (): void => {
@@ -961,9 +950,8 @@ describe('feedback engine', (): void => {
     it('does not fire for bass below the threshold', (): void => {
       vi.spyOn(Math, 'random').mockReturnValue(0.1);
       const viz: Visualization = createSized();
-      viz.setSensitivity(1);
-      // 60/255 at full sensitivity settles at 0.47, under the 0.5 threshold.
-      analyser.spectrum = flat(60);
+      // 120/255 settles at 0.47, under the 0.5 threshold.
+      analyser.spectrum = flat(120);
 
       steps(viz, 40);
 

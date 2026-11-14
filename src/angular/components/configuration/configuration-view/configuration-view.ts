@@ -12,10 +12,11 @@
  * @module app/components/configuration/configuration-view
  */
 
-import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
-import type {InputSignal, EffectRef} from '@angular/core';
+import {Component, signal, computed, inject, input, effect, untracked, ChangeDetectionStrategy} from '@angular/core';
+import type {InputSignal, EffectRef, WritableSignal} from '@angular/core';
 import {FormsModule} from '@angular/forms';
-import {SettingsService, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, SEEK_MODE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, RenderResolution, CrossfadeDuration, CrossfadeStyle, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, SeekMode, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
+import {SoundFontList} from '../../shared/soundfont-list/soundfont-list';
+import {SettingsService, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, SEEK_MODE_OPTIONS, FftSize, RenderResolution, CrossfadeDuration, CrossfadeStyle, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, SeekMode, MacOSVisualEffectState, ColorScheme, SubtitleFontFamily, HardwareAcceleration, ACCENT_OPTIONS, type PlayerTheme, type AccentColor} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import {EQ_FREQUENCIES, EQ_PRESETS, EQ_GAIN_MIN, EQ_GAIN_MAX, type EqualizerPreset} from '../../../services/equalizer';
@@ -31,6 +32,15 @@ export const MACOS_VISUAL_EFFECT_STATE_OPTIONS: readonly {value: MacOSVisualEffe
   {value: 'followWindow', label: 'Follow Window'},
   {value: 'active', label: 'Always Active'},
   {value: 'inactive', label: 'Always Inactive'},
+];
+
+/**
+ * Player theme options for the settings UI, in display order.
+ */
+export const PLAYER_THEME_OPTIONS: readonly {value: PlayerTheme; label: string}[] = [
+  {value: 'solid', label: 'Solid'},
+  {value: 'glass', label: 'Glass'},
+  {value: 'pebble', label: 'Pebble'},
 ];
 
 /**
@@ -145,7 +155,7 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     id: 'appearance',
     name: 'Appearance',
     icon: 'fa-solid fa-palette',
-    description: 'Configure window transparency and background.',
+    description: 'Configure the player window\'s theme, color scheme and accent color.',
   },
   {
     id: 'dependencies',
@@ -201,7 +211,7 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
 @Component({
   selector: 'app-configuration-view',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, SoundFontList],
   templateUrl: './configuration-view.html',
   styleUrl: './configuration-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -237,9 +247,6 @@ export class ConfigurationView {
   /** Currently selected category ID */
   public readonly selectedCategory: ReturnType<typeof signal<string>> = signal<string>('application');
 
-  /** Whether the visualisations accordion is expanded */
-  public readonly isVisualisationsExpanded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-
   /** Effect to apply initialCategory input or URL param for standalone windows */
   private readonly initialCategoryEffect: EffectRef = effect((): void => {
     // First priority: input binding
@@ -256,23 +263,6 @@ export class ConfigurationView {
       }
     }
   });
-
-  /** Currently selected visualization ID (null = global settings) */
-  public readonly selectedVisualization: ReturnType<typeof signal<string | null>> = signal<string | null>(null);
-
-  /**
-   * Per-visualization settings for the currently selected visualization.
-   * This computed signal ensures Angular tracks changes from SSE updates.
-   */
-  public readonly currentVizSettings: ReturnType<typeof computed<Record<string, number | string | undefined>>> = computed(
-    (): Record<string, number | string | undefined> => {
-      const vizId: string | null = this.selectedVisualization();
-      if (!vizId) return {};
-      // Reading from perVisualizationSettings() creates a reactive dependency
-      const allSettings: PerVisualizationSettings = this.settingsService.perVisualizationSettings();
-      return (allSettings[vizId] ?? {}) as Record<string, number | string | undefined>;
-    }
-  );
 
   // ============================================================================
   // Computed Values
@@ -313,11 +303,6 @@ export class ConfigurationView {
   public readonly currentVisualizationCrossfadeStyle: ReturnType<typeof computed<CrossfadeStyle>> = computed(
     (): CrossfadeStyle => this.settingsService.visualizationCrossfadeStyle()
   );
-
-  /** Visualization metadata for accordion items */
-  /** Visualizations that still expose per-viz controls (those with none are hidden). */
-  public readonly visualizationMetadata: readonly VisualizationMetadata[] =
-    VISUALIZATION_METADATA.filter((viz: VisualizationMetadata): boolean => viz.applicableSettings.length > 0);
 
   /** Current default volume (0.0 - 1.0) */
   public readonly currentDefaultVolume: ReturnType<typeof computed<number>> = computed(
@@ -486,13 +471,6 @@ export class ConfigurationView {
     {value: 'random', label: 'Random'},
   ];
 
-  /** Available bar density options for the dropdown */
-  public readonly barDensityOptions: readonly {value: BarDensity; label: string}[] = [
-    {value: 'low', label: 'Low'},
-    {value: 'medium', label: 'Medium (Default)'},
-    {value: 'high', label: 'High'},
-  ];
-
   /** Available video quality options for the dropdown */
   public readonly videoQualityOptions: readonly {value: VideoQuality; label: string}[] = [
     {value: 'low', label: 'Low (Faster, smaller files)'},
@@ -621,14 +599,50 @@ export class ConfigurationView {
     (): boolean => this.platform() === 'darwin'
   );
 
-  /** Current glass enabled setting */
-  public readonly currentGlassEnabled: ReturnType<typeof computed<boolean>> = computed(
-    (): boolean => this.settingsService.glassEnabled()
+  /** Available player theme options for the dropdown */
+  public readonly themeOptions: typeof PLAYER_THEME_OPTIONS = PLAYER_THEME_OPTIONS;
+
+  /** Available accent colours for the swatch group */
+  public readonly accentOptions: typeof ACCENT_OPTIONS = ACCENT_OPTIONS;
+
+  /** Current player theme setting (as chosen, before any glass fallback) */
+  public readonly currentTheme: ReturnType<typeof computed<PlayerTheme>> = computed(
+    (): PlayerTheme => this.settingsService.theme()
   );
 
-  /** Current background color setting (hex, derived from HSL) */
-  public readonly currentBackgroundColor: ReturnType<typeof computed<string>> = computed(
-    (): string => this.settingsService.backgroundColor()
+  /** Current accent colour setting */
+  public readonly currentAccentColor: ReturnType<typeof computed<AccentColor>> = computed(
+    (): AccentColor => this.settingsService.accentColor()
+  );
+
+  /**
+   * The theme as it stood when this window's settings first arrived.
+   *
+   * Captured on load rather than at creation, because this window's settings
+   * start as built-in defaults and are fetched asynchronously; capturing the
+   * placeholder would announce a restart nobody caused.
+   */
+  private readonly initialTheme: WritableSignal<PlayerTheme | null> = signal<PlayerTheme | null>(null);
+
+  /** Records initialTheme once the settings have loaded */
+  private readonly initialThemeEffect: EffectRef = effect((): void => {
+    if (this.settingsService.isLoaded() && untracked(this.initialTheme) === null) {
+      this.initialTheme.set(untracked(this.settingsService.theme));
+    }
+  });
+
+  /**
+   * Whether the theme change made here needs a restart: Glass is fixed into
+   * the player window when it is created, so moving into or out of it only
+   * applies on the next launch, while Solid and Pebble swap live. Never where
+   * glass is unsupported, since there Glass is shown as Solid anyway.
+   */
+  public readonly themeRestartRequired: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => {
+      const initial: PlayerTheme | null = this.initialTheme();
+      if (initial === null || !this.supportsGlass()) return false;
+      return (initial === 'glass') !== (this.currentTheme() === 'glass');
+    }
   );
 
   /** Current macOS visual effect state setting */
@@ -642,83 +656,6 @@ export class ConfigurationView {
   /** Whether the macOS visual effect state has been changed from its initial value */
   public readonly visualEffectStateChanged: ReturnType<typeof computed<boolean>> = computed(
     (): boolean => this.currentMacOSVisualEffectState() !== this.initialMacOSVisualEffectState
-  );
-
-  /** Current background hue (0-360) */
-  public readonly currentBackgroundHue: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.backgroundHue()
-  );
-
-  /** Current background saturation (0-100) */
-  public readonly currentBackgroundSaturation: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.backgroundSaturation()
-  );
-
-  /** Current background lightness (0-100) */
-  public readonly currentBackgroundLightness: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.backgroundLightness()
-  );
-
-  /** Current window tint hue (0-360) */
-  public readonly currentWindowTintHue: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.windowTintHue()
-  );
-
-  /** Current window tint saturation (0-100) */
-  public readonly currentWindowTintSaturation: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.windowTintSaturation()
-  );
-
-  /** Current window tint lightness (0-100) */
-  public readonly currentWindowTintLightness: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.windowTintLightness()
-  );
-
-  /** Current window tint alpha (0-1) */
-  public readonly currentWindowTintAlpha: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.windowTintAlpha()
-  );
-
-  /** Preview color for background HSL sliders */
-  public readonly backgroundPreviewColor: ReturnType<typeof computed<string>> = computed(
-    (): string => `hsl(${this.currentBackgroundHue()}, ${this.currentBackgroundSaturation()}%, ${this.currentBackgroundLightness()}%)`
-  );
-
-  /** Preview color for window tint HSLA sliders */
-  public readonly windowTintPreviewColor: ReturnType<typeof computed<string>> = computed(
-    (): string => `hsla(${this.currentWindowTintHue()}, ${this.currentWindowTintSaturation()}%, ${this.currentWindowTintLightness()}%, ${this.currentWindowTintAlpha()})`
-  );
-
-  // ============================================================================
-  // Unified Window Color (uses background when glass off, tint when glass on)
-  // ============================================================================
-
-  /** Unified window color hue - uses background or tint based on glass state */
-  public readonly windowColorHue: ReturnType<typeof computed<number>> = computed(
-    (): number => this.currentGlassEnabled() && this.supportsGlass()
-      ? this.currentWindowTintHue()
-      : this.currentBackgroundHue()
-  );
-
-  /** Unified window color saturation - uses background or tint based on glass state */
-  public readonly windowColorSaturation: ReturnType<typeof computed<number>> = computed(
-    (): number => this.currentGlassEnabled() && this.supportsGlass()
-      ? this.currentWindowTintSaturation()
-      : this.currentBackgroundSaturation()
-  );
-
-  /** Unified window color lightness - uses background or tint based on glass state */
-  public readonly windowColorLightness: ReturnType<typeof computed<number>> = computed(
-    (): number => this.currentGlassEnabled() && this.supportsGlass()
-      ? this.currentWindowTintLightness()
-      : this.currentBackgroundLightness()
-  );
-
-  /** Unified window color preview - uses background or tint based on glass state */
-  public readonly windowColorPreview: ReturnType<typeof computed<string>> = computed(
-    (): string => this.currentGlassEnabled() && this.supportsGlass()
-      ? this.windowTintPreviewColor()
-      : this.backgroundPreviewColor()
   );
 
   // ============================================================================
@@ -837,11 +774,6 @@ export class ConfigurationView {
     (): SoundFontInfo[] => this.dependencyService.soundFonts()
   );
 
-  /** Active SoundFont path (full path to currently selected soundfont) */
-  public readonly activeSoundFontPath: ReturnType<typeof computed<string | null>> = computed(
-    (): string | null => this.dependencyService.activeSoundFont()
-  );
-
   /** Whether FluidSynth is installed (for showing SoundFont section) */
   public readonly fluidsynthInstalled: ReturnType<typeof computed<boolean>> = computed(
     (): boolean => this.dependencyService.fluidsynthInstalled()
@@ -868,35 +800,11 @@ export class ConfigurationView {
 
   /**
    * Handles category selection.
-   * For visualisations, clicking the category name shows global settings.
    *
    * @param categoryId - The ID of the category to select
    */
   public onSelectCategory(categoryId: string): void {
     this.selectedCategory.set(categoryId);
-    if (categoryId === 'visualisations') {
-      this.selectedVisualization.set(null);
-    }
-  }
-
-  /**
-   * Toggles the visualisations accordion expansion.
-   *
-   * @param event - The mouse event (to prevent propagation)
-   */
-  public toggleVisualisationsAccordion(event: MouseEvent): void {
-    event.stopPropagation();
-    this.isVisualisationsExpanded.set(!this.isVisualisationsExpanded());
-  }
-
-  /**
-   * Selects a specific visualization for per-viz settings.
-   *
-   * @param vizId - The visualization ID to select
-   */
-  public onSelectVisualization(vizId: string): void {
-    this.selectedCategory.set('visualisations');
-    this.selectedVisualization.set(vizId);
   }
 
   /**
@@ -1017,6 +925,25 @@ export class ConfigurationView {
    */
   public formatFrequency(hz: number): string {
     return hz >= 1000 ? `${hz / 1000}k` : `${hz}`;
+  }
+
+  /**
+   * How far a range input's value sits between its bounds, as a CSS percentage.
+   * The Pebble range track fills up to --pebble-range-percent, because WebKit has
+   * no pseudo-element for a range's progress.
+   *
+   * @param value - The current value
+   * @param min - The range's minimum
+   * @param max - The range's maximum
+   * @returns The filled share of the track, e.g. "42%"
+   */
+  public rangeFill(value: number, min: number, max: number): string {
+    if (max <= min) {
+      return '0%';
+    }
+
+    const percent: number = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
+    return `${percent}%`;
   }
 
   /**
@@ -1150,33 +1077,27 @@ export class ConfigurationView {
   }
 
   // ============================================================================
-  // Appearance Settings Event Handlers (macOS)
+  // Appearance Settings Event Handlers
   // ============================================================================
 
   /**
-   * Handles glass enabled toggle change.
-   * Note: Requires application restart to take effect.
+   * Handles player theme selection change.
+   * Note: a change into or out of Glass requires an application restart.
    *
-   * @param event - The change event from the checkbox
+   * @param event - The change event from the select element
    */
-  public async onGlassEnabledChange(event: Event): Promise<void> {
-    const target: EventTarget | null = event.target;
-    if (target instanceof HTMLInputElement) {
-      await this.settingsService.setGlassEnabled(target.checked);
-    }
+  public async onThemeChange(event: Event): Promise<void> {
+    const theme: string = getSelectValue(event);
+    await this.settingsService.setTheme(theme as PlayerTheme);
   }
 
   /**
-   * Handles background color change.
-   * Note: Requires application restart to take effect.
+   * Handles accent colour selection.
    *
-   * @param event - The change event from the color picker
+   * @param accentColor - The id of the chosen swatch
    */
-  public async onBackgroundColorChange(event: Event): Promise<void> {
-    const color: string = getInputValue(event);
-    if (color) {
-      await this.settingsService.setBackgroundColor(color);
-    }
+  public async onAccentColorChange(accentColor: AccentColor): Promise<void> {
+    await this.settingsService.setAccentColor(accentColor);
   }
 
   /**
@@ -1198,139 +1119,6 @@ export class ConfigurationView {
   public async onColorSchemeChange(event: Event): Promise<void> {
     const scheme: string = getSelectValue(event);
     await this.settingsService.setColorScheme(scheme as ColorScheme);
-  }
-
-  // ============================================================================
-  // Background HSL Event Handlers
-  // ============================================================================
-
-  /**
-   * Handles background hue slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onBackgroundHueChange(event: Event): Promise<void> {
-    const hue: number = parseFloat(getInputValue(event));
-    if (!isNaN(hue)) await this.settingsService.setBackgroundHue(hue);
-  }
-
-  /**
-   * Handles background saturation slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onBackgroundSaturationChange(event: Event): Promise<void> {
-    const saturation: number = parseFloat(getInputValue(event));
-    if (!isNaN(saturation)) await this.settingsService.setBackgroundSaturation(saturation);
-  }
-
-  /**
-   * Handles background lightness slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onBackgroundLightnessChange(event: Event): Promise<void> {
-    const lightness: number = parseFloat(getInputValue(event));
-    if (!isNaN(lightness)) await this.settingsService.setBackgroundLightness(lightness);
-  }
-
-  // ============================================================================
-  // Window Tint HSLA Event Handlers
-  // ============================================================================
-
-  /**
-   * Handles window tint hue slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowTintHueChange(event: Event): Promise<void> {
-    const hue: number = parseFloat(getInputValue(event));
-    if (!isNaN(hue)) await this.settingsService.setWindowTintHue(hue);
-  }
-
-  /**
-   * Handles window tint saturation slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowTintSaturationChange(event: Event): Promise<void> {
-    const saturation: number = parseFloat(getInputValue(event));
-    if (!isNaN(saturation)) await this.settingsService.setWindowTintSaturation(saturation);
-  }
-
-  /**
-   * Handles window tint lightness slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowTintLightnessChange(event: Event): Promise<void> {
-    const lightness: number = parseFloat(getInputValue(event));
-    if (!isNaN(lightness)) await this.settingsService.setWindowTintLightness(lightness);
-  }
-
-  /**
-   * Handles window tint alpha slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowTintAlphaChange(event: Event): Promise<void> {
-    const alpha: number = parseFloat(getInputValue(event));
-    if (!isNaN(alpha)) await this.settingsService.setWindowTintAlpha(alpha);
-  }
-
-  // ============================================================================
-  // Unified Window Color Event Handlers (routes to background or tint based on glass state)
-  // ============================================================================
-
-  /**
-   * Handles unified window color hue slider change.
-   * Routes to background or tint based on glass state.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowColorHueChange(event: Event): Promise<void> {
-    const hue: number = parseFloat(getInputValue(event));
-    if (isNaN(hue)) return;
-
-    if (this.currentGlassEnabled() && this.supportsGlass()) {
-      await this.settingsService.setWindowTintHue(hue);
-    } else {
-      await this.settingsService.setBackgroundHue(hue);
-    }
-  }
-
-  /**
-   * Handles unified window color saturation slider change.
-   * Routes to background or tint based on glass state.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowColorSaturationChange(event: Event): Promise<void> {
-    const saturation: number = parseFloat(getInputValue(event));
-    if (isNaN(saturation)) return;
-
-    if (this.currentGlassEnabled() && this.supportsGlass()) {
-      await this.settingsService.setWindowTintSaturation(saturation);
-    } else {
-      await this.settingsService.setBackgroundSaturation(saturation);
-    }
-  }
-
-  /**
-   * Handles unified window color lightness slider change.
-   * Routes to background or tint based on glass state.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowColorLightnessChange(event: Event): Promise<void> {
-    const lightness: number = parseFloat(getInputValue(event));
-    if (isNaN(lightness)) return;
-
-    if (this.currentGlassEnabled() && this.supportsGlass()) {
-      await this.settingsService.setWindowTintLightness(lightness);
-    } else {
-      await this.settingsService.setBackgroundLightness(lightness);
-    }
   }
 
   // ============================================================================
@@ -1521,43 +1309,12 @@ export class ConfigurationView {
   }
 
   /**
-   * Removes a SoundFont file from the app data directory.
-   */
-  public async onRemoveSoundFont(fileName: string): Promise<void> {
-    await this.dependencyService.removeSoundFont(fileName);
-  }
-
-  /**
-   * Selects a SoundFont as the active one for MIDI playback.
-   */
-  public async onSelectSoundFont(fileName: string): Promise<void> {
-    await this.dependencyService.setActiveSoundFont(fileName);
-  }
-
-  /**
-   * Checks if a SoundFont is the currently active one.
-   * Compares by file path since that's what activeSoundFont contains.
-   */
-  public isActiveSoundFont(sf: SoundFontInfo): boolean {
-    return sf.filePath === this.activeSoundFontPath();
-  }
-
-  /**
    * Opens the manual download URL in the default browser.
    */
   public onOpenManualDownload(url: string): void {
     // Routed through the preload bridge, which allowlists http(s), rather than
     // window.open — the latter opens remote pages in an app window.
     void window.mediaPlayer?.openExternal(url);
-  }
-
-  /**
-   * Formats a file size in bytes to a human-readable string.
-   */
-  public formatFileSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   /**
@@ -1577,109 +1334,6 @@ export class ConfigurationView {
   public formatCrossfadeDuration(): string {
     const duration: number = this.currentCrossfadeDuration();
     return duration === 0 ? 'Off' : `${duration}ms`;
-  }
-
-  // ============================================================================
-  // Per-Visualization Settings
-  // ============================================================================
-
-  /**
-   * Checks if a setting is applicable to the given visualization.
-   *
-   * @param vizId - The visualization ID
-   * @param setting - The setting key
-   * @returns True if the setting applies to this visualization
-   */
-  public hasApplicableSetting(vizId: string, setting: LocalSettingKey): boolean {
-    return this.settingsService.hasApplicableSetting(vizId, setting);
-  }
-
-  /**
-   * Checks if a visualization has a custom value for a setting.
-   * Reads the settings signal directly to ensure reactive updates.
-   *
-   * @param vizId - The visualization ID
-   * @param setting - The setting key
-   * @returns True if the setting has a custom value
-   */
-  public hasCustomSetting(vizId: string, setting: LocalSettingKey): boolean {
-    // Read from perVisualizationSettings() to establish reactive dependency.
-    // Not currentVizSettings(): that is the selected visualization's, which
-    // need not be the one being asked about.
-    const allSettings: PerVisualizationSettings = this.settingsService.perVisualizationSettings();
-    return allSettings[vizId]?.[setting] !== undefined;
-  }
-
-  /**
-   * Gets the effective value for a per-visualization setting.
-   * Uses currentVizSettings computed to ensure reactive updates.
-   *
-   * @param vizId - The visualization ID
-   * @param setting - The setting key
-   * @returns The effective value (custom or default)
-   */
-  public getEffectiveSetting<K extends LocalSettingKey>(vizId: string, setting: K): number | BarDensity {
-    // Read from currentVizSettings() to establish reactive dependency
-    const vizSettings: Record<string, number | string | undefined> = this.currentVizSettings();
-    const customValue: number | string | undefined = vizSettings[setting];
-    if (customValue !== undefined) {
-      return customValue as number | BarDensity;
-    }
-    // Fall back to default value
-    return VISUALIZATION_LOCAL_DEFAULTS[setting] as number | BarDensity;
-  }
-
-  /**
-   * Handles per-visualization bar density change.
-   *
-   * @param vizId - The visualization ID
-   * @param event - The change event from the select element
-   */
-  public async onPerVizBarDensityChange(vizId: string, event: Event): Promise<void> {
-    const density: BarDensity = getSelectValue(event) as BarDensity;
-    await this.settingsService.setVisualizationSetting(vizId, 'barDensity', density);
-  }
-
-  /**
-   * Handles per-visualization color setting change.
-   *
-   * @param vizId - The visualization ID
-   * @param setting - The color setting key
-   * @param event - The input event from the color picker
-   */
-  public async onPerVizColorChange(vizId: string, setting: LocalSettingKey, event: Event): Promise<void> {
-    const color: string = getInputValue(event);
-    await this.settingsService.setVisualizationSetting(vizId, setting, color);
-  }
-
-  /**
-   * Resets a per-visualization setting to its default.
-   *
-   * @param vizId - The visualization ID
-   * @param setting - The setting key
-   */
-  public async onResetPerVizSetting(vizId: string, setting: LocalSettingKey): Promise<void> {
-    await this.settingsService.resetVisualizationSetting(vizId, setting);
-  }
-
-  /**
-   * Resets all settings for a visualization to defaults.
-   *
-   * @param vizId - The visualization ID
-   */
-  public async onResetAllVisualizationSettings(vizId: string): Promise<void> {
-    await this.settingsService.resetAllVisualizationSettings(vizId);
-  }
-
-  /**
-   * Gets the display name for a visualization by its ID.
-   *
-   * @param vizId - The visualization ID
-   * @returns The display name or the ID if not found
-   */
-  public getVisualizationName(vizId: string): string {
-    const meta: VisualizationMetadata | undefined = this.settingsService.getVisualizationMetadata(vizId);
-    return meta?.name ?? vizId;
   }
 
   // ============================================================================

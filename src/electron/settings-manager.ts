@@ -36,38 +36,6 @@ import { settingsLogger } from './logger.js';
  */
 
 /**
- * Per-visualization local settings.
- * All values are optional - if not set, defaults are used.
- */
-export interface VisualizationLocalSettings {
-  /** Sensitivity for this visualization (0.0 - 1.0, default 0.5) */
-  readonly sensitivity?: number;
-  /** Bar density for bar-based visualizations (low, medium, high) - only for bars */
-  readonly barDensity?: BarDensity;
-  /** Trail intensity for trail effects (0.0 - 1.0) - only for tunnel, infinity, neon, onix, pulsar, water */
-  readonly trailIntensity?: number;
-  /** Line width for waveform lines (1.0 - 5.0) - only for waveform, tunnel, infinity, neon, onix, pulsar, water */
-  readonly lineWidth?: number;
-  /** Glow intensity for glow effects (0.0 - 1.0) - only for waveform, tunnel, infinity, neon, onix, pulsar, water */
-  readonly glowIntensity?: number;
-  /** Waveform smoothing for curves (0.0 - 1.0) - only for waveform, tunnel, infinity, neon, onix, pulsar, water */
-  readonly waveformSmoothing?: number;
-  /** Bar gradient bottom color (hex format, e.g., '#00cc00') - only for bars */
-  readonly barColorBottom?: string;
-  /** Bar gradient middle color (hex format, e.g., '#cccc00') - only for bars */
-  readonly barColorMiddle?: string;
-  /** Bar gradient top color (hex format, e.g., '#cc0000') - only for bars */
-  readonly barColorTop?: string;
-  /** Strobe frequency in Hz (1-20) - only for modern visualization */
-  readonly strobeFrequency?: number;
-}
-
-/**
- * Map of visualization type to its local settings.
- */
-export type PerVisualizationSettings = Partial<Record<string, VisualizationLocalSettings>>;
-
-/**
  * Valid FFT size values (must be powers of 2).
  */
 export type FftSize = 256 | 512 | 1024 | 2048 | 4096;
@@ -96,14 +64,6 @@ export type CrossfadeDuration = 500 | 750 | 1000 | 1500 | 2000;
  */
 export type CrossfadeStyle =
   | 'fade' | 'zoom' | 'shrink' | 'blur' | 'random';
-
-/**
- * Bar density levels for bar-based visualizations.
- * - low: Fewer bars, better performance
- * - medium: Default balance
- * - high: More bars, more detail
- */
-export type BarDensity = 'low' | 'medium' | 'high';
 
 /**
  * Video quality preset levels for transcoding.
@@ -166,6 +126,22 @@ export type MacOSVisualEffectState = 'followWindow' | 'active' | 'inactive';
  * - light: Force light mode
  */
 export type ColorScheme = 'system' | 'dark' | 'light';
+
+/**
+ * Skin of the player window. Themes only restyle the player; they never move
+ * its controls.
+ * - solid: an opaque neutral background
+ * - glass: a translucent window (vibrancy on macOS, acrylic on Windows);
+ *   treated as solid where the platform has no glass effect
+ * - pebble: the ONIXLabs brand style
+ */
+export type PlayerTheme = 'solid' | 'glass' | 'pebble';
+
+/**
+ * Accent colour of the player's controls: one of the eight ONIXLabs brand
+ * colours.
+ */
+export type AccentColor = 'amber' | 'coral' | 'rose' | 'violet' | 'blue' | 'cyan' | 'teal' | 'green';
 
 /**
  * Preferred audio language codes (ISO 639-2/B).
@@ -253,8 +229,7 @@ export const SUBTITLE_LANGUAGE_OPTIONS: readonly { value: PreferredSubtitleLangu
 /**
  * Visualization settings.
  *
- * Global settings apply to all visualizations.
- * Per-visualization settings are stored in perVisualizationSettings.
+ * Every setting applies to all visualizations alike.
  */
 export interface VisualizationSettings {
   /** The default visualization to display on startup */
@@ -269,8 +244,6 @@ export interface VisualizationSettings {
   readonly crossfadeDuration: CrossfadeDuration;
   /** Visual style of the visualization switch transition (default 'fade') */
   readonly crossfadeStyle: CrossfadeStyle;
-  /** Per-visualization local settings (sensitivity, barDensity, trailIntensity, etc.) */
-  readonly perVisualizationSettings: PerVisualizationSettings;
 }
 
 /**
@@ -328,31 +301,18 @@ export interface TranscodingSettings {
 
 /**
  * Appearance settings (cross-platform).
- * Supports glass effects (vibrancy on macOS, acrylic on Windows), background color via HSL, and window tint via HSLA.
+ * The theme skins the player window; the colour scheme and accent colour apply
+ * to every theme.
  */
 export interface AppearanceSettings {
-  /** Whether glass effect (transparency/blur) is enabled (default true on supported platforms) */
-  readonly glassEnabled: boolean;
-  /** macOS visual effect state (followWindow, active, inactive, default active) - only used on macOS when glassEnabled */
+  /** Player window theme (default 'glass' on macOS, 'solid' elsewhere) */
+  readonly theme: PlayerTheme;
+  /** macOS visual effect state (followWindow, active, inactive, default active) - only used on macOS with the glass theme */
   readonly macOSVisualEffectState: MacOSVisualEffectState;
   /** Color scheme preference (system, dark, light) - default system */
   readonly colorScheme: ColorScheme;
-  /** Background color when glass is disabled or unsupported (hex format, e.g., '#1e1e1e') — derived from HSL values */
-  readonly backgroundColor: string;
-  /** Background hue (0-360) when glass is disabled */
-  readonly backgroundHue: number;
-  /** Background saturation (0-100) when glass is disabled */
-  readonly backgroundSaturation: number;
-  /** Background lightness (0-100) when glass is disabled */
-  readonly backgroundLightness: number;
-  /** Window tint hue (0-360) when glass is enabled */
-  readonly windowTintHue: number;
-  /** Window tint saturation (0-100) when glass is enabled */
-  readonly windowTintSaturation: number;
-  /** Window tint lightness (0-100) when glass is enabled */
-  readonly windowTintLightness: number;
-  /** Window tint alpha (0-1) when glass is enabled — controls how much tint is applied */
-  readonly windowTintAlpha: number;
+  /** Accent colour of the player's controls (default 'blue') */
+  readonly accentColor: AccentColor;
 }
 
 /**
@@ -500,7 +460,6 @@ export interface VisualizationSettingsUpdate {
   readonly renderResolution?: RenderResolution;
   readonly crossfadeDuration?: CrossfadeDuration;
   readonly crossfadeStyle?: CrossfadeStyle;
-  readonly perVisualizationSettings?: PerVisualizationSettings;
 }
 
 /**
@@ -542,17 +501,10 @@ export interface TranscodingSettingsUpdate {
  * Partial appearance settings for updates.
  */
 export interface AppearanceSettingsUpdate {
-  readonly glassEnabled?: boolean;
+  readonly theme?: PlayerTheme;
   readonly macOSVisualEffectState?: MacOSVisualEffectState;
   readonly colorScheme?: ColorScheme;
-  readonly backgroundColor?: string;
-  readonly backgroundHue?: number;
-  readonly backgroundSaturation?: number;
-  readonly backgroundLightness?: number;
-  readonly windowTintHue?: number;
-  readonly windowTintSaturation?: number;
-  readonly windowTintLightness?: number;
-  readonly windowTintAlpha?: number;
+  readonly accentColor?: AccentColor;
 }
 
 /**
@@ -615,23 +567,6 @@ const SETTINGS_VERSION: number = 2;
 /** Delay before a settings change is written to disk, coalescing bursts of changes. */
 const SAVE_DEBOUNCE_MS: number = 250;
 
-/**
- * Default values for per-visualization local settings.
- * Used when a setting is not customized for a visualization.
- */
-export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> = {
-  sensitivity: 0.5,
-  barDensity: 'medium',
-  trailIntensity: 0.5,
-  lineWidth: 2.0,
-  glowIntensity: 0.5,
-  waveformSmoothing: 0.5,
-  barColorBottom: '#00cc00',
-  barColorMiddle: '#cccc00',
-  barColorTop: '#cc0000',
-  strobeFrequency: 5,
-};
-
 /** Valid FFT size values */
 const VALID_FFT_SIZES: readonly FftSize[] = [256, 512, 1024, 2048, 4096];
 
@@ -652,9 +587,6 @@ const VALID_CROSSFADE_DURATIONS: readonly CrossfadeDuration[] = [500, 750, 1000,
 const VALID_CROSSFADE_STYLES: readonly CrossfadeStyle[] = [
   'fade', 'zoom', 'shrink', 'blur', 'random',
 ];
-
-/** Valid bar density values */
-const VALID_BAR_DENSITIES: readonly BarDensity[] = ['low', 'medium', 'high'];
 
 /** Valid video quality values */
 const VALID_VIDEO_QUALITIES: readonly VideoQuality[] = ['low', 'medium', 'high'];
@@ -679,6 +611,14 @@ const VALID_MACOS_VISUAL_EFFECT_STATE: readonly MacOSVisualEffectState[] = ['fol
 /** Valid color scheme values */
 const VALID_COLOR_SCHEME: readonly ColorScheme[] = ['system', 'dark', 'light'];
 
+/** Valid player theme values */
+const VALID_PLAYER_THEMES: readonly PlayerTheme[] = ['solid', 'glass', 'pebble'];
+
+/** Valid accent colour values */
+const VALID_ACCENT_COLORS: readonly AccentColor[] = [
+  'amber', 'coral', 'rose', 'violet', 'blue', 'cyan', 'teal', 'green',
+];
+
 /** Valid subtitle font family values */
 const VALID_SUBTITLE_FONT_FAMILIES: readonly SubtitleFontFamily[] = ['sans-serif', 'serif', 'monospace', 'Arial'];
 
@@ -698,7 +638,6 @@ const DEFAULT_SETTINGS: AppSettings = {
     renderResolution: 'native',  // 'native' = render at display pixel size
     crossfadeDuration: 1000,  // 1000 = 1s crossfade between visualizations
     crossfadeStyle: 'fade',  // 'fade' = classic opacity crossfade
-    perVisualizationSettings: {},  // Empty = use VISUALIZATION_LOCAL_DEFAULTS
   },
   application: {
     serverPort: 0,  // 0 = auto-assign
@@ -725,18 +664,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   appearance: {
     // Vibrancy on macOS is cheap; Windows acrylic makes DWM re-blur behind the
-    // window on every frame the visualization repaints, so it is opt-in there.
-    glassEnabled: process.platform !== 'win32',
+    // window on every frame the visualization repaints, so it is opt-in there,
+    // and Linux has no glass at all.
+    theme: process.platform === 'darwin' ? 'glass' : 'solid',
     macOSVisualEffectState: 'active',  // always active (even when window inactive)
     colorScheme: 'system',  // follow system preference by default
-    backgroundColor: '#1e1e1e',  // derived from HSL values for BrowserWindow creation
-    backgroundHue: 0,  // HSL hue (0-360) — #1e1e1e is achromatic
-    backgroundSaturation: 0,  // HSL saturation (0-100) — #1e1e1e has no saturation
-    backgroundLightness: 12,  // HSL lightness (0-100) — #1e1e1e ≈ 12% lightness
-    windowTintHue: 0,  // HSLA hue (0-360) for glass tint
-    windowTintSaturation: 0,  // HSLA saturation (0-100) for glass tint
-    windowTintLightness: 0,  // HSLA lightness (0-100) for glass tint
-    windowTintAlpha: 0,  // HSLA alpha (0-1) — 0 = no tint by default
+    accentColor: 'blue',
   },
   subtitles: {
     fontSize: 100,  // 100% = default size
@@ -935,19 +868,6 @@ export class SettingsManager {
       }
     }
 
-    // Validate and merge per-visualization settings if provided
-    let mergedPerVizSettings: PerVisualizationSettings = this.settings.visualization.perVisualizationSettings;
-    if (update.perVisualizationSettings !== undefined) {
-      const validatedUpdate: PerVisualizationSettings = this.validatePerVisualizationSettings(update.perVisualizationSettings);
-      // Deep merge: for each visualization, merge its settings
-      mergedPerVizSettings = {...this.settings.visualization.perVisualizationSettings};
-      for (const vizId of Object.keys(validatedUpdate)) {
-        const existingVizSettings: VisualizationLocalSettings = mergedPerVizSettings[vizId] ?? {};
-        const newVizSettings: VisualizationLocalSettings = validatedUpdate[vizId] ?? {};
-        mergedPerVizSettings[vizId] = {...existingVizSettings, ...newVizSettings};
-      }
-    }
-
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -958,7 +878,6 @@ export class SettingsManager {
         renderResolution: update.renderResolution ?? this.settings.visualization.renderResolution,
         crossfadeDuration: update.crossfadeDuration ?? this.settings.visualization.crossfadeDuration,
         crossfadeStyle: update.crossfadeStyle ?? this.settings.visualization.crossfadeStyle,
-        perVisualizationSettings: mergedPerVizSettings,
       },
     };
 
@@ -1250,17 +1169,18 @@ export class SettingsManager {
    * Only provided fields are updated; others retain their current values.
    * Changes are immediately persisted to disk.
    *
-   * Note: These settings require an application restart to take effect
-   * as they are applied during window creation.
+   * Note: a theme change into or out of 'glass' and a macOS visual effect
+   * state change need an application restart to take effect, as the window's
+   * vibrancy/acrylic is fixed when the window is created.
    *
    * @param update - Partial appearance settings to apply
    * @returns The updated complete settings object
    */
   public updateAppearanceSettings(update: AppearanceSettingsUpdate): AppSettings {
-    // Validate glassEnabled if provided
-    if (update.glassEnabled !== undefined) {
-      if (typeof update.glassEnabled !== 'boolean') {
-        console.warn(`[SettingsManager] Invalid glassEnabled: ${update.glassEnabled}, ignoring`);
+    // Validate theme if provided
+    if (update.theme !== undefined) {
+      if (!this.isValidPlayerTheme(update.theme)) {
+        console.warn(`[SettingsManager] Invalid theme: ${update.theme}, ignoring`);
         return this.settings;
       }
     }
@@ -1281,72 +1201,23 @@ export class SettingsManager {
       }
     }
 
-    // Validate backgroundColor if provided
-    if (update.backgroundColor !== undefined) {
-      if (!this.isValidHexColor(update.backgroundColor)) {
-        console.warn(`[SettingsManager] Invalid background color: ${update.backgroundColor}, ignoring`);
+    // Validate accentColor if provided
+    if (update.accentColor !== undefined) {
+      if (!this.isValidAccentColor(update.accentColor)) {
+        console.warn(`[SettingsManager] Invalid accent color: ${update.accentColor}, ignoring`);
         return this.settings;
       }
     }
-
-    // Validate background HSL fields if provided
-    if (update.backgroundHue !== undefined && !this.isValidHue(update.backgroundHue)) {
-      console.warn(`[SettingsManager] Invalid backgroundHue: ${update.backgroundHue}, ignoring`);
-      return this.settings;
-    }
-    if (update.backgroundSaturation !== undefined && !this.isValidPercentage(update.backgroundSaturation)) {
-      console.warn(`[SettingsManager] Invalid backgroundSaturation: ${update.backgroundSaturation}, ignoring`);
-      return this.settings;
-    }
-    if (update.backgroundLightness !== undefined && !this.isValidPercentage(update.backgroundLightness)) {
-      console.warn(`[SettingsManager] Invalid backgroundLightness: ${update.backgroundLightness}, ignoring`);
-      return this.settings;
-    }
-
-    // Validate window tint HSLA fields if provided
-    if (update.windowTintHue !== undefined && !this.isValidHue(update.windowTintHue)) {
-      console.warn(`[SettingsManager] Invalid windowTintHue: ${update.windowTintHue}, ignoring`);
-      return this.settings;
-    }
-    if (update.windowTintSaturation !== undefined && !this.isValidPercentage(update.windowTintSaturation)) {
-      console.warn(`[SettingsManager] Invalid windowTintSaturation: ${update.windowTintSaturation}, ignoring`);
-      return this.settings;
-    }
-    if (update.windowTintLightness !== undefined && !this.isValidPercentage(update.windowTintLightness)) {
-      console.warn(`[SettingsManager] Invalid windowTintLightness: ${update.windowTintLightness}, ignoring`);
-      return this.settings;
-    }
-    if (update.windowTintAlpha !== undefined && !this.isValidAlpha(update.windowTintAlpha)) {
-      console.warn(`[SettingsManager] Invalid windowTintAlpha: ${update.windowTintAlpha}, ignoring`);
-      return this.settings;
-    }
-
-    // Resolve HSL values (use updated or current)
-    const bgHue: number = update.backgroundHue ?? this.settings.appearance.backgroundHue;
-    const bgSat: number = update.backgroundSaturation ?? this.settings.appearance.backgroundSaturation;
-    const bgLit: number = update.backgroundLightness ?? this.settings.appearance.backgroundLightness;
-
-    // Derive hex backgroundColor from HSL values when any HSL field changes
-    const derivedBgColor: string = (update.backgroundHue !== undefined || update.backgroundSaturation !== undefined || update.backgroundLightness !== undefined)
-      ? this.hslToHex(bgHue, bgSat, bgLit)
-      : (update.backgroundColor ?? this.settings.appearance.backgroundColor);
 
     // Merge the update
     this.settings = {
       ...this.settings,
       appearance: {
         ...this.settings.appearance,
-        glassEnabled: update.glassEnabled ?? this.settings.appearance.glassEnabled,
+        theme: update.theme ?? this.settings.appearance.theme,
         macOSVisualEffectState: update.macOSVisualEffectState ?? this.settings.appearance.macOSVisualEffectState,
         colorScheme: update.colorScheme ?? this.settings.appearance.colorScheme,
-        backgroundColor: derivedBgColor,
-        backgroundHue: bgHue,
-        backgroundSaturation: bgSat,
-        backgroundLightness: bgLit,
-        windowTintHue: update.windowTintHue ?? this.settings.appearance.windowTintHue,
-        windowTintSaturation: update.windowTintSaturation ?? this.settings.appearance.windowTintSaturation,
-        windowTintLightness: update.windowTintLightness ?? this.settings.appearance.windowTintLightness,
-        windowTintAlpha: update.windowTintAlpha ?? this.settings.appearance.windowTintAlpha,
+        accentColor: update.accentColor ?? this.settings.appearance.accentColor,
       },
     };
 
@@ -1957,7 +1828,12 @@ export class SettingsManager {
 
   /**
    * Validates visualization settings object.
-   * Handles migration from v1 (global settings) to v2 (per-visualization settings).
+   *
+   * Only the known fields are copied across. Files written by older versions
+   * may still carry per-visualization tuning (perVisualizationSettings, or the
+   * v1 perVisualizationSensitivity); the player no longer offers it, so those
+   * keys are dropped here, whatever they hold, and are therefore not written
+   * back on the next save.
    *
    * @param viz - The visualization settings to validate (unknown type)
    * @returns Valid visualization settings with defaults for invalid values
@@ -1974,32 +1850,6 @@ export class SettingsManager {
     const renderResolution: unknown = vizObj['renderResolution'];
     const crossfadeDuration: unknown = vizObj['crossfadeDuration'];
     const crossfadeStyle: unknown = vizObj['crossfadeStyle'];
-
-    // Handle migration from v1 to v2
-    let perVisualizationSettings: PerVisualizationSettings = {};
-
-    // Check if we have v2 format (perVisualizationSettings)
-    if (vizObj['perVisualizationSettings'] && typeof vizObj['perVisualizationSettings'] === 'object') {
-      perVisualizationSettings = this.validatePerVisualizationSettings(vizObj['perVisualizationSettings']);
-    }
-
-    // Migrate v1 settings if present (perVisualizationSensitivity and global values)
-    const oldPerVizSensitivity: unknown = vizObj['perVisualizationSensitivity'];
-    if (oldPerVizSensitivity && typeof oldPerVizSensitivity === 'object') {
-      // Migrate old per-visualization sensitivity to new format
-      const oldPerVizObj: Record<string, unknown> = oldPerVizSensitivity as Record<string, unknown>;
-      for (const vizId of Object.keys(oldPerVizObj)) {
-        if (this.isValidVisualizationType(vizId) && this.isValidSensitivity(oldPerVizObj[vizId])) {
-          if (!perVisualizationSettings[vizId]) {
-            perVisualizationSettings[vizId] = {};
-          }
-          perVisualizationSettings[vizId] = {
-            ...perVisualizationSettings[vizId],
-            sensitivity: oldPerVizObj[vizId] as number,
-          };
-        }
-      }
-    }
 
     return {
       defaultType: this.isValidVisualizationType(defaultType)
@@ -2020,87 +1870,7 @@ export class SettingsManager {
       crossfadeStyle: this.isValidCrossfadeStyle(crossfadeStyle)
         ? crossfadeStyle
         : DEFAULT_SETTINGS.visualization.crossfadeStyle,
-      perVisualizationSettings,
     };
-  }
-
-  /**
-   * Validates per-visualization settings object.
-   *
-   * @param perViz - The per-visualization settings to validate
-   * @returns Valid per-visualization settings with invalid entries removed
-   */
-  private validatePerVisualizationSettings(perViz: unknown): PerVisualizationSettings {
-    if (!perViz || typeof perViz !== 'object') {
-      return {};
-    }
-
-    const result: PerVisualizationSettings = {};
-    const perVizObj: Record<string, unknown> = perViz as Record<string, unknown>;
-
-    for (const vizId of Object.keys(perVizObj)) {
-      if (!this.isValidVisualizationType(vizId)) {
-        continue;
-      }
-
-      const vizSettings: unknown = perVizObj[vizId];
-      if (!vizSettings || typeof vizSettings !== 'object') {
-        continue;
-      }
-
-      const vizSettingsObj: Record<string, unknown> = vizSettings as Record<string, unknown>;
-
-      // Build validated object with only valid settings
-      const validated: VisualizationLocalSettings = {
-        ...(this.isValidSensitivity(vizSettingsObj['sensitivity'])
-          ? {sensitivity: vizSettingsObj['sensitivity'] as number}
-          : {}),
-        ...(this.isValidBarDensity(vizSettingsObj['barDensity'])
-          ? {barDensity: vizSettingsObj['barDensity'] as BarDensity}
-          : {}),
-        ...(this.isValidTrailIntensity(vizSettingsObj['trailIntensity'])
-          ? {trailIntensity: vizSettingsObj['trailIntensity'] as number}
-          : {}),
-        ...(this.isValidLineWidth(vizSettingsObj['lineWidth'])
-          ? {lineWidth: vizSettingsObj['lineWidth'] as number}
-          : {}),
-        ...(this.isValidGlowIntensity(vizSettingsObj['glowIntensity'])
-          ? {glowIntensity: vizSettingsObj['glowIntensity'] as number}
-          : {}),
-        ...(this.isValidWaveformSmoothing(vizSettingsObj['waveformSmoothing'])
-          ? {waveformSmoothing: vizSettingsObj['waveformSmoothing'] as number}
-          : {}),
-        ...(this.isValidHexColor(vizSettingsObj['barColorBottom'])
-          ? {barColorBottom: vizSettingsObj['barColorBottom'] as string}
-          : {}),
-        ...(this.isValidHexColor(vizSettingsObj['barColorMiddle'])
-          ? {barColorMiddle: vizSettingsObj['barColorMiddle'] as string}
-          : {}),
-        ...(this.isValidHexColor(vizSettingsObj['barColorTop'])
-          ? {barColorTop: vizSettingsObj['barColorTop'] as string}
-          : {}),
-        ...(this.isValidStrobeFrequency(vizSettingsObj['strobeFrequency'])
-          ? {strobeFrequency: vizSettingsObj['strobeFrequency'] as number}
-          : {}),
-      };
-
-      // Only add if there are any valid settings
-      if (Object.keys(validated).length > 0) {
-        result[vizId] = validated;
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Type guard to check if a value is a valid sensitivity value.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid sensitivity (number between 0 and 1)
-   */
-  private isValidSensitivity(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 1;
   }
 
   /**
@@ -2234,7 +2004,10 @@ export class SettingsManager {
 
   /**
    * Validates appearance settings object.
-   * Includes migration from old macOSVibrancy format to new glassEnabled format.
+   *
+   * Only the known keys are copied into the result, so the window colour and
+   * tint keys of older files (backgroundColor, backgroundHue/Saturation/
+   * Lightness, windowTint*) are dropped here and never written back.
    *
    * @param appearance - The appearance settings to validate (unknown type)
    * @returns Valid appearance settings with defaults for invalid values
@@ -2245,58 +2018,53 @@ export class SettingsManager {
     }
 
     const appearanceObj: Record<string, unknown> = appearance as Record<string, unknown>;
-
-    // Migration: Convert old macOSVibrancy to new glassEnabled format
-    let glassEnabled: boolean = DEFAULT_SETTINGS.appearance.glassEnabled;
-    if (typeof appearanceObj['glassEnabled'] === 'boolean') {
-      // New format - use directly
-      glassEnabled = appearanceObj['glassEnabled'];
-    } else if (typeof appearanceObj['macOSVibrancy'] === 'string') {
-      // Old format - migrate: 'none' means glass disabled, anything else means enabled
-      glassEnabled = appearanceObj['macOSVibrancy'] !== 'none';
-    }
-
     const macOSVisualEffectState: unknown = appearanceObj['macOSVisualEffectState'];
     const colorScheme: unknown = appearanceObj['colorScheme'];
-    const backgroundColor: unknown = appearanceObj['backgroundColor'];
-
-    // Validate HSL fields (use defaults if missing — backward compat with old settings)
-    const backgroundHue: number = this.isValidHue(appearanceObj['backgroundHue'])
-      ? appearanceObj['backgroundHue'] : DEFAULT_SETTINGS.appearance.backgroundHue;
-    const backgroundSaturation: number = this.isValidPercentage(appearanceObj['backgroundSaturation'])
-      ? appearanceObj['backgroundSaturation'] : DEFAULT_SETTINGS.appearance.backgroundSaturation;
-    const backgroundLightness: number = this.isValidPercentage(appearanceObj['backgroundLightness'])
-      ? appearanceObj['backgroundLightness'] : DEFAULT_SETTINGS.appearance.backgroundLightness;
-
-    // Validate window tint HSLA fields
-    const windowTintHue: number = this.isValidHue(appearanceObj['windowTintHue'])
-      ? appearanceObj['windowTintHue'] : DEFAULT_SETTINGS.appearance.windowTintHue;
-    const windowTintSaturation: number = this.isValidPercentage(appearanceObj['windowTintSaturation'])
-      ? appearanceObj['windowTintSaturation'] : DEFAULT_SETTINGS.appearance.windowTintSaturation;
-    const windowTintLightness: number = this.isValidPercentage(appearanceObj['windowTintLightness'])
-      ? appearanceObj['windowTintLightness'] : DEFAULT_SETTINGS.appearance.windowTintLightness;
-    const windowTintAlpha: number = this.isValidAlpha(appearanceObj['windowTintAlpha'])
-      ? appearanceObj['windowTintAlpha'] : DEFAULT_SETTINGS.appearance.windowTintAlpha;
+    const accentColor: unknown = appearanceObj['accentColor'];
 
     return {
-      glassEnabled,
+      theme: this.migrateTheme(appearanceObj),
       macOSVisualEffectState: this.isValidMacOSVisualEffectState(macOSVisualEffectState)
         ? macOSVisualEffectState
         : DEFAULT_SETTINGS.appearance.macOSVisualEffectState,
       colorScheme: this.isValidColorScheme(colorScheme)
         ? colorScheme
         : DEFAULT_SETTINGS.appearance.colorScheme,
-      backgroundColor: this.isValidHexColor(backgroundColor)
-        ? backgroundColor
-        : DEFAULT_SETTINGS.appearance.backgroundColor,
-      backgroundHue,
-      backgroundSaturation,
-      backgroundLightness,
-      windowTintHue,
-      windowTintSaturation,
-      windowTintLightness,
-      windowTintAlpha,
+      accentColor: this.isValidAccentColor(accentColor)
+        ? accentColor
+        : DEFAULT_SETTINGS.appearance.accentColor,
     };
+  }
+
+  /**
+   * Resolves the player theme of a stored appearance section, migrating the
+   * glass switch of older files.
+   *
+   * A valid explicit theme wins, because a file that has one was written after
+   * the switch was replaced. Otherwise the older glassEnabled flag maps onto
+   * glass/solid, and before that the even older macOSVibrancy string ('none'
+   * meaning no glass). Anything else falls back to the platform default.
+   *
+   * @param appearanceObj - The stored appearance section
+   * @returns The theme to use
+   */
+  private migrateTheme(appearanceObj: Record<string, unknown>): PlayerTheme {
+    const theme: unknown = appearanceObj['theme'];
+    if (this.isValidPlayerTheme(theme)) {
+      return theme;
+    }
+
+    const glassEnabled: unknown = appearanceObj['glassEnabled'];
+    if (typeof glassEnabled === 'boolean') {
+      return glassEnabled ? 'glass' : 'solid';
+    }
+
+    const macOSVibrancy: unknown = appearanceObj['macOSVibrancy'];
+    if (typeof macOSVibrancy === 'string') {
+      return macOSVibrancy === 'none' ? 'solid' : 'glass';
+    }
+
+    return DEFAULT_SETTINGS.appearance.theme;
   }
 
   /**
@@ -2606,18 +2374,6 @@ export class SettingsManager {
   }
 
   /**
-   * Type guard to check if a value is a valid trail intensity.
-   *
-   * Valid values are between 0.0 and 1.0.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid trail intensity
-   */
-  private isValidTrailIntensity(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 1;
-  }
-
-  /**
    * Type guard to check if a value is a valid FFT size.
    *
    * Valid values are powers of 2: 256, 512, 1024, 2048, 4096.
@@ -2664,54 +2420,6 @@ export class SettingsManager {
   }
 
   /**
-   * Type guard to check if a value is a valid bar density.
-   *
-   * Valid values are 'low', 'medium', or 'high'.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid bar density
-   */
-  private isValidBarDensity(value: unknown): value is BarDensity {
-    return typeof value === 'string' && VALID_BAR_DENSITIES.includes(value as BarDensity);
-  }
-
-  /**
-   * Type guard to check if a value is a valid line width.
-   *
-   * Valid values are between 1.0 and 5.0.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid line width
-   */
-  private isValidLineWidth(value: unknown): value is number {
-    return typeof value === 'number' && value >= 1 && value <= 5;
-  }
-
-  /**
-   * Type guard to check if a value is a valid glow intensity.
-   *
-   * Valid values are between 0.0 and 1.0.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid glow intensity
-   */
-  private isValidGlowIntensity(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 1;
-  }
-
-  /**
-   * Type guard to check if a value is a valid waveform smoothing.
-   *
-   * Valid values are between 0.0 and 1.0.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid waveform smoothing
-   */
-  private isValidWaveformSmoothing(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 1;
-  }
-
-  /**
    * Type guard to check if a value is a valid hex color.
    *
    * Valid values are strings matching #RRGGBB format.
@@ -2721,18 +2429,6 @@ export class SettingsManager {
    */
   private isValidHexColor(value: unknown): value is string {
     return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
-  }
-
-  /**
-   * Type guard to check if a value is a valid strobe frequency.
-   *
-   * Valid values are integers between 1 and 20 Hz.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid strobe frequency
-   */
-  private isValidStrobeFrequency(value: unknown): value is number {
-    return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 20;
   }
 
   /**
@@ -2866,23 +2562,23 @@ export class SettingsManager {
   }
 
   /**
-   * Type guard to check if a value is a valid hue (0-360).
+   * Type guard to check if a value is a valid player theme.
    *
    * @param value - The value to check
-   * @returns True if the value is a valid hue
+   * @returns True if the value is a valid player theme
    */
-  private isValidHue(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 360;
+  private isValidPlayerTheme(value: unknown): value is PlayerTheme {
+    return typeof value === 'string' && VALID_PLAYER_THEMES.includes(value as PlayerTheme);
   }
 
   /**
-   * Type guard to check if a value is a valid saturation or lightness (0-100).
+   * Type guard to check if a value is a valid accent colour.
    *
    * @param value - The value to check
-   * @returns True if the value is a valid percentage
+   * @returns True if the value is a valid accent colour
    */
-  private isValidPercentage(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 100;
+  private isValidAccentColor(value: unknown): value is AccentColor {
+    return typeof value === 'string' && VALID_ACCENT_COLORS.includes(value as AccentColor);
   }
 
   /**
@@ -2941,26 +2637,5 @@ export class SettingsManager {
    */
   private isValidSubtitleShadowBlur(value: unknown): value is number {
     return typeof value === 'number' && value >= 0 && value <= 10;
-  }
-
-  /**
-   * Converts HSL values to a hex color string.
-   *
-   * @param h - Hue (0-360)
-   * @param s - Saturation (0-100)
-   * @param l - Lightness (0-100)
-   * @returns Hex color string (e.g., '#1e1e1e')
-   */
-  private hslToHex(h: number, s: number, l: number): string {
-    const sNorm: number = s / 100;
-    const lNorm: number = l / 100;
-    const a: number = sNorm * Math.min(lNorm, 1 - lNorm);
-    const f: (n: number) => number = (n: number): number => {
-      const k: number = (n + h / 30) % 12;
-      const color: number = lNorm - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-      return Math.round(255 * color);
-    };
-    const toHex: (x: number) => string = (x: number): string => x.toString(16).padStart(2, '0');
-    return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
   }
 }

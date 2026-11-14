@@ -82,8 +82,8 @@ export class ReactorVisualization extends Canvas2DVisualization {
 
   // --- Waveforms ------------------------------------------------------------
 
-  /** Glow blur radius for the waveforms and rings (pixels). */
-  private static readonly WAVE_GLOW_BLUR: number = 128;
+  /** Glow blur radius for the waveforms (pixels). None: their glow is the wider translucent stroke alone. */
+  private static readonly WAVE_GLOW_BLUR: number = 0;
 
   /** Samples per horizontal waveform (edge to centre). */
   private static readonly HORIZONTAL_SAMPLES: number = 32;
@@ -111,7 +111,10 @@ export class ReactorVisualization extends Canvas2DVisualization {
   /** Fraction of FFT bins trimmed from each end before bucketing (low & high). */
   private static readonly FREQ_TRIM_FRACTION: number = 0.05;
 
-  /** Magnitude (after sensitivity) at/above which a sample jumps to the ceiling. */
+  /** Gain applied to the waveform samples and frequency bins before they are drawn. */
+  private static readonly SENSITIVITY_FACTOR: number = 0.2;
+
+  /** Magnitude (after SENSITIVITY_FACTOR) at/above which a sample jumps to the ceiling. */
   private static readonly PEAK_THRESHOLD: number = 0.115;
 
   /** Opacity of the filled interior of each peak (1 = solid). */
@@ -126,10 +129,10 @@ export class ReactorVisualization extends Canvas2DVisualization {
   private static readonly TRAIL_ROTATION: number = 0.005;
 
   /** Per-frame fade of the horizontal-waveform trail (low = long-lived trails). */
-  private static readonly HORIZONTAL_FADE: number = 0.02;
+  private static readonly HORIZONTAL_FADE: number = 0.01;
 
   /** Per-frame fade of the rings trail (the squashed peaks need some persistence to show). */
-  private static readonly RING_FADE: number = 0.03;
+  private static readonly RING_FADE: number = 0.015;
 
   /**
    * How far up its band each ring's trail climbs toward the ceiling over the
@@ -294,12 +297,6 @@ export class ReactorVisualization extends Canvas2DVisualization {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.hue = ReactorVisualization.START_HUE;
-    // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
-    this.sensitivity = 0.1;       // 10%
-    this.trailIntensity = 1;      // 100%
-    this.lineWidth = 1;           // 1px
-    this.glowIntensity = 0;       // no glow
-    this.waveformSmoothing = 1;   // 100%
 
     this.radii = new Array<number>(ReactorVisualization.CIRCLE_COUNT).fill(0);
     this.circleColors = [];
@@ -396,13 +393,6 @@ export class ReactorVisualization extends Canvas2DVisualization {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
-
-  // Fixed visual parameters: ignore the global controls (values set in constructor).
-  public override setSensitivity(): void { /* fixed */ }
-  public override setTrailIntensity(): void { /* fixed */ }
-  public override setLineWidth(): void { /* fixed */ }
-  public override setGlowIntensity(): void { /* fixed */ }
-  public override setWaveformSmoothing(): void { /* fixed */ }
 
   protected override onResize(): void {
     const width: number = this.width;
@@ -521,12 +511,12 @@ export class ReactorVisualization extends Canvas2DVisualization {
     this.drawPathWithLayers(
       (): void => { this.buildSmoothPath(ctx, this.leftPoints, this.leftPoints.length - 1); },
       this.waveColorMain, this.waveColorGlow, ReactorVisualization.COLOR_HIGHLIGHT,
-      {ctx, baseGlowBlur: ReactorVisualization.WAVE_GLOW_BLUR}
+      {ctx, glowBlur: ReactorVisualization.WAVE_GLOW_BLUR}
     );
     this.drawPathWithLayers(
       (): void => { this.buildSmoothPath(ctx, this.rightPoints, this.rightPoints.length - 1); },
       this.waveColorMain, this.waveColorGlow, ReactorVisualization.COLOR_HIGHLIGHT,
-      {ctx, baseGlowBlur: ReactorVisualization.WAVE_GLOW_BLUR}
+      {ctx, glowBlur: ReactorVisualization.WAVE_GLOW_BLUR}
     );
   }
 
@@ -543,7 +533,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     const coreRadius: number = this.radii[0];
     const outerRadius: number = this.radii[ReactorVisualization.CIRCLE_COUNT - 1];
     const amplitudeScale: number = this.height * ReactorVisualization.HORIZONTAL_AMP_FRACTION;
-    const sensitivityFactor: number = this.sensitivityFactor;
+    const sensitivityFactor: number = ReactorVisualization.SENSITIVITY_FACTOR;
     // Sample the first half of the buffer across the edge-to-centre span.
     const sampleStep: number = (dataLength / 2) / numSamples;
 
@@ -589,7 +579,7 @@ export class ReactorVisualization extends Canvas2DVisualization {
     // freqArray was read once for the frame by updateBassTrigger.
     const binCount: number = this.freqArray.length;
     const numSamples: number = ReactorVisualization.CIRCULAR_SAMPLES;
-    const sensitivityFactor: number = this.sensitivityFactor;
+    const sensitivityFactor: number = ReactorVisualization.SENSITIVITY_FACTOR;
 
     // Logarithmic (octave-like) bucket for this ring so each ring spans a similar
     // perceptual range, with a per-ring gain compensating the high-frequency
@@ -853,18 +843,17 @@ export class ReactorVisualization extends Canvas2DVisualization {
     // Trail coordinates; the surface transform maps them onto the reduced canvas.
     ctx.clearRect(0, 0, size, size);
 
-    const effectiveFade: number = fadeRate * this.getFadeMultiplier();
     const cx: number = this.trailCx;
     const cy: number = this.trailCy;
     const subSlices: number = ReactorVisualization.RING_PUSH_SLICES;
     // Derive the per-frame climb from the fade so the squash reaches the same
     // fraction up the band over the trail's visible lifetime, whatever the fade.
-    const push: number = 1 - Math.pow(1 - ReactorVisualization.RING_SQUASH_FRACTION, effectiveFade);
+    const push: number = 1 - Math.pow(1 - ReactorVisualization.RING_SQUASH_FRACTION, fadeRate);
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.globalAlpha = 1 - effectiveFade;
+    ctx.globalAlpha = 1 - fadeRate;
     for (let r: number = 0; r < ReactorVisualization.RING_COUNT; r++) {
       const bottom: number = this.radii[r];
       const top: number = this.radii[r + 1];
@@ -910,14 +899,13 @@ export class ReactorVisualization extends Canvas2DVisualization {
 
     ctx.clearRect(0, 0, size, size);
 
-    const effectiveFade: number = fadeRate * this.getFadeMultiplier();
     const pivotX: number = Math.floor(this.trailCx);
     const pivotY: number = Math.floor(this.trailCy);
 
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.globalAlpha = 1 - effectiveFade;
+    ctx.globalAlpha = 1 - fadeRate;
     ctx.translate(pivotX, pivotY);
     ctx.rotate(ReactorVisualization.TRAIL_ROTATION * this.trailDirection);
     ctx.translate(-pivotX, -pivotY);

@@ -10,7 +10,7 @@
  * - Persistence effect via slow fade and transparent background
  * - Multi-layer rendering: glow, main line, highlight
  * - ONIXLabs brand color gradient from Orange to Green
- * - Sensitivity scales the waveform amplitude
+ * - A fixed gain scales the waveform amplitude
  *
  * @module app/components/audio/audio-outlet/visualizations/modern-visualization
  */
@@ -26,11 +26,17 @@ import {ONIX_COLORS_FLAT, ONIX_COLOR_COUNT} from './visualization-constants';
  * but with ONIXLabs brand colors instead of solid green.
  */
 export class ModernVisualization extends Canvas2DVisualization {
-  /** Very slow fade for the LCD ghosting effect. */
-  private static readonly FADE_RATE: number = 0.03;
+  /** Per-frame fade for the LCD ghosting effect; fast enough to keep the trails short. */
+  private static readonly FADE_RATE: number = 0.06;
 
-  /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 15;
+  /** Gain applied to the waveform samples before they are drawn. */
+  private static readonly SENSITIVITY_FACTOR: number = 0.4;
+
+  /** Main stroke width in pixels; the glow passes widen out from it. */
+  private static readonly LINE_WIDTH: number = 1;
+
+  /** Width the widest glow pass adds to the main stroke, in pixels. */
+  private static readonly GLOW_BLUR: number = 15;
 
   /** Number of points sampled across the waveform. */
   private static readonly WAVEFORM_POINTS: number = 32;
@@ -57,12 +63,6 @@ export class ModernVisualization extends Canvas2DVisualization {
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
-    // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
-    this.sensitivity = 0.2;       // 20%
-    this.trailIntensity = 0;      // minimal trails
-    this.lineWidth = 1;           // 1px
-    this.glowIntensity = 1;       // 100%
-    this.waveformSmoothing = 1;   // 100%
     this.preserveContentOnResize = true;
 
     // Pre-allocate point array
@@ -93,7 +93,7 @@ export class ModernVisualization extends Canvas2DVisualization {
     const centerY: number = height / 2;
     const numPoints: number = ModernVisualization.WAVEFORM_POINTS;
     const amplitudeScale: number = height * 0.4;
-    const sensitivityFactor: number = this.sensitivityFactor;
+    const sensitivityFactor: number = ModernVisualization.SENSITIVITY_FACTOR;
     const dataLength: number = this.dataArray.length;
 
     // Calculate waveform points - use ratio to ensure full width coverage
@@ -117,13 +117,13 @@ export class ModernVisualization extends Canvas2DVisualization {
 
     // Draw glow layer (multiple passes for soft glow effect).
     // Canvas shadowColor only supports single colors, so we use layered strokes.
-    const glowBlur: number = this.getScaledGlowBlur(ModernVisualization.BASE_GLOW_BLUR);
+    const glowBlur: number = ModernVisualization.GLOW_BLUR;
     const glowPasses: number = ModernVisualization.GLOW_PASSES;
     for (let i: number = glowPasses; i >= 1; i--) {
       ctx.save();
       ctx.globalAlpha = 0.3 / i;
       ctx.strokeStyle = glowGradient;
-      ctx.lineWidth = this.lineWidth + glowBlur * (i / glowPasses);
+      ctx.lineWidth = ModernVisualization.LINE_WIDTH + glowBlur * (i / glowPasses);
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       buildPath();
@@ -133,7 +133,7 @@ export class ModernVisualization extends Canvas2DVisualization {
 
     // Draw main line with gradient
     ctx.strokeStyle = mainGradient;
-    ctx.lineWidth = this.lineWidth;
+    ctx.lineWidth = ModernVisualization.LINE_WIDTH;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     buildPath();
@@ -159,13 +159,6 @@ export class ModernVisualization extends Canvas2DVisualization {
     this.cachedGradient = null;
     this.cachedGlowGradient = null;
   }
-
-  // Fixed visual parameters: ignore the global controls (values set in constructor).
-  public override setSensitivity(): void { /* fixed */ }
-  public override setTrailIntensity(): void { /* fixed */ }
-  public override setLineWidth(): void { /* fixed */ }
-  public override setGlowIntensity(): void { /* fixed */ }
-  public override setWaveformSmoothing(): void { /* fixed */ }
 
   /**
    * Rebuilds the cached main/glow gradients if the width has changed.

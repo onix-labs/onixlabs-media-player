@@ -35,7 +35,7 @@ import {SetupWizard} from '../setup-wizard/setup-wizard';
 import {OpenUrlDialog} from '../open-url-dialog/open-url-dialog';
 import {ElectronService} from '../../services/electron.service';
 import {MediaPlayerService} from '../../services/media-player.service';
-import {SettingsService, type VideoAspectMode} from '../../services/settings.service';
+import {SettingsService, type PlayerTheme, type VideoAspectMode} from '../../services/settings.service';
 import {DependencyService} from '../../services/dependency.service';
 import {buildFileDialogFilters} from '../../constants/media.constants';
 
@@ -112,6 +112,13 @@ export class Root implements OnDestroy {
    * When true, only the OpenUrlDialog is rendered (no header, outlet, controls).
    */
   public readonly isOpenUrlWindow: boolean = new URLSearchParams(window.location.search).get('window') === 'open-url';
+
+  /**
+   * Whether this window wears the ONIXLabs brand style, Pebble, rather than
+   * the player's glass. Every window but the main player does.
+   */
+  public readonly isPebbleWindow: boolean =
+    this.isConfigurationWindow || this.isAboutWindow || this.isSetupWizardWindow || this.isOpenUrlWindow;
 
   /** Service for dependency state */
   private readonly deps: DependencyService = inject(DependencyService);
@@ -210,35 +217,33 @@ export class Root implements OnDestroy {
    * Effects react to:
    * - menuShowConfig: Opens the configuration view
    * - menuOpenFile: Opens file dialog and adds files to playlist
-   * - backgroundColor/glassEnabled: Updates CSS variable for background color
+   * - effectiveTheme/accentColor: Updates the player's theme and accent on <html>
    */
   public constructor() {
-    // React to background color/tint and glass settings changes
-    // Uses two CSS variables:
-    //   --app-background-color: solid background on html/body (transparent when glass enabled)
-    //   --app-tint-color: translucent tint on :host (only when glass enabled)
-    effect((): void => {
-      const glassEnabled: boolean = this.settings.glassEnabled();
-      const supportsGlass: boolean = this.electron.platformInfo().supportsGlass;
-      const showGlass: boolean = glassEnabled && supportsGlass;
+    // Pebble windows paint their own opaque page (see styles/_pebble.scss), so
+    // the player theme below applies to the player only.
+    if (this.isPebbleWindow) {
+      document.documentElement.classList.add('pebble');
+    }
 
-      if (showGlass) {
-        // Glass mode: body stays transparent for native vibrancy/acrylic to show through
-        // Tint is applied as a separate layer on :host via --app-tint-color
-        const h: number = this.settings.windowTintHue();
-        const s: number = this.settings.windowTintSaturation();
-        const l: number = this.settings.windowTintLightness();
-        const a: number = this.settings.windowTintAlpha();
-        document.documentElement.style.setProperty('--app-background-color', 'transparent');
-        document.documentElement.style.setProperty('--app-tint-color', a > 0 ? `hsla(${h}, ${s}%, ${l}%, ${a})` : 'transparent');
-      } else {
-        // Solid mode: apply background color via HSL on body, no tint
-        const h: number = this.settings.backgroundHue();
-        const s: number = this.settings.backgroundSaturation();
-        const l: number = this.settings.backgroundLightness();
-        document.documentElement.style.setProperty('--app-background-color', `hsl(${h}, ${s}%, ${l}%)`);
-        document.documentElement.style.setProperty('--app-tint-color', 'transparent');
-      }
+    // React to the player theme and accent colour. The stylesheets paint the
+    // page from these attributes (with data-color-scheme), so a theme or
+    // colour scheme change needs no further script; --app-background-color is
+    // left at its stylesheet default of transparent in every theme, which lets
+    // Glass's native vibrancy/acrylic show through. The Pebble theme also takes
+    // the pebble class, which brings in Pebble's tokens, font and page.
+    effect((): void => {
+      if (this.isPebbleWindow) return;
+      const root: HTMLElement = document.documentElement;
+      const theme: PlayerTheme = this.settings.effectiveTheme();
+      root.setAttribute('data-player-theme', theme);
+      root.classList.toggle('pebble', theme === 'pebble');
+    });
+
+    // The accent applies in every window: the player's controls, and the
+    // sliders and switches of the Pebble windows.
+    effect((): void => {
+      document.documentElement.setAttribute('data-accent', this.settings.accentColor());
     });
 
     // React to color scheme setting changes

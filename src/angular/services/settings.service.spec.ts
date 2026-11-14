@@ -9,7 +9,6 @@ import {
   AudioBitrate,
   VideoAspectMode,
   MacOSVisualEffectState,
-  VisualizationLocalSettings,
   VisualizationMetadata,
   RenderResolution,
   CrossfadeDuration,
@@ -20,7 +19,10 @@ import {
   PreferredSubtitleLanguage,
   ColorScheme,
   SubtitleFontFamily,
-  PerVisualizationSettings,
+  PlayerTheme,
+  AccentColor,
+  AccentOption,
+  ACCENT_OPTIONS,
 } from './settings.service';
 
 // ============================================================================
@@ -36,9 +38,11 @@ function createMockElectronService(): {
   onSettingsUpdate: ReturnType<typeof vi.fn>;
   onDependencyStateUpdate: ReturnType<typeof vi.fn>;
   onDependencyProgressUpdate: ReturnType<typeof vi.fn>;
+  platformInfo: ReturnType<typeof signal<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}>>;
 } {
   return {
     serverUrl: signal('http://127.0.0.1:12345'),
+    platformInfo: signal<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}>({platform: 'darwin', supportsGlass: true, systemTheme: 'dark'}),
     // Delegates to the stubbed global fetch so tests keep asserting on it.
     authFetch: (url: string, init?: RequestInit): Promise<Response> => fetch(url, init),
     onSettingsUpdate: vi.fn().mockReturnValue((): void => {}),
@@ -58,7 +62,7 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       maxFrameRate: 0,
       fftSize: 2048,
       renderResolution: 'native',
-      perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade',
+      crossfadeDuration: 1000, crossfadeStyle: 'fade',
     },
     application: {
       serverPort: 0,
@@ -81,17 +85,10 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       hardwareAcceleration: 'auto',
     },
     appearance: {
-      glassEnabled: true,
+      theme: 'glass',
       macOSVisualEffectState: 'active',
-      backgroundColor: '#1e1e1e',
-      backgroundHue: 0,
-      backgroundSaturation: 0,
-      backgroundLightness: 12,
-      windowTintHue: 0,
-      windowTintSaturation: 0,
-      windowTintLightness: 0,
-      windowTintAlpha: 0,
       colorScheme: 'system',
+      accentColor: 'blue',
     },
     subtitles: {
       fontSize: 100,
@@ -175,7 +172,7 @@ describe('SettingsService', (): void => {
   describe('computed signals', (): void => {
     it('defaultVisualization reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'waveform', maxFrameRate: 0, fftSize: 2048, renderResolution: 'native', perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade'},
+        visualization: {defaultType: 'waveform', maxFrameRate: 0, fftSize: 2048, renderResolution: 'native', crossfadeDuration: 1000, crossfadeStyle: 'fade'},
       });
       service.updateFromSSE(testSettings);
 
@@ -185,7 +182,7 @@ describe('SettingsService', (): void => {
 
     it('maxFrameRate reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'bars', maxFrameRate: 60, fftSize: 2048, renderResolution: 'native', perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade'},
+        visualization: {defaultType: 'bars', maxFrameRate: 60, fftSize: 2048, renderResolution: 'native', crossfadeDuration: 1000, crossfadeStyle: 'fade'},
       });
       service.updateFromSSE(testSettings);
 
@@ -195,7 +192,7 @@ describe('SettingsService', (): void => {
 
     it('fftSize reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'bars', maxFrameRate: 0, fftSize: 4096, renderResolution: 'native', perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade'},
+        visualization: {defaultType: 'bars', maxFrameRate: 0, fftSize: 4096, renderResolution: 'native', crossfadeDuration: 1000, crossfadeStyle: 'fade'},
       });
       service.updateFromSSE(testSettings);
 
@@ -273,34 +270,70 @@ describe('SettingsService', (): void => {
       expect(result).toBe(320);
     });
 
-    it('glassEnabled reflects settings value', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        appearance: {glassEnabled: false, macOSVisualEffectState: 'active', backgroundColor: '#1e1e1e', backgroundHue: 0, backgroundSaturation: 0, backgroundLightness: 12, windowTintHue: 0, windowTintSaturation: 0, windowTintLightness: 0, windowTintAlpha: 0, colorScheme: 'system'},
-      });
-      service.updateFromSSE(testSettings);
+    it('theme reflects settings value', (): void => {
+      service.updateFromSSE(createTestSettings({
+        appearance: {theme: 'pebble', macOSVisualEffectState: 'active', colorScheme: 'system', accentColor: 'blue'},
+      }));
 
-      const result: boolean = service.glassEnabled();
-      expect(result).toBe(false);
+      const result: PlayerTheme = service.theme();
+      expect(result).toBe('pebble');
     });
 
     it('macOSVisualEffectState reflects settings value', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        appearance: {glassEnabled: true, macOSVisualEffectState: 'followWindow', backgroundColor: '#1e1e1e', backgroundHue: 0, backgroundSaturation: 0, backgroundLightness: 12, windowTintHue: 0, windowTintSaturation: 0, windowTintLightness: 0, windowTintAlpha: 0, colorScheme: 'system'},
-      });
-      service.updateFromSSE(testSettings);
+      service.updateFromSSE(createTestSettings({
+        appearance: {theme: 'glass', macOSVisualEffectState: 'followWindow', colorScheme: 'system', accentColor: 'blue'},
+      }));
 
       const result: MacOSVisualEffectState = service.macOSVisualEffectState();
       expect(result).toBe('followWindow');
     });
 
-    it('backgroundColor reflects settings value', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        appearance: {glassEnabled: true, macOSVisualEffectState: 'active', backgroundColor: '#ff0000', backgroundHue: 0, backgroundSaturation: 0, backgroundLightness: 12, windowTintHue: 0, windowTintSaturation: 0, windowTintLightness: 0, windowTintAlpha: 0, colorScheme: 'system'},
-      });
-      service.updateFromSSE(testSettings);
+    it('accentColor reflects settings value', (): void => {
+      service.updateFromSSE(createTestSettings({
+        appearance: {theme: 'glass', macOSVisualEffectState: 'active', colorScheme: 'system', accentColor: 'coral'},
+      }));
 
-      const result: string = service.backgroundColor();
-      expect(result).toBe('#ff0000');
+      const result: AccentColor = service.accentColor();
+      expect(result).toBe('coral');
+    });
+
+    it.each([
+      {theme: 'solid', supportsGlass: true, expected: 'solid'},
+      {theme: 'glass', supportsGlass: true, expected: 'glass'},
+      {theme: 'pebble', supportsGlass: true, expected: 'pebble'},
+      {theme: 'solid', supportsGlass: false, expected: 'solid'},
+      {theme: 'glass', supportsGlass: false, expected: 'solid'},
+      {theme: 'pebble', supportsGlass: false, expected: 'pebble'},
+    ] as const)('effectiveTheme is $expected for $theme when glass support is $supportsGlass', ({theme, supportsGlass, expected}): void => {
+      mockElectron.platformInfo.set({platform: supportsGlass ? 'darwin' : 'linux', supportsGlass, systemTheme: 'dark'});
+      service.updateFromSSE(createTestSettings({
+        appearance: {theme, macOSVisualEffectState: 'active', colorScheme: 'system', accentColor: 'blue'},
+      }));
+
+      expect(service.effectiveTheme()).toBe(expected);
+    });
+
+    it('effectiveTheme follows glass support arriving after the settings', (): void => {
+      mockElectron.platformInfo.set({platform: 'linux', supportsGlass: false, systemTheme: 'dark'});
+      service.updateFromSSE(createTestSettings());
+      expect(service.effectiveTheme()).toBe('solid');
+
+      mockElectron.platformInfo.set({platform: 'win32', supportsGlass: true, systemTheme: 'dark'});
+
+      expect(service.effectiveTheme()).toBe('glass');
+    });
+
+    it('lists the eight accent colours in display order with their brand swatches', (): void => {
+      expect(ACCENT_OPTIONS.map((option: AccentOption): string => `${option.id}:${option.name}:${option.swatch}`)).toEqual([
+        'amber:Amber:#f79533',
+        'coral:Coral:#f37055',
+        'rose:Rose:#ef4e7b',
+        'violet:Violet:#a166ab',
+        'blue:Blue:#3a6fd8',
+        'cyan:Cyan:#1098ad',
+        'teal:Teal:#07b39b',
+        'green:Green:#6fba82',
+      ]);
     });
   });
 
@@ -311,7 +344,7 @@ describe('SettingsService', (): void => {
   describe('updateFromSSE', (): void => {
     it('updates settings signal', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'tunnel', maxFrameRate: 30, fftSize: 1024, renderResolution: 'native', perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade'},
+        visualization: {defaultType: 'tunnel', maxFrameRate: 30, fftSize: 1024, renderResolution: 'native', crossfadeDuration: 1000, crossfadeStyle: 'fade'},
       });
 
       service.updateFromSSE(testSettings);
@@ -333,126 +366,6 @@ describe('SettingsService', (): void => {
   });
 
   // ============================================================================
-  // getEffectiveSetting
-  // ============================================================================
-
-  describe('getEffectiveSetting', (): void => {
-    it('returns custom value when set', (): void => {
-      const customSensitivity: number = 0.8;
-      const testSettings: AppSettings = createTestSettings({
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          renderResolution: 'native',
-          perVisualizationSettings: {
-            bars: {sensitivity: customSensitivity},
-          }, crossfadeDuration: 1000, crossfadeStyle: 'fade',
-        },
-      });
-      service.updateFromSSE(testSettings);
-
-      const result: number | undefined = service.getEffectiveSetting('bars', 'sensitivity');
-      expect(result).toBe(customSensitivity);
-    });
-
-    it('returns default when not customized', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          renderResolution: 'native',
-          perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade',
-        },
-      });
-      service.updateFromSSE(testSettings);
-
-      const result: number | undefined = service.getEffectiveSetting('bars', 'sensitivity');
-      expect(result).toBe(0.5); // VISUALIZATION_LOCAL_DEFAULTS.sensitivity
-    });
-
-    it('returns default for unknown visualization', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          renderResolution: 'native',
-          perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade',
-        },
-      });
-      service.updateFromSSE(testSettings);
-
-      const result: number | undefined = service.getEffectiveSetting('nonexistent', 'sensitivity');
-      expect(result).toBe(0.5); // VISUALIZATION_LOCAL_DEFAULTS.sensitivity
-    });
-  });
-
-  // ============================================================================
-  // hasCustomSetting
-  // ============================================================================
-
-  describe('hasCustomSetting', (): void => {
-    it('returns true when customized', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          renderResolution: 'native',
-          perVisualizationSettings: {
-            bars: {sensitivity: 0.9},
-          }, crossfadeDuration: 1000, crossfadeStyle: 'fade',
-        },
-      });
-      service.updateFromSSE(testSettings);
-
-      const result: boolean = service.hasCustomSetting('bars', 'sensitivity');
-      expect(result).toBe(true);
-    });
-
-    it('returns false when not customized', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          renderResolution: 'native',
-          perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade',
-        },
-      });
-      service.updateFromSSE(testSettings);
-
-      const result: boolean = service.hasCustomSetting('bars', 'sensitivity');
-      expect(result).toBe(false);
-    });
-  });
-
-  // ============================================================================
-  // hasApplicableSetting
-  // ============================================================================
-
-  describe('hasApplicableSetting', (): void => {
-    it('returns true for applicable setting', (): void => {
-      // 'bars' visualization has 'barDensity' in its applicableSettings
-      const result: boolean = service.hasApplicableSetting('bars', 'barDensity');
-      expect(result).toBe(true);
-    });
-
-    it('returns false for non-applicable setting', (): void => {
-      // 'bars' visualization does not have 'lineWidth' in its applicableSettings
-      const result: boolean = service.hasApplicableSetting('bars', 'lineWidth');
-      expect(result).toBe(false);
-    });
-
-    it('returns false for unknown visualization', (): void => {
-      const result: boolean = service.hasApplicableSetting('nonexistent', 'sensitivity');
-      expect(result).toBe(false);
-    });
-  });
-
-  // ============================================================================
   // getVisualizationMetadata
   // ============================================================================
 
@@ -464,9 +377,6 @@ describe('SettingsService', (): void => {
       expect(result!.id).toBe('bars');
       expect(result!.name).toBe('Analyzer');
       expect(result!.category).toBe('Bars & Waves');
-      expect(result!.applicableSettings).toContain('barDensity');
-      // Sensitivity is hard-coded for the Analyzer, so it is not a panel control.
-      expect(result!.applicableSettings).not.toContain('sensitivity');
     });
 
     it('returns undefined for unknown visualization', (): void => {
@@ -604,20 +514,6 @@ describe('SettingsService', (): void => {
       errorSpy.mockRestore();
     });
 
-    it('setBackgroundColor rejects invalid hex', async (): Promise<void> => {
-      fetchSpy.mockResolvedValue(createMockResponse(true));
-      const errorSpy: ReturnType<typeof vi.spyOn> = vi.spyOn(console, 'error').mockImplementation((): void => {});
-      const callCountBefore: number = fetchSpy.mock.calls.length;
-
-      await service.setBackgroundColor('not-a-color');
-
-      const callCountAfter: number = fetchSpy.mock.calls.length;
-      expect(callCountAfter).toBe(callCountBefore);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid hex color'));
-
-      errorSpy.mockRestore();
-    });
-
     it('setMacOSVisualEffectState rejects invalid state', async (): Promise<void> => {
       fetchSpy.mockResolvedValue(createMockResponse(true));
       const errorSpy: ReturnType<typeof vi.spyOn> = vi.spyOn(console, 'error').mockImplementation((): void => {});
@@ -628,62 +524,6 @@ describe('SettingsService', (): void => {
       const callCountAfter: number = fetchSpy.mock.calls.length;
       expect(callCountAfter).toBe(callCountBefore);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid macOS visual effect state'));
-
-      errorSpy.mockRestore();
-    });
-  });
-
-  // ============================================================================
-  // setVisualizationSetting
-  // ============================================================================
-
-  describe('setVisualizationSetting', (): void => {
-    it('clamps sensitivity to 0-1', async (): Promise<void> => {
-      fetchSpy.mockResolvedValue(createMockResponse(true));
-
-      // Value above 1 should clamp to 1
-      await service.setVisualizationSetting('bars', 'sensitivity', 2.0);
-      const highCall: [string, RequestInit] = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1] as [string, RequestInit];
-      const highBody: Record<string, unknown> = JSON.parse(highCall[1].body as string) as Record<string, unknown>;
-      const highVizSettings: Record<string, VisualizationLocalSettings> = highBody['perVisualizationSettings'] as Record<string, VisualizationLocalSettings>;
-      expect(highVizSettings['bars'].sensitivity).toBe(1);
-
-      // Value below 0 should clamp to 0
-      await service.setVisualizationSetting('bars', 'sensitivity', -0.5);
-      const lowCall: [string, RequestInit] = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1] as [string, RequestInit];
-      const lowBody: Record<string, unknown> = JSON.parse(lowCall[1].body as string) as Record<string, unknown>;
-      const lowVizSettings: Record<string, VisualizationLocalSettings> = lowBody['perVisualizationSettings'] as Record<string, VisualizationLocalSettings>;
-      expect(lowVizSettings['bars'].sensitivity).toBe(0);
-    });
-
-    it('clamps lineWidth to 1-5', async (): Promise<void> => {
-      fetchSpy.mockResolvedValue(createMockResponse(true));
-
-      // Value above 5 should clamp to 5
-      await service.setVisualizationSetting('waveform', 'lineWidth', 10.0);
-      const highCall: [string, RequestInit] = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1] as [string, RequestInit];
-      const highBody: Record<string, unknown> = JSON.parse(highCall[1].body as string) as Record<string, unknown>;
-      const highVizSettings: Record<string, VisualizationLocalSettings> = highBody['perVisualizationSettings'] as Record<string, VisualizationLocalSettings>;
-      expect(highVizSettings['waveform'].lineWidth).toBe(5);
-
-      // Value below 1 should clamp to 1
-      await service.setVisualizationSetting('waveform', 'lineWidth', 0.1);
-      const lowCall: [string, RequestInit] = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1] as [string, RequestInit];
-      const lowBody: Record<string, unknown> = JSON.parse(lowCall[1].body as string) as Record<string, unknown>;
-      const lowVizSettings: Record<string, VisualizationLocalSettings> = lowBody['perVisualizationSettings'] as Record<string, VisualizationLocalSettings>;
-      expect(lowVizSettings['waveform'].lineWidth).toBe(1);
-    });
-
-    it('rejects invalid bar density', async (): Promise<void> => {
-      fetchSpy.mockResolvedValue(createMockResponse(true));
-      const errorSpy: ReturnType<typeof vi.spyOn> = vi.spyOn(console, 'error').mockImplementation((): void => {});
-      const callCountBefore: number = fetchSpy.mock.calls.length;
-
-      await service.setVisualizationSetting('bars', 'barDensity', 'extreme' as VisualizationLocalSettings['barDensity']);
-
-      const callCountAfter: number = fetchSpy.mock.calls.length;
-      expect(callCountAfter).toBe(callCountBefore);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid bar density'));
 
       errorSpy.mockRestore();
     });
@@ -754,7 +594,6 @@ const NON_DEFAULT_SETTINGS: AppSettings = createTestSettings({
     renderResolution: '640x360',
     crossfadeDuration: 1500,
     crossfadeStyle: 'blur',
-    perVisualizationSettings: {bars: {barDensity: 'high'}},
   },
   application: {serverPort: 8080, controlsAutoHideDelay: 9, miniplayerOnFocusLoss: true},
   playback: {
@@ -769,17 +608,10 @@ const NON_DEFAULT_SETTINGS: AppSettings = createTestSettings({
   },
   transcoding: {videoQuality: 'low', audioBitrate: 320, hardwareAcceleration: 'h264_qsv'},
   appearance: {
-    glassEnabled: false,
+    theme: 'pebble',
     macOSVisualEffectState: 'inactive',
     colorScheme: 'light',
-    backgroundColor: '#102030',
-    backgroundHue: 210,
-    backgroundSaturation: 40,
-    backgroundLightness: 20,
-    windowTintHue: 120,
-    windowTintSaturation: 30,
-    windowTintLightness: 15,
-    windowTintAlpha: 0.4,
+    accentColor: 'teal',
   },
   subtitles: {
     fontSize: 150,
@@ -815,7 +647,6 @@ const PUSHED_VALUE_CASES: readonly SignalCase[] = [
   {name: 'renderResolution', read: (s: SettingsService): unknown => s.renderResolution(), expected: '640x360'},
   {name: 'visualizationCrossfadeDuration', read: (s: SettingsService): unknown => s.visualizationCrossfadeDuration(), expected: 1500},
   {name: 'visualizationCrossfadeStyle', read: (s: SettingsService): unknown => s.visualizationCrossfadeStyle(), expected: 'blur'},
-  {name: 'perVisualizationSettings', read: (s: SettingsService): unknown => s.perVisualizationSettings(), expected: {bars: {barDensity: 'high'}}},
   {name: 'serverPort', read: (s: SettingsService): unknown => s.serverPort(), expected: 8080},
   {name: 'controlsAutoHideDelay', read: (s: SettingsService): unknown => s.controlsAutoHideDelay(), expected: 9},
   {name: 'miniplayerOnFocusLoss', read: (s: SettingsService): unknown => s.miniplayerOnFocusLoss(), expected: true},
@@ -830,17 +661,11 @@ const PUSHED_VALUE_CASES: readonly SignalCase[] = [
   {name: 'seekMode', read: (s: SettingsService): unknown => s.seekMode(), expected: 'drag'},
   {name: 'preferredAudioLanguage', read: (s: SettingsService): unknown => s.preferredAudioLanguage(), expected: 'jpn'},
   {name: 'preferredSubtitleLanguage', read: (s: SettingsService): unknown => s.preferredSubtitleLanguage(), expected: 'ger'},
-  {name: 'glassEnabled', read: (s: SettingsService): unknown => s.glassEnabled(), expected: false},
+  {name: 'theme', read: (s: SettingsService): unknown => s.theme(), expected: 'pebble'},
+  {name: 'effectiveTheme', read: (s: SettingsService): unknown => s.effectiveTheme(), expected: 'pebble'},
   {name: 'macOSVisualEffectState', read: (s: SettingsService): unknown => s.macOSVisualEffectState(), expected: 'inactive'},
   {name: 'colorScheme', read: (s: SettingsService): unknown => s.colorScheme(), expected: 'light'},
-  {name: 'backgroundColor', read: (s: SettingsService): unknown => s.backgroundColor(), expected: '#102030'},
-  {name: 'backgroundHue', read: (s: SettingsService): unknown => s.backgroundHue(), expected: 210},
-  {name: 'backgroundSaturation', read: (s: SettingsService): unknown => s.backgroundSaturation(), expected: 40},
-  {name: 'backgroundLightness', read: (s: SettingsService): unknown => s.backgroundLightness(), expected: 20},
-  {name: 'windowTintHue', read: (s: SettingsService): unknown => s.windowTintHue(), expected: 120},
-  {name: 'windowTintSaturation', read: (s: SettingsService): unknown => s.windowTintSaturation(), expected: 30},
-  {name: 'windowTintLightness', read: (s: SettingsService): unknown => s.windowTintLightness(), expected: 15},
-  {name: 'windowTintAlpha', read: (s: SettingsService): unknown => s.windowTintAlpha(), expected: 0.4},
+  {name: 'accentColor', read: (s: SettingsService): unknown => s.accentColor(), expected: 'teal'},
   {name: 'subtitleFontSize', read: (s: SettingsService): unknown => s.subtitleFontSize(), expected: 150},
   {name: 'subtitleFontColor', read: (s: SettingsService): unknown => s.subtitleFontColor(), expected: '#ffcc00'},
   {name: 'subtitleBackgroundColor', read: (s: SettingsService): unknown => s.subtitleBackgroundColor(), expected: '#112233'},
@@ -881,17 +706,10 @@ const FALLBACK_CASES: readonly SignalCase[] = [
   {name: 'seekMode', read: (s: SettingsService): unknown => s.seekMode(), expected: 'drop'},
   {name: 'preferredAudioLanguage', read: (s: SettingsService): unknown => s.preferredAudioLanguage(), expected: 'eng'},
   {name: 'preferredSubtitleLanguage', read: (s: SettingsService): unknown => s.preferredSubtitleLanguage(), expected: 'off'},
-  {name: 'glassEnabled', read: (s: SettingsService): unknown => s.glassEnabled(), expected: true},
+  {name: 'theme', read: (s: SettingsService): unknown => s.theme(), expected: 'glass'},
   {name: 'macOSVisualEffectState', read: (s: SettingsService): unknown => s.macOSVisualEffectState(), expected: 'active'},
   {name: 'colorScheme', read: (s: SettingsService): unknown => s.colorScheme(), expected: 'system'},
-  {name: 'backgroundColor', read: (s: SettingsService): unknown => s.backgroundColor(), expected: '#1e1e1e'},
-  {name: 'backgroundHue', read: (s: SettingsService): unknown => s.backgroundHue(), expected: 0},
-  {name: 'backgroundSaturation', read: (s: SettingsService): unknown => s.backgroundSaturation(), expected: 0},
-  {name: 'backgroundLightness', read: (s: SettingsService): unknown => s.backgroundLightness(), expected: 12},
-  {name: 'windowTintHue', read: (s: SettingsService): unknown => s.windowTintHue(), expected: 0},
-  {name: 'windowTintSaturation', read: (s: SettingsService): unknown => s.windowTintSaturation(), expected: 0},
-  {name: 'windowTintLightness', read: (s: SettingsService): unknown => s.windowTintLightness(), expected: 0},
-  {name: 'windowTintAlpha', read: (s: SettingsService): unknown => s.windowTintAlpha(), expected: 0},
+  {name: 'accentColor', read: (s: SettingsService): unknown => s.accentColor(), expected: 'blue'},
   {name: 'subtitleFontSize', read: (s: SettingsService): unknown => s.subtitleFontSize(), expected: 100},
   {name: 'subtitleFontColor', read: (s: SettingsService): unknown => s.subtitleFontColor(), expected: '#ffffff'},
   {name: 'subtitleBackgroundColor', read: (s: SettingsService): unknown => s.subtitleBackgroundColor(), expected: '#000000'},
@@ -923,7 +741,6 @@ const VISUALIZATION_FALLBACK_CASES: readonly SignalCase[] = [
   {name: 'renderResolution', read: (s: SettingsService): unknown => s.renderResolution(), expected: 'native'},
   {name: 'visualizationCrossfadeDuration', read: (s: SettingsService): unknown => s.visualizationCrossfadeDuration(), expected: 1000},
   {name: 'visualizationCrossfadeStyle', read: (s: SettingsService): unknown => s.visualizationCrossfadeStyle(), expected: 'fade'},
-  {name: 'perVisualizationSettings', read: (s: SettingsService): unknown => s.perVisualizationSettings(), expected: {}},
 ];
 
 /** Setter calls that should be persisted, with the exact body each should send. */
@@ -936,13 +753,6 @@ const PERSIST_CASES: readonly PersistCase[] = [
   {name: 'setRenderResolution("640x360")', act: (s: SettingsService): Promise<void> => s.setRenderResolution('640x360'), category: 'visualization', body: {renderResolution: '640x360'}},
   {name: 'setVisualizationCrossfadeDuration(750)', act: (s: SettingsService): Promise<void> => s.setVisualizationCrossfadeDuration(750), category: 'visualization', body: {crossfadeDuration: 750}},
   {name: 'setVisualizationCrossfadeStyle("zoom")', act: (s: SettingsService): Promise<void> => s.setVisualizationCrossfadeStyle('zoom'), category: 'visualization', body: {crossfadeStyle: 'zoom'}},
-  {name: 'setVisualizationSetting barDensity "high"', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('bars', 'barDensity', 'high'), category: 'visualization', body: {perVisualizationSettings: {bars: {barDensity: 'high'}}}},
-  {name: 'setVisualizationSetting barColorTop unchanged', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('bars', 'barColorTop', '#ff0000'), category: 'visualization', body: {perVisualizationSettings: {bars: {barColorTop: '#ff0000'}}}},
-  {name: 'setVisualizationSetting trailIntensity 2 clamped to 1', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('neon', 'trailIntensity', 2), category: 'visualization', body: {perVisualizationSettings: {neon: {trailIntensity: 1}}}},
-  {name: 'setVisualizationSetting glowIntensity -1 clamped to 0', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('neon', 'glowIntensity', -1), category: 'visualization', body: {perVisualizationSettings: {neon: {glowIntensity: 0}}}},
-  {name: 'setVisualizationSetting waveformSmoothing 0.3 unchanged', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('waveform', 'waveformSmoothing', 0.3), category: 'visualization', body: {perVisualizationSettings: {waveform: {waveformSmoothing: 0.3}}}},
-  {name: 'setVisualizationSetting strobeFrequency 50 clamped to 20', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('pulsar', 'strobeFrequency', 50), category: 'visualization', body: {perVisualizationSettings: {pulsar: {strobeFrequency: 20}}}},
-  {name: 'setVisualizationSetting strobeFrequency 0 clamped to 1', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('pulsar', 'strobeFrequency', 0), category: 'visualization', body: {perVisualizationSettings: {pulsar: {strobeFrequency: 1}}}},
   // Application
   {name: 'setServerPort(8080.4) rounded', act: (s: SettingsService): Promise<void> => s.setServerPort(8080.4), category: 'application', body: {serverPort: 8080}},
   {name: 'setControlsAutoHideDelay(12.4) rounded', act: (s: SettingsService): Promise<void> => s.setControlsAutoHideDelay(12.4), category: 'application', body: {controlsAutoHideDelay: 12}},
@@ -982,17 +792,13 @@ const PERSIST_CASES: readonly PersistCase[] = [
   {name: 'setAudioBitrate(256)', act: (s: SettingsService): Promise<void> => s.setAudioBitrate(256), category: 'transcoding', body: {audioBitrate: 256}},
   {name: 'setHardwareAcceleration("h264_nvenc")', act: (s: SettingsService): Promise<void> => s.setHardwareAcceleration('h264_nvenc'), category: 'transcoding', body: {hardwareAcceleration: 'h264_nvenc'}},
   // Appearance
-  {name: 'setGlassEnabled(false)', act: (s: SettingsService): Promise<void> => s.setGlassEnabled(false), category: 'appearance', body: {glassEnabled: false}},
+  {name: 'setTheme("solid")', act: (s: SettingsService): Promise<void> => s.setTheme('solid'), category: 'appearance', body: {theme: 'solid'}},
+  {name: 'setTheme("glass")', act: (s: SettingsService): Promise<void> => s.setTheme('glass'), category: 'appearance', body: {theme: 'glass'}},
+  {name: 'setTheme("pebble")', act: (s: SettingsService): Promise<void> => s.setTheme('pebble'), category: 'appearance', body: {theme: 'pebble'}},
+  {name: 'setAccentColor("amber")', act: (s: SettingsService): Promise<void> => s.setAccentColor('amber'), category: 'appearance', body: {accentColor: 'amber'}},
+  {name: 'setAccentColor("rose")', act: (s: SettingsService): Promise<void> => s.setAccentColor('rose'), category: 'appearance', body: {accentColor: 'rose'}},
   {name: 'setMacOSVisualEffectState("inactive")', act: (s: SettingsService): Promise<void> => s.setMacOSVisualEffectState('inactive'), category: 'appearance', body: {macOSVisualEffectState: 'inactive'}},
   {name: 'setColorScheme("dark")', act: (s: SettingsService): Promise<void> => s.setColorScheme('dark'), category: 'appearance', body: {colorScheme: 'dark'}},
-  {name: 'setBackgroundColor("#A1b2C3") in mixed case', act: (s: SettingsService): Promise<void> => s.setBackgroundColor('#A1b2C3'), category: 'appearance', body: {backgroundColor: '#A1b2C3'}},
-  {name: 'setBackgroundHue(210)', act: (s: SettingsService): Promise<void> => s.setBackgroundHue(210), category: 'appearance', body: {backgroundHue: 210}},
-  {name: 'setBackgroundSaturation(40)', act: (s: SettingsService): Promise<void> => s.setBackgroundSaturation(40), category: 'appearance', body: {backgroundSaturation: 40}},
-  {name: 'setBackgroundLightness(20)', act: (s: SettingsService): Promise<void> => s.setBackgroundLightness(20), category: 'appearance', body: {backgroundLightness: 20}},
-  {name: 'setWindowTintHue(120)', act: (s: SettingsService): Promise<void> => s.setWindowTintHue(120), category: 'appearance', body: {windowTintHue: 120}},
-  {name: 'setWindowTintSaturation(30)', act: (s: SettingsService): Promise<void> => s.setWindowTintSaturation(30), category: 'appearance', body: {windowTintSaturation: 30}},
-  {name: 'setWindowTintLightness(15)', act: (s: SettingsService): Promise<void> => s.setWindowTintLightness(15), category: 'appearance', body: {windowTintLightness: 15}},
-  {name: 'setWindowTintAlpha(0.4)', act: (s: SettingsService): Promise<void> => s.setWindowTintAlpha(0.4), category: 'appearance', body: {windowTintAlpha: 0.4}},
   // Subtitles
   {name: 'setSubtitleFontSize(120.6) rounded', act: (s: SettingsService): Promise<void> => s.setSubtitleFontSize(120.6), category: 'subtitles', body: {fontSize: 121}},
   {name: 'setSubtitleFontSize(10) clamped to 50', act: (s: SettingsService): Promise<void> => s.setSubtitleFontSize(10), category: 'subtitles', body: {fontSize: 50}},
@@ -1028,14 +834,15 @@ const REJECT_CASES: readonly RejectCase[] = [
   {name: 'setPreferredSubtitleLanguage("xxx")', act: (s: SettingsService): Promise<void> => s.setPreferredSubtitleLanguage('xxx' as PreferredSubtitleLanguage), message: 'Invalid subtitle language: xxx'},
   {name: 'setMacOSVisualEffectState("sometimes")', act: (s: SettingsService): Promise<void> => s.setMacOSVisualEffectState('sometimes' as MacOSVisualEffectState), message: 'Invalid macOS visual effect state: sometimes'},
   {name: 'setColorScheme("sepia")', act: (s: SettingsService): Promise<void> => s.setColorScheme('sepia' as ColorScheme), message: 'Invalid color scheme: sepia'},
-  {name: 'setBackgroundColor with seven hex digits', act: (s: SettingsService): Promise<void> => s.setBackgroundColor('#1234567'), message: 'Invalid hex color: #1234567'},
-  {name: 'setBackgroundColor without the leading hash', act: (s: SettingsService): Promise<void> => s.setBackgroundColor('1e1e1e'), message: 'Invalid hex color: 1e1e1e'},
+  {name: 'setTheme("aero")', act: (s: SettingsService): Promise<void> => s.setTheme('aero' as PlayerTheme), message: 'Invalid theme: aero'},
+  {name: 'setTheme("Glass") in the wrong case', act: (s: SettingsService): Promise<void> => s.setTheme('Glass' as PlayerTheme), message: 'Invalid theme: Glass'},
+  {name: 'setAccentColor("purple")', act: (s: SettingsService): Promise<void> => s.setAccentColor('purple' as AccentColor), message: 'Invalid accent color: purple'},
+  {name: 'setAccentColor with a hex colour', act: (s: SettingsService): Promise<void> => s.setAccentColor('#5073b8' as AccentColor), message: 'Invalid accent color: #5073b8'},
   {name: 'setSubtitleFontColor with a colour name', act: (s: SettingsService): Promise<void> => s.setSubtitleFontColor('red'), message: 'Invalid hex color: red'},
   {name: 'setSubtitleFontColor with shorthand hex', act: (s: SettingsService): Promise<void> => s.setSubtitleFontColor('#fff'), message: 'Invalid hex color: #fff'},
   {name: 'setSubtitleBackgroundColor with a non-hex digit', act: (s: SettingsService): Promise<void> => s.setSubtitleBackgroundColor('#12345g'), message: 'Invalid hex color: #12345g'},
   {name: 'setSubtitleShadowColor carrying injected CSS', act: (s: SettingsService): Promise<void> => s.setSubtitleShadowColor('#000000;} body {display: none'), message: 'Invalid hex color: #000000;} body {display: none'},
   {name: 'setSubtitleFontFamily("Comic Sans")', act: (s: SettingsService): Promise<void> => s.setSubtitleFontFamily('Comic Sans' as SubtitleFontFamily), message: 'Invalid font family: Comic Sans'},
-  {name: 'setVisualizationSetting barDensity "extreme"', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('bars', 'barDensity', 'extreme' as VisualizationLocalSettings['barDensity']), message: 'Invalid bar density: extreme'},
 ];
 
 describe('SettingsService persistence', (): void => {
@@ -1351,199 +1158,6 @@ describe('SettingsService persistence', (): void => {
   });
 
   // ============================================================================
-  // Per-visualization settings
-  // ============================================================================
-
-  describe('per-visualization settings', (): void => {
-    const customised: PerVisualizationSettings = {
-      bars: {barDensity: 'high', barColorTop: '#ff0000'},
-      neon: {glowIntensity: 0.9},
-    };
-
-    beforeEach(async (): Promise<void> => {
-      await createService();
-      settingsPushHandler()(createTestSettings({
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          renderResolution: 'native',
-          crossfadeDuration: 1000,
-          crossfadeStyle: 'fade',
-          perVisualizationSettings: customised,
-        },
-      }));
-      fetchSpy.mockClear();
-    });
-
-    it('sends every visualization\'s settings when one setting changes', async (): Promise<void> => {
-      const pending: Promise<void> = service.setVisualizationSetting('bars', 'barDensity', 'low');
-      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-      await pending;
-
-      expect(sentWrites(fetchSpy)[0].body).toEqual({
-        perVisualizationSettings: {
-          bars: {barDensity: 'low', barColorTop: '#ff0000'},
-          neon: {glowIntensity: 0.9},
-        },
-      });
-    });
-
-    it('keeps both changes when two visualizations change in one burst', async (): Promise<void> => {
-      void service.setVisualizationSetting('bars', 'barDensity', 'low');
-      const pending: Promise<void> = service.setVisualizationSetting('neon', 'glowIntensity', 0.1);
-      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-      await pending;
-
-      expect(sentWrites(fetchSpy)).toEqual([expect.objectContaining({
-        body: {
-          perVisualizationSettings: {
-            bars: {barDensity: 'low', barColorTop: '#ff0000'},
-            neon: {glowIntensity: 0.1},
-          },
-        },
-      })]);
-    });
-
-    it('reports the changed value as the effective setting straight away', async (): Promise<void> => {
-      const pending: Promise<void> = service.setVisualizationSetting('waveform', 'lineWidth', 4);
-
-      expect(service.getEffectiveSetting('waveform', 'lineWidth')).toBe(4);
-      expect(service.hasCustomSetting('waveform', 'lineWidth')).toBe(true);
-      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-      await pending;
-    });
-
-    it('resetting one setting sends the map without that setting', async (): Promise<void> => {
-      await service.resetVisualizationSetting('bars', 'barDensity');
-
-      expect(sentWrites(fetchSpy)).toEqual([{
-        url: `${SERVER_URL}/settings/visualization`,
-        headers: {'Content-Type': 'application/json'},
-        body: {perVisualizationSettings: {bars: {barColorTop: '#ff0000'}, neon: {glowIntensity: 0.9}}},
-      }]);
-    });
-
-    it('resetting a visualization\'s last setting removes its entry', async (): Promise<void> => {
-      await service.resetVisualizationSetting('neon', 'glowIntensity');
-
-      expect(sentWrites(fetchSpy)[0].body).toEqual({
-        perVisualizationSettings: {bars: {barDensity: 'high', barColorTop: '#ff0000'}},
-      });
-    });
-
-    it('resetting a setting that was never customised sends nothing', async (): Promise<void> => {
-      await service.resetVisualizationSetting('bars', 'sensitivity');
-
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('resetting a setting of an uncustomised visualization sends nothing', async (): Promise<void> => {
-      await service.resetVisualizationSetting('tunnel', 'sensitivity');
-
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('resetting a setting sends nothing while the server URL is unknown', async (): Promise<void> => {
-      mockElectron.serverUrl.set('');
-
-      await service.resetVisualizationSetting('bars', 'barDensity');
-
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('logs when the server refuses to reset a setting', async (): Promise<void> => {
-      fetchSpy.mockResolvedValue(createMockResponse(false));
-
-      await service.resetVisualizationSetting('bars', 'barDensity');
-
-      expect(errorSpy).toHaveBeenCalledWith('[SettingsService] Failed to save visualization: 500');
-    });
-
-    it('resetting all settings sends the map without that visualization', async (): Promise<void> => {
-      await service.resetAllVisualizationSettings('bars');
-
-      expect(sentWrites(fetchSpy)).toEqual([{
-        url: `${SERVER_URL}/settings/visualization`,
-        headers: {'Content-Type': 'application/json'},
-        body: {perVisualizationSettings: {neon: {glowIntensity: 0.9}}},
-      }]);
-    });
-
-    it('resetting all settings sends nothing while the server URL is unknown', async (): Promise<void> => {
-      mockElectron.serverUrl.set('');
-
-      await service.resetAllVisualizationSettings('bars');
-
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('logs when the server refuses to reset all settings', async (): Promise<void> => {
-      fetchSpy.mockResolvedValue(createMockResponse(false));
-
-      await service.resetAllVisualizationSettings('bars');
-
-      expect(errorSpy).toHaveBeenCalledWith('[SettingsService] Failed to save visualization: 500');
-    });
-
-    it('resetting one setting drops the custom value straight away', async (): Promise<void> => {
-      const pending: Promise<void> = service.resetVisualizationSetting('bars', 'barDensity');
-
-      expect(service.perVisualizationSettings()).toEqual({bars: {barColorTop: '#ff0000'}, neon: {glowIntensity: 0.9}});
-      await pending;
-    });
-
-    it('resetting all settings drops the visualization\'s custom values straight away', async (): Promise<void> => {
-      const pending: Promise<void> = service.resetAllVisualizationSettings('bars');
-
-      expect(service.perVisualizationSettings()).toEqual({neon: {glowIntensity: 0.9}});
-      await pending;
-    });
-
-    it('a change still waiting on its debounce cannot undo a later reset of that setting', async (): Promise<void> => {
-      void service.setVisualizationSetting('bars', 'barDensity', 'low');
-
-      await service.resetVisualizationSetting('bars', 'barDensity');
-      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-
-      expect(sentWrites(fetchSpy).at(-1)?.body).toEqual({
-        perVisualizationSettings: {bars: {barColorTop: '#ff0000'}, neon: {glowIntensity: 0.9}},
-      });
-    });
-
-    it('a change still waiting on its debounce cannot undo a later reset of the whole visualization', async (): Promise<void> => {
-      void service.setVisualizationSetting('bars', 'barDensity', 'low');
-
-      await service.resetAllVisualizationSettings('bars');
-      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-
-      expect(sentWrites(fetchSpy).at(-1)?.body).toEqual({perVisualizationSettings: {neon: {glowIntensity: 0.9}}});
-    });
-
-    it('a reset sends an unrelated visualization change that was still waiting on its debounce', async (): Promise<void> => {
-      void service.setMaxFrameRate(30);
-
-      await service.resetVisualizationSetting('bars', 'barDensity');
-      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-
-      expect(sentWrites(fetchSpy)).toEqual([expect.objectContaining({
-        body: {
-          maxFrameRate: 30,
-          perVisualizationSettings: {bars: {barColorTop: '#ff0000'}, neon: {glowIntensity: 0.9}},
-        },
-      })]);
-    });
-
-    it('a reset settles a change that was still waiting on its debounce', async (): Promise<void> => {
-      const change: Promise<void> = service.setVisualizationSetting('neon', 'glowIntensity', 0.1);
-
-      await service.resetVisualizationSetting('bars', 'barDensity');
-
-      await expect(change).resolves.toBeUndefined();
-    });
-  });
-
-  // ============================================================================
   // Debounced writes
   // ============================================================================
 
@@ -1608,7 +1222,7 @@ describe('SettingsService persistence', (): void => {
 
     it('writes each category separately', async (): Promise<void> => {
       void service.setDefaultVolume(0.6);
-      const pending: Promise<void> = service.setGlassEnabled(false);
+      const pending: Promise<void> = service.setAccentColor('green');
       await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
       await pending;
 
@@ -1617,7 +1231,7 @@ describe('SettingsService persistence', (): void => {
     });
 
     it('does not delay one category because another keeps changing', async (): Promise<void> => {
-      void service.setGlassEnabled(false);
+      void service.setAccentColor('green');
       await vi.advanceTimersByTimeAsync(DEBOUNCE_MS - 1);
       void service.setDefaultVolume(0.6);
 
@@ -1688,14 +1302,14 @@ describe('SettingsService persistence', (): void => {
 
     it('writes pending changes immediately when the page is hidden', async (): Promise<void> => {
       const volume: Promise<void> = service.setDefaultVolume(0.6);
-      const glass: Promise<void> = service.setGlassEnabled(false);
+      const accent: Promise<void> = service.setAccentColor('green');
 
       window.dispatchEvent(new Event('pagehide'));
       await vi.advanceTimersByTimeAsync(0);
-      await Promise.all([volume, glass]);
+      await Promise.all([volume, accent]);
 
       const bodies: Record<string, unknown>[] = sentWrites(fetchSpy).map((write: SentWrite): Record<string, unknown> => write.body);
-      expect(bodies).toEqual([{defaultVolume: 0.6}, {glassEnabled: false}]);
+      expect(bodies).toEqual([{defaultVolume: 0.6}, {accentColor: 'green'}]);
     });
 
     it('does not write a second time when the debounce elapses after a page-hide flush', async (): Promise<void> => {

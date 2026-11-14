@@ -8,7 +8,7 @@
  * - Horizontal waveforms: rest position, bending, mirroring and the bend clamp
  * - Trails: per-frame spin, fade and compositing
  * - Bass trigger: grace period, cooldown, spin reversal, hue cross-fade, flash
- * - Fade-out and idling, fixed-look setters, FFT size changes, destroy
+ * - Fade-out and idling, the fixed look, FFT size changes, destroy
  * - Edge inputs never hand the canvas a NaN or an infinity
  *
  * Canvas 2D and Web Audio are faked; see visualization-test-fakes.group1.
@@ -17,7 +17,6 @@
  */
 
 import {ReactorVisualization} from './reactor-visualization';
-import {Visualization} from './visualization';
 import {
   bassHeavy,
   CanvasFakes,
@@ -86,11 +85,6 @@ describe('ReactorVisualization', (): void => {
   function surfaces(): Surfaces {
     const [main, rings, horizontal, scratch, ringsScratch, tower, freeze]: RecordingContext2D[] = fakes.contexts;
     return {main, rings, horizontal, scratch, ringsScratch, tower, freeze};
-  }
-
-  /** The visualization as the settings panel sees it: through the base type. */
-  function controls(): Visualization {
-    return viz;
   }
 
   /** Draws one frame after letting `elapsedMs` pass. */
@@ -375,7 +369,7 @@ describe('ReactorVisualization', (): void => {
     });
 
     it('draws no peaks for a spectrum just under the peak threshold', (): void => {
-      // 146/255 at the fixed 10% sensitivity is 0.1145, under the 0.115 threshold.
+      // 146/255 at the fixed sensitivity factor of 0.2 is 0.1145, under the 0.115 threshold.
       analyser.spectrum = flat(146);
 
       frame();
@@ -384,7 +378,7 @@ describe('ReactorVisualization', (): void => {
     });
 
     it('raises every ring to its ceiling for a spectrum just over the peak threshold', (): void => {
-      // 147/255 at the fixed 10% sensitivity is 0.1153.
+      // 147/255 at the fixed sensitivity factor of 0.2 is 0.1153.
       analyser.spectrum = flat(147);
 
       frame();
@@ -920,40 +914,9 @@ describe('ReactorVisualization', (): void => {
   // ==========================================================================
 
   describe('fixed look', (): void => {
-    it('ignores the sensitivity control', (): void => {
-      controls().setSensitivity(1);
-
-      expect(viz.getSensitivity()).toBe(0.1);
-    });
-
-    it('ignores the trail intensity control', (): void => {
-      controls().setTrailIntensity(0);
-
-      expect(viz.getTrailIntensity()).toBe(1);
-    });
-
-    it('ignores the line width control', (): void => {
-      controls().setLineWidth(5);
-
-      expect(viz.getLineWidth()).toBe(1);
-    });
-
-    it('ignores the glow control', (): void => {
-      controls().setGlowIntensity(1);
-
-      expect(viz.getGlowIntensity()).toBe(0);
-    });
-
-    it('ignores the waveform smoothing control', (): void => {
-      controls().setWaveformSmoothing(0);
-
-      expect(viz.getWaveformSmoothing()).toBe(1);
-    });
-
-    it('keeps drawing peaks at the fixed sensitivity after the control is moved', (): void => {
+    it('draws no peaks for bins that only a higher gain would lift over the threshold', (): void => {
       viz.resize(WIDTH, HEIGHT);
-      controls().setSensitivity(1);
-      // Would clear the threshold at full sensitivity, but not at the fixed 10%.
+      // Would clear the threshold at a gain of 2, but not at the fixed 0.2.
       analyser.spectrum = flat(100);
 
       frame();

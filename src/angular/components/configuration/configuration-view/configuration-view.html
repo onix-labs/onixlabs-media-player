@@ -14,54 +14,13 @@
     <div class="configuration-sidebar">
       <nav class="category-list">
         @for (category of categories; track category.id) {
-          @if (category.id === 'visualisations') {
-            <!-- Visualisations with accordion -->
-            <div class="accordion-category">
-              <!-- A row, not a button: it holds the toggle button, and a button may not contain another -->
-              <div
-                class="category-item has-accordion"
-                [class.active]="selectedCategory() === 'visualisations' && selectedVisualization() === null"
-                (click)="onSelectCategory('visualisations')"
-              >
-                <span
-                  role="button"
-                  tabindex="0"
-                  (keydown.enter)="onSelectCategory('visualisations')"
-                  (keydown.space)="onSelectCategory('visualisations'); $event.preventDefault()"
-                >{{ category.name }}</span>
-                <button
-                  class="accordion-toggle"
-                  [class.expanded]="isVisualisationsExpanded()"
-                  (click)="toggleVisualisationsAccordion($event)"
-                  title="Show individual visualizations"
-                >
-                  <i class="fa-solid fa-chevron-right"></i>
-                </button>
-              </div>
-              @if (isVisualisationsExpanded()) {
-                <div class="accordion-children">
-                  @for (viz of visualizationMetadata; track viz.id) {
-                    <button
-                      class="category-child"
-                      [class.active]="selectedVisualization() === viz.id"
-                      (click)="onSelectVisualization(viz.id)"
-                    >
-                      {{ viz.name }}
-                    </button>
-                  }
-                </div>
-              }
-            </div>
-          } @else {
-            <!-- Standard category -->
-            <button
-              class="category-item"
-              [class.active]="selectedCategory() === category.id"
-              (click)="onSelectCategory(category.id)"
-            >
-              <span>{{ category.name }}</span>
-            </button>
-          }
+          <button
+            class="category-item"
+            [class.active]="selectedCategory() === category.id"
+            (click)="onSelectCategory(category.id)"
+          >
+            <span>{{ category.name }}</span>
+          </button>
         }
       </nav>
     </div>
@@ -133,14 +92,16 @@
                     </div>
                   }
                 }
+              </div>
 
-                <!-- SoundFont Section -->
-                @if (fluidsynthInstalled()) {
-                  <div class="soundfont-section">
-                    <div class="soundfont-header">
-                      <span class="soundfont-title">SoundFonts</span>
-                      <span class="soundfont-subtitle">SoundFont files are required for MIDI playback synthesis. Select one to use for playback.</span>
-                    </div>
+              <!-- SoundFont Section: its own group, titled above its card -->
+              @if (fluidsynthInstalled()) {
+                <section class="setting-section soundfont-section">
+                  <div class="setting-group-header soundfont-header">
+                    <h3 class="soundfont-title">SoundFonts</h3>
+                    <p class="setting-group-description soundfont-subtitle">SoundFont files are required for MIDI playback synthesis. Select one to use for playback.</p>
+                  </div>
+                  <div class="setting-group">
                     @if (soundFontError(); as error) {
                       <div class="install-progress error">
                         <i class="fa-solid fa-circle-xmark"></i>
@@ -148,21 +109,7 @@
                       </div>
                     }
                     @if (soundFonts().length > 0) {
-                      <div class="soundfont-list">
-                        @for (sf of soundFonts(); track sf.fileName) {
-                          <div class="soundfont-item" [class.selected]="isActiveSoundFont(sf)">
-                            <button class="soundfont-select" (click)="onSelectSoundFont(sf.fileName)" (mouseup)="$any($event.currentTarget).blur()" title="Use this SoundFont">
-                              <div class="soundfont-radio" [class.active]="isActiveSoundFont(sf)"></div>
-                            </button>
-                            <i class="fa-solid fa-music"></i>
-                            <span class="soundfont-name">{{ sf.fileName }}</span>
-                            <span class="soundfont-size">{{ formatFileSize(sf.sizeBytes) }}</span>
-                            <button class="soundfont-remove" (click)="onRemoveSoundFont(sf.fileName)" (mouseup)="$any($event.currentTarget).blur()" title="Remove SoundFont">
-                              <i class="fa-solid fa-trash"></i>
-                            </button>
-                          </div>
-                        }
-                      </div>
+                      <app-soundfont-list/>
                     } @else {
                       <p class="soundfont-empty">No SoundFonts installed. Install a .sf2 file for MIDI playback.</p>
                     }
@@ -170,203 +117,108 @@
                       Install SoundFont
                     </button>
                   </div>
-                }
-              </div>
+                </section>
+              }
             }
 
             @case ('visualisations') {
-              @if (selectedVisualization(); as vizId) {
-                <!-- Per-Visualization Settings -->
-                <div class="setting-group">
-                  <!-- Bar Density (bars only) -->
-                  @if (hasApplicableSetting(vizId, 'barDensity')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Bar Density</label>
-                        <p class="setting-description">
-                          Controls the number of bars. Higher density shows more detail.
-                        </p>
-                      </div>
-                      <div class="setting-control">
-                        <select (change)="onPerVizBarDensityChange(vizId, $event)">
-                          @for (option of barDensityOptions; track option.value) {
-                            <option [value]="option.value" [selected]="option.value === getEffectiveSetting(vizId, 'barDensity')">{{ option.label }}</option>
-                          }
-                        </select>
-                      </div>
-                    </div>
-                  }
-
-                  <!-- Bar Color Bottom (Analyzer only) -->
-                  @if (hasApplicableSetting(vizId, 'barColorBottom')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Bar Color (Bottom)</label>
-                        <p class="setting-description">
-                          The color at the bottom of the bars.
-                        </p>
-                      </div>
-                      <div class="setting-control color-control">
-                        <input
-                          type="color"
-                          [value]="getEffectiveSetting(vizId, 'barColorBottom')"
-                          (input)="onPerVizColorChange(vizId, 'barColorBottom', $event)"
-                        />
-                        <span class="color-value">
-                          {{ getEffectiveSetting(vizId, 'barColorBottom') }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-
-                  <!-- Bar Color Middle (Analyzer only) -->
-                  @if (hasApplicableSetting(vizId, 'barColorMiddle')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Bar Color (Middle)</label>
-                        <p class="setting-description">
-                          The color at the middle of the bars.
-                        </p>
-                      </div>
-                      <div class="setting-control color-control">
-                        <input
-                          type="color"
-                          [value]="getEffectiveSetting(vizId, 'barColorMiddle')"
-                          (input)="onPerVizColorChange(vizId, 'barColorMiddle', $event)"
-                        />
-                        <span class="color-value">
-                          {{ getEffectiveSetting(vizId, 'barColorMiddle') }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-
-                  <!-- Bar Color Top (Analyzer only) -->
-                  @if (hasApplicableSetting(vizId, 'barColorTop')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Bar Color (Top)</label>
-                        <p class="setting-description">
-                          The color at the top of the bars.
-                        </p>
-                      </div>
-                      <div class="setting-control color-control">
-                        <input
-                          type="color"
-                          [value]="getEffectiveSetting(vizId, 'barColorTop')"
-                          (input)="onPerVizColorChange(vizId, 'barColorTop', $event)"
-                        />
-                        <span class="color-value">
-                          {{ getEffectiveSetting(vizId, 'barColorTop') }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-                </div>
-              } @else {
-                <!-- Global Visualization Settings -->
-                <div class="setting-group">
-                  <div class="setting-row">
-                    <div class="setting-label">
-                      <label for="max-frame-rate">Max Frame Rate</label>
-                      <p class="setting-description">
-                        Limit visualization frame rate to reduce CPU/GPU usage.
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <select
-                        id="max-frame-rate"
-                        (change)="onMaxFrameRateChange($event)"
-                      >
-                        @for (option of frameRateOptions; track option.value) {
-                          <option [value]="option.value" [selected]="option.value === currentMaxFrameRate()">{{ option.label }}</option>
-                        }
-                      </select>
-                    </div>
+              <!-- Visualization settings -->
+              <div class="setting-group">
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="max-frame-rate">Max Frame Rate</label>
+                    <p class="setting-description">
+                      Limit visualization frame rate to reduce CPU/GPU usage.
+                    </p>
                   </div>
-
-                  <div class="setting-row">
-                    <div class="setting-label">
-                      <label for="fft-size">FFT Size</label>
-                      <p class="setting-description">
-                        Audio analysis resolution. Higher values use more CPU.
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <select
-                        id="fft-size"
-                        (change)="onFftSizeChange($event)"
-                      >
-                        @for (option of fftSizeOptions; track option.value) {
-                          <option [value]="option.value" [selected]="option.value === currentFftSize()">{{ option.label }}</option>
-                        }
-                      </select>
-                    </div>
-                  </div>
-
-                  <div class="setting-row">
-                    <div class="setting-label">
-                      <label for="render-resolution">Render Resolution</label>
-                      <p class="setting-description">
-                        Fullscreen render size. Fixed resolutions render small and stretch to fill for a pixelated look.
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <select
-                        id="render-resolution"
-                        (change)="onRenderResolutionChange($event)"
-                      >
-                        @for (option of renderResolutionOptions; track option.value) {
-                          <option [value]="option.value" [selected]="option.value === currentRenderResolution()">{{ option.label }}</option>
-                        }
-                      </select>
-                    </div>
-                  </div>
-
-                  <div class="setting-row">
-                    <div class="setting-label">
-                      <label for="visualization-crossfade-duration">Crossfade Duration</label>
-                      <p class="setting-description">
-                        How long visualizations take to crossfade when switching between them.
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <select
-                        id="visualization-crossfade-duration"
-                        (change)="onVisualizationCrossfadeDurationChange($event)"
-                      >
-                        @for (option of visualizationCrossfadeDurationOptions; track option.value) {
-                          <option [value]="option.value" [selected]="option.value === currentVisualizationCrossfadeDuration()">{{ option.label }}</option>
-                        }
-                      </select>
-                    </div>
-                  </div>
-
-                  <div class="setting-row">
-                    <div class="setting-label">
-                      <label for="crossfade-style">Crossfade Style</label>
-                      <p class="setting-description">
-                        The transition effect used when switching between visualizations.
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <select
-                        id="crossfade-style"
-                        (change)="onVisualizationCrossfadeStyleChange($event)"
-                      >
-                        @for (option of visualizationCrossfadeStyleOptions; track option.value) {
-                          <option [value]="option.value" [selected]="option.value === currentVisualizationCrossfadeStyle()">{{ option.label }}</option>
-                        }
-                      </select>
-                    </div>
-                  </div>
-
-                  <div class="info-notice">
-                    <i class="fa-solid fa-info-circle"></i>
-                    <span>Expand "Audio Visualizations" in the sidebar to configure individual visualization settings.</span>
+                  <div class="setting-control">
+                    <select
+                      id="max-frame-rate"
+                      (change)="onMaxFrameRateChange($event)"
+                    >
+                      @for (option of frameRateOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentMaxFrameRate()">{{ option.label }}</option>
+                      }
+                    </select>
                   </div>
                 </div>
-              }
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="fft-size">FFT Size</label>
+                    <p class="setting-description">
+                      Audio analysis resolution. Higher values use more CPU.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="fft-size"
+                      (change)="onFftSizeChange($event)"
+                    >
+                      @for (option of fftSizeOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentFftSize()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="render-resolution">Render Resolution</label>
+                    <p class="setting-description">
+                      Fullscreen render size. Fixed resolutions render small and stretch to fill for a pixelated look.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="render-resolution"
+                      (change)="onRenderResolutionChange($event)"
+                    >
+                      @for (option of renderResolutionOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentRenderResolution()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="visualization-crossfade-duration">Crossfade Duration</label>
+                    <p class="setting-description">
+                      How long visualizations take to crossfade when switching between them.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="visualization-crossfade-duration"
+                      (change)="onVisualizationCrossfadeDurationChange($event)"
+                    >
+                      @for (option of visualizationCrossfadeDurationOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentVisualizationCrossfadeDuration()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="crossfade-style">Crossfade Style</label>
+                    <p class="setting-description">
+                      The transition effect used when switching between visualizations.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="crossfade-style"
+                      (change)="onVisualizationCrossfadeStyleChange($event)"
+                    >
+                      @for (option of visualizationCrossfadeStyleOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentVisualizationCrossfadeStyle()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+              </div>
             }
             @case ('application') {
               <!-- Application settings -->
@@ -427,8 +279,8 @@
                 </div>
               </div>
 
-              <!-- File Associations Section -->
-              <div class="setting-group">
+              <!-- File Associations Section: the title sits above its card -->
+              <section class="setting-section">
                 <div class="setting-group-header">
                   <h3>File Associations</h3>
                   <p class="setting-group-description">
@@ -436,45 +288,47 @@
                   </p>
                 </div>
 
-                <div class="file-associations-info">
-                  <div class="extension-category">
-                    <span class="extension-category-label">Audio Files</span>
-                    <div class="extension-badges">
-                      @for (ext of supportedAudioExtensions; track ext) {
-                        <span class="extension-badge">.{{ ext }}</span>
-                      }
+                <div class="setting-group">
+                  <div class="file-associations-info">
+                    <div class="extension-category">
+                      <span class="extension-category-label">Audio Files</span>
+                      <div class="extension-badges">
+                        @for (ext of supportedAudioExtensions; track ext) {
+                          <span class="extension-badge">.{{ ext }}</span>
+                        }
+                      </div>
                     </div>
-                  </div>
 
-                  <div class="extension-category">
-                    <span class="extension-category-label">Video Files</span>
-                    <div class="extension-badges">
-                      @for (ext of supportedVideoExtensions; track ext) {
-                        <span class="extension-badge">.{{ ext }}</span>
-                      }
+                    <div class="extension-category">
+                      <span class="extension-category-label">Video Files</span>
+                      <div class="extension-badges">
+                        @for (ext of supportedVideoExtensions; track ext) {
+                          <span class="extension-badge">.{{ ext }}</span>
+                        }
+                      </div>
                     </div>
-                  </div>
 
-                  <div class="extension-category">
-                    <span class="extension-category-label">Playlists</span>
-                    <div class="extension-badges">
-                      <span class="extension-badge">.opp</span>
+                    <div class="extension-category">
+                      <span class="extension-category-label">Playlists</span>
+                      <div class="extension-badges">
+                        <span class="extension-badge">.opp</span>
+                      </div>
                     </div>
-                  </div>
 
-                  @if (isMacOS()) {
-                    <div class="file-associations-hint">
-                      <i class="fa-solid fa-info-circle"></i>
-                      <span>To set ONIXPlayer as your default application, right-click a file in Finder, select "Get Info", then choose ONIXPlayer under "Open with".</span>
-                    </div>
-                  } @else {
-                    <div class="file-associations-hint">
-                      <i class="fa-solid fa-info-circle"></i>
-                      <span>To set ONIXPlayer as your default application, right-click a file, select "Open with", then choose ONIXPlayer and set as default.</span>
-                    </div>
-                  }
+                    @if (isMacOS()) {
+                      <div class="file-associations-hint">
+                        <i class="fa-solid fa-info-circle"></i>
+                        <span>To set ONIXPlayer as your default application, right-click a file in Finder, select "Get Info", then choose ONIXPlayer under "Open with".</span>
+                      </div>
+                    } @else {
+                      <div class="file-associations-hint">
+                        <i class="fa-solid fa-info-circle"></i>
+                        <span>To set ONIXPlayer as your default application, right-click a file, select "Open with", then choose ONIXPlayer and set as default.</span>
+                      </div>
+                    }
+                  </div>
                 </div>
-              </div>
+              </section>
             }
 
             @case ('playback') {
@@ -494,6 +348,7 @@
                       max="10"
                       step="1"
                       [value]="currentPreviousTrackThreshold()"
+                      [style.--pebble-range-percent]="rangeFill(currentPreviousTrackThreshold(), 0, 10)"
                       (input)="onPreviousTrackThresholdChange($event)"
                     />
                     <span class="slider-value">{{ formatPreviousTrackThreshold() }}</span>
@@ -515,6 +370,7 @@
                       max="60"
                       step="1"
                       [value]="currentSkipDuration()"
+                      [style.--pebble-range-percent]="rangeFill(currentSkipDuration(), 1, 60)"
                       (input)="onSkipDurationChange($event)"
                     />
                     <span class="slider-value">{{ formatSkipDuration() }}</span>
@@ -559,6 +415,7 @@
                       max="1"
                       step="0.05"
                       [value]="currentDefaultVolume()"
+                      [style.--pebble-range-percent]="rangeFill(currentDefaultVolume(), 0, 1)"
                       (input)="onDefaultVolumeChange($event)"
                     />
                     <span class="slider-value">{{ formatDefaultVolume() }}</span>
@@ -580,6 +437,7 @@
                       max="500"
                       step="50"
                       [value]="currentCrossfadeDuration()"
+                      [style.--pebble-range-percent]="rangeFill(currentCrossfadeDuration(), 0, 500)"
                       (input)="onCrossfadeDurationChange($event)"
                     />
                     <span class="slider-value">{{ formatCrossfadeDuration() }}</span>
@@ -675,6 +533,7 @@
                           [max]="equalizerGainMax"
                           step="1"
                           [value]="currentEqualizerBands()[i]"
+                          [style.--pebble-range-percent]="rangeFill(currentEqualizerBands()[i], equalizerGainMin, equalizerGainMax)"
                           (input)="onEqualizerBandChange(i, $event)"
                           [attr.aria-label]="formatFrequency(frequency) + 'Hz band'"
                         />
@@ -755,6 +614,7 @@
                       max="30"
                       step="1"
                       [value]="currentAutoHideDelay()"
+                      [style.--pebble-range-percent]="rangeFill(currentAutoHideDelay(), 0, 30)"
                       (input)="onAutoHideDelayChange($event)"
                     />
                     <span class="slider-value">{{ formatAutoHideDelay() }}</span>
@@ -861,6 +721,7 @@
                           [max]="control.max"
                           step="1"
                           [value]="videoAdjustmentValue(control.key)"
+                          [style.--pebble-range-percent]="rangeFill(videoAdjustmentValue(control.key), control.min, control.max)"
                           (input)="onVideoAdjustmentChange(control.key, $event)"
                         />
                         <span class="slider-value">{{ videoAdjustmentValue(control.key) }}{{ control.unit }}</span>
@@ -923,6 +784,7 @@
                       max="300"
                       step="10"
                       [value]="currentSubtitleFontSize()"
+                      [style.--pebble-range-percent]="rangeFill(currentSubtitleFontSize(), 50, 300)"
                       (input)="onSubtitleFontSizeChange($event)"
                     />
                     <span class="slider-value">{{ formatSubtitleFontSize() }}</span>
@@ -983,6 +845,7 @@
                       max="1"
                       step="0.05"
                       [value]="currentSubtitleBackgroundOpacity()"
+                      [style.--pebble-range-percent]="rangeFill(currentSubtitleBackgroundOpacity(), 0, 1)"
                       (input)="onSubtitleBackgroundOpacityChange($event)"
                     />
                     <span class="slider-value">{{ formatSubtitleBackgroundOpacity() }}</span>
@@ -1047,6 +910,7 @@
                         max="3"
                         step="0.5"
                         [value]="currentSubtitleShadowSpread()"
+                        [style.--pebble-range-percent]="rangeFill(currentSubtitleShadowSpread(), 1, 3)"
                         (input)="onSubtitleShadowSpreadChange($event)"
                       />
                       <span class="slider-value">{{ formatSubtitleShadowSpread() }}</span>
@@ -1069,6 +933,7 @@
                         max="10"
                         step="1"
                         [value]="currentSubtitleShadowBlur()"
+                        [style.--pebble-range-percent]="rangeFill(currentSubtitleShadowBlur(), 0, 10)"
                         (input)="onSubtitleShadowBlurChange($event)"
                       />
                       <span class="slider-value">{{ formatSubtitleShadowBlur() }}</span>
@@ -1111,39 +976,47 @@
 
             @case ('appearance') {
               <div class="setting-group">
-                <!-- Glass Effect Toggle -->
+                <!-- Theme -->
                 <div class="setting-row">
                   <div class="setting-label">
-                    <label for="glass-enabled">Glass Effect</label>
+                    <label for="player-theme">Theme</label>
                     <p class="setting-description">
                       @if (supportsGlass()) {
-                        Enables window transparency with blur effect.
+                        Restyles the player window: an opaque Solid background, translucent Glass, or the ONIXLabs Pebble style.
                       } @else {
-                        Glass effects are not supported on this platform.
+                        Restyles the player window: an opaque Solid background or the ONIXLabs Pebble style. Glass is not supported on this platform.
                       }
                     </p>
                   </div>
                   <div class="setting-control">
-                    <label class="toggle">
-                      <input
-                        type="checkbox"
-                        id="glass-enabled"
-                        [checked]="currentGlassEnabled()"
-                        [disabled]="!supportsGlass()"
-                        (change)="onGlassEnabledChange($event)"
-                      />
-                      <span class="toggle-slider"></span>
-                    </label>
+                    <select
+                      id="player-theme"
+                      (change)="onThemeChange($event)"
+                    >
+                      @for (option of themeOptions; track option.value) {
+                        <option
+                          [value]="option.value"
+                          [selected]="option.value === currentTheme()"
+                          [disabled]="option.value === 'glass' && !supportsGlass()"
+                        >{{ option.label }}</option>
+                      }
+                    </select>
                   </div>
                 </div>
+                @if (themeRestartRequired()) {
+                  <div class="restart-notice">
+                    <i class="fa-solid fa-info-circle"></i>
+                    <span>Switching to or from the Glass theme requires an application restart to take effect.</span>
+                  </div>
+                }
 
-                <!-- Visual Effect State (macOS only, when glass enabled) -->
-                @if (isMacOS() && currentGlassEnabled()) {
+                <!-- Visual Effect State (macOS only, with the Glass theme) -->
+                @if (isMacOS() && currentTheme() === 'glass') {
                   <div class="setting-row">
                     <div class="setting-label">
                       <label for="macos-visual-effect-state">Visual Effect State</label>
                       <p class="setting-description">
-                        Controls when the glass effect is active. "Always Active" keeps the effect even when the window is in the background.
+                        Controls when the player window's glass effect is active. "Always Active" keeps the effect even when the player is in the background.
                       </p>
                     </div>
                     <div class="setting-control">
@@ -1185,82 +1058,32 @@
                   </div>
                 </div>
 
-                <!-- Window Color (unified: background when glass off, tint when glass on) -->
-                <div class="setting-box">
-                  <div class="setting-box-header">
-                    <div class="setting-label">
-                      <label>Window Color</label>
-                      <p class="setting-description">
-                        @if (currentGlassEnabled() && supportsGlass()) {
-                          Color tint over the glass effect. Use Alpha to control tint intensity.
-                        } @else {
-                          Window background color.
-                        }
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <div class="color-preview" [style.background]="windowColorPreview()"></div>
-                    </div>
+                <!-- Accent Color -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label id="accent-color-label">Accent Color</label>
+                    <p class="setting-description">
+                      The color of the player's track bar and volume slider.
+                    </p>
                   </div>
-                  <div class="setting-box-content">
-                    <div class="inline-slider-row">
-                      <label for="window-color-hue">Hue</label>
-                      <input
-                        type="range"
-                        id="window-color-hue"
-                        class="hue-slider"
-                        min="0"
-                        max="360"
-                        step="1"
-                        [value]="windowColorHue()"
-                        (input)="onWindowColorHueChange($event)"
-                      />
-                      <span class="slider-value">{{ windowColorHue() }}°</span>
+                  <div class="setting-control">
+                    <div class="accent-options" role="radiogroup" aria-labelledby="accent-color-label">
+                      @for (option of accentOptions; track option.id) {
+                        <label [title]="option.name">
+                          <input
+                            type="radio"
+                            name="accent-color"
+                            [value]="option.id"
+                            [checked]="option.id === currentAccentColor()"
+                            [attr.aria-label]="option.name"
+                            (change)="onAccentColorChange(option.id)"
+                          />
+                          <span class="accent-swatch" [style.background]="option.swatch"></span>
+                        </label>
+                      }
                     </div>
-                    <div class="inline-slider-row">
-                      <label for="window-color-saturation">Saturation</label>
-                      <input
-                        type="range"
-                        id="window-color-saturation"
-                        min="0"
-                        max="100"
-                        step="1"
-                        [value]="windowColorSaturation()"
-                        (input)="onWindowColorSaturationChange($event)"
-                      />
-                      <span class="slider-value">{{ windowColorSaturation() }}%</span>
-                    </div>
-                    <div class="inline-slider-row">
-                      <label for="window-color-lightness">Lightness</label>
-                      <input
-                        type="range"
-                        id="window-color-lightness"
-                        min="0"
-                        max="100"
-                        step="1"
-                        [value]="windowColorLightness()"
-                        (input)="onWindowColorLightnessChange($event)"
-                      />
-                      <span class="slider-value">{{ windowColorLightness() }}%</span>
-                    </div>
-                    @if (currentGlassEnabled() && supportsGlass()) {
-                      <div class="inline-slider-row">
-                        <label for="window-color-alpha">Alpha</label>
-                        <input
-                          type="range"
-                          id="window-color-alpha"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          [value]="currentWindowTintAlpha()"
-                          (input)="onWindowTintAlphaChange($event)"
-                        />
-                        <span class="slider-value">{{ (currentWindowTintAlpha() * 100).toFixed(0) }}%</span>
-                      </div>
-                    }
                   </div>
                 </div>
-
               </div>
             }
           }

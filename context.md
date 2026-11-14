@@ -278,16 +278,18 @@ Based on independent review with all 31 action items resolved:
   - Always visible when not in fullscreen (even with no media loaded)
 - **Playback controls**: Media title, transport controls, volume, fullscreen toggle
 - Track title displayed in playback controls (format: "Artist - Title" or just title)
-- **Window transparency**: Platform-native blur effects for modern appearance
-  - **Glass Effect** toggle enables/disables transparency (requires app restart)
+- **Player themes** (Settings > Appearance > Theme): restyle the player window only, never move its controls; the Settings/About/Setup/Open URL windows are always Pebble
+  - **Solid**: opaque background, the same as Pebble's page (#212529 dark, #d8dde2 light); default on Windows and Linux
+  - **Glass**: translucent with blur (requires app restart to switch to or from); default on macOS
     - macOS: Uses vibrancy (`fullscreen-ui`) with hidden inset title bar
     - Windows 11: Uses acrylic blur via `backgroundMaterial`
-    - Linux: Glass not supported (toggle disabled)
-  - **Visual Effect State** (macOS only, when glass enabled): Follow Window, Always Active (default), Always Inactive
-  - **Color Scheme**: Follow System (default), Dark Mode, Light Mode - controls light/dark appearance of UI elements; some components (playlist, idle state, media bar, loading overlay) always use dark mode colors since they sit on dark backgrounds
-  - **Window Color** unified HSL(A) sliders: controls background color when glass disabled, tint color when glass enabled; Alpha slider only shown when glass enabled; live preview swatch, updates immediately without restart
-  - Default background color auto-detects system light/dark mode (#1e1e1e dark, #e0e0e0 light)
-  - HSL hue sliders display a rainbow gradient for visual feedback
+    - Linux: not supported (option disabled; a stored Glass is treated as Solid)
+  - **Pebble**: the ONIXLabs brand style (page #212529 dark, #d8dde2 light); Solid and Pebble switch live
+  - The root component puts `data-player-theme` (effective theme), `data-accent` and, for Pebble, the `pebble` class on `<html>` in the main window; the stylesheets paint the page from those plus `data-color-scheme`
+  - **Visual Effect State** (macOS only, with the Glass theme): Follow Window, Always Active (default), Always Inactive
+  - **Color Scheme**: Follow System (default), Dark Mode, Light Mode - independent of the theme; controls light/dark appearance of UI elements; some components (playlist, idle state, media bar, loading overlay) always use dark mode colors since they sit on dark backgrounds
+  - **Accent Color**: Monochrome or one of the eight ONIXLabs colours (Amber, Coral, Rose, Violet, Blue (default), Cyan, Teal, Green); colours the trackbar and volume slider
+  - Settings files from before themes migrate `glassEnabled` true/false to Glass/Solid; the old window colour and tint keys are dropped
   - Appearance settings accessible via Settings > Appearance
 
 ### Application Menu
@@ -822,10 +824,10 @@ The settings UI uses an accordion sidebar. Clicking "Visualisations" shows globa
 
 | Setting | Options | Default | Description | Restart Required |
 |---------|---------|---------|-------------|------------------|
-| Glass Effect | On/Off | On | Enables window transparency with blur | Yes |
-| Visual Effect State | Follow Window/Always Active/Always Inactive | Always Active | macOS vibrancy state (shown when glass enabled on macOS); restart notice shown when changed | Yes |
-| Color Scheme | Follow System/Dark Mode/Light Mode | Follow System | Controls light/dark mode; can follow OS preference or force a specific mode | No |
-| Window Color | HSL(A) sliders in boxed container (Hue 0-360, Saturation 0-100, Lightness 0-100, Alpha 0-1) | H:0 S:0 L:12 (glass off) or H:0 S:0 L:0 A:0 (glass on) | Unified color control: background color when glass disabled, tint color when glass enabled; Alpha slider only shown when glass enabled | No |
+| Theme | Solid/Glass/Pebble | Glass (macOS), Solid (Windows, Linux) | Skin of the player window; Glass disabled where unsupported; restart notice shown when switching to or from Glass | Only to/from Glass |
+| Visual Effect State | Follow Window/Always Active/Always Inactive | Always Active | macOS vibrancy state (shown with the Glass theme on macOS); restart notice shown when changed | Yes |
+| Color Scheme | Follow System/Dark Mode/Light Mode | Follow System | Controls light/dark mode; can follow OS preference or force a specific mode; works with every theme | No |
+| Accent Color | Monochrome/Amber/Coral/Rose/Violet/Blue/Cyan/Teal/Green swatches | Blue | Colours the player's trackbar and volume slider | No |
 
 #### Subtitles Category
 
