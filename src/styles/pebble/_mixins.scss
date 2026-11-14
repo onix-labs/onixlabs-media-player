@@ -133,6 +133,9 @@
 /// A text, number or URL input: a recessed well with a soft border.
 @mixin field {
   display: block;
+  // Inputs size their content box by default and selects their border box;
+  // without this an input is its padding and border taller than a select.
+  box-sizing: border-box;
   width: 100%;
   min-height: 2.5rem;
   padding: 0.45rem 0.75rem;
