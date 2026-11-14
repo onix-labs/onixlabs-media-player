@@ -355,7 +355,7 @@
 
     &:hover:not(:disabled) {
       color: var(--pebble-heading);
-      background: color-mix(in srgb, var(--pebble-button-surface), var(--pebble-heading) 8%);
+      background: var(--pebble-button-surface-hover);
     }
 
     // Shuffle and repeat, when on: marked like play/pause, by the icon in the
@@ -367,7 +367,7 @@
 
       &:hover:not(:disabled) {
         color: var(--player-accent);
-        background: color-mix(in srgb, var(--pebble-button-surface), var(--pebble-heading) 8%) !important;
+        background: var(--pebble-button-surface-hover) !important;
       }
     }
 

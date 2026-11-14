@@ -93,6 +93,7 @@
   // on a card (Stride's outline button is the surface itself, and vanishes
   // into one).
   --pebble-button-surface: #f3f5f7;
+  --pebble-button-surface-hover: #ffffff;  // brighter, as if lit, in both palettes
   --pebble-field: color-mix(in srgb, #dee2e6, white 25%);
   --pebble-field-border: #6a7178;      // AA: Stride uses #bcbec1 (1.6:1); a control's edge needs 3:1
 
@@ -147,6 +148,7 @@
   --pebble-surface: #343a40;
   --pebble-surface-alt: #2b3036;
   --pebble-button-surface: #3f464d;
+  --pebble-button-surface-hover: #4b535b;
   --pebble-field: #2b3036;
   --pebble-field-border: #858b92;      // AA: Stride uses #494d52
 

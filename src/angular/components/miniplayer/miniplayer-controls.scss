@@ -122,7 +122,7 @@
 
     &:hover:not(:disabled) {
       color: var(--pebble-heading);
-      background: color-mix(in srgb, var(--pebble-button-surface), var(--pebble-heading) 8%);
+      background: var(--pebble-button-surface-hover);
     }
 
     &.active {
