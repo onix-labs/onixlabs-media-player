@@ -382,13 +382,9 @@
   }
 
   // Play/pause: a segment like its neighbours, told apart only by its icon in
-  // the accent.
-  .button-group.center button:nth-of-type(2) {
+  // the accent; disabled, with nothing to play, it greys out like them.
+  .button-group.center button:nth-of-type(2):not(:disabled) {
     color: var(--player-accent);
-
-    &:hover:not(:disabled) {
-      color: var(--player-accent);
-    }
   }
 
   .volume-container {

@@ -251,21 +251,22 @@
 // Pebble player theme
 // =============================================================================
 //
-// The container is a raised Pebble card holding the media, the playlist and
-// the media bar; with nothing loaded the card itself is the empty state. The
+// The container is a recessed Pebble well, sunk into the window, holding the
+// media, the playlist and the media bar; with nothing loaded the well itself
+// is the empty state. The
 // media stays on black, as it does in fullscreen: the visualizations and video
 // are drawn for a dark screen, so only the chrome around them changes.
 @include player-theme.pebble {
   div.container {
-    @include pebble.surface(md);
+    @include pebble.recessed(md);
     // The base border's width, as padding: the content box is today's, and the
-    // surface's inset edges show in it.
+    // well's inset edges show in it.
     padding: 0.0625rem;
     outline: none;
   }
 
-  // The media's top corners follow the card's, just inside its edge; square,
-  // they would be cut off by the card's rounding instead.
+  // The media's top corners follow the well's, just inside its edge; square,
+  // they would be cut off by the well's rounding instead.
   .content-area {
     border-top-left-radius: calc(var(--pebble-radius-md) - 0.0625rem);
     border-top-right-radius: calc(var(--pebble-radius-md) - 0.0625rem);
@@ -291,10 +292,10 @@
   }
 
   .media-bar {
-    // The bar's controls sit in the card's bottom corners, so their corners
-    // are the card's, less the card's edge and the bar's padding: concentric.
+    // The bar's controls sit in the well's bottom corners, so their corners
+    // are the well's, less the well's edge and the bar's padding: concentric.
     --media-bar-radius: calc(var(--pebble-radius-md) - 0.0625rem - 0.25rem);
-    // The card's dark bottom edge reads as part of the gap below the controls,
+    // The well's bottom edge reads as part of the gap below the controls,
     // so the sides give up the same pixel to look as wide as the bottom.
     padding-inline: calc(0.25rem - 0.0625rem);
     border-top-color: var(--pebble-border);
@@ -346,7 +347,7 @@
     }
 
     // As tall as the selects, and square, so it sits the same distance from
-    // the card's bottom edge as they do.
+    // the well's bottom edge as they do.
     .playlist-toggle {
       align-self: stretch;
       aspect-ratio: 1;

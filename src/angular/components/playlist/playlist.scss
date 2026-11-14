@@ -251,11 +251,11 @@
 // Pebble player theme
 // =============================================================================
 //
-// The playlist is part of the outlet's raised Pebble card (see
+// The playlist is part of the outlet's recessed Pebble well (see
 // layout-outlet.scss), set off from the media by a hairline. Nothing divides
 // the header from the rows or the rows from each other, which sit inset from
 // the playlist's sides; a hovered row and the
-// current track are rounded tiles, the current track raised off the card in
+// current track are rounded tiles, the current track raised off the well in
 // the button surface with its icon in the status colour.
 @include player-theme.pebble {
   .playlist-container {
