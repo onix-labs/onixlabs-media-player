@@ -49,7 +49,7 @@ vi.mock('module', () => ({
       file: { resolvePathFn: null, maxSize: 0, format: '', level: '' },
       console: { format: '', level: '' },
     },
-    scope: (name: string): Record<string, (...args: unknown[]) => void> => ({
+    scope: (name: string): Record<string, unknown> => ({
       error: vi.fn(),
       warn: vi.fn(),
       info: vi.fn(),
@@ -1164,37 +1164,6 @@ describe('UnifiedMediaServer', () => {
       const playlist = await request('GET', '/playlist');
       expect((playlist.body.items as unknown[]).length).toBe(0);
       expect(playlist.body.currentIndex).toBe(-1);
-    });
-  });
-
-  // ==========================================================================
-  // Callback registration
-  // ==========================================================================
-
-  describe('callback registration', () => {
-    it('registers onModeChange callback', () => {
-      const callback = vi.fn();
-      server.onModeChange(callback);
-      // No error means success — callback is stored internally
-      expect(true).toBe(true);
-    });
-
-    it('registers onPlaylistCountChange callback', () => {
-      const callback = vi.fn();
-      server.onPlaylistCountChange(callback);
-      expect(true).toBe(true);
-    });
-
-    it('registers onPlaybackStateChange callback', () => {
-      const callback = vi.fn();
-      server.onPlaybackStateChange(callback);
-      expect(true).toBe(true);
-    });
-
-    it('registers onDependencyStateChange callback', () => {
-      const callback = vi.fn();
-      server.onDependencyStateChange(callback);
-      expect(true).toBe(true);
     });
   });
 

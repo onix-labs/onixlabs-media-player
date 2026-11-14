@@ -37,6 +37,21 @@ function createDragEvent(files: File[]): DragEvent {
 }
 
 /**
+ * Creates a mock DragEvent as seen during dragover, where the browser hides
+ * the file list and exposes only the kinds of the dragged items.
+ *
+ * @param kinds - The `kind` of each dragged item ('file' or 'string')
+ * @returns A DragEvent-shaped object for testing
+ */
+function createDragOverEvent(kinds: string[]): DragEvent {
+  const items: Record<number, {kind: string}> & {length: number} = {length: kinds.length};
+  kinds.forEach((kind: string, i: number): void => {
+    items[i] = {kind};
+  });
+  return {dataTransfer: {files: {length: 0}, items}} as unknown as DragEvent;
+}
+
+/**
  * Creates a minimal File object with only a name property.
  *
  * @param name - The file name including extension
@@ -196,6 +211,129 @@ describe('FileDropService', (): void => {
 
       expect(result).toEqual([]);
       expect(mockElectron.getPathForFile).not.toHaveBeenCalled();
+    });
+
+    it('matches extensions without regard to case', (): void => {
+      const event: DragEvent = createDragEvent([createFile('SONG.MP3')]);
+
+      const result: string[] = service.extractMediaFilePaths(event);
+
+      expect(result).toEqual(['/mock/path/SONG.MP3']);
+    });
+
+    it('judges a file by its last extension only', (): void => {
+      const event: DragEvent = createDragEvent([createFile('song.mp3.txt'), createFile('notes.txt.mp3')]);
+
+      const result: string[] = service.extractMediaFilePaths(event);
+
+      expect(result).toEqual(['/mock/path/notes.txt.mp3']);
+    });
+
+    it('leaves out a file whose path cannot be resolved', (): void => {
+      mockElectron.getPathForFile.mockImplementation((file: File): string => (file.name === 'ghost.mp3' ? '' : `/mock/path/${file.name}`));
+      const event: DragEvent = createDragEvent([createFile('ghost.mp3'), createFile('real.mp3')]);
+
+      const result: string[] = service.extractMediaFilePaths(event);
+
+      expect(result).toEqual(['/mock/path/real.mp3']);
+    });
+  });
+
+  // ==========================================================================
+  // hasValidFiles
+  // ==========================================================================
+
+  describe('hasValidFiles', (): void => {
+    it('returns true when at least one listed file is a supported type', (): void => {
+      const event: DragEvent = createDragEvent([createFile('readme.txt'), createFile('song.mp3')]);
+
+      const result: boolean = service.hasValidFiles(event);
+
+      expect(result).toBe(true);
+    });
+
+    it('matches listed files without regard to case', (): void => {
+      const event: DragEvent = createDragEvent([createFile('VIDEO.MP4')]);
+
+      const result: boolean = service.hasValidFiles(event);
+
+      expect(result).toBe(true);
+    });
+
+    it('returns false when no listed file is a supported type', (): void => {
+      const event: DragEvent = createDragEvent([createFile('readme.txt'), createFile('image.png')]);
+
+      const result: boolean = service.hasValidFiles(event);
+
+      expect(result).toBe(false);
+    });
+
+    it('does not fall back to the item kinds when the listed files are all unsupported', (): void => {
+      const event: DragEvent = {
+        dataTransfer: {files: {length: 1, 0: createFile('readme.txt')}, items: {length: 1, 0: {kind: 'file'}}},
+      } as unknown as DragEvent;
+
+      const result: boolean = service.hasValidFiles(event);
+
+      expect(result).toBe(false);
+    });
+
+    it('returns false when nothing can be played, even for a supported-looking file', (): void => {
+      mockDeps.allowedExtensions.set(new Set<string>());
+      const event: DragEvent = createDragEvent([createFile('song.mp3')]);
+
+      const result: boolean = service.hasValidFiles(event);
+
+      expect(result).toBe(false);
+    });
+
+    it('returns false when nothing can be played and only item kinds are visible', (): void => {
+      mockDeps.allowedExtensions.set(new Set<string>());
+      const event: DragEvent = createDragOverEvent(['file']);
+
+      const result: boolean = service.hasValidFiles(event);
+
+      expect(result).toBe(false);
+    });
+
+    it('assumes a dragged file is valid when the file list is hidden during dragover', (): void => {
+      const event: DragEvent = createDragOverEvent(['file']);
+
+      const result: boolean = service.hasValidFiles(event);
+
+      expect(result).toBe(true);
+    });
+
+    it('finds a file among other dragged items during dragover', (): void => {
+      const event: DragEvent = createDragOverEvent(['string', 'file']);
+
+      const result: boolean = service.hasValidFiles(event);
+
+      expect(result).toBe(true);
+    });
+
+    it('returns false when only text is being dragged', (): void => {
+      const event: DragEvent = createDragOverEvent(['string', 'string']);
+
+      const result: boolean = service.hasValidFiles(event);
+
+      expect(result).toBe(false);
+    });
+
+    it('returns false when the drag carries neither files nor items', (): void => {
+      const event: DragEvent = createDragOverEvent([]);
+
+      const result: boolean = service.hasValidFiles(event);
+
+      expect(result).toBe(false);
+    });
+
+    it('returns false when the event has no dataTransfer', (): void => {
+      const event: DragEvent = {dataTransfer: null} as unknown as DragEvent;
+
+      const result: boolean = service.hasValidFiles(event);
+
+      expect(result).toBe(false);
     });
   });
 });

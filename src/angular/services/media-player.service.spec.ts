@@ -641,4 +641,253 @@ describe('MediaPlayerService', (): void => {
       expect(mockElectron['selectTrack']).toHaveBeenCalledWith('track-id-456');
     });
   });
+
+  // ==========================================================================
+  // Passthrough Signals
+  // ==========================================================================
+
+  describe('passthrough signals', (): void => {
+    it('should report null for currentMediaType when nothing is loaded', (): void => {
+      expect(service.currentMediaType()).toBeNull();
+    });
+
+    it('should report the type of the loaded media for currentMediaType', (): void => {
+      (mockElectron['currentMedia'] as WritableSignal<MediaInfo | null>).set({type: 'video'} as MediaInfo);
+
+      expect(service.currentMediaType()).toBe('video');
+    });
+
+    it('should expose the loaded media through currentMedia', (): void => {
+      const media: MediaInfo = {type: 'audio'} as MediaInfo;
+      (mockElectron['currentMedia'] as WritableSignal<MediaInfo | null>).set(media);
+
+      expect(service.currentMedia()).toBe(media);
+    });
+
+    it('should expose the server error message', (): void => {
+      (mockElectron['errorMessage'] as WritableSignal<string | null>).set('Unsupported codec');
+
+      expect(service.errorMessage()).toBe('Unsupported codec');
+    });
+
+    it('should expose the server URL', (): void => {
+      expect(service.serverUrl()).toBe('http://127.0.0.1:12345');
+    });
+  });
+
+  // ==========================================================================
+  // Default Volume On Startup
+  // ==========================================================================
+
+  describe('default volume on startup', (): void => {
+    it('should apply the saved default volume once settings have loaded', (): void => {
+      (mockSettings['defaultVolume'] as WritableSignal<number>).set(0.35);
+
+      TestBed.tick();
+
+      expect(mockElectron['setVolume']).toHaveBeenCalledExactlyOnceWith(0.35);
+    });
+
+    it('should not touch the volume before settings have loaded', (): void => {
+      (mockSettings['isLoaded'] as WritableSignal<boolean>).set(false);
+
+      TestBed.tick();
+
+      expect(mockElectron['setVolume']).not.toHaveBeenCalled();
+    });
+
+    it('should apply the default volume when settings load later', (): void => {
+      (mockSettings['isLoaded'] as WritableSignal<boolean>).set(false);
+      TestBed.tick();
+
+      (mockSettings['defaultVolume'] as WritableSignal<number>).set(0.2);
+      (mockSettings['isLoaded'] as WritableSignal<boolean>).set(true);
+      TestBed.tick();
+
+      expect(mockElectron['setVolume']).toHaveBeenCalledExactlyOnceWith(0.2);
+    });
+
+    it('should not re-apply the default volume when the setting changes afterwards', (): void => {
+      TestBed.tick();
+
+      (mockSettings['defaultVolume'] as WritableSignal<number>).set(0.9);
+      TestBed.tick();
+
+      expect(mockElectron['setVolume']).toHaveBeenCalledExactlyOnceWith(0.5);
+    });
+  });
+
+  // ==========================================================================
+  // Volume Persistence
+  // ==========================================================================
+
+  describe('volume persistence', (): void => {
+    const PERSIST_DEBOUNCE_MS: number = 400;
+    let setDefaultVolume: ReturnType<typeof vi.fn>;
+
+    beforeEach((): void => {
+      vi.useFakeTimers();
+      setDefaultVolume = vi.fn().mockResolvedValue(undefined);
+      (mockSettings as Record<string, unknown>)['setDefaultVolume'] = setDefaultVolume;
+    });
+
+    afterEach((): void => {
+      vi.useRealTimers();
+    });
+
+    it('should not save the volume as the default before the debounce elapses', async (): Promise<void> => {
+      await service.setVolume(0.7);
+
+      vi.advanceTimersByTime(PERSIST_DEBOUNCE_MS - 1);
+
+      expect(setDefaultVolume).not.toHaveBeenCalled();
+    });
+
+    it('should save the volume as the default once the debounce elapses', async (): Promise<void> => {
+      await service.setVolume(0.7);
+
+      vi.advanceTimersByTime(PERSIST_DEBOUNCE_MS);
+
+      expect(setDefaultVolume).toHaveBeenCalledExactlyOnceWith(0.7);
+    });
+
+    it('should save the clamped volume', async (): Promise<void> => {
+      await service.setVolume(3);
+
+      vi.advanceTimersByTime(PERSIST_DEBOUNCE_MS);
+
+      expect(setDefaultVolume).toHaveBeenCalledExactlyOnceWith(1);
+    });
+
+    it('should save only the last volume of a drag', async (): Promise<void> => {
+      await service.setVolume(0.3);
+      vi.advanceTimersByTime(PERSIST_DEBOUNCE_MS - 1);
+      await service.setVolume(0.4);
+      vi.advanceTimersByTime(PERSIST_DEBOUNCE_MS - 1);
+      await service.setVolume(0.6);
+
+      vi.advanceTimersByTime(PERSIST_DEBOUNCE_MS);
+
+      expect(setDefaultVolume).toHaveBeenCalledExactlyOnceWith(0.6);
+    });
+
+    it('should save again for a later volume change', async (): Promise<void> => {
+      await service.setVolume(0.3);
+      vi.advanceTimersByTime(PERSIST_DEBOUNCE_MS);
+
+      await service.setVolume(0.6);
+      vi.advanceTimersByTime(PERSIST_DEBOUNCE_MS);
+
+      expect(setDefaultVolume.mock.calls).toEqual([[0.3], [0.6]]);
+    });
+
+    it('should not save a pending volume after the service is destroyed', async (): Promise<void> => {
+      await service.setVolume(0.7);
+
+      TestBed.resetTestingModule();
+      vi.advanceTimersByTime(PERSIST_DEBOUNCE_MS);
+
+      expect(setDefaultVolume).not.toHaveBeenCalled();
+    });
+
+    it('should not save the volume when only mute is toggled', async (): Promise<void> => {
+      await service.toggleMute();
+
+      vi.advanceTimersByTime(PERSIST_DEBOUNCE_MS);
+
+      expect(setDefaultVolume).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // File Operations
+  // ==========================================================================
+
+  describe('file operations', (): void => {
+    let addFilesWithAutoPlay: ReturnType<typeof vi.fn>;
+
+    beforeEach((): void => {
+      addFilesWithAutoPlay = vi.fn().mockResolvedValue(undefined);
+      mockElectron['addFilesWithAutoPlay'] = addFilesWithAutoPlay;
+      mockDeps['midiSupported'] = signal<unknown>(false);
+      mockDeps['trackerSupported'] = signal<unknown>(false);
+    });
+
+    it('should not open the file dialog from eject when nothing can be played', async (): Promise<void> => {
+      (mockDeps['noDependenciesInstalled'] as WritableSignal<boolean>).set(true);
+
+      await service.eject();
+
+      expect(mockElectron['openFileDialog']).not.toHaveBeenCalled();
+    });
+
+    it('should open a multi-select file dialog from eject', async (): Promise<void> => {
+      await service.eject();
+
+      expect(mockElectron['openFileDialog']).toHaveBeenCalledExactlyOnceWith(true, expect.any(Array));
+    });
+
+    it('should offer only FFmpeg formats in the eject dialog when MIDI and trackers are unavailable', async (): Promise<void> => {
+      await service.eject();
+
+      const filters: {name: string; extensions: string[]}[] = (mockElectron['openFileDialog'] as ReturnType<typeof vi.fn>).mock.calls[0][1] as {name: string; extensions: string[]}[];
+      expect(filters.map((filter: {name: string}): string => filter.name)).toEqual(['Media Files', 'Audio', 'Video']);
+      expect(filters[0].extensions).toContain('mp3');
+      expect(filters[0].extensions).not.toContain('mid');
+    });
+
+    it('should offer MIDI and tracker formats in the eject dialog when they can be played', async (): Promise<void> => {
+      (mockDeps['midiSupported'] as WritableSignal<boolean>).set(true);
+      (mockDeps['trackerSupported'] as WritableSignal<boolean>).set(true);
+
+      await service.eject();
+
+      const filters: {name: string; extensions: string[]}[] = (mockElectron['openFileDialog'] as ReturnType<typeof vi.fn>).mock.calls[0][1] as {name: string; extensions: string[]}[];
+      expect(filters.map((filter: {name: string}): string => filter.name)).toEqual(['Media Files', 'Audio', 'Video', 'Tracker Modules']);
+      expect(filters[0].extensions).toEqual(expect.arrayContaining(['mid', 'mod']));
+    });
+
+    it('should add the chosen files with auto-play from eject', async (): Promise<void> => {
+      (mockElectron['openFileDialog'] as ReturnType<typeof vi.fn>).mockResolvedValue(['/music/a.mp3', '/music/b.mp3']);
+
+      await service.eject();
+
+      expect(addFilesWithAutoPlay).toHaveBeenCalledExactlyOnceWith(['/music/a.mp3', '/music/b.mp3']);
+    });
+
+    it('should add nothing from eject when the dialog is cancelled', async (): Promise<void> => {
+      (mockElectron['openFileDialog'] as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+      await service.eject();
+
+      expect(addFilesWithAutoPlay).not.toHaveBeenCalled();
+    });
+
+    it('should append files to the playlist for addFiles', async (): Promise<void> => {
+      await service.addFiles(['/music/a.mp3']);
+
+      expect(mockElectron['addToPlaylist']).toHaveBeenCalledExactlyOnceWith(['/music/a.mp3']);
+    });
+
+    it('should not call the playlist for addFiles with no files', async (): Promise<void> => {
+      await service.addFiles([]);
+
+      expect(mockElectron['addToPlaylist']).not.toHaveBeenCalled();
+    });
+
+    it('should resolve a dropped file to its path via electron', (): void => {
+      const file: File = new File([], 'song.mp3');
+
+      const result: string = service.getPathForFile(file);
+
+      expect(result).toBe('/path/to/file');
+      expect(mockElectron['getPathForFile']).toHaveBeenCalledExactlyOnceWith(file);
+    });
+
+    it('should delegate stop to electron', async (): Promise<void> => {
+      await service.stop();
+
+      expect(mockElectron['stop']).toHaveBeenCalledTimes(1);
+    });
+  });
 });

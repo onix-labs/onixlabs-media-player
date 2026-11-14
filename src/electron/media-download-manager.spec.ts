@@ -57,10 +57,11 @@ vi.mock('./logger.js', () => ({
 // Imports (after mocks)
 // ============================================================================
 
-import { existsSync, readdirSync, renameSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, renameSync } from 'fs';
 import { copyFile, unlink } from 'fs/promises';
 import { spawn, execFile } from 'child_process';
 import type { ChildProcess } from 'child_process';
+import type { Mock } from 'vitest';
 import * as path from 'path';
 import { MediaDownloadManager, type StreamSources } from './media-download-manager.js';
 import type { DownloadJob, UrlMediaInfo } from './media-types.js';
@@ -163,6 +164,28 @@ describe('MediaDownloadManager', (): void => {
       (): string | null => ffmpegPath,
       DOWNLOADS_DIR
     );
+  });
+
+  // ==========================================================================
+  // Downloads Directory
+  // ==========================================================================
+
+  describe('downloads directory', (): void => {
+    it('is created, with any missing parents, when it does not exist', (): void => {
+      vi.mocked(existsSync).mockReturnValue(false);
+
+      new MediaDownloadManager((): string | null => ytdlpPath, (): string | null => ffmpegPath, DOWNLOADS_DIR);
+
+      expect(mkdirSync).toHaveBeenCalledWith(DOWNLOADS_DIR, {recursive: true});
+    });
+
+    it('is left alone when it already exists', (): void => {
+      vi.mocked(existsSync).mockReturnValue(true);
+
+      new MediaDownloadManager((): string | null => ytdlpPath, (): string | null => ffmpegPath, DOWNLOADS_DIR);
+
+      expect(mkdirSync).not.toHaveBeenCalled();
+    });
   });
 
   // ==========================================================================
@@ -515,13 +538,13 @@ describe('MediaDownloadManager', (): void => {
 
   describe('progress and failure', (): void => {
     let child: FakeChild;
-    let onUpdate: ReturnType<typeof vi.fn>;
+    let onUpdate: Mock<(job: Readonly<DownloadJob>) => void>;
     let id: string;
 
     beforeEach((): void => {
       child = createFakeChild();
       vi.mocked(spawn).mockReturnValue(child);
-      onUpdate = vi.fn();
+      onUpdate = vi.fn<(job: Readonly<DownloadJob>) => void>();
       id = manager.startDownload('https://example.com/v', 'video', null, 'T', null, onUpdate);
     });
 
@@ -535,6 +558,15 @@ describe('MediaDownloadManager', (): void => {
       child.emitStdout('[info] Writing video subtitles');
 
       expect(manager.getJob(id)?.progress).toBeNull();
+    });
+
+    it('ignores a percentage that is not a number', (): void => {
+      onUpdate.mockClear();
+
+      child.emitStdout('[download]  ...% of ~10MiB');
+
+      expect(manager.getJob(id)?.progress).toBeNull();
+      expect(onUpdate).not.toHaveBeenCalled();
     });
 
     it('tracks the most recent percentage', (): void => {
@@ -719,6 +751,17 @@ describe('MediaDownloadManager', (): void => {
 
       expect(job?.status).toBe('done');
       expect(job?.filePath).toContain('.mp4');
+    });
+
+    it('keeps the original path when the rename fails with something that is not an Error', (): void => {
+      vi.mocked(renameSync).mockImplementationOnce((): never => {
+        throw 'EBUSY';
+      });
+
+      const job: DownloadJob | undefined = finishWithTitle('My Video');
+
+      expect(job?.status).toBe('done');
+      expect(job?.filePath).toBe(path.join(DOWNLOADS_DIR, 'abcdef012345.mp4'));
     });
   });
 
@@ -931,6 +974,13 @@ describe('MediaDownloadManager', (): void => {
 
       await expect(manager.resolveStreamSources('https://example.com/v', 'video', null))
         .rejects.toThrow('ERROR: Sign in to confirm your age');
+    });
+
+    it('falls back to the error message when stderr is empty', async (): Promise<void> => {
+      stubExecFile(new Error('spawn ENOENT'), '', '');
+
+      await expect(manager.resolveStreamSources('https://example.com/v', 'video', null))
+        .rejects.toThrow('spawn ENOENT');
     });
 
     it('terminates option parsing before the URL', async (): Promise<void> => {

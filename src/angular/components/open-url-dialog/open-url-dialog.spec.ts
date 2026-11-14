@@ -12,11 +12,11 @@
  * @module app/components/open-url-dialog.spec
  */
 
-import {TestBed} from '@angular/core/testing';
+import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {ElementRef, signal, type WritableSignal} from '@angular/core';
 import {OpenUrlDialog} from './open-url-dialog';
 import {ElectronService, type UrlMediaInfo, type DownloadJob} from '../../services/electron.service';
-import {DependencyService} from '../../services/dependency.service';
+import {DependencyService, type InstallProgress} from '../../services/dependency.service';
 
 // ============================================================================
 // Helpers
@@ -568,6 +568,556 @@ describe('OpenUrlDialog', (): void => {
 
       progress.set({dependencyId: 'yt-dlp', status: 'success', message: 'yt-dlp installed: 2026.10.26.'});
       expect(component.ytdlpDownloadMessage()).toBeNull();
+    });
+  });
+});
+
+// ============================================================================
+// Rendered behaviour
+// ============================================================================
+
+/**
+ * Stand-in for ResizeObserver, which the test DOM does not implement. Records
+ * what is observed and lets a test report a size change.
+ */
+class FakeResizeObserver {
+  public static readonly instances: FakeResizeObserver[] = [];
+  public readonly observed: Element[] = [];
+  public disconnected: boolean = false;
+  private readonly callback: () => void;
+
+  public constructor(callback: () => void) {
+    this.callback = callback;
+    FakeResizeObserver.instances.push(this);
+  }
+
+  public observe(element: Element): void {
+    this.observed.push(element);
+  }
+
+  public unobserve(): void {
+    this.observed.length = 0;
+  }
+
+  public disconnect(): void {
+    this.disconnected = true;
+  }
+
+  /** Reports a size change, as the browser would after layout. */
+  public notify(): void {
+    this.callback();
+  }
+}
+
+describe('OpenUrlDialog rendered', (): void => {
+  const MEDIA_URL: string = 'https://example.com/v';
+  let fixture: ComponentFixture<OpenUrlDialog>;
+  let host: HTMLElement;
+  let mockElectron: ReturnType<typeof createMockElectron>;
+  let mockDeps: ReturnType<typeof createMockDeps>;
+  let closeSpy: ReturnType<typeof vi.spyOn>;
+
+  /** Returns a spy from the fake ElectronService by name. */
+  function electronSpy(name: string): ReturnType<typeof vi.fn> {
+    return mockElectron[name] as ReturnType<typeof vi.fn>;
+  }
+
+  /** Creates the dialog and waits for its first render. */
+  async function createDialog(): Promise<void> {
+    fixture = TestBed.createComponent(OpenUrlDialog);
+    host = fixture.nativeElement as HTMLElement;
+    await fixture.whenStable();
+  }
+
+  /** Finds a button by its visible label. */
+  function button(label: string): HTMLButtonElement | undefined {
+    return Array.from(host.querySelectorAll('button')).find((candidate: HTMLButtonElement): boolean => candidate.textContent.trim() === label);
+  }
+
+  /** Returns the MEDIA_URL text box. */
+  function urlInput(): HTMLInputElement {
+    return host.querySelector<HTMLInputElement>('.url-input')!;
+  }
+
+  /** Finds the dropdown in the row with the given label. */
+  function dropdown(label: string): HTMLSelectElement | undefined {
+    const row: Element | undefined = Array.from(host.querySelectorAll('.url-row'))
+      .find((candidate: Element): boolean => candidate.querySelector('.url-row-label')?.textContent === label);
+    return row?.querySelector<HTMLSelectElement>('select') ?? undefined;
+  }
+
+  /** Types a MEDIA_URL into the text box, as a user would. */
+  async function typeUrl(value: string): Promise<void> {
+    urlInput().value = value;
+    urlInput().dispatchEvent(new Event('input', {bubbles: true}));
+    await fixture.whenStable();
+  }
+
+  /** Picks a value in a labelled dropdown, as a user would. */
+  async function choose(label: string, value: string): Promise<void> {
+    const element: HTMLSelectElement = dropdown(label)!;
+    element.value = value;
+    element.dispatchEvent(new Event('change', {bubbles: true}));
+    await fixture.whenStable();
+  }
+
+  /** Types a MEDIA_URL and fetches its details. */
+  async function fetchDetails(): Promise<void> {
+    await typeUrl(MEDIA_URL);
+    button('Fetch')!.click();
+    await fixture.whenStable();
+  }
+
+  /** Publishes a download job update, as the server would. */
+  async function publishJob(job: DownloadJob): Promise<void> {
+    (mockElectron['downloadJob'] as WritableSignal<DownloadJob | null>).set(job);
+    await fixture.whenStable();
+  }
+
+  beforeEach((): void => {
+    mockElectron = createMockElectron();
+    mockDeps = createMockDeps();
+    FakeResizeObserver.instances.length = 0;
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    closeSpy = vi.spyOn(window, 'close').mockImplementation((): void => {});
+
+    TestBed.configureTestingModule({
+      imports: [OpenUrlDialog],
+      providers: [
+        {provide: ElectronService, useValue: mockElectron},
+        {provide: DependencyService, useValue: mockDeps},
+      ],
+    });
+  });
+
+  afterEach((): void => {
+    fixture.destroy();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  // ==========================================================================
+  // Without yt-dlp
+  // ==========================================================================
+
+  describe('without yt-dlp', (): void => {
+    beforeEach(async (): Promise<void> => {
+      (mockDeps['ytdlpInstalled'] as WritableSignal<boolean>).set(false);
+      await createDialog();
+    });
+
+    it('explains that yt-dlp is needed instead of offering the MEDIA_URL form', (): void => {
+      expect(host.querySelector('.url-dialog-notice')?.textContent).toContain('yt-dlp');
+      expect(host.querySelector('.url-input')).toBeNull();
+      expect(host.querySelector('.url-dialog-footer')).toBeNull();
+    });
+
+    it('downloads yt-dlp when the button is clicked', (): void => {
+      button('Download yt-dlp')!.click();
+
+      expect(mockDeps['installDependency']).toHaveBeenCalledExactlyOnceWith('yt-dlp');
+    });
+
+    it('disables the download button while a download is running', async (): Promise<void> => {
+      (mockDeps['isOperationInProgress'] as WritableSignal<boolean>).set(true);
+      await fixture.whenStable();
+
+      expect(button('Download yt-dlp')!.disabled).toBe(true);
+    });
+
+    it('shows the download progress message', async (): Promise<void> => {
+      (mockDeps['installProgress'] as WritableSignal<InstallProgress | null>).set({dependencyId: 'yt-dlp', status: 'installing', message: 'Downloading yt-dlp… 40%'});
+      await fixture.whenStable();
+
+      const notices: string[] = Array.from(host.querySelectorAll('.url-dialog-notice')).map((notice: Element): string => notice.textContent.trim());
+      expect(notices[1]).toBe('Downloading yt-dlp… 40%');
+    });
+
+    it('shows why the download failed', async (): Promise<void> => {
+      (mockDeps['installProgress'] as WritableSignal<InstallProgress | null>).set({dependencyId: 'yt-dlp', status: 'error', message: 'Could not install yt-dlp: network down'});
+      await fixture.whenStable();
+
+      expect(host.textContent).toContain('Could not install yt-dlp: network down');
+    });
+
+    it('shows no progress message for another dependency', async (): Promise<void> => {
+      (mockDeps['installProgress'] as WritableSignal<InstallProgress | null>).set({dependencyId: 'ffmpeg', status: 'installing', message: 'Installing FFmpeg'});
+      await fixture.whenStable();
+
+      expect(host.querySelectorAll('.url-dialog-notice')).toHaveLength(1);
+    });
+
+    it('swaps to the MEDIA_URL form once yt-dlp is installed', async (): Promise<void> => {
+      (mockDeps['ytdlpInstalled'] as WritableSignal<boolean>).set(true);
+      await fixture.whenStable();
+
+      expect(host.querySelector('.url-input')).not.toBeNull();
+      expect(button('Download yt-dlp')).toBeUndefined();
+    });
+  });
+
+  // ==========================================================================
+  // Fetching details
+  // ==========================================================================
+
+  describe('fetching details', (): void => {
+    beforeEach(async (): Promise<void> => {
+      await createDialog();
+    });
+
+    it('keeps Fetch and Play disabled until a MEDIA_URL is typed', (): void => {
+      expect(button('Fetch')!.disabled).toBe(true);
+      expect(button('Play')!.disabled).toBe(true);
+    });
+
+    it('keeps Fetch disabled for a blank MEDIA_URL', async (): Promise<void> => {
+      await typeUrl('   ');
+
+      expect(button('Fetch')!.disabled).toBe(true);
+    });
+
+    it('resolves the typed MEDIA_URL when Fetch is clicked', async (): Promise<void> => {
+      await typeUrl(`  ${MEDIA_URL}  `);
+
+      button('Fetch')!.click();
+
+      expect(electronSpy('getUrlInfo')).toHaveBeenCalledExactlyOnceWith(MEDIA_URL);
+    });
+
+    it('resolves the typed MEDIA_URL when Enter is pressed', async (): Promise<void> => {
+      await typeUrl(MEDIA_URL);
+
+      urlInput().dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+
+      expect(electronSpy('getUrlInfo')).toHaveBeenCalledExactlyOnceWith(MEDIA_URL);
+    });
+
+    it('resolves a pasted MEDIA_URL once the pasted text has been committed', async (): Promise<void> => {
+      vi.useFakeTimers();
+      urlInput().dispatchEvent(new Event('paste', {bubbles: true}));
+      urlInput().value = MEDIA_URL;
+      urlInput().dispatchEvent(new Event('input', {bubbles: true}));
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(electronSpy('getUrlInfo')).toHaveBeenCalledExactlyOnceWith(MEDIA_URL);
+    });
+
+    it('does not resolve a pasted MEDIA_URL before the paste has been committed', (): void => {
+      vi.useFakeTimers();
+      urlInput().value = MEDIA_URL;
+      urlInput().dispatchEvent(new Event('input', {bubbles: true}));
+
+      urlInput().dispatchEvent(new Event('paste', {bubbles: true}));
+
+      expect(electronSpy('getUrlInfo')).not.toHaveBeenCalled();
+    });
+
+    it('shows that details are loading and blocks a second fetch', async (): Promise<void> => {
+      electronSpy('getUrlInfo').mockReturnValue(new Promise<UrlMediaInfo>((): void => {}));
+      await typeUrl(MEDIA_URL);
+
+      button('Fetch')!.click();
+      await fixture.whenStable();
+
+      expect(button('Loading…')!.disabled).toBe(true);
+    });
+
+    it('shows the title, uploader and thumbnail of the resolved media', async (): Promise<void> => {
+      await fetchDetails();
+
+      expect(host.querySelector('.url-meta-title')?.textContent).toBe('A Video');
+      expect(host.querySelector('.url-meta-sub')?.textContent).toBe('Someone');
+      expect(host.querySelector<HTMLImageElement>('.url-thumb')?.getAttribute('src')).toBe('http://img');
+    });
+
+    it('falls back to Untitled and omits missing details', async (): Promise<void> => {
+      electronSpy('getUrlInfo').mockResolvedValue({...createInfo(), title: '', uploader: '', thumbnail: ''});
+
+      await fetchDetails();
+
+      expect(host.querySelector('.url-meta-title')?.textContent).toBe('Untitled');
+      expect(host.querySelector('.url-meta-sub')).toBeNull();
+      expect(host.querySelector('.url-thumb')).toBeNull();
+    });
+
+    it('shows the reason and no preview when the MEDIA_URL cannot be resolved', async (): Promise<void> => {
+      electronSpy('getUrlInfo').mockRejectedValue(new Error('Unsupported MEDIA_URL'));
+
+      await fetchDetails();
+
+      expect(host.querySelector('.url-error')?.textContent).toBe('Unsupported MEDIA_URL');
+      expect(host.querySelector('.url-preview')).toBeNull();
+      expect(button('Play')!.disabled).toBe(true);
+    });
+
+    it('clears the error when a retry succeeds', async (): Promise<void> => {
+      electronSpy('getUrlInfo').mockRejectedValueOnce(new Error('Unsupported MEDIA_URL'));
+      await fetchDetails();
+
+      button('Fetch')!.click();
+      await fixture.whenStable();
+
+      expect(host.querySelector('.url-error')).toBeNull();
+      expect(host.querySelector('.url-preview')).not.toBeNull();
+    });
+  });
+
+  // ==========================================================================
+  // Options
+  // ==========================================================================
+
+  describe('options', (): void => {
+    beforeEach(async (): Promise<void> => {
+      await createDialog();
+      await fetchDetails();
+    });
+
+    it('lists the available qualities with the best one selected', (): void => {
+      const quality: HTMLSelectElement = dropdown('Quality')!;
+
+      expect(Array.from(quality.options).map((option: HTMLOptionElement): string => option.textContent.trim())).toEqual(['1080p', '720p']);
+      expect(quality.value).toBe('fmt-1080');
+    });
+
+    it('hides the quality choice for audio', async (): Promise<void> => {
+      await choose('Format', 'audio');
+
+      expect(dropdown('Quality')).toBeUndefined();
+    });
+
+    it('hides the quality choice when the media offers no video formats', async (): Promise<void> => {
+      electronSpy('getUrlInfo').mockResolvedValue(createInfo([]));
+
+      button('Fetch')!.click();
+      await fixture.whenStable();
+
+      expect(dropdown('Quality')).toBeUndefined();
+    });
+
+    it('starts in stream mode with a Play button', (): void => {
+      expect(dropdown('Mode')!.value).toBe('stream');
+      expect(button('Play')!.disabled).toBe(false);
+      expect(host.querySelector('.url-mode-hint')?.textContent).toContain('Plays directly from the source');
+    });
+
+    it('offers Download & Play in download mode', async (): Promise<void> => {
+      await choose('Mode', 'download');
+
+      expect(button('Download & Play')!.disabled).toBe(false);
+      expect(button('Play')).toBeUndefined();
+      expect(host.querySelector('.url-mode-hint')?.textContent).toContain('Asks where to save');
+    });
+  });
+
+  // ==========================================================================
+  // Streaming
+  // ==========================================================================
+
+  describe('streaming', (): void => {
+    beforeEach(async (): Promise<void> => {
+      await createDialog();
+      await fetchDetails();
+    });
+
+    it('streams the MEDIA_URL at the selected quality when Play is clicked', async (): Promise<void> => {
+      await choose('Quality', 'fmt-720');
+
+      button('Play')!.click();
+
+      expect(electronSpy('streamUrl')).toHaveBeenCalledExactlyOnceWith(MEDIA_URL, 'video', 720);
+    });
+
+    it('streams audio when the audio format is chosen', async (): Promise<void> => {
+      await choose('Format', 'audio');
+
+      button('Play')!.click();
+
+      expect(electronSpy('streamUrl').mock.calls[0].slice(0, 2)).toEqual([MEDIA_URL, 'audio']);
+    });
+
+    it('closes the window once the stream has been handed over', async (): Promise<void> => {
+      button('Play')!.click();
+      await fixture.whenStable();
+
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows a busy cursor and locks the form while the stream is resolved', async (): Promise<void> => {
+      electronSpy('streamUrl').mockReturnValue(new Promise<void>((): void => {}));
+
+      button('Play')!.click();
+      await fixture.whenStable();
+
+      expect(host.classList.contains('cursor-busy')).toBe(true);
+      expect(urlInput().disabled).toBe(true);
+      expect(button('Play')!.disabled).toBe(true);
+      expect(button('Cancel')!.disabled).toBe(true);
+      expect(closeSpy).not.toHaveBeenCalled();
+    });
+
+    it('shows the reason and unlocks the form when the stream cannot start', async (): Promise<void> => {
+      electronSpy('streamUrl').mockRejectedValue(new Error('Stream unavailable'));
+
+      button('Play')!.click();
+      await fixture.whenStable();
+
+      expect(host.querySelector('.url-error')?.textContent).toBe('Stream unavailable');
+      expect(host.classList.contains('cursor-busy')).toBe(false);
+      expect(button('Play')!.disabled).toBe(false);
+    });
+
+    it('closes the window when Cancel is clicked', (): void => {
+      button('Cancel')!.click();
+
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+      expect(electronSpy('cancelDownload')).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // Downloading
+  // ==========================================================================
+
+  describe('downloading', (): void => {
+    beforeEach(async (): Promise<void> => {
+      await createDialog();
+      await fetchDetails();
+      await choose('Mode', 'download');
+    });
+
+    /** Starts the download and waits for the job to be registered. */
+    async function startDownload(): Promise<void> {
+      button('Download & Play')!.click();
+      await fixture.whenStable();
+    }
+
+    it('asks where to save, then downloads the selected quality there', async (): Promise<void> => {
+      await choose('Quality', 'fmt-720');
+
+      await startDownload();
+
+      expect(electronSpy('saveMediaDialog')).toHaveBeenCalledExactlyOnceWith('A Video', 'video');
+      expect(electronSpy('downloadUrl')).toHaveBeenCalledExactlyOnceWith(MEDIA_URL, 'video', 'fmt-720', 'A Video', '/chosen/A Video.mp4');
+    });
+
+    it('suggests an empty file name when the media has no title', async (): Promise<void> => {
+      electronSpy('getUrlInfo').mockResolvedValue({...createInfo(), title: undefined});
+      button('Fetch')!.click();
+      await fixture.whenStable();
+
+      await startDownload();
+
+      expect(electronSpy('saveMediaDialog')).toHaveBeenCalledExactlyOnceWith('', 'video');
+    });
+
+    it('shows that the download is starting and offers to cancel it', async (): Promise<void> => {
+      await startDownload();
+
+      expect(host.querySelector('.url-progress-label')?.textContent).toBe('Starting…');
+      expect(button('Cancel Download')).toBeDefined();
+      expect(button('Download & Play')).toBeUndefined();
+      expect(host.classList.contains('cursor-busy')).toBe(false);
+    });
+
+    it('shows the progress of the running download', async (): Promise<void> => {
+      await startDownload();
+
+      await publishJob(createJob({progress: 0.424}));
+
+      expect(host.querySelector('.url-progress-label')?.textContent).toBe('42%');
+      expect(host.querySelector<HTMLElement>('.url-progress-fill')!.style.width).toBe('42%');
+    });
+
+    it('ignores the progress of a download started elsewhere', async (): Promise<void> => {
+      await startDownload();
+
+      await publishJob(createJob({id: 'job-2', progress: 0.9}));
+
+      expect(host.querySelector('.url-progress-label')?.textContent).toBe('Starting…');
+    });
+
+    it('leaves the form as it was when the save dialog is cancelled', async (): Promise<void> => {
+      electronSpy('saveMediaDialog').mockResolvedValue(null);
+
+      await startDownload();
+
+      expect(electronSpy('downloadUrl')).not.toHaveBeenCalled();
+      expect(host.querySelector('.url-progress')).toBeNull();
+      expect(button('Download & Play')!.disabled).toBe(false);
+    });
+
+    it('cancels the running download and returns to the form', async (): Promise<void> => {
+      await startDownload();
+
+      button('Cancel Download')!.click();
+      await fixture.whenStable();
+
+      expect(electronSpy('cancelDownload')).toHaveBeenCalledExactlyOnceWith('job-1');
+      expect(host.querySelector('.url-progress')).toBeNull();
+      expect(button('Download & Play')!.disabled).toBe(false);
+    });
+
+    it('closes the window when the download finishes', async (): Promise<void> => {
+      await startDownload();
+
+      await publishJob(createJob({status: 'done', progress: 1}));
+
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the reason and returns to the form when the download fails', async (): Promise<void> => {
+      await startDownload();
+
+      await publishJob(createJob({status: 'error', errorMessage: 'Disk full'}));
+
+      expect(host.querySelector('.url-error')?.textContent).toBe('Disk full');
+      expect(host.querySelector('.url-progress')).toBeNull();
+      expect(button('Download & Play')!.disabled).toBe(false);
+      expect(closeSpy).not.toHaveBeenCalled();
+    });
+
+    it('shows the reason when the download cannot be started', async (): Promise<void> => {
+      electronSpy('downloadUrl').mockRejectedValue(new Error('yt-dlp crashed'));
+
+      await startDownload();
+
+      expect(host.querySelector('.url-error')?.textContent).toBe('yt-dlp crashed');
+      expect(button('Download & Play')!.disabled).toBe(false);
+    });
+  });
+
+  // ==========================================================================
+  // Window sizing
+  // ==========================================================================
+
+  describe('window sizing', (): void => {
+    beforeEach(async (): Promise<void> => {
+      await createDialog();
+    });
+
+    it('watches its own element for size changes', (): void => {
+      expect(FakeResizeObserver.instances).toHaveLength(1);
+      expect(FakeResizeObserver.instances[0].observed).toEqual([host]);
+    });
+
+    it('asks for the window to fit the content, rounding the height up', (): void => {
+      vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({height: 240.2} as DOMRect);
+
+      FakeResizeObserver.instances[0].notify();
+
+      expect(electronSpy('setContentHeight')).toHaveBeenCalledExactlyOnceWith(241);
+    });
+
+    it('does not resize the window before a size change is reported', (): void => {
+      expect(electronSpy('setContentHeight')).not.toHaveBeenCalled();
+    });
+
+    it('stops watching when destroyed', (): void => {
+      fixture.destroy();
+
+      expect(FakeResizeObserver.instances[0].disconnected).toBe(true);
     });
   });
 });
