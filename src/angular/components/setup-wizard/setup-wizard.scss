@@ -614,7 +614,6 @@
     @include pebble.surface(lg);
     box-sizing: border-box;
     width: 100%;
-    max-width: 320px;
     padding: var(--pebble-space-4) var(--pebble-space-5);
     text-align: left;
 
