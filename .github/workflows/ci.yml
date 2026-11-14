@@ -27,6 +27,9 @@ jobs:
       - if: steps.deps.outputs.cache-hit != 'true'
         run: npm ci
       - run: npm run lint
+      # The test runners transpile specs without type-checking them, so
+      # without this a spec can drift from the types it claims to exercise.
+      - run: npm run typecheck:specs
 
   build:
     name: Build

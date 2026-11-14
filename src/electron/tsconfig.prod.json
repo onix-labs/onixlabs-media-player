@@ -12,5 +12,5 @@
     "types": ["node"]
   },
   "include": ["*.ts"],
-  "exclude": ["dist", "preload.ts"]
+  "exclude": ["dist", "preload.ts", "*.spec.ts"]
 }

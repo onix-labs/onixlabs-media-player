@@ -102,7 +102,9 @@ describe('SSEManager', (): void => {
       const client: FakeClient = createFakeClient();
       manager.addClient(client);
 
-      manager.broadcast('playback:state', null);
+      // The signature excludes null, but JSON payloads from callers typed as
+      // unknown can still carry it at runtime.
+      manager.broadcast('playback:state', null as never);
 
       expect(client.writes[0]).toBe('event: playback:state\ndata: null\n\n');
     });
