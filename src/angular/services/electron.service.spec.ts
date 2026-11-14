@@ -1693,7 +1693,7 @@ describe('ElectronService public surface', (): void => {
       service = await startInElectron();
 
       await settle((): void => {
-        expect(errorSpy).toHaveBeenCalledWith('[ElectronService] Failed to read initial fullscreen state:', failure);
+        expect(errorSpy).toHaveBeenCalledWith('[WindowIpc] Failed to read initial fullscreen state:', failure);
       });
       expect(service.isFullscreen()).toBe(false);
     });
@@ -1725,7 +1725,7 @@ describe('ElectronService public surface', (): void => {
       service = await startInElectron();
 
       await settle((): void => {
-        expect(errorSpy).toHaveBeenCalledWith('[ElectronService] Failed to read initial view mode:', failure);
+        expect(errorSpy).toHaveBeenCalledWith('[WindowIpc] Failed to read initial view mode:', failure);
       });
       expect(service.viewMode()).toBe('desktop');
     });
@@ -3072,6 +3072,16 @@ describe('ElectronService public surface', (): void => {
         vi.advanceTimersByTime(100);
 
         expect(service.playlist().items[3]).toEqual({...late, duration: 444});
+      });
+
+      it('should not apply durations still waiting when the service is destroyed', (): void => {
+        const before: PlaylistState = service.playlist();
+        sse.emitJson('playlist:items:duration', {filePath: '/a.mp3', duration: 111});
+
+        service.ngOnDestroy();
+        vi.advanceTimersByTime(1000);
+
+        expect(service.playlist()).toBe(before);
       });
 
       it('should start a fresh window for durations that arrive after a flush', (): void => {
