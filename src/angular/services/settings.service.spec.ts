@@ -323,9 +323,8 @@ describe('SettingsService', (): void => {
       expect(service.effectiveTheme()).toBe('glass');
     });
 
-    it('lists the nine accent colours in display order with their brand swatches', (): void => {
+    it('lists the eight accent colours in display order with their brand swatches', (): void => {
       expect(ACCENT_OPTIONS.map((option: AccentOption): string => `${option.id}:${option.name}:${option.swatch}`)).toEqual([
-        'mono:Monochrome:linear-gradient(135deg, #212529 50%, #f8f9fa 50%)',
         'amber:Amber:#f79533',
         'coral:Coral:#f37055',
         'rose:Rose:#ef4e7b',
@@ -796,7 +795,7 @@ const PERSIST_CASES: readonly PersistCase[] = [
   {name: 'setTheme("solid")', act: (s: SettingsService): Promise<void> => s.setTheme('solid'), category: 'appearance', body: {theme: 'solid'}},
   {name: 'setTheme("glass")', act: (s: SettingsService): Promise<void> => s.setTheme('glass'), category: 'appearance', body: {theme: 'glass'}},
   {name: 'setTheme("pebble")', act: (s: SettingsService): Promise<void> => s.setTheme('pebble'), category: 'appearance', body: {theme: 'pebble'}},
-  {name: 'setAccentColor("mono")', act: (s: SettingsService): Promise<void> => s.setAccentColor('mono'), category: 'appearance', body: {accentColor: 'mono'}},
+  {name: 'setAccentColor("amber")', act: (s: SettingsService): Promise<void> => s.setAccentColor('amber'), category: 'appearance', body: {accentColor: 'amber'}},
   {name: 'setAccentColor("rose")', act: (s: SettingsService): Promise<void> => s.setAccentColor('rose'), category: 'appearance', body: {accentColor: 'rose'}},
   {name: 'setMacOSVisualEffectState("inactive")', act: (s: SettingsService): Promise<void> => s.setMacOSVisualEffectState('inactive'), category: 'appearance', body: {macOSVisualEffectState: 'inactive'}},
   {name: 'setColorScheme("dark")', act: (s: SettingsService): Promise<void> => s.setColorScheme('dark'), category: 'appearance', body: {colorScheme: 'dark'}},

@@ -932,10 +932,10 @@ describe('Root rendered', (): void => {
     it('updates the published accent colour when the setting changes', (): void => {
       createRoot();
 
-      setSignal(mockSettings, 'accentColor', 'mono');
+      setSignal(mockSettings, 'accentColor', 'teal');
       fixture.detectChanges();
 
-      expect(root.getAttribute('data-accent')).toBe('mono');
+      expect(root.getAttribute('data-accent')).toBe('teal');
     });
 
     it('gives the player the pebble class only for the Pebble theme', (): void => {

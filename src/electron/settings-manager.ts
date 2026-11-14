@@ -138,10 +138,10 @@ export type ColorScheme = 'system' | 'dark' | 'light';
 export type PlayerTheme = 'solid' | 'glass' | 'pebble';
 
 /**
- * Accent colour of the player's controls: monochrome or one of the eight
- * ONIXLabs brand colours.
+ * Accent colour of the player's controls: one of the eight ONIXLabs brand
+ * colours.
  */
-export type AccentColor = 'mono' | 'amber' | 'coral' | 'rose' | 'violet' | 'blue' | 'cyan' | 'teal' | 'green';
+export type AccentColor = 'amber' | 'coral' | 'rose' | 'violet' | 'blue' | 'cyan' | 'teal' | 'green';
 
 /**
  * Preferred audio language codes (ISO 639-2/B).
@@ -616,7 +616,7 @@ const VALID_PLAYER_THEMES: readonly PlayerTheme[] = ['solid', 'glass', 'pebble']
 
 /** Valid accent colour values */
 const VALID_ACCENT_COLORS: readonly AccentColor[] = [
-  'mono', 'amber', 'coral', 'rose', 'violet', 'blue', 'cyan', 'teal', 'green',
+  'amber', 'coral', 'rose', 'violet', 'blue', 'cyan', 'teal', 'green',
 ];
 
 /** Valid subtitle font family values */

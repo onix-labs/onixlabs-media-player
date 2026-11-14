@@ -660,7 +660,7 @@ describe('SettingsManager', () => {
       expect(result.appearance.accentColor).toBe('blue');
     });
 
-    it.each(['mono', 'amber', 'coral', 'rose', 'violet', 'blue', 'cyan', 'teal', 'green'] as const)(
+    it.each(['amber', 'coral', 'rose', 'violet', 'blue', 'cyan', 'teal', 'green'] as const)(
       'should accept the %s accent colour',
       (accentColor: AccentColor) => {
         const manager: SettingsManager = new SettingsManager();
@@ -1145,13 +1145,13 @@ describe('SettingsManager', () => {
       });
     });
 
-    it.each([['mono'], ['green']] as const)('should load the stored %s accent colour', (accentColor: AccentColor) => {
+    it.each([['amber'], ['green']] as const)('should load the stored %s accent colour', (accentColor: AccentColor) => {
       writeSettingsFile({ version: 2, appearance: { accentColor } });
 
       expect(new SettingsManager().getSettings().appearance.accentColor).toBe(accentColor);
     });
 
-    it.each([['purple'], ['#a166ab'], [''], [7], [null]] as const)('should replace the malformed accent colour %j with blue', (accentColor: unknown) => {
+    it.each([['mono'], ['purple'], ['#a166ab'], [''], [7], [null]] as const)('should replace the malformed accent colour %j with blue', (accentColor: unknown) => {
       writeSettingsFile({ version: 2, appearance: { accentColor } });
 
       expect(new SettingsManager().getSettings().appearance.accentColor).toBe('blue');

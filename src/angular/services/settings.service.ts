@@ -298,10 +298,10 @@ export type ColorScheme = 'system' | 'dark' | 'light';
 export type PlayerTheme = 'solid' | 'glass' | 'pebble';
 
 /**
- * Accent colour of the player's controls: monochrome or one of the eight
- * ONIXLabs brand colours.
+ * Accent colour of the player's controls: one of the eight ONIXLabs brand
+ * colours.
  */
-export type AccentColor = 'mono' | 'amber' | 'coral' | 'rose' | 'violet' | 'blue' | 'cyan' | 'teal' | 'green';
+export type AccentColor = 'amber' | 'coral' | 'rose' | 'violet' | 'blue' | 'cyan' | 'teal' | 'green';
 
 /**
  * A selectable accent colour.
@@ -311,18 +311,14 @@ export interface AccentOption {
   readonly id: AccentColor;
   /** Display name */
   readonly name: string;
-  /** CSS background of the option's swatch: a colour, or for Monochrome a gradient */
+  /** CSS colour of the option's swatch */
   readonly swatch: string;
 }
 
 /**
- * The accent colours, in display order. Monochrome has no hue of its own, so
- * its swatch shows both of Pebble's monochrome primaries.
+ * The accent colours, in display order.
  */
 export const ACCENT_OPTIONS: readonly AccentOption[] = [
-  // Half near-black, half near-white: the player shows whichever reads on the
-  // page, and either colour alone would vanish into one of the two schemes.
-  {id: 'mono', name: 'Monochrome', swatch: 'linear-gradient(135deg, #212529 50%, #f8f9fa 50%)'},
   {id: 'amber', name: 'Amber', swatch: '#f79533'},
   {id: 'coral', name: 'Coral', swatch: '#f37055'},
   {id: 'rose', name: 'Rose', swatch: '#ef4e7b'},

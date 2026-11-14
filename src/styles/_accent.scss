@@ -2,8 +2,8 @@
 // Player accent colour
 // =============================================================================
 //
-// The main window's <html> carries data-accent: `mono` (Pebble's monochrome
-// primary) or one of the eight ONIXLabs brand colours. For now it colours only
+// The main window's <html> carries data-accent: one of the eight ONIXLabs
+// brand colours. For now it colours only
 // the seek bar and the volume slider, fill and thumb, in every player theme.
 //
 //   --player-accent            the fill
@@ -91,22 +91,4 @@ html {
       --player-accent: #{$dark};
     }
   }
-}
-
-// Mono is Pebble's primary: near-black in light, near-white in dark, in every
-// theme. It is flat: a highlight mixed towards white would wash the near-black
-// out to the grey of the solid light track.
-html[data-accent='mono'] {
-  --player-accent: #212529;
-  --player-accent-highlight: var(--player-accent);
-}
-
-@media (prefers-color-scheme: dark) {
-  html[data-accent='mono']:not([data-color-scheme='light']) {
-    --player-accent: #f8f9fa;
-  }
-}
-
-html[data-accent='mono'][data-color-scheme='dark'] {
-  --player-accent: #f8f9fa;
 }

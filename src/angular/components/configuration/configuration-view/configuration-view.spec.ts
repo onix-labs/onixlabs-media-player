@@ -1310,19 +1310,19 @@ describe('ConfigurationView', (): void => {
         expect(host.querySelector(`#${group.getAttribute('aria-labelledby')}`)?.textContent.trim()).toBe('Accent Color');
       });
 
-      it('offers the nine accent colours as named swatches in order', (): void => {
+      it('offers the eight accent colours as named swatches in order', (): void => {
         expect(accentInputs().map((input: HTMLInputElement): string | null => input.getAttribute('aria-label'))).toEqual([
-          'Monochrome', 'Amber', 'Coral', 'Rose', 'Violet', 'Blue', 'Cyan', 'Teal', 'Green',
+          'Amber', 'Coral', 'Rose', 'Violet', 'Blue', 'Cyan', 'Teal', 'Green',
         ]);
         expect(all<HTMLLabelElement>('.accent-options > label').map((label: HTMLLabelElement): string => label.title)).toEqual([
-          'Monochrome', 'Amber', 'Coral', 'Rose', 'Violet', 'Blue', 'Cyan', 'Teal', 'Green',
+          'Amber', 'Coral', 'Rose', 'Violet', 'Blue', 'Cyan', 'Teal', 'Green',
         ]);
         expect(accentInputs().every((input: HTMLInputElement): boolean => input.name === 'accent-color')).toBe(true);
       });
 
-      it('paints each swatch its brand colour, and Monochrome half dark and half light', (): void => {
+      it('paints each swatch its brand colour', (): void => {
         expect(all<HTMLElement>('.accent-options .accent-swatch').map((swatch: HTMLElement): string => swatch.style.background)).toEqual([
-          'linear-gradient(135deg, rgb(33, 37, 41) 50%, rgb(248, 249, 250) 50%)', 'rgb(247, 149, 51)', 'rgb(243, 112, 85)', 'rgb(239, 78, 123)', 'rgb(161, 102, 171)',
+          'rgb(247, 149, 51)', 'rgb(243, 112, 85)', 'rgb(239, 78, 123)', 'rgb(161, 102, 171)',
           'rgb(80, 115, 184)', 'rgb(16, 152, 173)', 'rgb(7, 179, 155)', 'rgb(111, 186, 130)',
         ]);
       });
