@@ -979,7 +979,7 @@ describe('Root rendered', (): void => {
       expect(root.style.getPropertyValue('--app-tint-color')).toBe('');
     });
 
-    it.each(['configuration', 'about', 'setup-wizard', 'open-url'])('keeps the %s window Pebble without a player theme or accent', (windowName: string): void => {
+    it.each(['configuration', 'about', 'setup-wizard', 'open-url'])('keeps the %s window Pebble without a player theme, with the accent', (windowName: string): void => {
       setSignal(mockSettings, 'effectiveTheme', 'solid');
 
       createRoot(windowName);
@@ -989,7 +989,7 @@ describe('Root rendered', (): void => {
 
       expect(root.classList.contains('pebble')).toBe(true);
       expect(root.hasAttribute('data-player-theme')).toBe(false);
-      expect(root.hasAttribute('data-accent')).toBe(false);
+      expect(root.getAttribute('data-accent')).toBe('rose');
     });
 
     it('publishes the colour scheme on the document root', (): void => {

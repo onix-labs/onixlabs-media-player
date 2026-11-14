@@ -221,7 +221,7 @@ export class Root implements OnDestroy {
    */
   public constructor() {
     // Pebble windows paint their own opaque page (see styles/_pebble.scss), so
-    // the player theme and accent below apply to the player only.
+    // the player theme below applies to the player only.
     if (this.isPebbleWindow) {
       document.documentElement.classList.add('pebble');
     }
@@ -237,8 +237,13 @@ export class Root implements OnDestroy {
       const root: HTMLElement = document.documentElement;
       const theme: PlayerTheme = this.settings.effectiveTheme();
       root.setAttribute('data-player-theme', theme);
-      root.setAttribute('data-accent', this.settings.accentColor());
       root.classList.toggle('pebble', theme === 'pebble');
+    });
+
+    // The accent applies in every window: the player's controls, and the
+    // sliders and switches of the Pebble windows.
+    effect((): void => {
+      document.documentElement.setAttribute('data-accent', this.settings.accentColor());
     });
 
     // React to color scheme setting changes

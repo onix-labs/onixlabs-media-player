@@ -2,9 +2,10 @@
 // Player accent colour
 // =============================================================================
 //
-// The main window's <html> carries data-accent: one of the eight ONIXLabs
-// brand colours. For now it colours only
-// the seek bar and the volume slider, fill and thumb, in every player theme.
+// Every window's <html> carries data-accent: one of the eight ONIXLabs brand
+// colours. In the player it colours the seek bar and the volume slider, fill
+// and thumb, in every player theme (and in Pebble, the play/pause and toggled
+// buttons' icons); in the Pebble windows, the sliders and the on switches.
 //
 //   --player-accent            the fill
 //   --player-accent-highlight  the top stop of the solid/glass gradient fill,
@@ -31,7 +32,7 @@ $brand: (
   'green': #6fba82,
 );
 
-// Fills for the Pebble theme's light palette. Its track is the light
+// Fills for Pebble's light palette (its windows and the Pebble theme). Its track is the light
 // --pebble-surface-alt (#dee2e6), where most brand colours fall below the 3:1
 // a control needs against what it sits on (amber 1.7:1, green 1.8:1, teal
 // 2.0:1, coral 2.2:1, cyan 2.6:1, rose 2.7:1), so those are deepened, keeping
@@ -47,14 +48,15 @@ $pebble-light: (
   'green': #3f8a54,
 );
 
-// Fills for the Pebble theme's dark palette. Blue is 2.8:1 on the dark
+// Fills for Pebble's dark palette. Blue is 2.8:1 on the dark
 // --pebble-surface-alt (#2b3036); lighter, at the same hue, it is 4.0:1. The
 // rest pass.
 $pebble-dark: (
   'blue': #5a8bf0,
 );
 
-$pebble-player: "html[data-player-theme='pebble']";
+// Any Pebble page: the secondary windows, and the player in the Pebble theme.
+$pebble-player: "html.pebble";
 
 // Blue when the attribute is absent (before settings load) or unknown.
 html {
