@@ -1649,6 +1649,32 @@ describe('UnifiedMediaServer streaming', () => {
       expect(fs.existsSync(render.outputFile)).toBe(false);
     });
 
+    it('renders a file once a SoundFont is installed after a request that found none', async () => {
+      const file: string = mediaFile('late-soundfont.mid', 'MThd-late-soundfont');
+      dependencies.soundfont = undefined;
+      await (await api(streamPath(file))).text();
+      dependencies.soundfont = SOUNDFONT;
+
+      const { response } = await renderMidi(file);
+      const served: Buffer = Buffer.from(await response.arrayBuffer());
+
+      expect(response.status).toBe(200);
+      expect(served.equals(rendered)).toBe(true);
+    });
+
+    it('renders a file once FluidSynth is installed after a request that found none', async () => {
+      const file: string = mediaFile('late-fluidsynth.mid', 'MThd-late-fluidsynth');
+      dependencies.fluidsynth = null;
+      await (await api(streamPath(file))).text();
+      dependencies.fluidsynth = FLUIDSYNTH;
+
+      const { response } = await renderMidi(file);
+      const served: Buffer = Buffer.from(await response.arrayBuffer());
+
+      expect(response.status).toBe(200);
+      expect(served.equals(rendered)).toBe(true);
+    });
+
     // ------------------------------------------------------------------------
     // Background render queue (renders started by probing a file)
     // ------------------------------------------------------------------------
@@ -1991,6 +2017,32 @@ describe('UnifiedMediaServer streaming', () => {
       expect(fs.existsSync(render.outputFile)).toBe(false);
     });
 
+    it('renders a module once ffmpeg is installed after a request that found none', async () => {
+      const file: string = mediaFile('late-ffmpeg.mod', 'M.K.-late-ffmpeg');
+      dependencies.ffmpeg = null;
+      await (await api(streamPath(file))).text();
+      dependencies.ffmpeg = FFMPEG;
+
+      const { response } = await renderTracker(file);
+      const served: Buffer = Buffer.from(await response.arrayBuffer());
+
+      expect(response.status).toBe(200);
+      expect(served.equals(rendered)).toBe(true);
+    });
+
+    it('renders a module once libopenmpt support appears after a request that found none', async () => {
+      const file: string = mediaFile('late-libopenmpt.mod', 'M.K.-late-libopenmpt');
+      dependencies.trackerSupport = false;
+      await (await api(streamPath(file))).text();
+      dependencies.trackerSupport = true;
+
+      const { response } = await renderTracker(file);
+      const served: Buffer = Buffer.from(await response.arrayBuffer());
+
+      expect(response.status).toBe(200);
+      expect(served.equals(rendered)).toBe(true);
+    });
+
     it('does not render a queued module again when it was rendered on demand in the meantime', async () => {
       const files: string[] = ['a', 'b', 'c'].map((name: string): string => mediaFile(`overtaken-${name}.mod`, `M.K.-overtaken-${name}`));
       await (await api(withQuery('/media/info', { path: files[0] }))).text();
@@ -2311,7 +2363,20 @@ describe('UnifiedMediaServer streaming', () => {
       expect(await res.text()).toBe('WEBVTT\n');
     });
 
-    it('ends the response empty when ffmpeg cannot be started', async () => {
+    it('answers 200 with an empty track when ffmpeg exits without writing anything', async () => {
+      const file: string = mediaFile('no-cues.mkv');
+      const pending: Promise<Response> = api(subtitlesPath({ path: file, track: '4' }));
+      const ffmpeg: FakeProcess = await nextSpawn(FFMPEG);
+
+      ffmpeg.exit(1);
+      const res: Response = await pending;
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('text/vtt; charset=utf-8');
+      expect(await res.text()).toBe('');
+    });
+
+    it('answers 500 when ffmpeg cannot be started', async () => {
       const file: string = mediaFile('unrunnable.mkv');
       const pending: Promise<Response> = api(subtitlesPath({ path: file, track: '2' }));
       const ffmpeg: FakeProcess = await nextSpawn(FFMPEG);
@@ -2319,7 +2384,47 @@ describe('UnifiedMediaServer streaming', () => {
       ffmpeg.failToStart(new Error('spawn ENOENT'));
       const res: Response = await pending;
 
-      expect(await res.text()).toBe('');
+      expect(res.status).toBe(500);
+      expect(await errorOf(res)).toBe('spawn ENOENT');
+    });
+
+    it('ends the response when ffmpeg reports an error without exiting', async () => {
+      const file: string = mediaFile('stuck.mkv');
+      const pending: Promise<Response> = api(subtitlesPath({ path: file, track: '2' }));
+      const ffmpeg: FakeProcess = await nextSpawn(FFMPEG);
+
+      ffmpeg.fail(new Error('spawn EACCES'));
+      const res: Response = await pending;
+
+      expect(res.status).toBe(500);
+      expect(await errorOf(res)).toBe('spawn EACCES');
+    });
+
+    it('ends the response with what was extracted when ffmpeg reports an error mid-stream', async () => {
+      const file: string = mediaFile('interrupted.mkv');
+      const pending: Promise<Response> = api(subtitlesPath({ path: file, track: '2' }));
+      const ffmpeg: FakeProcess = await nextSpawn(FFMPEG);
+      ffmpeg.stdout.write('WEBVTT\n');
+      const res: Response = await pending;
+
+      ffmpeg.fail(new Error('kill EPERM'));
+
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe('WEBVTT\n');
+    });
+
+    it('does not signal an ffmpeg that has already exited', async () => {
+      const file: string = mediaFile('finished-subs.mkv');
+      const pending: Promise<Response> = api(subtitlesPath({ path: file, track: '2' }));
+      const ffmpeg: FakeProcess = await nextSpawn(FFMPEG);
+      const kill = vi.spyOn(ffmpeg, 'kill');
+
+      ffmpeg.exit(0, vtt);
+      await (await pending).text();
+      // The request has closed by the time the server answers another one.
+      await playerState();
+
+      expect(kill).not.toHaveBeenCalled();
     });
 
     it('stops the extraction when the client disconnects', async () => {
@@ -2419,7 +2524,20 @@ describe('UnifiedMediaServer streaming', () => {
       expect(await res.text()).toBe('WEBVTT\n');
     });
 
-    it('ends the response empty when ffmpeg cannot be started', async () => {
+    it('answers 200 with an empty track when ffmpeg exits without writing anything', async () => {
+      const file: string = mediaFile('no-cues.srt');
+      const pending: Promise<Response> = api(externalPath(file));
+      const ffmpeg: FakeProcess = await nextSpawn(FFMPEG);
+
+      ffmpeg.exit(1);
+      const res: Response = await pending;
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('text/vtt; charset=utf-8');
+      expect(await res.text()).toBe('');
+    });
+
+    it('answers 500 when ffmpeg cannot be started', async () => {
       const file: string = mediaFile('unrunnable.srt');
       const pending: Promise<Response> = api(externalPath(file));
       const ffmpeg: FakeProcess = await nextSpawn(FFMPEG);
@@ -2427,7 +2545,47 @@ describe('UnifiedMediaServer streaming', () => {
       ffmpeg.failToStart(new Error('spawn ENOENT'));
       const res: Response = await pending;
 
-      expect(await res.text()).toBe('');
+      expect(res.status).toBe(500);
+      expect(await errorOf(res)).toBe('spawn ENOENT');
+    });
+
+    it('ends the response when ffmpeg reports an error without exiting', async () => {
+      const file: string = mediaFile('stuck.srt');
+      const pending: Promise<Response> = api(externalPath(file));
+      const ffmpeg: FakeProcess = await nextSpawn(FFMPEG);
+
+      ffmpeg.fail(new Error('spawn EACCES'));
+      const res: Response = await pending;
+
+      expect(res.status).toBe(500);
+      expect(await errorOf(res)).toBe('spawn EACCES');
+    });
+
+    it('ends the response with what was converted when ffmpeg reports an error mid-stream', async () => {
+      const file: string = mediaFile('interrupted.srt');
+      const pending: Promise<Response> = api(externalPath(file));
+      const ffmpeg: FakeProcess = await nextSpawn(FFMPEG);
+      ffmpeg.stdout.write('WEBVTT\n');
+      const res: Response = await pending;
+
+      ffmpeg.fail(new Error('kill EPERM'));
+
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe('WEBVTT\n');
+    });
+
+    it('does not signal an ffmpeg that has already exited', async () => {
+      const file: string = mediaFile('finished.srt');
+      const pending: Promise<Response> = api(externalPath(file));
+      const ffmpeg: FakeProcess = await nextSpawn(FFMPEG);
+      const kill = vi.spyOn(ffmpeg, 'kill');
+
+      ffmpeg.exit(0, vtt);
+      await (await pending).text();
+      // The request has closed by the time the server answers another one.
+      await playerState();
+
+      expect(kill).not.toHaveBeenCalled();
     });
 
     it('stops the conversion when the client disconnects', async () => {

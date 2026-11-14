@@ -952,15 +952,26 @@ describe('UnifiedMediaServer handlers', () => {
       expect((await settingsSection('equalizer'))['preset']).toBe('flat');
     });
 
-    it('answers a body that is not JSON with an error instead of crashing', async () => {
+    it('rejects a body that is not JSON as a bad request', async () => {
       const res: Response = await fetch(`${baseUrl}/settings/equalizer`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Onix-Token': authToken },
         body: '{not json',
       });
 
-      expect(res.status).toBe(500);
-      expect(await res.json()).toEqual({ error: 'Internal server error' });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'Invalid JSON body' });
+    });
+
+    it('rejects an empty body where JSON is required as a bad request', async () => {
+      const res: Response = await fetch(`${baseUrl}/media/url/info`, {
+        method: 'POST',
+        headers: { 'X-Onix-Token': authToken },
+        body: '',
+      });
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'Invalid JSON body' });
     });
 
     it('keeps serving requests after a handler has thrown', async () => {

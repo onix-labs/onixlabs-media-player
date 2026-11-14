@@ -516,9 +516,7 @@ describe('UnifiedMediaServer probing, playback and playlist', () => {
     server.onMediaTypeChange((): void => undefined);
     server.onRecentItemsChange((): void => undefined);
 
-    // The HTTP clear resets the paused position, the public one the error message.
     await request('DELETE', '/playlist/clear');
-    server.clearPlaylist();
     await request('POST', '/playlist/shuffle', { enabled: false });
     await request('POST', '/playlist/repeat', { enabled: false });
     await request('POST', '/player/volume', { volume: 1, muted: false });
@@ -1158,14 +1156,14 @@ describe('UnifiedMediaServer probing, playback and playlist', () => {
       expect(added[0]).toMatchObject({ title: 'module', type: 'audio', duration: 0 });
     });
 
-    it('answers a malformed JSON body with a server error rather than crashing', async () => {
+    it('rejects a malformed JSON body as a bad request', async () => {
       const res: Response = await fetch(`${baseUrl}/playlist/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Onix-Token': authToken },
         body: '{ not json',
       });
 
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(400);
       expect((await playerState()).state).toBe('idle');
     });
   });
@@ -1268,6 +1266,22 @@ describe('UnifiedMediaServer probing, playback and playlist', () => {
 
       const event: SseEvent = await client.waitFor('playback:state', (data: Record<string, unknown>): boolean => data.state === 'error');
       expect(event.data.errorMessage).toBe('ffprobe error: spawn EACCES');
+    });
+
+    it('drops the message of an earlier error once the track loads on a retry', async () => {
+      const filePath: string = createAudio('Flaky', 10);
+      await addFiles([filePath]);
+      probeScripts.set(filePath, { kind: 'exit', code: 1, stderr: 'busy' });
+      touch(filePath);
+      await request('POST', '/player/play');
+      probeScripts.set(filePath, { kind: 'json', output: audioProbe(10, { title: 'Flaky' }) });
+      touch(filePath);
+
+      await request('POST', '/player/play');
+
+      const state: PlayerStateBody = await playerState();
+      expect(state.state).toBe('loading');
+      expect(state.errorMessage).toBeNull();
     });
 
     it('loads a MIDI track with the duration of its finished render', async () => {
@@ -1869,6 +1883,105 @@ describe('UnifiedMediaServer probing, playback and playlist', () => {
       expect(state.currentTime).toBe(2);
     });
 
+    it('stops the clock when a track selected mid-playback cannot be loaded', async () => {
+      const second: string = createAudio('Second', 20);
+      const [first, broken]: PlaylistItem[] = await addFiles([createAudio('First', 10), second]);
+      await request('POST', `/playlist/select/${first.id}`);
+      probeScripts.set(second, { kind: 'exit', code: 1, stderr: 'disk removed' });
+      touch(second);
+
+      await request('POST', `/playlist/select/${broken.id}`);
+
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('stops the clock when a manual skip cannot load the next track', async () => {
+      const second: string = createAudio('Second', 20);
+      const [first]: PlaylistItem[] = await addFiles([createAudio('First', 10), second]);
+      await request('POST', `/playlist/select/${first.id}`);
+      probeScripts.set(second, { kind: 'exit', code: 1, stderr: 'disk removed' });
+      touch(second);
+
+      await request('POST', '/playlist/next');
+
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('stops the clock when stepping back cannot load the previous track', async () => {
+      const firstPath: string = createAudio('First', 10);
+      const [, second]: PlaylistItem[] = await addFiles([firstPath, createAudio('Second', 20)]);
+      await request('POST', `/playlist/select/${second.id}`);
+      probeScripts.set(firstPath, { kind: 'exit', code: 1, stderr: 'disk removed' });
+      touch(firstPath);
+
+      await request('POST', '/playlist/previous');
+
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('stops the clock when the track taking over from a removed one cannot be loaded', async () => {
+      const second: string = createAudio('Second', 20);
+      const [first]: PlaylistItem[] = await addFiles([createAudio('First', 10), second]);
+      await request('POST', `/playlist/select/${first.id}`);
+      probeScripts.set(second, { kind: 'exit', code: 1, stderr: 'disk removed' });
+      touch(second);
+
+      await request('DELETE', `/playlist/remove/${first.id}`);
+
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('ignores a clock sync that arrives just after a loaded playlist starts playing', async () => {
+      // The outlet may still be reporting the position of what played before.
+      const [old]: PlaylistItem[] = await addTracks(['Old', 60]);
+      await request('POST', `/playlist/select/${old.id}`);
+      vi.advanceTimersByTime(5000);
+      const replacement: string = createAudio('New', 60);
+      const playlistFile: string = createFile('list.opp', JSON.stringify({
+        format: 'onixplayer-playlist',
+        version: 1,
+        items: [{ filePath: replacement, title: 'New', duration: 60, type: 'audio' }],
+      }));
+      await request('POST', '/playlist/load', { filePath: playlistFile });
+      vi.advanceTimersByTime(1000);
+
+      const { body } = await request('POST', '/player/sync', { time: 45 });
+
+      expect(body.time).toBe(1);
+    });
+
+    it('does not carry a position seeked while stopped into a loaded playlist', async () => {
+      const [old]: PlaylistItem[] = await addTracks(['Old', 60]);
+      await request('POST', `/playlist/select/${old.id}`);
+      await request('POST', '/player/stop');
+      await request('POST', '/player/seek', { time: 15 });
+      const replacement: string = createAudio('New', 60);
+      const playlistFile: string = createFile('list.opp', JSON.stringify({
+        format: 'onixplayer-playlist',
+        version: 1,
+        items: [{ filePath: replacement, title: 'New', duration: 60, type: 'audio' }],
+      }));
+      await request('POST', '/playlist/load', { filePath: playlistFile });
+
+      // Playing again while already playing reloads the track from the stored position.
+      await request('POST', '/player/play');
+
+      expect((await playerState()).currentTime).toBe(0);
+    });
+
+    it('forgets a position seeked while stopped when the main process clears the playlist', async () => {
+      const [old]: PlaylistItem[] = await addTracks(['Old', 60]);
+      await request('POST', `/playlist/select/${old.id}`);
+      await request('POST', '/player/stop');
+      await request('POST', '/player/seek', { time: 15 });
+      server.clearPlaylist();
+      await addTracks(['New', 60]);
+
+      await request('POST', '/player/play');
+
+      expect((await playerState()).currentTime).toBe(0);
+    });
+
     it('stops the clock when the playlist is cleared mid-playback', async () => {
       const [item]: PlaylistItem[] = await addTracks(['Song', 60]);
       await request('POST', `/playlist/select/${item.id}`);
@@ -2010,6 +2123,35 @@ describe('UnifiedMediaServer probing, playback and playlist', () => {
       expect(state.errorMessage).toBe(body.error);
     });
 
+    it('drops the message of an earlier error once another item plays', async () => {
+      const brokenPath: string = createAudio('Broken', 10);
+      const [broken, good]: PlaylistItem[] = await addFiles([brokenPath, createAudio('Good', 20)]);
+      probeScripts.set(brokenPath, { kind: 'exit', code: 1, stderr: 'bad' });
+      touch(brokenPath);
+      await request('POST', `/playlist/select/${broken.id}`);
+
+      await request('POST', `/playlist/select/${good.id}`);
+
+      const state: PlayerStateBody = await playerState();
+      expect(state.state).toBe('playing');
+      expect(state.errorMessage).toBeNull();
+    });
+
+    it('announces playback after an earlier error without the old message', async () => {
+      const client: SseClient = await connectSse();
+      const brokenPath: string = createAudio('Broken', 10);
+      const [broken, good]: PlaylistItem[] = await addFiles([brokenPath, createAudio('Good', 20)]);
+      probeScripts.set(brokenPath, { kind: 'exit', code: 1, stderr: 'bad' });
+      touch(brokenPath);
+      await request('POST', `/playlist/select/${broken.id}`);
+      await client.drain();
+
+      await request('POST', `/playlist/select/${good.id}`);
+
+      const playing: SseEvent = await client.waitFor('playback:state', (data: Record<string, unknown>): boolean => data.state === 'playing');
+      expect(playing.data.errorMessage).toBeNull();
+    });
+
     it('leaves playback untouched when the item does not exist', async () => {
       const [first]: PlaylistItem[] = await addFiles([createAudio('First', 10)]);
       await request('POST', `/playlist/select/${first.id}`);
@@ -2084,6 +2226,20 @@ describe('UnifiedMediaServer probing, playback and playlist', () => {
       expect(state.state).toBe('error');
       expect(state.errorMessage).toBe('ffprobe failed: unreadable');
     });
+
+    it('drops the message of an earlier error once the next item plays', async () => {
+      const brokenPath: string = createAudio('Broken', 10);
+      const [broken]: PlaylistItem[] = await addFiles([brokenPath, createAudio('Good', 20)]);
+      probeScripts.set(brokenPath, { kind: 'exit', code: 1, stderr: 'bad' });
+      touch(brokenPath);
+      await request('POST', `/playlist/select/${broken.id}`);
+
+      await request('POST', '/playlist/next');
+
+      const state: PlayerStateBody = await playerState();
+      expect(state.state).toBe('playing');
+      expect(state.errorMessage).toBeNull();
+    });
   });
 
   describe('POST /playlist/previous', () => {
@@ -2137,6 +2293,20 @@ describe('UnifiedMediaServer probing, playback and playlist', () => {
       expect(status).toBe(500);
       expect(body.error).toBe('ffprobe failed: gone');
       expect(state.state).toBe('error');
+    });
+
+    it('drops the message of an earlier error once the previous item plays', async () => {
+      const brokenPath: string = createAudio('Broken', 10);
+      const [, broken]: PlaylistItem[] = await addFiles([createAudio('Good', 20), brokenPath]);
+      probeScripts.set(brokenPath, { kind: 'exit', code: 1, stderr: 'bad' });
+      touch(brokenPath);
+      await request('POST', `/playlist/select/${broken.id}`);
+
+      await request('POST', '/playlist/previous');
+
+      const state: PlayerStateBody = await playerState();
+      expect(state.state).toBe('playing');
+      expect(state.errorMessage).toBeNull();
     });
   });
 
@@ -2385,6 +2555,20 @@ describe('UnifiedMediaServer probing, playback and playlist', () => {
       expect(idle.data.state).toBe('idle');
     });
 
+    it('drops the message of an earlier error', async () => {
+      const filePath: string = createAudio('Broken', 10);
+      const [item]: PlaylistItem[] = await addFiles([filePath]);
+      probeScripts.set(filePath, { kind: 'exit', code: 1, stderr: 'bad' });
+      touch(filePath);
+      await request('POST', `/playlist/select/${item.id}`);
+
+      await request('DELETE', '/playlist/clear');
+
+      const state: PlayerStateBody = await playerState();
+      expect(state.state).toBe('idle');
+      expect(state.errorMessage).toBeNull();
+    });
+
     it('cannot be played afterwards because nothing is selected', async () => {
       await addFiles([createAudio('Song', 10)]);
       await request('DELETE', '/playlist/clear');
@@ -2618,6 +2802,30 @@ describe('UnifiedMediaServer probing, playback and playlist', () => {
       expect(status).toBe(500);
       expect(String(body.error)).toContain('ffprobe failed');
       expect((await playerState()).state).not.toBe('playing');
+    });
+
+    it('enters the error state with the probe message when the first item cannot be loaded', async () => {
+      const missing: string = path.join(mediaDir, 'never-existed.mp3');
+      const playlistFile: string = writePlaylist([{ filePath: missing, title: 'Missing', duration: 30, type: 'audio' }]);
+
+      const { body } = await request('POST', '/playlist/load', { filePath: playlistFile });
+
+      const state: PlayerStateBody = await playerState();
+      expect(state.state).toBe('error');
+      expect(state.errorMessage).toBe(body.error);
+    });
+
+    it('leaves playback alone when the playlist file itself cannot be parsed', async () => {
+      const [item]: PlaylistItem[] = await addFiles([createAudio('Song', 10)]);
+      await request('POST', `/playlist/select/${item.id}`);
+      const playlistFile: string = createFile('broken.opp', '{ not json');
+
+      const { status } = await request('POST', '/playlist/load', { filePath: playlistFile });
+
+      const state: PlayerStateBody = await playerState();
+      expect(status).toBe(500);
+      expect(state.state).toBe('playing');
+      expect(state.errorMessage).toBeNull();
     });
 
     it('restores a playlist that was saved from the server', async () => {
