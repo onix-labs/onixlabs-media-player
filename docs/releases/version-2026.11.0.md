@@ -13,6 +13,9 @@ app on every platform, yt-dlp is downloaded from its official releases when it i
 needed, and the setup wizard has nothing left to install. First-run setup that could take
 hours on a Mac Homebrew had to build from source now takes seconds.
 
+The player also gets themes and accent colors, and every other window now uses the
+ONIXLabs Pebble style.
+
 ---
 
 ## Features
@@ -50,10 +53,31 @@ Chromium and the JavaScript libraries. Clicking one opens its license text, and 
 leads to this release on GitHub, where the source code of the bundled programs is
 published.
 
+### Player themes and accent colors
+
+Settings > Appearance replaces the glass switch and window color with:
+
+- **Theme**: **Solid**, an opaque window; **Glass**, translucent as before; or
+  **Pebble**, the ONIXLabs style, with raised controls on a matte window and the
+  media in a sunken view. Themes change how the player looks, never where its
+  controls are.
+- **Color Scheme**: System, Light or Dark, as before, now with every theme.
+- **Accent Color**: one of eight ONIXLabs colors (amber, coral, rose, violet,
+  blue, cyan, teal, green; blue by default). It colors the track bar and volume
+  slider in every theme, and in Pebble also the play/pause icon, shuffle and
+  repeat when on, and the sliders and switches in Settings.
+
+### Pebble windows
+
+Settings, About, the setup wizard and Open URL now share the ONIXLabs Pebble style
+(Poppins type, matte raised panels) in light and dark, whatever the player's theme.
+The setup wizard and Settings share one SoundFont list.
+
 ---
 
 ## Fixes
 
+- **Choose SoundFont** in the setup wizard did nothing. It now opens the file dialog.
 - The About window showed the version as 2026.0.1 whatever version was installed. It
   now reports the installed version.
 
@@ -65,6 +89,11 @@ published.
   ONIXPlayer found elsewhere on the system, such as one installed with FluidSynth
   through Homebrew or a Linux package, is no longer picked up automatically. Add it
   in Settings to keep playing MIDI.
+- **Appearance:** the glass setting becomes the Glass theme when it was on and Solid
+  when it was off. Window color settings are dropped; pick an accent color instead.
+- **Visualizations:** the per-visualization options (sensitivity, trails, bar
+  density, line width, glow and the like) are gone, and each visualization uses
+  its tuned defaults. The general visualization settings remain.
 - FFmpeg, FluidSynth and openmpt123 installed through a package manager for older
   versions of ONIXPlayer are no longer needed and can be uninstalled.
 
