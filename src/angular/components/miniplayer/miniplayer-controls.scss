@@ -88,9 +88,11 @@
 // so they read over any frame in light and dark. Sizes and borders are
 // today's; borders go transparent rather than away.
 @include player-theme.pebble {
-  // The group casts the one drop shadow (see the main controls).
+  // The group casts the one drop shadow; margin stands in for the border (see
+  // the main controls).
   .button-group {
-    border-color: transparent;
+    border: none;
+    margin: 0.0625rem;
     border-radius: var(--pebble-radius-md);
     outline: none;
     background: transparent;

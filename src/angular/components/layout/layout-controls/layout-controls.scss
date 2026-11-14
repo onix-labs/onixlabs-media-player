@@ -302,8 +302,11 @@
   // No border or fill of its own: the buttons draw the fill and edges. The
   // group casts the one drop shadow, so it falls from the group's outline;
   // shadows cast by each button would bleed across their neighbours as seams.
+  // The border's width is margin instead: a transparent border would leave a
+  // strip of page between the buttons and the shadow, a pale line below them.
   .button-group {
-    border-color: transparent;
+    border: none;
+    margin: 0.0625rem;
     border-radius: var(--pebble-radius-md);
     outline: none;
     backdrop-filter: none;
