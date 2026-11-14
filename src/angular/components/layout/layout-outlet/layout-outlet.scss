@@ -253,40 +253,43 @@
 //
 // The container is a recessed Pebble well, sunk into the window, holding the
 // media, the playlist and the media bar; with nothing loaded the well itself
-// is the empty state. The
-// media stays on black, as it does in fullscreen: the visualizations and video
+// is the empty state. The media stays on black, as it does in fullscreen: the visualizations and video
 // are drawn for a dark screen, so only the chrome around them changes.
 @include player-theme.pebble {
   div.container {
     @include pebble.recessed(md);
     // A shade darker than the window, as a sunken area should be.
     background: var(--pebble-well);
-    // The base border's width, as padding: the content box is today's, and the
-    // well's inset edges show in it.
-    padding: 0.0625rem;
+    position: relative;
+    isolation: isolate;
     outline: none;
-  }
+    // The media runs to the well's own rounded outline, which clips it; the
+    // edges are drawn over it (below), so the clip and the edges share one
+    // curve. Drawn inside the well, the edges would sit under the media, and
+    // the media's own corners never quite follow the well's.
+    box-shadow: none;
 
-  // The media's top corners follow the well's, just inside its edge; square,
-  // they would be cut off by the well's rounding instead.
-  .content-area {
-    border-top-left-radius: calc(var(--pebble-radius-md) - 0.0625rem);
-    border-top-right-radius: calc(var(--pebble-radius-md) - 0.0625rem);
-    corner-shape: var(--pebble-corner-shape);
-  }
-
-  &.fullscreen .content-area,
-  &.miniplayer .content-area {
-    border-radius: 0;
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: 100;
+      border-radius: inherit;
+      corner-shape: inherit;
+      box-shadow: var(--pebble-edge-shadow);
+      pointer-events: none;
+    }
   }
 
   // Edge to edge, as in the other themes.
   &.fullscreen div.container,
   &.miniplayer div.container {
-    padding: 0;
     border-radius: 0;
     background: black;
-    box-shadow: none;
+
+    &::after {
+      content: none;
+    }
   }
 
   app-audio-outlet {
@@ -295,11 +298,11 @@
 
   .media-bar {
     // The bar's controls sit in the well's bottom corners, so their corners
-    // are the well's, less the well's edge and the bar's padding: concentric.
-    --media-bar-radius: calc(var(--pebble-radius-md) - 0.0625rem - 0.25rem);
-    // The well's bottom edge reads as part of the gap below the controls,
-    // so the sides give up the same pixel to look as wide as the bottom.
-    padding-inline: calc(0.25rem - 0.0625rem);
+    // are the well's, less the bar's padding: concentric.
+    --media-bar-radius: calc(var(--pebble-radius-md) - 0.25rem);
+    // The well's bottom edge is drawn over the bar's padding, so the bottom
+    // gives it an extra pixel to look as wide as the sides.
+    padding-bottom: calc(0.25rem + 0.0625rem);
     border-top-color: var(--pebble-border);
 
     button {

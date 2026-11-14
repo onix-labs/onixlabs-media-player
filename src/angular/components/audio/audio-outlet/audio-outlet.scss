@@ -1,4 +1,5 @@
 @use 'variables' as *;
+@use 'player-theme';
 
 :host {
   display: flex;
@@ -36,3 +37,12 @@
   overflow: hidden;
 }
 
+
+// In the Pebble theme the layout's well clips the media to its own corners
+// (see layout-outlet.scss); rounded here too, the visualizer's corners would
+// show the black behind it.
+@include player-theme.pebble {
+  .visualizer-container {
+    border-radius: 0;
+  }
+}
