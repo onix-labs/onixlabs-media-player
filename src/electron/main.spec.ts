@@ -1922,7 +1922,7 @@ describe('main', (): void => {
       expect(lastOpenDialogOptions()).toEqual({properties: ['openFile'], filters});
     });
 
-    it('should attach the open dialog to the main window', async (): Promise<void> => {
+    it('should attach the open dialog to the main window when the sender has no window', async (): Promise<void> => {
       await boot();
 
       await invoke('dialog:openFile', {filters, multiSelections: false});
@@ -2032,6 +2032,35 @@ describe('main', (): void => {
       await boot({config: {openDialogResult: {canceled: true, filePaths: []}}});
 
       expect(await invoke('dialog:openSubtitle')).toBeNull();
+    });
+
+    // The setup wizard runs before the main window exists, so a dialog that
+    // insisted on the main window never opened from it.
+    it('should open the SoundFont dialog on the setup wizard before the main window exists', async (): Promise<void> => {
+      const wizard: FakeWindow = await bootIntoWizard({config: {openDialogResult: {canceled: false, filePaths: ['/sf/piano.sf2']}}});
+      expect(windowsTitled(undefined)).toHaveLength(0);
+
+      const result: unknown = await invokeFrom(wizard, 'dialog:openSoundFont');
+
+      expect(result).toEqual(['/sf/piano.sf2']);
+      expect(h.electron.dialog.showOpenDialog.mock.calls[0][0]).toBe(wizard);
+    });
+
+    it.each([
+      {channel: 'dialog:openFile', args: [{filters, multiSelections: false}], show: 'showOpenDialog'},
+      {channel: 'dialog:openSoundFont', args: [], show: 'showOpenDialog'},
+      {channel: 'dialog:openPlaylist', args: [], show: 'showOpenDialog'},
+      {channel: 'dialog:savePlaylist', args: [], show: 'showSaveDialog'},
+      {channel: 'dialog:openSubtitle', args: [], show: 'showOpenDialog'},
+      {channel: 'dialog:saveMedia', args: [{title: 'Clip', format: 'video'}], show: 'showSaveDialog'},
+    ] as const)('should attach $channel to the window that asked for it', async ({channel, args, show}): Promise<void> => {
+      await boot();
+      await invoke('window:showConfigurationWindow');
+      const settings: FakeWindow = windowTitled(CONFIG_TITLE);
+
+      await invokeFrom(settings, channel, ...args);
+
+      expect(h.electron.dialog[show].mock.calls[0][0]).toBe(settings);
     });
 
     it.each([

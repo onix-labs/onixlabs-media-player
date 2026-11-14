@@ -1138,6 +1138,21 @@ class Program {
   }
 
   /**
+   * Gets the window a native dialog should belong to: the one that asked for
+   * it, falling back to the main window.
+   *
+   * Dialogs used to be parented on the main window only, so one asked for by
+   * the setup wizard, which runs before the main window exists, never opened,
+   * and one asked for by the settings window appeared on the player instead.
+   *
+   * @param event - The IPC event of the request
+   * @returns The window to show the dialog on, or null if there is none
+   */
+  private getDialogParent(event: Readonly<Electron.IpcMainInvokeEvent>): BrowserWindow | null {
+    return BrowserWindow.fromWebContents(event.sender) ?? this.window;
+  }
+
+  /**
    * Sets up IPC handlers for communication with the renderer process.
    *
    * Handlers registered:
@@ -1152,154 +1167,6 @@ class Program {
    */
   private setupIpcHandlers(): void {
     ipcLogger.debug('Setting up IPC handlers');
-
-    // File dialog - requires native dialog
-    ipcMain.handle("dialog:openFile", async (_: Readonly<Electron.IpcMainInvokeEvent>, options: Readonly<{
-      filters: readonly Electron.FileFilter[];
-      multiSelections: boolean
-    }>): Promise<string[]> => {
-      ipcLogger.debug(`dialog:openFile - multiSelections=${options.multiSelections}`);
-      if (!this.window) {
-        ipcLogger.warn('dialog:openFile - no window available');
-        return [];
-      }
-
-      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
-        properties: options.multiSelections
-          ? ["openFile", "multiSelections"]
-          : ["openFile"],
-        filters: options.filters as Electron.FileFilter[]
-      });
-
-      ipcLogger.info(`dialog:openFile - selected ${result.filePaths.length} file(s)`);
-      return result.filePaths;
-    });
-
-    // Open SoundFont file dialog - scoped to .sf2 files
-    ipcMain.handle("dialog:openSoundFont", async (): Promise<string[]> => {
-      ipcLogger.debug('dialog:openSoundFont');
-      if (!this.window) {
-        ipcLogger.warn('dialog:openSoundFont - no window available');
-        return [];
-      }
-
-      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
-        title: 'Select SoundFont File',
-        properties: ['openFile'],
-        filters: [{name: 'SoundFont Files', extensions: ['sf2']}],
-      });
-
-      ipcLogger.info(`dialog:openSoundFont - selected ${result.filePaths.length} file(s)`);
-      return result.canceled ? [] : result.filePaths;
-    });
-
-    // Open playlist file dialog - scoped to .opp files
-    ipcMain.handle("dialog:openPlaylist", async (): Promise<string | null> => {
-      ipcLogger.debug('dialog:openPlaylist');
-      if (!this.window) {
-        ipcLogger.warn('dialog:openPlaylist - no window available');
-        return null;
-      }
-
-      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
-        title: 'Open Playlist',
-        properties: ['openFile'],
-        filters: [{name: 'ONIXPlayer Playlist', extensions: ['opp']}],
-      });
-
-      if (result.canceled || result.filePaths.length === 0) {
-        ipcLogger.info('dialog:openPlaylist - cancelled');
-        return null;
-      }
-
-      ipcLogger.info(`dialog:openPlaylist - selected: ${result.filePaths[0]}`);
-      return result.filePaths[0];
-    });
-
-    // Save playlist file dialog - scoped to .opp files
-    ipcMain.handle("dialog:savePlaylist", async (): Promise<string | null> => {
-      ipcLogger.debug('dialog:savePlaylist');
-      if (!this.window) {
-        ipcLogger.warn('dialog:savePlaylist - no window available');
-        return null;
-      }
-
-      const result: Electron.SaveDialogReturnValue = await dialog.showSaveDialog(this.window, {
-        title: 'Save Playlist',
-        defaultPath: 'playlist.opp',
-        filters: [{name: 'ONIXPlayer Playlist', extensions: ['opp']}],
-      });
-
-      if (result.canceled || !result.filePath) {
-        ipcLogger.info('dialog:savePlaylist - cancelled');
-        return null;
-      }
-
-      ipcLogger.info(`dialog:savePlaylist - selected: ${result.filePath}`);
-      return result.filePath;
-    });
-
-    // Save downloaded media dialog - asked by the Open URL window before a
-    // yt-dlp download starts, so the user picks where the file lands.
-    ipcMain.handle("dialog:saveMedia", async (event: Readonly<Electron.IpcMainInvokeEvent>, options: Readonly<{
-      title: string;
-      format: 'video' | 'audio';
-    }>): Promise<string | null> => {
-      ipcLogger.debug(`dialog:saveMedia - format=${options.format}`);
-
-      // Parent on the window that asked (the Open URL window), so the dialog
-      // is attached to what the user is looking at rather than the player.
-      const parent: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender) ?? this.window;
-      if (!parent) {
-        ipcLogger.warn('dialog:saveMedia - no window available');
-        return null;
-      }
-
-      const isAudio: boolean = options.format === 'audio';
-      const extension: string = isAudio ? 'mp3' : 'mp4';
-      const suggestedName: string = options.title
-        .replace(ILLEGAL_FILENAME_CHARS, '')
-        .trim()
-        .slice(0, MAX_SUGGESTED_FILENAME_LENGTH)
-        .trim() || FALLBACK_MEDIA_FILENAME;
-
-      const result: Electron.SaveDialogReturnValue = await dialog.showSaveDialog(parent, {
-        title: 'Save Media As',
-        defaultPath: `${suggestedName}.${extension}`,
-        filters: [{name: isAudio ? 'MP3 Audio' : 'MP4 Video', extensions: [extension]}],
-      });
-
-      if (result.canceled || !result.filePath) {
-        ipcLogger.info('dialog:saveMedia - cancelled');
-        return null;
-      }
-
-      ipcLogger.info(`dialog:saveMedia - selected: ${result.filePath}`);
-      return result.filePath;
-    });
-
-    // Open external subtitle file dialog - scoped to subtitle formats
-    ipcMain.handle("dialog:openSubtitle", async (): Promise<string | null> => {
-      ipcLogger.debug('dialog:openSubtitle');
-      if (!this.window) {
-        ipcLogger.warn('dialog:openSubtitle - no window available');
-        return null;
-      }
-
-      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(this.window, {
-        title: 'Open Subtitle File',
-        properties: ['openFile'],
-        filters: [{name: 'Subtitle Files', extensions: ['srt', 'vtt', 'ass', 'ssa']}],
-      });
-
-      if (result.canceled || result.filePaths.length === 0) {
-        ipcLogger.info('dialog:openSubtitle - cancelled');
-        return null;
-      }
-
-      ipcLogger.info(`dialog:openSubtitle - selected: ${result.filePaths[0]}`);
-      return result.filePaths[0];
-    });
 
     // Get log file path - for debugging/support
     ipcMain.handle("app:getLogFilePath", (): string => {
@@ -1535,6 +1402,10 @@ class Program {
   private setupCoreIpcHandlers(): void {
     ipcLogger.debug('Setting up core IPC handlers');
 
+    // Native dialogs: here rather than with the main window's handlers because
+    // the setup wizard, which opens before the main window, needs them too.
+    this.setupDialogIpcHandlers();
+
     // Get server port - needed for renderer to connect to HTTP API
     ipcMain.handle("app:getServerPort", (): number => {
       const port: number = this.mediaServer?.getPort() || 0;
@@ -1558,6 +1429,164 @@ class Program {
       };
       ipcLogger.debug(`app:getPlatformInfo - ${JSON.stringify(info)}`);
       return info;
+    });
+  }
+
+  /**
+   * Sets up the native file dialogs. Each is shown on the window that asked
+   * for it (see getDialogParent), so any window can use them, including the
+   * setup wizard before the main window exists.
+   */
+  private setupDialogIpcHandlers(): void {
+    // File dialog - requires native dialog
+    ipcMain.handle("dialog:openFile", async (event: Readonly<Electron.IpcMainInvokeEvent>, options: Readonly<{
+      filters: readonly Electron.FileFilter[];
+      multiSelections: boolean
+    }>): Promise<string[]> => {
+      ipcLogger.debug(`dialog:openFile - multiSelections=${options.multiSelections}`);
+      const parent: BrowserWindow | null = this.getDialogParent(event);
+      if (!parent) {
+        ipcLogger.warn('dialog:openFile - no window available');
+        return [];
+      }
+
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(parent, {
+        properties: options.multiSelections
+          ? ["openFile", "multiSelections"]
+          : ["openFile"],
+        filters: options.filters as Electron.FileFilter[]
+      });
+
+      ipcLogger.info(`dialog:openFile - selected ${result.filePaths.length} file(s)`);
+      return result.filePaths;
+    });
+
+    // Open SoundFont file dialog - scoped to .sf2 files
+    ipcMain.handle("dialog:openSoundFont", async (event: Readonly<Electron.IpcMainInvokeEvent>): Promise<string[]> => {
+      ipcLogger.debug('dialog:openSoundFont');
+      const parent: BrowserWindow | null = this.getDialogParent(event);
+      if (!parent) {
+        ipcLogger.warn('dialog:openSoundFont - no window available');
+        return [];
+      }
+
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(parent, {
+        title: 'Select SoundFont File',
+        properties: ['openFile'],
+        filters: [{name: 'SoundFont Files', extensions: ['sf2']}],
+      });
+
+      ipcLogger.info(`dialog:openSoundFont - selected ${result.filePaths.length} file(s)`);
+      return result.canceled ? [] : result.filePaths;
+    });
+
+    // Open playlist file dialog - scoped to .opp files
+    ipcMain.handle("dialog:openPlaylist", async (event: Readonly<Electron.IpcMainInvokeEvent>): Promise<string | null> => {
+      ipcLogger.debug('dialog:openPlaylist');
+      const parent: BrowserWindow | null = this.getDialogParent(event);
+      if (!parent) {
+        ipcLogger.warn('dialog:openPlaylist - no window available');
+        return null;
+      }
+
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(parent, {
+        title: 'Open Playlist',
+        properties: ['openFile'],
+        filters: [{name: 'ONIXPlayer Playlist', extensions: ['opp']}],
+      });
+
+      if (result.canceled || result.filePaths.length === 0) {
+        ipcLogger.info('dialog:openPlaylist - cancelled');
+        return null;
+      }
+
+      ipcLogger.info(`dialog:openPlaylist - selected: ${result.filePaths[0]}`);
+      return result.filePaths[0];
+    });
+
+    // Save playlist file dialog - scoped to .opp files
+    ipcMain.handle("dialog:savePlaylist", async (event: Readonly<Electron.IpcMainInvokeEvent>): Promise<string | null> => {
+      ipcLogger.debug('dialog:savePlaylist');
+      const parent: BrowserWindow | null = this.getDialogParent(event);
+      if (!parent) {
+        ipcLogger.warn('dialog:savePlaylist - no window available');
+        return null;
+      }
+
+      const result: Electron.SaveDialogReturnValue = await dialog.showSaveDialog(parent, {
+        title: 'Save Playlist',
+        defaultPath: 'playlist.opp',
+        filters: [{name: 'ONIXPlayer Playlist', extensions: ['opp']}],
+      });
+
+      if (result.canceled || !result.filePath) {
+        ipcLogger.info('dialog:savePlaylist - cancelled');
+        return null;
+      }
+
+      ipcLogger.info(`dialog:savePlaylist - selected: ${result.filePath}`);
+      return result.filePath;
+    });
+
+    // Save downloaded media dialog - asked by the Open URL window before a
+    // yt-dlp download starts, so the user picks where the file lands.
+    ipcMain.handle("dialog:saveMedia", async (event: Readonly<Electron.IpcMainInvokeEvent>, options: Readonly<{
+      title: string;
+      format: 'video' | 'audio';
+    }>): Promise<string | null> => {
+      ipcLogger.debug(`dialog:saveMedia - format=${options.format}`);
+
+      const parent: BrowserWindow | null = this.getDialogParent(event);
+      if (!parent) {
+        ipcLogger.warn('dialog:saveMedia - no window available');
+        return null;
+      }
+
+      const isAudio: boolean = options.format === 'audio';
+      const extension: string = isAudio ? 'mp3' : 'mp4';
+      const suggestedName: string = options.title
+        .replace(ILLEGAL_FILENAME_CHARS, '')
+        .trim()
+        .slice(0, MAX_SUGGESTED_FILENAME_LENGTH)
+        .trim() || FALLBACK_MEDIA_FILENAME;
+
+      const result: Electron.SaveDialogReturnValue = await dialog.showSaveDialog(parent, {
+        title: 'Save Media As',
+        defaultPath: `${suggestedName}.${extension}`,
+        filters: [{name: isAudio ? 'MP3 Audio' : 'MP4 Video', extensions: [extension]}],
+      });
+
+      if (result.canceled || !result.filePath) {
+        ipcLogger.info('dialog:saveMedia - cancelled');
+        return null;
+      }
+
+      ipcLogger.info(`dialog:saveMedia - selected: ${result.filePath}`);
+      return result.filePath;
+    });
+
+    // Open external subtitle file dialog - scoped to subtitle formats
+    ipcMain.handle("dialog:openSubtitle", async (event: Readonly<Electron.IpcMainInvokeEvent>): Promise<string | null> => {
+      ipcLogger.debug('dialog:openSubtitle');
+      const parent: BrowserWindow | null = this.getDialogParent(event);
+      if (!parent) {
+        ipcLogger.warn('dialog:openSubtitle - no window available');
+        return null;
+      }
+
+      const result: Electron.OpenDialogReturnValue = await dialog.showOpenDialog(parent, {
+        title: 'Open Subtitle File',
+        properties: ['openFile'],
+        filters: [{name: 'Subtitle Files', extensions: ['srt', 'vtt', 'ass', 'ssa']}],
+      });
+
+      if (result.canceled || result.filePaths.length === 0) {
+        ipcLogger.info('dialog:openSubtitle - cancelled');
+        return null;
+      }
+
+      ipcLogger.info(`dialog:openSubtitle - selected: ${result.filePaths[0]}`);
+      return result.filePaths[0];
     });
   }
 
