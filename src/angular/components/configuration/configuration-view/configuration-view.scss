@@ -77,8 +77,7 @@ $row-padding-inline: 1.1rem;
 // Icon buttons.
 .configuration-sidebar .accordion-toggle,
 .setting-control.port-control .reset-button,
-.dependency-link,
-.soundfont-remove {
+.dependency-link {
   @include pebble.button(ghost, sm);
   color: var(--pebble-text-muted);
 }
@@ -670,7 +669,7 @@ $row-padding-inline: 1.1rem;
 }
 
 // =============================================================================
-// SoundFonts: a recessed list, the active SoundFont raised out of it
+// SoundFonts
 // =============================================================================
 
 .soundfont-section .setting-group {
@@ -682,105 +681,7 @@ $row-padding-inline: 1.1rem;
   }
 }
 
-.soundfont-list {
-  @include pebble.recessed(md);
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  padding: var(--pebble-space-1);
-}
-
-.soundfont-item {
-  display: flex;
-  align-items: center;
-  gap: var(--pebble-space-2);
-  padding: 0.4rem 0.6rem;
-  border-radius: var(--pebble-radius-sm);
-  corner-shape: var(--pebble-corner-shape);
-
-  &.selected {
-    @include pebble.surface(sm);
-  }
-
-  > i {
-    color: var(--pebble-text-muted);
-    font-size: var(--pebble-text-xs);
-  }
-}
-
-.soundfont-select {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.125rem;
-  border: none;
-  border-radius: var(--pebble-radius-pill);
-  background: none;
-  cursor: pointer;
-}
-
-// A radio drawn to match the native ones elsewhere: a ring, filled when chosen.
-.soundfont-radio {
-  position: relative;
-  width: 1rem;
-  height: 1rem;
-  border: 2px solid var(--pebble-field-border);
-  border-radius: var(--pebble-radius-pill);
-  transition: border-color var(--pebble-transition);
-
-  &::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0.4rem;
-    height: 0.4rem;
-    border-radius: var(--pebble-radius-pill);
-    background: transparent;
-    transform: translate(-50%, -50%);
-    transition: background-color var(--pebble-transition);
-  }
-
-  &.active {
-    border-color: var(--pebble-primary);
-
-    &::after {
-      background: var(--pebble-primary);
-    }
-  }
-}
-
-.soundfont-select:hover .soundfont-radio:not(.active) {
-  border-color: var(--pebble-heading);
-}
-
-.soundfont-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--pebble-text);
-  font-size: var(--pebble-text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.soundfont-size {
-  color: var(--pebble-text-muted);
-  font-family: var(--pebble-font-mono);
-  font-size: 0.6875rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.soundfont-remove {
-  width: 1.75rem;
-  min-height: 1.75rem;
-  padding: 0;
-  font-size: 0.6875rem;
-
-  &:hover:not(:disabled) {
-    color: var(--pebble-danger);
-  }
-}
+// The list itself is the shared app-soundfont-list.
 
 .soundfont-empty {
   margin: 0;

@@ -15,6 +15,7 @@
 import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
 import type {InputSignal, EffectRef} from '@angular/core';
 import {FormsModule} from '@angular/forms';
+import {SoundFontList} from '../../shared/soundfont-list/soundfont-list';
 import {SettingsService, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, SEEK_MODE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, RenderResolution, CrossfadeDuration, CrossfadeStyle, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, SeekMode, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
@@ -201,7 +202,7 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
 @Component({
   selector: 'app-configuration-view',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, SoundFontList],
   templateUrl: './configuration-view.html',
   styleUrl: './configuration-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -835,11 +836,6 @@ export class ConfigurationView {
   /** Installed SoundFont files */
   public readonly soundFonts: ReturnType<typeof computed<SoundFontInfo[]>> = computed(
     (): SoundFontInfo[] => this.dependencyService.soundFonts()
-  );
-
-  /** Active SoundFont path (full path to currently selected soundfont) */
-  public readonly activeSoundFontPath: ReturnType<typeof computed<string | null>> = computed(
-    (): string | null => this.dependencyService.activeSoundFont()
   );
 
   /** Whether FluidSynth is installed (for showing SoundFont section) */
@@ -1540,43 +1536,12 @@ export class ConfigurationView {
   }
 
   /**
-   * Removes a SoundFont file from the app data directory.
-   */
-  public async onRemoveSoundFont(fileName: string): Promise<void> {
-    await this.dependencyService.removeSoundFont(fileName);
-  }
-
-  /**
-   * Selects a SoundFont as the active one for MIDI playback.
-   */
-  public async onSelectSoundFont(fileName: string): Promise<void> {
-    await this.dependencyService.setActiveSoundFont(fileName);
-  }
-
-  /**
-   * Checks if a SoundFont is the currently active one.
-   * Compares by file path since that's what activeSoundFont contains.
-   */
-  public isActiveSoundFont(sf: SoundFontInfo): boolean {
-    return sf.filePath === this.activeSoundFontPath();
-  }
-
-  /**
    * Opens the manual download URL in the default browser.
    */
   public onOpenManualDownload(url: string): void {
     // Routed through the preload bridge, which allowlists http(s), rather than
     // window.open — the latter opens remote pages in an app window.
     void window.mediaPlayer?.openExternal(url);
-  }
-
-  /**
-   * Formats a file size in bytes to a human-readable string.
-   */
-  public formatFileSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   /**

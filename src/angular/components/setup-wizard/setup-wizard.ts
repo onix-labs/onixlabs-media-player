@@ -19,6 +19,7 @@ import {ElectronService} from '../../services/electron.service';
 import {DependencyService} from '../../services/dependency.service';
 import type {DependencyStatus, InstallProgress, SoundFontInfo} from '../../services/dependency.service';
 import type {MediaPlayerAPI} from '../../types/electron';
+import {SoundFontList} from '../shared/soundfont-list/soundfont-list';
 
 /** Wizard step identifiers */
 type WizardStep = 'welcome' | 'port' | 'components' | 'complete';
@@ -32,6 +33,7 @@ type WizardStep = 'welcome' | 'port' | 'components' | 'complete';
  */
 @Component({
   selector: 'app-setup-wizard',
+  imports: [SoundFontList],
   templateUrl: './setup-wizard.html',
   styleUrl: './setup-wizard.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -293,22 +295,6 @@ export class SetupWizard {
    */
   public async chooseSoundFont(): Promise<void> {
     await this.deps.installSoundFont();
-  }
-
-  /**
-   * Removes an installed SoundFont.
-   */
-  public async removeSoundFont(fileName: string): Promise<void> {
-    await this.deps.removeSoundFont(fileName);
-  }
-
-  /**
-   * Formats a file size for display.
-   */
-  public formatFileSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   /**

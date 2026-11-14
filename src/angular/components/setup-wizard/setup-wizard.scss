@@ -543,54 +543,9 @@
     line-height: 1.45;
   }
 
-  .soundfont-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--pebble-space-2);
+  // The list itself is the shared app-soundfont-list.
+  app-soundfont-list {
     margin-bottom: var(--pebble-space-3);
-  }
-
-  // Chosen SoundFonts sit recessed in their card.
-  .soundfont-item {
-    @include pebble.recessed(sm);
-    display: flex;
-    align-items: center;
-    gap: var(--pebble-space-2);
-    padding: var(--pebble-space-1) var(--pebble-space-1) var(--pebble-space-1) var(--pebble-space-3);
-
-    > i {
-      color: var(--pebble-text-muted);
-      font-size: var(--pebble-text-sm);
-    }
-  }
-
-  .soundfont-name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    color: var(--pebble-text);
-    font-family: var(--pebble-font-mono);
-    font-size: var(--pebble-text-sm);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .soundfont-size {
-    flex-shrink: 0;
-    color: var(--pebble-text-muted);
-    font-size: var(--pebble-text-xs);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .soundfont-remove {
-    @include pebble.button(ghost, sm);
-    width: 2rem;
-    padding: 0;
-    color: var(--pebble-text-muted);
-
-    &:hover:not(:disabled) {
-      color: var(--pebble-danger);
-    }
   }
 
   .soundfont-empty {

@@ -63,10 +63,12 @@ function createMockDeps(): Record<string, unknown> {
     fluidsynthInstalled: signal(false),
     ytdlpInstalled: signal(false),
     soundFonts: signal([]),
+    activeSoundFont: signal(null),
     soundFontError: signal(null),
     installDependency: vi.fn().mockResolvedValue(undefined),
     installSoundFont: vi.fn().mockResolvedValue(undefined),
     removeSoundFont: vi.fn().mockResolvedValue(undefined),
+    setActiveSoundFont: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -363,18 +365,6 @@ describe('SetupWizard', (): void => {
       await component.chooseSoundFont();
 
       expect(deps()['installSoundFont']).toHaveBeenCalled();
-    });
-
-    it('removes a SoundFont through the dependency service', async (): Promise<void> => {
-      await component.removeSoundFont('GeneralUser.sf2');
-
-      expect(deps()['removeSoundFont']).toHaveBeenCalledWith('GeneralUser.sf2');
-    });
-
-    it('formats SoundFont sizes', (): void => {
-      expect(component.formatFileSize(512)).toBe('512 B');
-      expect(component.formatFileSize(2048)).toBe('2.0 KB');
-      expect(component.formatFileSize(31 * 1024 * 1024)).toBe('31.0 MB');
     });
 
     it('shows only yt-dlp progress', (): void => {

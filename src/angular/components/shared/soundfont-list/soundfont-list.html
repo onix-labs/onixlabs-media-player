@@ -1,0 +1,17 @@
+<div class="soundfont-list">
+  @for (sf of soundFonts(); track sf.fileName) {
+    <div class="soundfont-item" [class.selected]="isActive(sf)">
+      <button type="button" class="soundfont-select" (click)="select(sf.fileName)" title="Use this SoundFont"
+              [attr.aria-pressed]="isActive(sf)" [attr.aria-label]="'Use ' + sf.fileName">
+        <span class="soundfont-radio" [class.active]="isActive(sf)"></span>
+      </button>
+      <i class="fa-solid fa-music" aria-hidden="true"></i>
+      <span class="soundfont-name">{{ sf.fileName }}</span>
+      <span class="soundfont-size">{{ formatSize(sf.sizeBytes) }}</span>
+      <button type="button" class="soundfont-remove" (click)="remove(sf.fileName)" title="Remove SoundFont"
+              [attr.aria-label]="'Remove ' + sf.fileName">
+        <i class="fa-solid fa-trash" aria-hidden="true"></i>
+      </button>
+    </div>
+  }
+</div>

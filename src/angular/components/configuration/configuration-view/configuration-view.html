@@ -150,21 +150,7 @@
                       </div>
                     }
                     @if (soundFonts().length > 0) {
-                      <div class="soundfont-list">
-                        @for (sf of soundFonts(); track sf.fileName) {
-                          <div class="soundfont-item" [class.selected]="isActiveSoundFont(sf)">
-                            <button class="soundfont-select" (click)="onSelectSoundFont(sf.fileName)" (mouseup)="$any($event.currentTarget).blur()" title="Use this SoundFont">
-                              <div class="soundfont-radio" [class.active]="isActiveSoundFont(sf)"></div>
-                            </button>
-                            <i class="fa-solid fa-music"></i>
-                            <span class="soundfont-name">{{ sf.fileName }}</span>
-                            <span class="soundfont-size">{{ formatFileSize(sf.sizeBytes) }}</span>
-                            <button class="soundfont-remove" (click)="onRemoveSoundFont(sf.fileName)" (mouseup)="$any($event.currentTarget).blur()" title="Remove SoundFont">
-                              <i class="fa-solid fa-trash"></i>
-                            </button>
-                          </div>
-                        }
-                      </div>
+                      <app-soundfont-list/>
                     } @else {
                       <p class="soundfont-empty">No SoundFonts installed. Install a .sf2 file for MIDI playback.</p>
                     }
