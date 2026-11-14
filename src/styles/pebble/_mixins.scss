@@ -1,0 +1,491 @@
+// =============================================================================
+// Pebble component mixins
+// =============================================================================
+//
+// The Stride controls, as mixins over the Pebble tokens, so each window's
+// stylesheet can give its own markup the brand look without sharing classes.
+// Use them with `@use 'pebble/mixins' as pebble;`.
+//
+// Everything reads the --pebble-* custom properties, which exist only inside a
+// Pebble window (html.pebble); the main player window never uses these.
+
+/// A raised surface: a matte panel lifted off the page, with a light top edge,
+/// a dark bottom edge and a soft shadow.
+///
+/// @param {String} $radius - Radius token suffix: sm, md, lg or xl
+@mixin surface($radius: lg) {
+  --pebble-edge-top: var(--pebble-edge-light);
+  --pebble-edge-bottom: var(--pebble-edge-dark);
+  border: none;
+  border-radius: var(--pebble-radius-#{$radius});
+  corner-shape: var(--pebble-corner-shape);
+  background: var(--pebble-surface);
+  color: var(--pebble-text);
+  box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-sm);
+}
+
+/// A recessed panel: below the surface rather than above it (secondary panels,
+/// output wells, previews).
+///
+/// @param {String} $radius - Radius token suffix: sm, md, lg or xl
+@mixin recessed($radius: md) {
+  --pebble-edge-top: var(--pebble-edge-dark);
+  --pebble-edge-bottom: var(--pebble-edge-light);
+  border: none;
+  border-radius: var(--pebble-radius-#{$radius});
+  corner-shape: var(--pebble-corner-shape);
+  background: var(--pebble-surface-alt);
+  box-shadow: var(--pebble-edge-shadow);
+}
+
+/// The keyboard focus ring every Pebble control shows.
+@mixin focus-ring {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--pebble-focus-ring);
+}
+
+/// A soft rounded button with a lighter edge on top and a darker one beneath.
+/// Hover zooms it in a little and drops a shadow; pressing pushes it back.
+///
+/// @param {String} $variant - secondary (a raised surface button, the default),
+///   primary (the monochrome brand), danger, or ghost (content only)
+/// @param {String} $size - sm, md or lg
+@mixin button($variant: secondary, $size: md) {
+  --pebble-button-bg: var(--pebble-surface);
+  --pebble-button-text: var(--pebble-primary);
+  --pebble-edge-top: var(--pebble-edge-light);
+  --pebble-edge-bottom: var(--pebble-edge-button);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pebble-space-2);
+  @if $size == sm {
+    min-height: 2rem;
+    padding: 0.3rem 0.85rem;
+    font-size: var(--pebble-text-sm);
+  } @else if $size == lg {
+    min-height: 3rem;
+    padding: 0.7rem 1.4rem;
+    font-size: var(--pebble-text-lg);
+  } @else {
+    min-height: 2.5rem;
+    padding: 0.5rem 1.1rem;
+    font-size: var(--pebble-text-sm);
+  }
+  border: none;
+  border-radius: var(--pebble-radius-md);
+  corner-shape: var(--pebble-corner-shape);
+  background: var(--pebble-button-bg);
+  color: var(--pebble-button-text);
+  box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-sm);
+  font-family: var(--pebble-font);
+  font-weight: var(--pebble-weight-medium);
+  line-height: 1.25;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--pebble-transition), color var(--pebble-transition), transform var(--pebble-transition), box-shadow var(--pebble-transition);
+
+  @if $variant == primary {
+    --pebble-button-bg: var(--pebble-primary);
+    --pebble-button-text: var(--pebble-primary-contrast);
+    --pebble-edge-top: color-mix(in srgb, var(--pebble-primary), white 25%);
+    --pebble-edge-bottom: color-mix(in srgb, var(--pebble-primary), black 25%);
+  } @else if $variant == danger {
+    --pebble-button-bg: var(--pebble-danger);
+    --pebble-button-text: var(--pebble-danger-contrast);
+    --pebble-edge-top: color-mix(in srgb, var(--pebble-danger), white 25%);
+    --pebble-edge-bottom: color-mix(in srgb, var(--pebble-danger), black 25%);
+  } @else if $variant == ghost {
+    --pebble-button-bg: transparent;
+    --pebble-edge-top: transparent;
+    --pebble-edge-bottom: transparent;
+    box-shadow: none;
+  }
+
+  &:hover:not(:disabled) {
+    @if $variant == ghost {
+      background: color-mix(in srgb, var(--pebble-heading) 8%, transparent);
+    } @else {
+      transform: scale(1.03);
+      box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-button-hover);
+    }
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+    @if $variant != ghost {
+      box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-sm);
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--pebble-focus);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+  }
+}
+
+/// A text, number or URL input: a recessed well with a soft border.
+@mixin field {
+  display: block;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.75rem;
+  border: var(--pebble-border-width) solid var(--pebble-field-border);
+  border-radius: var(--pebble-radius-sm);
+  corner-shape: var(--pebble-corner-shape);
+  background: var(--pebble-field);
+  color: var(--pebble-text);
+  font-family: var(--pebble-font);
+  font-size: var(--pebble-text-sm);
+  line-height: 1.4;
+  box-shadow: none;
+  transition: border-color var(--pebble-transition), box-shadow var(--pebble-transition);
+
+  &::placeholder {
+    color: var(--pebble-text-muted);
+  }
+
+  &:focus,
+  &:focus-visible {
+    border-color: var(--pebble-secondary);
+    @include focus-ring;
+  }
+
+  &:disabled {
+    background: var(--pebble-surface-alt);
+    color: var(--pebble-text-muted);
+    cursor: not-allowed;
+  }
+
+  &[aria-invalid='true'] {
+    border-color: var(--pebble-danger);
+  }
+}
+
+/// A native select drawn as a Pebble field, with a chevron.
+@mixin select {
+  @include field;
+  appearance: none;
+  padding-right: 2.25rem;
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--pebble-text-muted) 50%),
+    linear-gradient(135deg, var(--pebble-text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 1.15rem) 55%, calc(100% - 0.85rem) 55%;
+  background-size: 0.3rem 0.3rem;
+  background-repeat: no-repeat;
+
+  option {
+    background: var(--pebble-surface);
+    color: var(--pebble-text);
+  }
+}
+
+/// A switch drawn from a visually hidden checkbox and a following track
+/// element whose ::before is the thumb. Apply to the track; the selector of the
+/// hidden input is passed so the checked and focus states can be reached.
+///
+/// Markup: <label><input type="checkbox"><span class="track"></span></label>
+///
+/// @param {String} $input - Selector of the input that precedes the track
+@mixin switch-track($input: 'input') {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 2.25rem;
+  height: 1.25rem;
+  border-radius: var(--pebble-radius-pill);
+  corner-shape: round;
+  background: var(--pebble-secondary);
+  cursor: pointer;
+  transition: background-color var(--pebble-transition), box-shadow var(--pebble-transition);
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 1rem;
+    height: 1rem;
+    border-radius: var(--pebble-radius-pill);
+    corner-shape: round;
+    background: var(--pebble-surface);
+    box-shadow: var(--pebble-shadow-sm);
+    transition: transform var(--pebble-transition);
+  }
+
+  #{$input}:checked + & {
+    background: var(--pebble-primary);
+  }
+
+  #{$input}:checked + &::before {
+    transform: translateX(1rem);
+  }
+
+  #{$input}:focus-visible + & {
+    @include focus-ring;
+  }
+
+  #{$input}:disabled + & {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+}
+
+/// Hides a native input while keeping it focusable and in the accessibility
+/// tree, for switches and custom checkboxes.
+@mixin visually-hidden-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  opacity: 0;
+}
+
+/// A range slider: a pill track and a primary thumb ringed by the surface.
+/// The filled portion follows --pebble-range-percent where the template sets it
+/// (WebKit has no progress pseudo-element); without it the track is plain.
+@mixin range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 1.25rem;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+
+  &::-webkit-slider-runnable-track {
+    height: 0.375rem;
+    border: none;
+    border-radius: var(--pebble-radius-pill);
+    background: linear-gradient(to right,
+      var(--pebble-primary) var(--pebble-range-percent, 0%),
+      var(--pebble-surface-alt) var(--pebble-range-percent, 0%));
+    box-shadow: inset 0 1px 0 var(--pebble-edge-dark);
+  }
+
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-top: calc((0.375rem - 1.125rem) / 2);
+    border: 3px solid var(--pebble-surface);
+    border-radius: var(--pebble-radius-pill);
+    background: var(--pebble-primary);
+    box-shadow: var(--pebble-shadow-sm);
+    transition: transform var(--pebble-transition);
+  }
+
+  &:hover:not(:disabled)::-webkit-slider-thumb {
+    transform: scale(1.1);
+  }
+
+  &:focus {
+    outline: none;
+  }
+
+  &:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px var(--pebble-focus-ring);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+}
+
+/// A checkbox or radio drawn natively but tinted to the brand.
+@mixin choice {
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  flex: none;
+  accent-color: var(--pebble-primary);
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--pebble-focus);
+    outline-offset: 2px;
+  }
+}
+
+/// A colour well: a native colour input shaped as a small rounded swatch.
+@mixin color-swatch {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 2.25rem;
+  height: 2rem;
+  padding: 3px;
+  border: var(--pebble-border-width) solid var(--pebble-field-border);
+  border-radius: var(--pebble-radius-sm);
+  corner-shape: var(--pebble-corner-shape);
+  background: var(--pebble-field);
+  cursor: pointer;
+
+  &::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+
+  &::-webkit-color-swatch {
+    border: none;
+    border-radius: calc(var(--pebble-radius-sm) - 3px);
+  }
+
+  &:focus-visible {
+    @include focus-ring;
+  }
+}
+
+/// A small technical label in brand coral, in monospace capitals, that names
+/// what follows (section titles).
+@mixin label {
+  margin: 0;
+  color: var(--pebble-label);
+  font-family: var(--pebble-font-mono);
+  font-size: var(--pebble-text-xs);
+  font-weight: var(--pebble-weight-semibold);
+  letter-spacing: 0.14em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+/// A heading in the brand's tight display style.
+///
+/// @param {String} $size - Text size token suffix
+@mixin heading($size: xl) {
+  margin: 0;
+  color: var(--pebble-heading);
+  font-family: var(--pebble-font);
+  font-size: var(--pebble-text-#{$size});
+  font-weight: var(--pebble-weight-semibold);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+/// A short status or category marker.
+///
+/// @param {String} $intent - neutral, primary, success, warning, danger or info
+@mixin badge($intent: neutral) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pebble-space-1);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--pebble-radius-sm);
+  corner-shape: var(--pebble-corner-shape);
+  font-size: var(--pebble-text-xs);
+  font-weight: var(--pebble-weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+  @if $intent == neutral {
+    background: var(--pebble-secondary-subtle);
+    color: var(--pebble-text);
+  } @else {
+    background: var(--pebble-#{$intent});
+    color: var(--pebble-#{$intent}-contrast);
+  }
+}
+
+/// A notice: a tinted panel that explains something (restart needed, a hint,
+/// an error).
+///
+/// @param {String} $intent - info, success, warning or danger
+@mixin notice($intent: info) {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pebble-space-3);
+  padding: 0.75rem 1rem;
+  border: var(--pebble-border-width) solid color-mix(in srgb, var(--pebble-#{$intent}) 45%, transparent);
+  border-radius: var(--pebble-radius-md);
+  corner-shape: var(--pebble-corner-shape);
+  background: var(--pebble-#{$intent}-subtle);
+  @if $intent == warning {
+    color: var(--pebble-warning-text);
+  } @else {
+    color: var(--pebble-#{$intent});
+  }
+  font-size: var(--pebble-text-sm);
+  line-height: 1.5;
+}
+
+/// A progress bar's track; its child is the fill.
+@mixin progress-track {
+  width: 100%;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--pebble-radius-pill);
+  corner-shape: round;
+  background: var(--pebble-surface-alt);
+  box-shadow: inset 0 1px 0 var(--pebble-edge-dark);
+}
+
+/// A progress bar's fill.
+@mixin progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--pebble-primary);
+  transition: width var(--pebble-transition);
+}
+
+/// A row in a list of surfaces: a raised tile that lifts when it can be
+/// pressed.
+@mixin list-item($interactive: true) {
+  @include surface(md);
+  display: flex;
+  align-items: center;
+  gap: var(--pebble-space-4);
+  width: 100%;
+  padding: 0.85rem 1rem;
+  text-align: left;
+  font-family: var(--pebble-font);
+  @if $interactive {
+    cursor: pointer;
+    transition: transform var(--pebble-transition), box-shadow var(--pebble-transition), background-color var(--pebble-transition);
+
+    &:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-md);
+    }
+
+    &:active {
+      transform: none;
+      box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-sm);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--pebble-focus);
+      outline-offset: 2px;
+    }
+  }
+}
+
+/// The title-bar strip at the top of a window: draggable, tall enough to clear
+/// the macOS traffic lights, holding the window's title.
+@mixin window-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 0 5rem;
+  -webkit-app-region: drag;
+  color: var(--pebble-text-muted);
+  font-size: var(--pebble-text-sm);
+  font-weight: var(--pebble-weight-medium);
+
+  button,
+  input,
+  select,
+  a {
+    -webkit-app-region: no-drag;
+  }
+}

@@ -118,6 +118,12 @@ class Program {
    */
   private static readonly DEVELOPMENT_SERVER_URL: string = process.env["DEV_SERVER_URL"] || "http://localhost:4300";
 
+  /** Pebble's page colour in light, the window background before the page paints. */
+  private static readonly PEBBLE_BACKGROUND_LIGHT: string = '#d8dde2';
+
+  /** Pebble's page colour in dark. */
+  private static readonly PEBBLE_BACKGROUND_DARK: string = '#212529';
+
   /**
    * Calculates the project root directory path.
    *
@@ -211,6 +217,30 @@ class Program {
     } catch {
       return '#1e1e1e'; // Fallback to dark
     }
+  }
+
+  /**
+   * Gets the window chrome for every window but the main player: the settings,
+   * About, Open URL and setup wizard windows.
+   *
+   * They wear the ONIXLabs brand style, Pebble (src/styles/_pebble.scss), which
+   * paints an opaque page, so unlike the player they never take vibrancy or
+   * acrylic, whatever the glass setting says. The background is Pebble's page
+   * colour for the colour scheme in use, so nothing flashes before the page
+   * paints. On macOS the title bar is hidden behind inset traffic lights, as on
+   * the player; elsewhere the platform's own frame is kept.
+   *
+   * @returns Options to spread into the window's constructor options
+   */
+  private getPebbleWindowOptions(): Electron.BrowserWindowConstructorOptions {
+    const scheme: string | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance?.colorScheme;
+    const dark: boolean = scheme === 'dark' || (scheme !== 'light' && nativeTheme.shouldUseDarkColors);
+    const backgroundColor: string = dark ? Program.PEBBLE_BACKGROUND_DARK : Program.PEBBLE_BACKGROUND_LIGHT;
+
+    if (process.platform === 'darwin') {
+      return {titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 12, y: 13}, backgroundColor};
+    }
+    return {backgroundColor};
   }
 
   /**
@@ -720,31 +750,7 @@ class Program {
     const configWindowWidth: number = 800;
     const configWindowHeight: number = 600;
 
-    // Platform-specific options for hidden title bar with traffic lights (macOS only)
-    // Windows/Linux use the default window frame with title bar and controls
-    // Also apply glass/vibrancy/acrylic effects to match main window
-    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
-    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
-    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
-
-    let configPlatformOptions: Electron.BrowserWindowConstructorOptions = {};
-    if (process.platform === 'darwin') {
-      configPlatformOptions = {
-        titleBarStyle: 'hiddenInset',
-        trafficLightPosition: {x: 12, y: 13},
-        ...(glassEnabled
-          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
-          : { backgroundColor }
-        )
-      };
-    } else if (process.platform === 'win32') {
-      configPlatformOptions = glassEnabled
-        ? { backgroundMaterial: 'acrylic' as const }
-        : { backgroundColor };
-    } else {
-      configPlatformOptions = { backgroundColor };
-    }
+    const configPlatformOptions: Electron.BrowserWindowConstructorOptions = this.getPebbleWindowOptions();
 
     // Determine if we should do side-by-side positioning
     // Only in normal windowed mode (not fullscreen, not miniplayer)
@@ -892,29 +898,7 @@ class Program {
     const aboutWindowWidth: number = 480;
     const aboutWindowHeight: number = 640;
 
-    // Platform-specific options for hidden title bar with traffic lights (macOS only)
-    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
-    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
-    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
-
-    let aboutPlatformOptions: Electron.BrowserWindowConstructorOptions = {};
-    if (process.platform === 'darwin') {
-      aboutPlatformOptions = {
-        titleBarStyle: 'hiddenInset',
-        trafficLightPosition: {x: 12, y: 13},
-        ...(glassEnabled
-          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
-          : { backgroundColor }
-        )
-      };
-    } else if (process.platform === 'win32') {
-      aboutPlatformOptions = glassEnabled
-        ? { backgroundMaterial: 'acrylic' as const }
-        : { backgroundColor };
-    } else {
-      aboutPlatformOptions = { backgroundColor };
-    }
+    const aboutPlatformOptions: Electron.BrowserWindowConstructorOptions = this.getPebbleWindowOptions();
 
     this.aboutWindow = new BrowserWindow({
       width: aboutWindowWidth,
@@ -995,29 +979,7 @@ class Program {
     // Initial content height; the renderer resizes this to fit its content.
     const openUrlWindowHeight: number = 200;
 
-    // Platform-specific chrome (mirrors the About window) for native glass.
-    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
-    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
-    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
-
-    let openUrlPlatformOptions: Electron.BrowserWindowConstructorOptions = {};
-    if (process.platform === 'darwin') {
-      openUrlPlatformOptions = {
-        titleBarStyle: 'hiddenInset',
-        trafficLightPosition: {x: 12, y: 13},
-        ...(glassEnabled
-          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
-          : { backgroundColor }
-        )
-      };
-    } else if (process.platform === 'win32') {
-      openUrlPlatformOptions = glassEnabled
-        ? { backgroundMaterial: 'acrylic' as const }
-        : { backgroundColor };
-    } else {
-      openUrlPlatformOptions = { backgroundColor };
-    }
+    const openUrlPlatformOptions: Electron.BrowserWindowConstructorOptions = this.getPebbleWindowOptions();
 
     this.openUrlWindow = new BrowserWindow({
       width: openUrlWindowWidth,
@@ -1106,29 +1068,7 @@ class Program {
     const wizardWidth: number = 800;
     const wizardHeight: number = 600;
 
-    // Get appearance settings for consistent styling
-    const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
-    const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
-    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
-
-    let wizardPlatformOptions: Electron.BrowserWindowConstructorOptions = {};
-    if (process.platform === 'darwin') {
-      wizardPlatformOptions = {
-        titleBarStyle: 'hiddenInset',
-        trafficLightPosition: {x: 12, y: 13},
-        ...(glassEnabled
-          ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
-          : { backgroundColor }
-        )
-      };
-    } else if (process.platform === 'win32') {
-      wizardPlatformOptions = glassEnabled
-        ? { backgroundMaterial: 'acrylic' as const }
-        : { backgroundColor };
-    } else {
-      wizardPlatformOptions = { backgroundColor };
-    }
+    const wizardPlatformOptions: Electron.BrowserWindowConstructorOptions = this.getPebbleWindowOptions();
 
     this.setupWizardWindow = new BrowserWindow({
       width: wizardWidth,

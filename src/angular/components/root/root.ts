@@ -113,6 +113,13 @@ export class Root implements OnDestroy {
    */
   public readonly isOpenUrlWindow: boolean = new URLSearchParams(window.location.search).get('window') === 'open-url';
 
+  /**
+   * Whether this window wears the ONIXLabs brand style, Pebble, rather than
+   * the player's glass. Every window but the main player does.
+   */
+  public readonly isPebbleWindow: boolean =
+    this.isConfigurationWindow || this.isAboutWindow || this.isSetupWizardWindow || this.isOpenUrlWindow;
+
   /** Service for dependency state */
   private readonly deps: DependencyService = inject(DependencyService);
 
@@ -213,11 +220,18 @@ export class Root implements OnDestroy {
    * - backgroundColor/glassEnabled: Updates CSS variable for background color
    */
   public constructor() {
+    // Pebble windows paint their own opaque page (see styles/_pebble.scss), so
+    // the glass, background and tint settings below apply to the player only.
+    if (this.isPebbleWindow) {
+      document.documentElement.classList.add('pebble');
+    }
+
     // React to background color/tint and glass settings changes
     // Uses two CSS variables:
     //   --app-background-color: solid background on html/body (transparent when glass enabled)
     //   --app-tint-color: translucent tint on :host (only when glass enabled)
     effect((): void => {
+      if (this.isPebbleWindow) return;
       const glassEnabled: boolean = this.settings.glassEnabled();
       const supportsGlass: boolean = this.electron.platformInfo().supportsGlass;
       const showGlass: boolean = glassEnabled && supportsGlass;

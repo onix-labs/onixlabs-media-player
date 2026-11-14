@@ -1496,39 +1496,57 @@ describe('main', (): void => {
   });
 
   describe('secondary window appearance', (): void => {
-    it.each(SECONDARY_WINDOW_KINDS)('should give the %s window vibrancy and inset traffic lights on macOS', async (kind: WindowKind): Promise<void> => {
+    it.each(SECONDARY_WINDOW_KINDS)('should give the %s window inset traffic lights on macOS', async (kind: WindowKind): Promise<void> => {
       const window: FakeWindow = await bootWithWindow(kind, {platform: 'darwin'});
 
-      expect(window.options).toMatchObject({titleBarStyle: 'hiddenInset', vibrancy: 'fullscreen-ui', visualEffectState: 'active'});
+      expect(window.options).toMatchObject({titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 12, y: 13}});
     });
 
-    it.each(SECONDARY_WINDOW_KINDS)('should give the %s window the configured colour on macOS when glass is off', async (kind: WindowKind): Promise<void> => {
-      const window: FakeWindow = await bootWithWindow(kind, {
-        platform: 'darwin',
-        config: {appearance: {glassEnabled: false, backgroundColor: '#123456'}},
-      });
+    // Every window but the player wears Pebble, which paints an opaque page.
+    it.each(SECONDARY_WINDOW_KINDS)('should never give the %s window vibrancy on macOS, even with glass on', async (kind: WindowKind): Promise<void> => {
+      const window: FakeWindow = await bootWithWindow(kind, {platform: 'darwin', config: {appearance: {glassEnabled: true}}});
 
-      expect(window.options.backgroundColor).toBe('#123456');
       expect(window.options.vibrancy).toBeUndefined();
+      expect(window.options.visualEffectState).toBeUndefined();
     });
 
-    it.each(SECONDARY_WINDOW_KINDS)('should give the %s window acrylic on Windows when glass is enabled', async (kind: WindowKind): Promise<void> => {
+    it.each(SECONDARY_WINDOW_KINDS)('should never give the %s window acrylic on Windows, even with glass on', async (kind: WindowKind): Promise<void> => {
       const window: FakeWindow = await bootWithWindow(kind, {platform: 'win32', config: {appearance: {glassEnabled: true}}});
 
-      expect(window.options.backgroundMaterial).toBe('acrylic');
-    });
-
-    it.each(SECONDARY_WINDOW_KINDS)('should give the %s window an opaque background on Windows by default', async (kind: WindowKind): Promise<void> => {
-      const window: FakeWindow = await bootWithWindow(kind, {platform: 'win32', config: {dark: false}});
-
-      expect(window.options.backgroundColor).toBe('#e0e0e0');
       expect(window.options.backgroundMaterial).toBeUndefined();
     });
 
-    it.each(SECONDARY_WINDOW_KINDS)('should give the %s window an opaque background on Linux', async (kind: WindowKind): Promise<void> => {
-      const window: FakeWindow = await bootWithWindow(kind, {platform: 'linux'});
+    it.each(SECONDARY_WINDOW_KINDS)('should paint the %s window Pebble\'s light page colour when the system is light', async (kind: WindowKind): Promise<void> => {
+      const window: FakeWindow = await bootWithWindow(kind, {platform: 'win32', config: {dark: false}});
 
-      expect(window.options.backgroundColor).toBe('#1e1e1e');
+      expect(window.options.backgroundColor).toBe('#d8dde2');
+    });
+
+    it.each(SECONDARY_WINDOW_KINDS)('should paint the %s window Pebble\'s dark page colour when the system is dark', async (kind: WindowKind): Promise<void> => {
+      const window: FakeWindow = await bootWithWindow(kind, {platform: 'linux', config: {dark: true}});
+
+      expect(window.options.backgroundColor).toBe('#212529');
+    });
+
+    it.each(SECONDARY_WINDOW_KINDS)('should follow a light colour scheme chosen in settings over a dark system for the %s window', async (kind: WindowKind): Promise<void> => {
+      const window: FakeWindow = await bootWithWindow(kind, {platform: 'darwin', config: {dark: true, appearance: {colorScheme: 'light'}}});
+
+      expect(window.options.backgroundColor).toBe('#d8dde2');
+    });
+
+    it.each(SECONDARY_WINDOW_KINDS)('should follow a dark colour scheme chosen in settings over a light system for the %s window', async (kind: WindowKind): Promise<void> => {
+      const window: FakeWindow = await bootWithWindow(kind, {platform: 'darwin', config: {dark: false, appearance: {colorScheme: 'dark'}}});
+
+      expect(window.options.backgroundColor).toBe('#212529');
+    });
+
+    it.each(SECONDARY_WINDOW_KINDS)('should ignore the player\'s background colour for the %s window', async (kind: WindowKind): Promise<void> => {
+      const window: FakeWindow = await bootWithWindow(kind, {
+        platform: 'darwin',
+        config: {dark: false, appearance: {glassEnabled: false, backgroundColor: '#123456'}},
+      });
+
+      expect(window.options.backgroundColor).toBe('#d8dde2');
     });
 
     it.each(SECONDARY_WINDOW_KINDS)('should make the %s window a fixed-size dialog', async (kind: WindowKind): Promise<void> => {

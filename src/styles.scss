@@ -1,3 +1,6 @@
+@use 'pebble';
+
+
 :root {
   // Background color when glass effect is disabled (set dynamically by root component)
   --app-background-color: transparent;
