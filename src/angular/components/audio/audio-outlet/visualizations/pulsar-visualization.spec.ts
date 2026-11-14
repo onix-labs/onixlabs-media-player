@@ -10,7 +10,7 @@
  * - Transients: rise and level thresholds, the refractory period, the spin
  *   reversal and the palette jump
  * - Hue cycling and the gradient colour cache
- * - Fade-out and idling, fixed-look setters, FFT size changes, destroy
+ * - Fade-out and idling, the fixed look, FFT size changes, destroy
  * - Edge inputs never hand the canvas a NaN or an infinity
  *
  * Canvas 2D and Web Audio are faked; see visualization-test-fakes.group1.
@@ -19,7 +19,6 @@
  */
 
 import {PulsarVisualization} from './pulsar-visualization';
-import {Visualization} from './visualization';
 import {
   bassHeavy,
   CanvasFakes,
@@ -83,11 +82,6 @@ describe('PulsarVisualization', (): void => {
   function surfaces(): Surfaces {
     const [main, trail, scratch, bloom]: RecordingContext2D[] = fakes.contexts;
     return {main, trail, scratch, bloom};
-  }
-
-  /** The visualization as the settings panel sees it: through the base type. */
-  function controls(): Visualization {
-    return viz;
   }
 
   /** Draws one frame after letting `elapsedMs` pass. */
@@ -441,7 +435,7 @@ describe('PulsarVisualization', (): void => {
 
       frame();
 
-      // Full deflection at the fixed 20% sensitivity adds 127/128 of 14.4px.
+      // Full deflection at the fixed sensitivity factor of 0.4 adds 127/128 of 14.4px.
       const circleStart: RecordedCall = surfaces().trail.callsTo('moveTo')[LAYERS * 2];
       expect(radiusOf(circleStart)).toBeCloseTo(CIRCLE_RADIUS + 14.4 * 127 / 128, 9);
     });
@@ -910,54 +904,14 @@ describe('PulsarVisualization', (): void => {
   // ==========================================================================
 
   describe('fixed look', (): void => {
-    it('ignores the sensitivity control', (): void => {
-      controls().setSensitivity(1);
-
-      expect(viz.getSensitivity()).toBe(0.2);
-    });
-
-    it('ignores the trail intensity control', (): void => {
-      controls().setTrailIntensity(1);
-
-      expect(viz.getTrailIntensity()).toBe(0);
-    });
-
-    it('ignores the line width control', (): void => {
-      controls().setLineWidth(5);
-
-      expect(viz.getLineWidth()).toBe(1);
-    });
-
-    it('ignores the glow control', (): void => {
-      controls().setGlowIntensity(0);
-
-      expect(viz.getGlowIntensity()).toBe(1);
-    });
-
-    it('ignores the waveform smoothing control', (): void => {
-      controls().setWaveformSmoothing(0);
-
-      expect(viz.getWaveformSmoothing()).toBe(1);
-    });
-
-    it('keeps the centre circle the same size after the sensitivity control is moved', (): void => {
+    it('scales the centre circle by its fixed gain', (): void => {
       viz.resize(WIDTH, HEIGHT);
-      controls().setSensitivity(1);
       analyser.waveform = flat(0);
 
       frame();
 
       const circleStart: RecordedCall = surfaces().trail.callsTo('moveTo')[LAYERS * 2];
       expect(radiusOf(circleStart)).toBeCloseTo(CIRCLE_RADIUS - 14.4, 9);
-    });
-
-    it('keeps drawing smooth curves after the smoothing control is moved', (): void => {
-      viz.resize(WIDTH, HEIGHT);
-      controls().setWaveformSmoothing(0);
-
-      frame();
-
-      expect(surfaces().trail.callsTo('quadraticCurveTo').length).toBeGreaterThan(0);
     });
   });
 

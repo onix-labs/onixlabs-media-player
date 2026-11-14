@@ -66,7 +66,7 @@ describe('PlasmaVisualization', (): void => {
    * The points of the waveform stroked on a trail canvas this frame.
    *
    * Each waveform is stroked three times over the same points; the first path
-   * is returned. With smoothing fixed at 100% each curve's control point is
+   * is returned. Each curve's control point is
    * the waveform point itself, so after the opening moveTo the path lists the
    * waveform points in order.
    */
@@ -370,25 +370,6 @@ describe('PlasmaVisualization', (): void => {
       drawFrame();
 
       expect(waveformOn(top)[0].y).toBeCloseTo(TOP_Y * 2 - FULL_SCALE_DISPLACEMENT * 2, 6);
-    });
-  });
-
-  describe('fixed look', (): void => {
-    it('ignores the global sensitivity, trail, line width, glow and smoothing controls', (): void => {
-      // Through the base type, as the outlet calls them: the overrides take no argument.
-      const controlled: Visualization = viz;
-
-      controlled.setSensitivity(1);
-      controlled.setTrailIntensity(1);
-      controlled.setLineWidth(5);
-      controlled.setGlowIntensity(0);
-      controlled.setWaveformSmoothing(0);
-
-      expect(viz.getSensitivity()).toBe(0.3);
-      expect(viz.getTrailIntensity()).toBe(0.5);
-      expect(viz.getLineWidth()).toBe(1);
-      expect(viz.getGlowIntensity()).toBe(1);
-      expect(viz.getWaveformSmoothing()).toBe(1);
     });
   });
 

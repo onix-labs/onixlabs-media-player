@@ -86,7 +86,7 @@ describe('InfinityVisualization', (): void => {
    * The points of the circle stroked on a trail canvas this frame.
    *
    * Each circle is stroked three times over the same points; the first path is
-   * returned. With smoothing fixed at 100% each curve's control point is the
+   * returned. Each curve's control point is the
    * circle point itself, so after the opening moveTo the path lists the circle
    * points in order.
    */
@@ -407,25 +407,6 @@ describe('InfinityVisualization', (): void => {
       expect((first.x + second.x) / 2).toBeCloseTo(500, 6);
       expect((first.y + second.y) / 2).toBeCloseTo(200, 6);
       expect(distance(first, {x: 500, y: 200})).toBeCloseTo(73, 6);
-    });
-  });
-
-  describe('fixed look', (): void => {
-    it('ignores the global sensitivity, trail, line width, glow and smoothing controls', (): void => {
-      // Through the base type, as the outlet calls them: the overrides take no argument.
-      const controlled: Visualization = viz;
-
-      controlled.setSensitivity(1);
-      controlled.setTrailIntensity(1);
-      controlled.setLineWidth(5);
-      controlled.setGlowIntensity(0);
-      controlled.setWaveformSmoothing(0);
-
-      expect(viz.getSensitivity()).toBe(0.25);
-      expect(viz.getTrailIntensity()).toBe(0.5);
-      expect(viz.getLineWidth()).toBe(1);
-      expect(viz.getGlowIntensity()).toBe(1);
-      expect(viz.getWaveformSmoothing()).toBe(1);
     });
   });
 

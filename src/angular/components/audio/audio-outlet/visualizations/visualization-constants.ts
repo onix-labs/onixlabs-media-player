@@ -75,32 +75,8 @@ export const FADE_IN_DURATION_MS: number = 500;
 // Visualization drawing constants
 // ============================================================================
 
-/** Default sensitivity for visualizations */
-export const DEFAULT_SENSITIVITY: number = 0.25;
-
-/** Higher sensitivity for certain visualizations */
-export const HIGH_SENSITIVITY: number = 0.35;
-
-/** Medium sensitivity for bar-based visualizations */
-export const MEDIUM_SENSITIVITY: number = 0.5;
-
-/** Default trail intensity */
-export const DEFAULT_TRAIL_INTENSITY: number = 0.5;
-
-/** Default line width */
-export const DEFAULT_LINE_WIDTH: number = 2.0;
-
-/** Default glow intensity */
-export const DEFAULT_GLOW_INTENSITY: number = 0.5;
-
-/** Default waveform smoothing */
-export const DEFAULT_WAVEFORM_SMOOTHING: number = 0.5;
-
-/** Default strobe frequency in Hz */
-export const DEFAULT_STROBE_FREQUENCY: number = 5;
-
-/** Standard glow blur radius */
-export const GLOW_BLUR_RADIUS: number = 12;
+/** Glow blur radius, in pixels, that drawPathWithLayers() uses when not given one */
+export const GLOW_BLUR_RADIUS: number = 6;
 
 /** Reduced glow opacity multiplier for stroke */
 export const GLOW_OPACITY_MULTIPLIER: number = 0.375;
@@ -110,6 +86,9 @@ export const GLOW_LINE_WIDTH_OFFSET: number = 4;
 
 /** Highlight line width */
 export const HIGHLIGHT_LINE_WIDTH: number = 1;
+
+/** Main stroke width of the layered waveform paths, in pixels */
+export const WAVEFORM_LINE_WIDTH: number = 1;
 
 /** Divisor for calculating radius from dimension */
 export const RADIUS_DIVISOR: number = 3;
@@ -198,15 +177,6 @@ export const ROTATION_MEDIUM: number = 9;
 // ============================================================================
 // Geometry constants
 // ============================================================================
-
-/** Bar count for low density */
-export const BAR_COUNT_LOW: number = 48;
-
-/** Bar count for medium density */
-export const BAR_COUNT_MEDIUM: number = 96;
-
-/** Bar count for high density */
-export const BAR_COUNT_HIGH: number = 144;
 
 /** Small gap size in pixels */
 export const GAP_SMALL: number = 2;

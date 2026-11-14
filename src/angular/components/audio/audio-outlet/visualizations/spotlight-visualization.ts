@@ -64,14 +64,11 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   /** Lightness of the background fill - a shade darker than the darkest circle. */
   private static readonly BACKGROUND_LIGHTNESS: number = 2;
 
-  /** Base blur radius used to feather one circle into the next (pixels). */
-  private static readonly CIRCLE_BASE_BLUR: number = 0;
-
   /**
-   * Minimum feather between circles, applied even when the user glow control is
-   * zero, so the "mild blur from one circle to the next" is intrinsic.
+   * Blur radius feathering one circle into the next (pixels). None: the circles
+   * meet edge to edge and the border's own shadow does the softening.
    */
-  private static readonly CIRCLE_MIN_BLUR: number = 0;
+  private static readonly CIRCLE_BLUR: number = 0;
 
   /** Width of the soft drop-shadow border drawn at each circle's circumference (pixels). */
   private static readonly CIRCLE_BORDER_WIDTH: number = 1;
@@ -103,7 +100,10 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   /** Fraction of FFT bins trimmed from each end before bucketing (low & high). */
   private static readonly FREQ_TRIM_FRACTION: number = 0.1;
 
-  /** Magnitude (after sensitivity) at/above which a sample jumps to the ceiling. */
+  /** Gain applied to the frequency bins before they are compared with PEAK_THRESHOLD. */
+  private static readonly SENSITIVITY_FACTOR: number = 0.2;
+
+  /** Magnitude (after SENSITIVITY_FACTOR) at/above which a sample jumps to the ceiling. */
   private static readonly PEAK_THRESHOLD: number = 0.1;
 
   /** Opacity of the filled interior of each peak (1 = solid). */
@@ -118,7 +118,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   private static readonly TRAIL_ROTATION: number = 0.006;
 
   /** Per-frame fade of the rings trail (high, so layered peaks clear, not pile up). */
-  private static readonly RING_FADE: number = 0.03;
+  private static readonly RING_FADE: number = 0.06;
 
   /** Extra trail-canvas margin beyond the outer circle, for glow (pixels). */
   private static readonly TRAIL_MARGIN: number = 15;
@@ -246,11 +246,6 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     super(config);
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.hue = SpotlightVisualization.START_HUE;
-    // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
-    this.sensitivity = 0.1;       // 10%
-    this.trailIntensity = 0;      // minimal trails
-    this.lineWidth = 1;           // 1px
-    this.glowIntensity = 0;       // no glow
 
     this.radii = new Array<number>(SpotlightVisualization.CIRCLE_COUNT).fill(0);
     this.circleColors = [];
@@ -326,12 +321,6 @@ export class SpotlightVisualization extends Canvas2DVisualization {
   protected override onFftSizeChanged(): void {
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
-
-  // Fixed visual parameters: ignore the global controls (values set in constructor).
-  public override setSensitivity(): void { /* fixed */ }
-  public override setTrailIntensity(): void { /* fixed */ }
-  public override setLineWidth(): void { /* fixed */ }
-  public override setGlowIntensity(): void { /* fixed */ }
 
   protected override onResize(): void {
     const width: number = this.width;
@@ -411,8 +400,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     for (let i: number = SpotlightVisualization.CIRCLE_COUNT - 1; i >= 0; i--) {
       const colorString: string = this.circleColorStrings[i];
       ctx.save();
-      // Keep an intrinsic feather even when the user glow control is at zero.
-      ctx.shadowBlur = Math.max(SpotlightVisualization.CIRCLE_MIN_BLUR, this.getScaledGlowBlur(SpotlightVisualization.CIRCLE_BASE_BLUR));
+      ctx.shadowBlur = SpotlightVisualization.CIRCLE_BLUR;
       ctx.shadowColor = colorString;
       ctx.fillStyle = colorString;
       ctx.beginPath();
@@ -444,7 +432,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     // freqArray was read once for the frame by updateBassTrigger.
     const binCount: number = this.freqArray.length;
     const numSamples: number = SpotlightVisualization.CIRCULAR_SAMPLES;
-    const sensitivityFactor: number = this.sensitivityFactor;
+    const sensitivityFactor: number = SpotlightVisualization.SENSITIVITY_FACTOR;
 
     // Logarithmic (octave-like) bucket for this ring so each ring spans a similar
     // perceptual range, with a per-ring gain compensating the high-frequency
@@ -614,7 +602,6 @@ export class SpotlightVisualization extends Canvas2DVisualization {
     // Trail coordinates; the surface transform maps them onto the reduced canvas.
     ctx.clearRect(0, 0, size, size);
 
-    const effectiveFade: number = fadeRate * this.getFadeMultiplier();
     const cx: number = this.trailCx;
     const cy: number = this.trailCy;
     // Only bands with both bounding circles can be spun (one annulus per ring).
@@ -631,7 +618,7 @@ export class SpotlightVisualization extends Canvas2DVisualization {
       ctx.save();
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.globalAlpha = 1 - effectiveFade;
+      ctx.globalAlpha = 1 - fadeRate;
 
       // Clip to this ring's annulus (outer disc minus inner disc).
       ctx.beginPath();

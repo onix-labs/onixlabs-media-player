@@ -137,22 +137,6 @@ describe('HawkingVisualization', (): void => {
       expect(viz.name).toBe('Hawking');
       expect(viz.category).toBe('Bars & Waves');
     });
-
-    it('ignores the global look controls because its look is fixed', (): void => {
-      const base: Visualization = viz;
-
-      base.setSensitivity(1);
-      base.setTrailIntensity(1);
-      base.setLineWidth(5);
-      base.setGlowIntensity(1);
-      base.setWaveformSmoothing(1);
-
-      expect(viz.getSensitivity()).toBe(0.5);
-      expect(viz.getTrailIntensity()).toBe(0.5);
-      expect(viz.getLineWidth()).toBe(2);
-      expect(viz.getGlowIntensity()).toBe(0.5);
-      expect(viz.getWaveformSmoothing()).toBe(0);
-    });
   });
 
   describe('zero-sized canvas', (): void => {
@@ -255,7 +239,7 @@ describe('HawkingVisualization', (): void => {
 
       viz.draw();
 
-      // amplitude (127/128) x sensitivity factor (1.0) x spike scale
+      // amplitude (127/128) x spike scale
       for (const s of spikesOn(redTrail())) {
         expect(s.length).toBeCloseTo((127 / 128) * SPIKE_SCALE, 6);
       }

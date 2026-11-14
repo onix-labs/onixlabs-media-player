@@ -7,7 +7,7 @@
  * - Frequency rings: silence, the peak threshold, full rings and single teeth
  * - Trail: per-band counter-rotation, fade and compositing
  * - Bass trigger: cooldown, hue cross-fade and the spin re-roll
- * - Fade-out and idling, fixed-look setters, FFT size changes, destroy
+ * - Fade-out and idling, the fixed look, FFT size changes, destroy
  * - Edge inputs
  *
  * Canvas 2D and Web Audio are faked; see visualization-test-fakes.group1.
@@ -16,7 +16,6 @@
  */
 
 import {SpotlightVisualization} from './spotlight-visualization';
-import {Visualization} from './visualization';
 import {
   bassHeavy,
   CanvasFakes,
@@ -91,11 +90,6 @@ describe('SpotlightVisualization', (): void => {
   function surfaces(): Surfaces {
     const [main, rings, scratch, tower, freeze]: RecordingContext2D[] = fakes.contexts;
     return {main, rings, scratch, tower, freeze};
-  }
-
-  /** The visualization as the settings panel sees it: through the base type. */
-  function controls(): Visualization {
-    return viz;
   }
 
   /** Draws one frame after letting `elapsedMs` pass. */
@@ -373,7 +367,7 @@ describe('SpotlightVisualization', (): void => {
     });
 
     it('leaves a ring on its own circle for a spectrum just under the peak threshold', (): void => {
-      // 127/255 at the fixed 10% sensitivity is 0.0996, under the 0.1 threshold.
+      // 127/255 at the fixed sensitivity factor of 0.2 is 0.0996, under the 0.1 threshold.
       analyser.spectrum = flat(127);
 
       frame();
@@ -385,7 +379,7 @@ describe('SpotlightVisualization', (): void => {
     });
 
     it('raises a ring to the next circle out for a spectrum just over the peak threshold', (): void => {
-      // 128/255 at the fixed 10% sensitivity is 0.1004.
+      // 128/255 at the fixed sensitivity factor of 0.2 is 0.1004.
       analyser.spectrum = flat(128);
 
       frame();
@@ -831,34 +825,9 @@ describe('SpotlightVisualization', (): void => {
   // ==========================================================================
 
   describe('fixed look', (): void => {
-    it('ignores the sensitivity control', (): void => {
-      controls().setSensitivity(1);
-
-      expect(viz.getSensitivity()).toBe(0.1);
-    });
-
-    it('ignores the trail intensity control', (): void => {
-      controls().setTrailIntensity(1);
-
-      expect(viz.getTrailIntensity()).toBe(0);
-    });
-
-    it('ignores the line width control', (): void => {
-      controls().setLineWidth(5);
-
-      expect(viz.getLineWidth()).toBe(1);
-    });
-
-    it('ignores the glow control', (): void => {
-      controls().setGlowIntensity(1);
-
-      expect(viz.getGlowIntensity()).toBe(0);
-    });
-
-    it('keeps drawing at the fixed sensitivity after the control is moved', (): void => {
+    it('draws no peaks for bins that only a higher gain would lift over the threshold', (): void => {
       viz.resize(WIDTH, HEIGHT);
-      controls().setSensitivity(1);
-      // A lone bin that would clear the threshold at full sensitivity, but not at the fixed 10%.
+      // A lone bin that would clear the threshold at a gain of 2, but not at the fixed 0.2.
       analyser.spectrum = spike(150, 100);
 
       frame();
@@ -866,9 +835,8 @@ describe('SpotlightVisualization', (): void => {
       expect(surfaces().rings.callsTo('closePath')).toEqual([]);
     });
 
-    it('keeps the tower unfeathered after the glow control is moved', (): void => {
+    it('draws the tower unfeathered', (): void => {
       viz.resize(WIDTH, HEIGHT);
-      controls().setGlowIntensity(1);
 
       frame();
 

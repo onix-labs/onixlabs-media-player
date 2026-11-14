@@ -3,9 +3,8 @@
  *
  * Tests cover:
  * - Bar heights tracking the frequency data (silence, full scale, bass-heavy, a single spike)
- * - Bar layout across the canvas and the three bar densities
- * - The fixed sensitivity
- * - The bar gradient and its rebuild on colour change and resize
+ * - Bar layout across the canvas
+ * - The bar gradient and its rebuild on resize
  * - FFT size changes, the fade overlay, and degenerate canvas sizes
  *
  * Canvas 2D and Web Audio are faked; see visualization-test-fakes.group3.
@@ -14,7 +13,6 @@
  */
 
 import {AnalyzerVisualization} from './analyzer-visualization';
-import {Visualization} from './visualization';
 import {
   BYTE_MAX,
   CanvasFakes,
@@ -33,7 +31,7 @@ import {
 const WIDTH: number = 960;
 const HEIGHT: number = 400;
 
-/** Bar height at full scale: canvas height x 0.85 x the fixed sensitivity factor of 1. */
+/** Bar height at full scale: canvas height x 0.85. */
 const FULL_SCALE_BAR_HEIGHT: number = 340;
 
 describe('AnalyzerVisualization', (): void => {
@@ -193,52 +191,19 @@ describe('AnalyzerVisualization', (): void => {
     });
   });
 
-  describe('bar density', (): void => {
-    it('draws 96 bars at the default medium density', (): void => {
+  describe('bar count', (): void => {
+    it('draws 96 bars', (): void => {
       expect(drawBarTops()).toHaveLength(96);
     });
 
-    it('draws 48 bars at low density', (): void => {
-      viz.setBarDensity('low');
+    it('fills the full width', (): void => {
+      recording.clear();
 
-      expect(drawBarTops()).toHaveLength(48);
-    });
+      viz.draw();
 
-    it('draws 144 bars at high density', (): void => {
-      viz.setBarDensity('high');
-
-      expect(drawBarTops()).toHaveLength(144);
-    });
-
-    it('fills the full width at every density', (): void => {
-      for (const density of ['low', 'medium', 'high'] as const) {
-        viz.setBarDensity(density);
-        recording.clear();
-
-        viz.draw();
-
-        const paths: RecordedPoint[][] = recording.paths();
-        const rightEdge: number = Math.max(...paths[paths.length - 1].map((point: RecordedPoint): number => point.x));
-        expect(rightEdge).toBeCloseTo(WIDTH, 6);
-      }
-    });
-  });
-
-  describe('sensitivity', (): void => {
-    it('is fixed at 50%', (): void => {
-      expect(viz.getSensitivity()).toBe(0.5);
-    });
-
-    it('ignores the global sensitivity control', (): void => {
-      analyser.frequencyData = constantSamples(BYTE_MAX);
-      const before: number[] = drawBarTops();
-
-      // Through the base type, as the outlet calls it: the override takes no argument.
-      const controlled: Visualization = viz;
-      controlled.setSensitivity(1);
-
-      expect(viz.getSensitivity()).toBe(0.5);
-      expect(drawBarTops()).toEqual(before);
+      const paths: RecordedPoint[][] = recording.paths();
+      const rightEdge: number = Math.max(...paths[paths.length - 1].map((point: RecordedPoint): number => point.x));
+      expect(rightEdge).toBeCloseTo(WIDTH, 6);
     });
   });
 
@@ -268,18 +233,6 @@ describe('AnalyzerVisualization', (): void => {
       expect(recording.gradients).toHaveLength(0);
     });
 
-    it('rebuilds the gradient when a bar colour changes', (): void => {
-      viz.setBarColorBottom('#000011');
-      viz.setBarColorMiddle('#000022');
-      viz.setBarColorTop('#000033');
-      recording.clear();
-
-      viz.draw();
-
-      const gradient: FakeGradient = recording.calls('fill')[0].state['fillStyle'] as FakeGradient;
-      expect(gradient.stops.map((stop): string => stop.color)).toEqual(['#000011', '#000022', '#000033']);
-    });
-
     it('rebuilds the gradient to span the new height after a resize', (): void => {
       viz.resize(WIDTH, 800);
       recording.clear();
@@ -291,10 +244,9 @@ describe('AnalyzerVisualization', (): void => {
     });
 
     it('does not create a gradient while the canvas has no height', (): void => {
-      viz.resize(WIDTH, 0);
       recording.clear();
 
-      viz.setBarColorTop('#123456');
+      viz.resize(WIDTH, 0);
 
       expect(recording.gradients).toHaveLength(0);
     });

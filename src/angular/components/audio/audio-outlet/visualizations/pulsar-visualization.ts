@@ -37,8 +37,16 @@ export class PulsarVisualization extends Canvas2DVisualization {
   /** Radians the waveforms rotate per frame. */
   private static readonly WAVEFORM_ROTATION_SPEED: number = 0.005;
 
-  /** Per-frame trail fade rate. */
-  private static readonly FADE_RATE: number = 0.75;
+  /**
+   * Per-frame trail fade rate.
+   *
+   * Over 1, so the alpha drawShearedTrail derives from it (1 - FADE_RATE) is
+   * negative.
+   */
+  private static readonly FADE_RATE: number = 1.5;
+
+  /** Gain applied to the waveform samples before they are drawn. */
+  private static readonly SENSITIVITY_FACTOR: number = 0.4;
 
   /** Per-frame outward zoom applied to the trail. */
   private static readonly ZOOM_SCALE: number = 1.03;
@@ -276,8 +284,11 @@ export class PulsarVisualization extends Canvas2DVisualization {
    */
   private static readonly CONTENT_SCALE: number = 0.75;
 
-  /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 18;
+  /** Glow blur radius in pixels. */
+  private static readonly GLOW_BLUR: number = 18;
+
+  /** Width of the neon core stroke, in pixels. */
+  private static readonly LINE_WIDTH: number = 1;
 
   /** Alpha of the neon halo stroke, before the caller's own alpha. */
   private static readonly NEON_HALO_ALPHA: number = 0.22;
@@ -297,8 +308,11 @@ export class PulsarVisualization extends Canvas2DVisualization {
   /** Alpha of the hot centre line. */
   private static readonly NEON_HOT_ALPHA: number = 0.55;
 
-  /** Width of the hot centre line, as a fraction of the core width. */
-  private static readonly NEON_HOT_WIDTH_FRACTION: number = 0.25;
+  /**
+   * Width of the hot centre line, in pixels. The same as the core: any thinner
+   * would be sub-pixel.
+   */
+  private static readonly NEON_HOT_WIDTH: number = 1;
 
   /**
    * Blur radius of the bloom pass, in pixels.
@@ -429,13 +443,6 @@ export class PulsarVisualization extends Canvas2DVisualization {
     for (let i: number = 0; i <= PulsarVisualization.CENTER_CIRCLE_POINTS; i++) {
       this.centerPoints[i] = {x: 0, y: 0};
     }
-
-    // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
-    this.sensitivity = 0.2;       // 20%
-    this.trailIntensity = 0;      // minimal trails
-    this.lineWidth = 1;           // 1px
-    this.glowIntensity = 1;       // 100%
-    this.waveformSmoothing = 1;   // 100%
   }
 
   public draw(): void {
@@ -504,11 +511,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
     trailCtx.clearRect(0, 0, width, height);
 
     // Draw back previous trails with rotation, zoom, and fade.
-    // Apply trail intensity multiplier to fade rate.
-    const effectiveFadeRate: number = PulsarVisualization.FADE_RATE * this.getFadeMultiplier();
     this.ripplePhase = (this.ripplePhase + PulsarVisualization.RIPPLE_DRIFT) % TWO_PI;
     this.ringPhase = (this.ringPhase + PulsarVisualization.RING_BOUNDARY_DRIFT) % 1;
-    this.drawShearedTrail(trailCtx, tempCanvas, effectiveFadeRate);
+    this.drawShearedTrail(trailCtx, tempCanvas, PulsarVisualization.FADE_RATE);
 
     // Get waveform data
     this.analyser.getByteTimeDomainData(this.dataArray);
@@ -584,7 +589,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
    *
    * @param trailCtx - Destination trail context
    * @param tempCanvas - Copy of the previous trail to read from
-   * @param fadeRate - Per-frame fade already scaled by trail intensity
+   * @param fadeRate - Per-frame fade
    */
   private drawShearedTrail(
     trailCtx: CanvasRenderingContext2D,
@@ -653,13 +658,6 @@ export class PulsarVisualization extends Canvas2DVisualization {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
-
-  // Fixed visual parameters: ignore the global controls (values set in constructor).
-  public override setSensitivity(): void { /* fixed */ }
-  public override setTrailIntensity(): void { /* fixed */ }
-  public override setLineWidth(): void { /* fixed */ }
-  public override setGlowIntensity(): void { /* fixed */ }
-  public override setWaveformSmoothing(): void { /* fixed */ }
 
   protected override onResize(): void {
     // Pre-compute center values
@@ -745,7 +743,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const centerY: number = this.centerY;
     const halfWidth: number = this.halfWidth;
     const minArcRadius: number = this.minArcRadius;
-    const sensitivityFactor: number = this.sensitivityFactor;
+    const sensitivityFactor: number = PulsarVisualization.SENSITIVITY_FACTOR;
     const amplitudeScale: number = height * 0.3 * PulsarVisualization.CONTENT_SCALE;
     const bendStrength: number = 1.2;
     const numSamples: number = PulsarVisualization.WAVEFORM_SAMPLES;
@@ -828,7 +826,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const centerY: number = this.centerY;
     const baseRadius: number = this.baseCircleRadius;
     const numPoints: number = PulsarVisualization.CENTER_CIRCLE_POINTS;
-    const sensitivityFactor: number = this.sensitivityFactor;
+    const sensitivityFactor: number = PulsarVisualization.SENSITIVITY_FACTOR;
     const amplitudeScale: number = height * 0.08 * PulsarVisualization.CONTENT_SCALE;
     const sampleStep: number = (dataLength * 0.25) / numPoints;
 
@@ -891,7 +889,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     coreOnly: boolean,
     shadowScale: number
   ): void {
-    const blur: number = this.getScaledGlowBlur(PulsarVisualization.BASE_GLOW_BLUR) * shadowScale;
+    const blur: number = PulsarVisualization.GLOW_BLUR * shadowScale;
     const r: number = color.r;
     const g: number = color.g;
     const b: number = color.b;
@@ -910,7 +908,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     if (!coreOnly) {
       ctx.shadowBlur = blur;
       ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${PulsarVisualization.NEON_HALO_ALPHA * alpha})`;
-      ctx.lineWidth = this.lineWidth + PulsarVisualization.NEON_HALO_WIDTH;
+      ctx.lineWidth = PulsarVisualization.LINE_WIDTH + PulsarVisualization.NEON_HALO_WIDTH;
       buildPath();
       ctx.stroke();
     }
@@ -918,7 +916,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     // Core. Keeps the halo's shadow colour, tightened.
     ctx.shadowBlur = coreOnly ? 0 : blur * PulsarVisualization.NEON_CORE_BLUR_SCALE;
     ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    ctx.lineWidth = this.lineWidth;
+    ctx.lineWidth = PulsarVisualization.LINE_WIDTH;
     buildPath();
     ctx.stroke();
 
@@ -927,7 +925,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     ctx.shadowBlur = 0;
     ctx.strokeStyle = `rgba(${Math.min(255, r + lift)}, ${Math.min(255, g + lift)}, `
       + `${Math.min(255, b + lift)}, ${PulsarVisualization.NEON_HOT_ALPHA * alpha})`;
-    ctx.lineWidth = Math.max(1, this.lineWidth * PulsarVisualization.NEON_HOT_WIDTH_FRACTION);
+    ctx.lineWidth = PulsarVisualization.NEON_HOT_WIDTH;
     buildPath();
     ctx.stroke();
 

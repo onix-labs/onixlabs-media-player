@@ -2,9 +2,7 @@
  * @fileoverview Unit tests for visualization base classes.
  *
  * Tests cover:
- * - Visualization (abstract base): sensitivity, trailIntensity, fftSize,
- *   barDensity, lineWidth, glowIntensity, waveformSmoothing, bar colors,
- *   fade logic, resize, hslToRgb, sensitivityFactor, getFadeMultiplier
+ * - Visualization (abstract base): fftSize, fade logic, resize, hslToRgb
  * - Canvas2DVisualization: applyFadeOverlay, clearLowAlphaPixels,
  *   resize with preserveContentOnResize, getCachedColor, getColorFromHue,
  *   createOffscreenCanvas, the persistence fade and the ghost-pixel clear
@@ -93,7 +91,7 @@ function createMockCanvas(): HTMLCanvasElement {
 /** Options accepted by the layered path helpers */
 interface LayerOptions {
   ctx?: CanvasRenderingContext2D;
-  baseGlowBlur?: number;
+  glowBlur?: number;
   closePath?: boolean;
   fill?: boolean;
   glowLineWidthOffset?: number;
@@ -163,9 +161,7 @@ class TestCanvas2DVisualization extends Canvas2DVisualization {
   public readonly category: string = 'test';
   public drawCallCount: number = 0;
   public fftSizeChangedCount: number = 0;
-  public barDensityChangedCount: number = 0;
   public resizeCount: number = 0;
-  public barColorsChangedCount: number = 0;
 
   public constructor(config: VisualizationConfig) {
     super(config);
@@ -180,16 +176,8 @@ class TestCanvas2DVisualization extends Canvas2DVisualization {
     this.fftSizeChangedCount++;
   }
 
-  protected override onBarDensityChanged(): void {
-    this.barDensityChangedCount++;
-  }
-
   protected override onResize(): void {
     this.resizeCount++;
-  }
-
-  protected override onBarColorsChanged(): void {
-    this.barColorsChangedCount++;
   }
 
   // Expose protected methods for testing
@@ -199,8 +187,6 @@ class TestCanvas2DVisualization extends Canvas2DVisualization {
   public testHslToRgb(h: number, s: number, l: number): {r: number; g: number; b: number} {
     return this.hslToRgb(h, s, l);
   }
-  public testGetFadeMultiplier(): number { return this.getFadeMultiplier(); }
-  public testGetScaledGlowBlur(base: number): number { return this.getScaledGlowBlur(base); }
   public testGetColorFromHue(hue: number): {main: string; glow: string} { return this.getColorFromHue(hue); }
   public testGetCachedColor(index: 1 | 2, hue: number): {main: string; glow: string} { return this.getCachedColor(index, hue); }
   public testCreateOffscreenCanvas(): OffscreenCanvasPair { return this.createOffscreenCanvas(); }
@@ -257,7 +243,6 @@ class TestCanvas2DVisualization extends Canvas2DVisualization {
   public get testFadeAlpha(): number { return this.fadeAlpha; }
   public set testFadeAlpha(v: number) { this.fadeAlpha = v; }
   public get testIsPlaying(): boolean { return this.isPlaying; }
-  public get testSensitivityFactor(): number { return this.sensitivityFactor; }
   public get testCtx(): CanvasRenderingContext2D { return this.ctx; }
   public get testPreserveContentOnResize(): boolean { return this.preserveContentOnResize; }
   public set testPreserveContentOnResize(v: boolean) { this.preserveContentOnResize = v; }
@@ -298,111 +283,11 @@ describe('Visualization base classes', (): void => {
     it('creates with default values', (): void => {
       expect(viz.name).toBe('Test 2D');
       expect(viz.category).toBe('test');
-      expect(viz.getSensitivity()).toBe(0.25);
-      expect(viz.getTrailIntensity()).toBe(0.5);
       expect(viz.getFftSize()).toBe(2048);
-      expect(viz.getBarDensity()).toBe('medium');
-      expect(viz.getLineWidth()).toBe(2.0);
-      expect(viz.getGlowIntensity()).toBe(0.5);
-      expect(viz.getWaveformSmoothing()).toBe(0.5);
-      expect(viz.getBarColorBottom()).toBe('#00cc00');
-      expect(viz.getBarColorMiddle()).toBe('#cccc00');
-      expect(viz.getBarColorTop()).toBe('#cc0000');
     });
 
     it('obtains 2D context from canvas', (): void => {
       expect(canvas.getContext).toHaveBeenCalledWith('2d');
-    });
-  });
-
-  // ==========================================================================
-  // setSensitivity / getSensitivity
-  // ==========================================================================
-
-  describe('setSensitivity', (): void => {
-    it('sets sensitivity to a valid value', (): void => {
-      viz.setSensitivity(0.75);
-      expect(viz.getSensitivity()).toBe(0.75);
-    });
-
-    it('clamps to 0 at lower bound', (): void => {
-      viz.setSensitivity(-0.5);
-      expect(viz.getSensitivity()).toBe(0);
-    });
-
-    it('clamps to 1 at upper bound', (): void => {
-      viz.setSensitivity(1.5);
-      expect(viz.getSensitivity()).toBe(1);
-    });
-
-    it('accepts boundary values', (): void => {
-      viz.setSensitivity(0);
-      expect(viz.getSensitivity()).toBe(0);
-      viz.setSensitivity(1);
-      expect(viz.getSensitivity()).toBe(1);
-    });
-  });
-
-  // ==========================================================================
-  // sensitivityFactor
-  // ==========================================================================
-
-  describe('sensitivityFactor', (): void => {
-    it('returns sensitivity * 2', (): void => {
-      viz.setSensitivity(0.25);
-      expect(viz.testSensitivityFactor).toBe(0.5);
-    });
-
-    it('returns 0 when sensitivity is 0', (): void => {
-      viz.setSensitivity(0);
-      expect(viz.testSensitivityFactor).toBe(0);
-    });
-
-    it('returns 2 when sensitivity is 1', (): void => {
-      viz.setSensitivity(1);
-      expect(viz.testSensitivityFactor).toBe(2);
-    });
-  });
-
-  // ==========================================================================
-  // setTrailIntensity / getTrailIntensity
-  // ==========================================================================
-
-  describe('setTrailIntensity', (): void => {
-    it('sets trail intensity to a valid value', (): void => {
-      viz.setTrailIntensity(0.8);
-      expect(viz.getTrailIntensity()).toBe(0.8);
-    });
-
-    it('clamps to 0 at lower bound', (): void => {
-      viz.setTrailIntensity(-1);
-      expect(viz.getTrailIntensity()).toBe(0);
-    });
-
-    it('clamps to 1 at upper bound', (): void => {
-      viz.setTrailIntensity(2);
-      expect(viz.getTrailIntensity()).toBe(1);
-    });
-  });
-
-  // ==========================================================================
-  // getFadeMultiplier
-  // ==========================================================================
-
-  describe('getFadeMultiplier', (): void => {
-    it('returns 1.0 at default trail intensity (0.5)', (): void => {
-      viz.setTrailIntensity(0.5);
-      expect(viz.testGetFadeMultiplier()).toBeCloseTo(1.0, 5);
-    });
-
-    it('returns 2.0 at trail intensity 0 (fast fade)', (): void => {
-      viz.setTrailIntensity(0);
-      expect(viz.testGetFadeMultiplier()).toBeCloseTo(2.0, 5);
-    });
-
-    it('returns 0.5 at trail intensity 1 (slow fade)', (): void => {
-      viz.setTrailIntensity(1);
-      expect(viz.testGetFadeMultiplier()).toBeCloseTo(0.5, 5);
     });
   });
 
@@ -437,138 +322,6 @@ describe('Visualization base classes', (): void => {
     it('does not call onFftSizeChanged for invalid size', (): void => {
       viz.setFftSize(999);
       expect(viz.fftSizeChangedCount).toBe(0);
-    });
-  });
-
-  // ==========================================================================
-  // setBarDensity / getBarDensity
-  // ==========================================================================
-
-  describe('setBarDensity', (): void => {
-    it('accepts valid densities', (): void => {
-      for (const density of ['low', 'medium', 'high'] as const) {
-        viz.setBarDensity(density);
-        expect(viz.getBarDensity()).toBe(density);
-      }
-    });
-
-    it('rejects invalid density', (): void => {
-      viz.setBarDensity('medium');
-      viz.setBarDensity('ultra' as 'low');
-      expect(viz.getBarDensity()).toBe('medium');
-    });
-
-    it('calls onBarDensityChanged hook', (): void => {
-      viz.setBarDensity('high');
-      expect(viz.barDensityChangedCount).toBe(1);
-    });
-  });
-
-  // ==========================================================================
-  // setLineWidth / getLineWidth
-  // ==========================================================================
-
-  describe('setLineWidth', (): void => {
-    it('sets line width to a valid value', (): void => {
-      viz.setLineWidth(3.5);
-      expect(viz.getLineWidth()).toBe(3.5);
-    });
-
-    it('clamps to 1 at lower bound', (): void => {
-      viz.setLineWidth(0);
-      expect(viz.getLineWidth()).toBe(1);
-    });
-
-    it('clamps to 5 at upper bound', (): void => {
-      viz.setLineWidth(10);
-      expect(viz.getLineWidth()).toBe(5);
-    });
-  });
-
-  // ==========================================================================
-  // setGlowIntensity / getGlowIntensity
-  // ==========================================================================
-
-  describe('setGlowIntensity', (): void => {
-    it('sets glow intensity to a valid value', (): void => {
-      viz.setGlowIntensity(0.8);
-      expect(viz.getGlowIntensity()).toBe(0.8);
-    });
-
-    it('clamps to 0 at lower bound', (): void => {
-      viz.setGlowIntensity(-1);
-      expect(viz.getGlowIntensity()).toBe(0);
-    });
-
-    it('clamps to 1 at upper bound', (): void => {
-      viz.setGlowIntensity(2);
-      expect(viz.getGlowIntensity()).toBe(1);
-    });
-  });
-
-  // ==========================================================================
-  // getScaledGlowBlur
-  // ==========================================================================
-
-  describe('getScaledGlowBlur', (): void => {
-    it('scales blur by glow intensity', (): void => {
-      viz.setGlowIntensity(0.5);
-      expect(viz.testGetScaledGlowBlur(12)).toBe(6);
-    });
-
-    it('returns 0 when glow intensity is 0', (): void => {
-      viz.setGlowIntensity(0);
-      expect(viz.testGetScaledGlowBlur(12)).toBe(0);
-    });
-
-    it('returns full blur when glow intensity is 1', (): void => {
-      viz.setGlowIntensity(1);
-      expect(viz.testGetScaledGlowBlur(12)).toBe(12);
-    });
-  });
-
-  // ==========================================================================
-  // setWaveformSmoothing / getWaveformSmoothing
-  // ==========================================================================
-
-  describe('setWaveformSmoothing', (): void => {
-    it('sets waveform smoothing to a valid value', (): void => {
-      viz.setWaveformSmoothing(0.8);
-      expect(viz.getWaveformSmoothing()).toBe(0.8);
-    });
-
-    it('clamps to 0 at lower bound', (): void => {
-      viz.setWaveformSmoothing(-1);
-      expect(viz.getWaveformSmoothing()).toBe(0);
-    });
-
-    it('clamps to 1 at upper bound', (): void => {
-      viz.setWaveformSmoothing(2);
-      expect(viz.getWaveformSmoothing()).toBe(1);
-    });
-  });
-
-  // ==========================================================================
-  // Bar colors
-  // ==========================================================================
-
-  describe('bar colors', (): void => {
-    it('setBarColorBottom updates and fires hook', (): void => {
-      viz.setBarColorBottom('#ff0000');
-      expect(viz.getBarColorBottom()).toBe('#ff0000');
-      expect(viz.barColorsChangedCount).toBe(1);
-    });
-
-    it('setBarColorMiddle updates and fires hook', (): void => {
-      viz.setBarColorMiddle('#00ff00');
-      expect(viz.getBarColorMiddle()).toBe('#00ff00');
-      expect(viz.barColorsChangedCount).toBe(1);
-    });
-
-    it('setBarColorTop updates and fires hook', (): void => {
-      viz.setBarColorTop('#0000ff');
-      expect(viz.getBarColorTop()).toBe('#0000ff');
-      expect(viz.barColorsChangedCount).toBe(1);
     });
   });
 
@@ -910,20 +663,7 @@ describe('Visualization base classes', (): void => {
   // ==========================================================================
 
   describe('buildSmoothPath', (): void => {
-    it('draws straight lines when smoothing is 0', (): void => {
-      viz.setWaveformSmoothing(0);
-      const ctx = createMockCtx();
-      const points = [{x: 0, y: 0}, {x: 50, y: 100}, {x: 100, y: 0}];
-      viz.testBuildSmoothPath(ctx, points);
-
-      expect(ctx.beginPath).toHaveBeenCalled();
-      expect(ctx.moveTo).toHaveBeenCalledWith(0, 0);
-      expect(ctx.lineTo).toHaveBeenCalledTimes(2);
-      expect(ctx.quadraticCurveTo).not.toHaveBeenCalled();
-    });
-
-    it('draws curves when smoothing is > 0', (): void => {
-      viz.setWaveformSmoothing(1);
+    it('draws curves through the points', (): void => {
       const ctx = createMockCtx();
       const points = [{x: 0, y: 0}, {x: 50, y: 100}, {x: 100, y: 0}];
       viz.testBuildSmoothPath(ctx, points);
@@ -934,13 +674,14 @@ describe('Visualization base classes', (): void => {
     });
 
     it('respects numPoints parameter', (): void => {
-      viz.setWaveformSmoothing(0);
       const ctx = createMockCtx();
       const points = [{x: 0, y: 0}, {x: 50, y: 100}, {x: 100, y: 0}, {x: 150, y: 50}];
       viz.testBuildSmoothPath(ctx, points, 2); // only 2 segments (3 points)
 
       expect(ctx.moveTo).toHaveBeenCalledWith(0, 0);
-      expect(ctx.lineTo).toHaveBeenCalledTimes(2);
+      expect(ctx.quadraticCurveTo).toHaveBeenCalledTimes(2);
+      expect(ctx.lineTo).toHaveBeenCalledTimes(1);
+      expect(ctx.lineTo).toHaveBeenCalledWith(100, 0);
     });
   });
 
@@ -980,31 +721,6 @@ describe('Visualization base classes', (): void => {
       expect((): TestCanvas2DVisualization => new TestCanvas2DVisualization({canvas: contextless, analyser})).toThrow(
         'Failed to get 2D context'
       );
-    });
-  });
-
-  // ==========================================================================
-  // setStrobeFrequency / getStrobeFrequency
-  // ==========================================================================
-
-  describe('setStrobeFrequency', (): void => {
-    it('defaults to 5 Hz', (): void => {
-      expect(viz.getStrobeFrequency()).toBe(5);
-    });
-
-    it('sets strobe frequency to a valid value', (): void => {
-      viz.setStrobeFrequency(12);
-      expect(viz.getStrobeFrequency()).toBe(12);
-    });
-
-    it('clamps to 1 at lower bound', (): void => {
-      viz.setStrobeFrequency(0);
-      expect(viz.getStrobeFrequency()).toBe(1);
-    });
-
-    it('clamps to 20 at upper bound', (): void => {
-      viz.setStrobeFrequency(60);
-      expect(viz.getStrobeFrequency()).toBe(20);
     });
   });
 
@@ -1268,7 +984,7 @@ describe('Visualization base classes', (): void => {
   // ==========================================================================
 
   describe('applyPersistenceFade', (): void => {
-    it('erases the whole canvas at the given rate at default trail intensity', (): void => {
+    it('erases the whole canvas at the given rate', (): void => {
       viz.resize(320, 240);
 
       viz.testApplyPersistenceFade(0.04);
@@ -1276,22 +992,6 @@ describe('Visualization base classes', (): void => {
       expect(viz.testCtx.globalCompositeOperation).toBe('destination-out');
       expect(viz.testCtx.fillStyle).toBe('rgba(0, 0, 0, 0.04)');
       expect(viz.testCtx.fillRect).toHaveBeenCalledWith(0, 0, 320, 240);
-    });
-
-    it('erases twice as fast at minimum trail intensity', (): void => {
-      viz.setTrailIntensity(0);
-
-      viz.testApplyPersistenceFade(0.04);
-
-      expect(viz.testCtx.fillStyle).toBe('rgba(0, 0, 0, 0.08)');
-    });
-
-    it('erases half as fast at maximum trail intensity', (): void => {
-      viz.setTrailIntensity(1);
-
-      viz.testApplyPersistenceFade(0.04);
-
-      expect(viz.testCtx.fillStyle).toBe('rgba(0, 0, 0, 0.02)');
     });
 
     it('wraps the erase in save and restore so the composite mode does not leak', (): void => {
@@ -1584,26 +1284,10 @@ describe('Visualization base classes', (): void => {
       expect(vi.mocked(trail.ctx.translate).mock.calls).toEqual([[400, 300], [-400, -300]]);
     });
 
-    it('dims the trail by the fade rate at default trail intensity', (): void => {
+    it('dims the trail by the fade rate', (): void => {
       viz.testApplyDirectionalZoom(trail, temp, 400, 300, 0.025, 1.03);
 
       expect(trail.ctx.globalAlpha).toBeCloseTo(0.975, 10);
-    });
-
-    it('dims the trail faster at minimum trail intensity', (): void => {
-      viz.setTrailIntensity(0);
-
-      viz.testApplyDirectionalZoom(trail, temp, 400, 300, 0.025, 1.03);
-
-      expect(trail.ctx.globalAlpha).toBeCloseTo(0.95, 10);
-    });
-
-    it('dims the trail more slowly at maximum trail intensity', (): void => {
-      viz.setTrailIntensity(1);
-
-      viz.testApplyDirectionalZoom(trail, temp, 400, 300, 0.025, 1.03);
-
-      expect(trail.ctx.globalAlpha).toBeCloseTo(0.9875, 10);
     });
 
     it('does not rotate the trail unless asked', (): void => {
@@ -1649,13 +1333,12 @@ describe('Visualization base classes', (): void => {
       expect(paints.map((paint: PaintSnapshot): unknown => paint.strokeStyle)).toEqual(['rgba(0, 255, 100, 0.30)', MAIN]);
     });
 
-    it('strokes a wide glow, the main line at the line width and a thin highlight', (): void => {
+    it('strokes a wide glow, the main line at 1px and a thin highlight', (): void => {
       const paints: PaintSnapshot[] = recordPaints(viz.testCtx);
-      viz.setLineWidth(3);
 
       viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT);
 
-      expect(paints.map((paint: PaintSnapshot): number => paint.lineWidth)).toEqual([7, 3, 1]);
+      expect(paints.map((paint: PaintSnapshot): number => paint.lineWidth)).toEqual([5, 1, 1]);
     });
 
     it('honours custom glow and highlight widths', (): void => {
@@ -1663,25 +1346,22 @@ describe('Visualization base classes', (): void => {
 
       viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT, {glowLineWidthOffset: 10, highlightLineWidth: 0.5});
 
-      expect(paints.map((paint: PaintSnapshot): number => paint.lineWidth)).toEqual([12, 2, 0.5]);
+      expect(paints.map((paint: PaintSnapshot): number => paint.lineWidth)).toEqual([11, 1, 0.5]);
     });
 
-    it('shadows the glow layer with the glow colour, blurred in proportion to glow intensity', (): void => {
+    it('shadows the glow layer with the glow colour, blurred by the default radius', (): void => {
       const paints: PaintSnapshot[] = recordPaints(viz.testCtx);
-      viz.setGlowIntensity(0.5);
 
       viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT);
 
-      // Default base blur of 12, halved.
       expect(paints[0].shadowBlur).toBe(6);
       expect(paints[0].shadowColor).toBe(GLOW);
     });
 
-    it('honours a custom base glow blur', (): void => {
+    it('honours a custom glow blur', (): void => {
       const paints: PaintSnapshot[] = recordPaints(viz.testCtx);
-      viz.setGlowIntensity(1);
 
-      viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT, {baseGlowBlur: 20});
+      viz.testDrawPathWithLayers(vi.fn(), MAIN, GLOW, HIGHLIGHT, {glowBlur: 20});
 
       expect(paints[0].shadowBlur).toBe(20);
     });
@@ -1798,17 +1478,7 @@ describe('Visualization base classes', (): void => {
   describe('buildSmoothPath geometry', (): void => {
     const POINTS: Array<{x: number; y: number}> = [{x: 0, y: 0}, {x: 100, y: 40}, {x: 200, y: 0}];
 
-    it('visits every point in order with straight lines when smoothing is 0', (): void => {
-      viz.setWaveformSmoothing(0);
-      const ctx: CanvasRenderingContext2D = createMockCtx();
-
-      viz.testBuildSmoothPath(ctx, POINTS);
-
-      expect(vi.mocked(ctx.lineTo).mock.calls).toEqual([[100, 40], [200, 0]]);
-    });
-
-    it('curves to each midpoint using the point itself as the control at full smoothing', (): void => {
-      viz.setWaveformSmoothing(1);
+    it('curves to each midpoint using the point itself as the control', (): void => {
       const ctx: CanvasRenderingContext2D = createMockCtx();
 
       viz.testBuildSmoothPath(ctx, POINTS);
@@ -1819,20 +1489,7 @@ describe('Visualization base classes', (): void => {
       ]);
     });
 
-    it('pulls the control point halfway back to the midpoint at half smoothing', (): void => {
-      viz.setWaveformSmoothing(0.5);
-      const ctx: CanvasRenderingContext2D = createMockCtx();
-
-      viz.testBuildSmoothPath(ctx, POINTS);
-
-      expect(vi.mocked(ctx.quadraticCurveTo).mock.calls).toEqual([
-        [25, 10, 50, 20],
-        [125, 30, 150, 20],
-      ]);
-    });
-
-    it('finishes a smoothed path on the last point', (): void => {
-      viz.setWaveformSmoothing(1);
+    it('finishes the path on the last point', (): void => {
       const ctx: CanvasRenderingContext2D = createMockCtx();
 
       viz.testBuildSmoothPath(ctx, POINTS);
@@ -1840,24 +1497,14 @@ describe('Visualization base classes', (): void => {
       expect(vi.mocked(ctx.lineTo).mock.calls).toEqual([[200, 0]]);
     });
 
-    it('starts a straight path from the given start index', (): void => {
-      viz.setWaveformSmoothing(0);
-      const ctx: CanvasRenderingContext2D = createMockCtx();
-
-      viz.testBuildSmoothPathFrom(ctx, POINTS, 2, 1);
-
-      expect(ctx.moveTo).toHaveBeenCalledWith(100, 40);
-      expect(vi.mocked(ctx.lineTo).mock.calls).toEqual([[200, 0]]);
-    });
-
-    it('starts a smoothed path from the given start index', (): void => {
-      viz.setWaveformSmoothing(1);
+    it('starts the path from the given start index', (): void => {
       const ctx: CanvasRenderingContext2D = createMockCtx();
 
       viz.testBuildSmoothPathFrom(ctx, POINTS, 2, 1);
 
       expect(ctx.moveTo).toHaveBeenCalledWith(100, 40);
       expect(vi.mocked(ctx.quadraticCurveTo).mock.calls).toEqual([[100, 40, 150, 20]]);
+      expect(vi.mocked(ctx.lineTo).mock.calls).toEqual([[200, 0]]);
     });
   });
 
@@ -1934,24 +1581,6 @@ describe('Visualization base classes', (): void => {
 
       expect(plain.getFftSize()).toBe(512);
       expect(analyser.fftSize).toBe(512);
-    });
-
-    it('still records a bar density change', (): void => {
-      plain.setBarDensity('high');
-
-      expect(plain.getBarDensity()).toBe('high');
-    });
-
-    it('still records bar colour changes', (): void => {
-      plain.setBarColorBottom('#010101');
-      plain.setBarColorMiddle('#020202');
-      plain.setBarColorTop('#030303');
-
-      expect([plain.getBarColorBottom(), plain.getBarColorMiddle(), plain.getBarColorTop()]).toEqual([
-        '#010101',
-        '#020202',
-        '#030303',
-      ]);
     });
 
     it('resizes the canvas without a resize hook', (): void => {

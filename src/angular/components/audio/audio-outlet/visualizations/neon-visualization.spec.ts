@@ -131,22 +131,6 @@ describe('NeonVisualization', (): void => {
       expect(viz.name).toBe('Neon');
       expect(viz.category).toBe('Bars & Waves');
     });
-
-    it('ignores the global look controls because its look is fixed', (): void => {
-      const base: Visualization = viz;
-
-      base.setSensitivity(1);
-      base.setTrailIntensity(1);
-      base.setLineWidth(5);
-      base.setGlowIntensity(1);
-      base.setWaveformSmoothing(0);
-
-      expect(viz.getSensitivity()).toBe(0.3);
-      expect(viz.getTrailIntensity()).toBe(0.5);
-      expect(viz.getLineWidth()).toBe(1);
-      expect(viz.getGlowIntensity()).toBe(0.5);
-      expect(viz.getWaveformSmoothing()).toBe(1);
-    });
   });
 
   describe('zero-sized canvas', (): void => {

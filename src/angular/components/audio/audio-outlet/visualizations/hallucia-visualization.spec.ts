@@ -6,7 +6,7 @@
  * - Internal surface: sizing, reuse, recreation, ping-pong between frames
  * - Audio: bass envelope, shear pivot, source texture packing
  * - Hue: resting drift, bass-triggered bursts, refractory period, stall clamp
- * - Sensitivity, fade-out, idling, FFT size changes, destroy
+ * - Fade-out, idling, FFT size changes, destroy
  * - Edge inputs: zero-sized canvas, extreme spectra, an analyser with no bins
  *
  * WebGL, the analyser and the clock are faked; see
@@ -369,10 +369,10 @@ describe('HalluciaVisualization', (): void => {
       viz.draw();
       viz.draw();
 
-      // Full-scale bass at the default sensitivity is a level of 0.5.
+      // Full-scale bass is a level of 1.
       const history: number[] = gl.uniformHistory('uBass').map((values: unknown[]): number => values[0] as number);
-      expect(history[0]).toBeCloseTo(0.1, 10);
-      expect(history[1]).toBeCloseTo(0.18, 10);
+      expect(history[0]).toBeCloseTo(0.2, 10);
+      expect(history[1]).toBeCloseTo(0.36, 10);
     });
 
     it('settles on the bass level under a sustained note', (): void => {
@@ -381,7 +381,7 @@ describe('HalluciaVisualization', (): void => {
 
       huesOver(viz, 100, 16);
 
-      expect(gl.uniformValue('uBass')).toBeCloseTo(0.5, 6);
+      expect(gl.uniformValue('uBass')).toBeCloseTo(1, 6);
     });
 
     it('ignores energy above the lowest 24 bins', (): void => {
@@ -393,15 +393,6 @@ describe('HalluciaVisualization', (): void => {
       expect(gl.uniformValue('uBass')).toBe(0);
     });
 
-    it('scales with sensitivity', (): void => {
-      analyser.spectrum = BASS_HEAVY_SPECTRUM;
-      const viz: HalluciaVisualization = createPlaying();
-      viz.setSensitivity(1);
-
-      viz.draw();
-
-      expect(gl.uniformValue('uBass')).toBeCloseTo(0.4, 10);
-    });
   });
 
   describe('shear pivot', (): void => {
@@ -498,7 +489,7 @@ describe('HalluciaVisualization', (): void => {
 
     it('does not burst while the bass stays under the threshold', (): void => {
       // Settles at a bass level of about 0.2, half the threshold.
-      analyser.spectrum = flat(100);
+      analyser.spectrum = flat(50);
       const viz: HalluciaVisualization = createPlaying();
 
       const hues: number[] = huesOver(viz, 200, 16);
@@ -510,31 +501,31 @@ describe('HalluciaVisualization', (): void => {
       vi.spyOn(Math, 'random').mockReturnValue(0.9);
       analyser.spectrum = BASS_HEAVY_SPECTRUM;
       const viz: HalluciaVisualization = createPlaying();
-      viz.setSensitivity(1);
 
-      const hues: number[] = huesOver(viz, 3, 16);
+      const hues: number[] = huesOver(viz, 5, 16);
 
-      expect(hues[0]).toBeCloseTo(HUE_BURST_RATE, 10);
-      expect(hues[2]).toBeCloseTo(3 * HUE_BURST_RATE, 10);
+      // Full-scale bass takes three frames to lift the envelope over the threshold.
+      expect(hues[1]).toBeCloseTo(2 * HUE_DRIFT, 10);
+      expect(hues[2]).toBeCloseTo(2 * HUE_DRIFT + HUE_BURST_RATE, 10);
+      expect(hues[4]).toBeCloseTo(2 * HUE_DRIFT + 3 * HUE_BURST_RATE, 10);
     });
 
     it('runs the burst backward when the direction roll is low, keeping the hue in range', (): void => {
       vi.spyOn(Math, 'random').mockReturnValue(0.1);
       analyser.spectrum = BASS_HEAVY_SPECTRUM;
       const viz: HalluciaVisualization = createPlaying();
-      viz.setSensitivity(1);
 
-      const hues: number[] = huesOver(viz, 2, 16);
+      const hues: number[] = huesOver(viz, 4, 16);
 
-      expect(hues[0]).toBeCloseTo(1 - HUE_BURST_RATE, 10);
-      expect(hues[1]).toBeCloseTo(1 - 2 * HUE_BURST_RATE, 10);
+      // The burst starts on the third frame, after two frames of forward drift.
+      expect(hues[2]).toBeCloseTo(1 + 2 * HUE_DRIFT - HUE_BURST_RATE, 10);
+      expect(hues[3]).toBeCloseTo(1 + 2 * HUE_DRIFT - 2 * HUE_BURST_RATE, 10);
     });
 
     it('ends the burst after a fixed time, however many frames that takes', (): void => {
       vi.spyOn(Math, 'random').mockReturnValue(0.9);
       analyser.spectrum = BASS_HEAVY_SPECTRUM;
       const slow: HalluciaVisualization = createPlaying();
-      slow.setSensitivity(1);
       const atFiftyFps: boolean[] = burstFrames(huesOver(slow, 60, 20));
 
       const fastCanvas: HTMLCanvasElement = document.createElement('canvas');
@@ -542,7 +533,6 @@ describe('HalluciaVisualization', (): void => {
       fastCanvas.getContext('webgl');
       gl = fakes.glFor(fastCanvas);
       const fast: HalluciaVisualization = createPlaying();
-      fast.setSensitivity(1);
       const atHundredFps: boolean[] = burstFrames(huesOver(fast, 60, 10));
 
       // 420ms of burst after the triggering frame: 21 more frames at 20ms, 42 more at 10ms.
@@ -554,52 +544,36 @@ describe('HalluciaVisualization', (): void => {
       vi.spyOn(Math, 'random').mockReturnValue(0.9);
       analyser.spectrum = BASS_HEAVY_SPECTRUM;
       const viz: HalluciaVisualization = createPlaying();
-      viz.setSensitivity(1);
 
       const bursting: boolean[] = burstFrames(huesOver(viz, 70, 20));
 
-      // Triggered on frame 1; 1300ms later is frame 66.
-      expect(bursting.slice(22, 65)).not.toContain(true);
-      expect(bursting[65]).toBe(true);
+      // Triggered on frame 3; 1300ms later is frame 68.
+      expect(bursting.slice(24, 67)).not.toContain(true);
+      expect(bursting[67]).toBe(true);
     });
 
     it('counts at most 250ms of a stalled frame against the burst', (): void => {
       vi.spyOn(Math, 'random').mockReturnValue(0.9);
       analyser.spectrum = BASS_HEAVY_SPECTRUM;
       const viz: HalluciaVisualization = createPlaying();
-      viz.setSensitivity(1);
-      const hues: number[] = huesOver(viz, 1, 16);
+      // The burst starts on the third frame.
+      const hues: number[] = huesOver(viz, 3, 16);
 
       // A ten second stall would otherwise end the 420ms burst outright.
       hues.push(...huesOver(viz, 1, 10_000));
       hues.push(...huesOver(viz, 4, 100));
 
-      expect(burstFrames(hues)).toEqual([true, true, true, true, false, false]);
+      expect(burstFrames(hues)).toEqual([false, false, true, true, true, true, false, false]);
     });
 
     it('keeps the hue within one turn over a long session', (): void => {
       analyser.spectrum = BASS_HEAVY_SPECTRUM;
       const viz: HalluciaVisualization = createPlaying();
-      viz.setSensitivity(1);
 
       const hues: number[] = huesOver(viz, 1000, 16);
 
       expect(Math.min(...hues)).toBeGreaterThanOrEqual(0);
       expect(Math.max(...hues)).toBeLessThan(1);
-    });
-  });
-
-  describe('sensitivity', (): void => {
-    it('passes the sensitivity factor to the shader as gain', (): void => {
-      const viz: HalluciaVisualization = createPlaying();
-      viz.draw();
-      const atDefault: number = gl.uniformValue('uGain');
-
-      viz.setSensitivity(1);
-      viz.draw();
-
-      expect(atDefault).toBe(0.5);
-      expect(gl.uniformValue('uGain')).toBe(2);
     });
   });
 
@@ -731,7 +705,6 @@ describe('HalluciaVisualization', (): void => {
       analyser.spectrum = spectrum;
       analyser.waveform = waveform;
       const viz: HalluciaVisualization = createPlaying();
-      viz.setSensitivity(1);
 
       huesOver(viz, 120, 16);
 

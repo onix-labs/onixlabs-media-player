@@ -70,7 +70,7 @@ describe('ModernVisualization', (): void => {
    * Draws one frame from a clean recording and returns the points of the trace.
    *
    * The trace is stroked five times over the same points; the first path is
-   * returned. With smoothing fixed at 100% each curve's control point is the
+   * returned. Each curve's control point is the
    * waveform point itself, so after the opening moveTo the path lists the
    * waveform points in order.
    */
@@ -281,35 +281,6 @@ describe('ModernVisualization', (): void => {
     });
   });
 
-  describe('fixed look', (): void => {
-    it('ignores the global sensitivity, trail, line width, glow and smoothing controls', (): void => {
-      // Through the base type, as the outlet calls them: the overrides take no argument.
-      const controlled: Visualization = viz;
-
-      controlled.setSensitivity(1);
-      controlled.setTrailIntensity(1);
-      controlled.setLineWidth(5);
-      controlled.setGlowIntensity(0);
-      controlled.setWaveformSmoothing(0);
-
-      expect(viz.getSensitivity()).toBe(0.2);
-      expect(viz.getTrailIntensity()).toBe(0);
-      expect(viz.getLineWidth()).toBe(1);
-      expect(viz.getGlowIntensity()).toBe(1);
-      expect(viz.getWaveformSmoothing()).toBe(1);
-    });
-
-    it('draws the same trace after the sensitivity control is moved', (): void => {
-      analyser.timeDomainData = constantSamples(0);
-      const before: RecordedPoint[] = drawTrace();
-      const controlled: Visualization = viz;
-
-      controlled.setSensitivity(1);
-
-      expect(drawTrace()).toEqual(before);
-    });
-  });
-
   describe('persistence', (): void => {
     it('fades the previous frame instead of clearing it', (): void => {
       recording.clear();
@@ -320,7 +291,7 @@ describe('ModernVisualization', (): void => {
       expect(recording.callsTo('clearRect')).toHaveLength(0);
       expect(fade.args).toEqual([0, 0, WIDTH, HEIGHT]);
       expect(fade.state['globalCompositeOperation']).toBe('destination-out');
-      // Base rate 0.03, doubled because the trail intensity is fixed at its minimum.
+      // A fast fade, so the trails stay short.
       expect(fade.state['fillStyle']).toBe('rgba(0, 0, 0, 0.06)');
     });
 

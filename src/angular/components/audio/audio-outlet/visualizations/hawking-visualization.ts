@@ -59,8 +59,11 @@ export class HawkingVisualization extends Canvas2DVisualization {
   /** Per-frame outward zoom applied to the trails. */
   private static readonly ZOOM_SCALE: number = 1.008;
 
-  /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 12;
+  /** Glow blur radius of the spikes and base ring, in pixels. */
+  private static readonly GLOW_BLUR: number = 6;
+
+  /** Stroke width of the spikes, in pixels. */
+  private static readonly SPIKE_LINE_WIDTH: number = 2;
 
   /** Number of spikes around each circle. */
   private static readonly SPIKE_COUNT: number = 128;
@@ -211,12 +214,6 @@ export class HawkingVisualization extends Canvas2DVisualization {
     for (let i: number = 0; i < HawkingVisualization.MAX_PARTICLES; i++) {
       this.particles.push({x: 0, y: 0, vx: 0, vy: 0, size: 0, life: 0, decay: 0, intensity: 0, hue: 0, filled: true});
     }
-    // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
-    this.sensitivity = 0.5;       // 50%
-    this.trailIntensity = 0.5;    // 50%
-    this.lineWidth = 2;           // 2px
-    this.glowIntensity = 0.5;     // 50%
-    this.waveformSmoothing = 0;   // spikes, not curves
   }
 
   public draw(): void {
@@ -311,7 +308,7 @@ export class HawkingVisualization extends Canvas2DVisualization {
       // Same data mapping as the spikes (repeated around the circle)
       const repeatPosition: number = ((spike + dataOffset) * HawkingVisualization.DATA_REPEATS) % spikeCount;
       const dataIndex: number = Math.floor((repeatPosition / spikeCount) * dataLength);
-      const amplitude: number = Math.min(1, Math.abs((this.dataArray[dataIndex] - 128) / 128) * this.sensitivityFactor);
+      const amplitude: number = Math.min(1, Math.abs((this.dataArray[dataIndex] - 128) / 128));
 
       if (Math.random() >= amplitude * HawkingVisualization.SPAWN_PROBABILITY) continue;
 
@@ -378,13 +375,6 @@ export class HawkingVisualization extends Canvas2DVisualization {
   protected override onFftSizeChanged(): void {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
-
-  // Fixed visual parameters: ignore the global controls (values set in constructor).
-  public override setSensitivity(): void { /* fixed */ }
-  public override setTrailIntensity(): void { /* fixed */ }
-  public override setLineWidth(): void { /* fixed */ }
-  public override setGlowIntensity(): void { /* fixed */ }
-  public override setWaveformSmoothing(): void { /* fixed */ }
 
   protected override onResize(): void {
     const width: number = this.width;
@@ -518,11 +508,11 @@ export class HawkingVisualization extends Canvas2DVisualization {
     trailCtx.strokeStyle = gradient;
     trailCtx.lineCap = 'round';
     trailCtx.shadowColor = glowColor;
-    trailCtx.shadowBlur = this.getScaledGlowBlur(HawkingVisualization.BASE_GLOW_BLUR);
+    trailCtx.shadowBlur = HawkingVisualization.GLOW_BLUR;
 
     // Spikes: radial lines whose length follows the waveform amplitude.
     // The data maps onto 1/DATA_REPEATS of the circle and repeats around it.
-    trailCtx.lineWidth = this.lineWidth;
+    trailCtx.lineWidth = HawkingVisualization.SPIKE_LINE_WIDTH;
     trailCtx.beginPath();
     for (let i: number = 0; i < spikeCount; i++) {
       const angle: number = rotation + (i / spikeCount) * Math.PI * 2 - Math.PI / 2;
@@ -530,7 +520,7 @@ export class HawkingVisualization extends Canvas2DVisualization {
       // Repeat the waveform data around the circle
       const repeatPosition: number = ((i + dataOffset) * HawkingVisualization.DATA_REPEATS) % spikeCount;
       const dataIndex: number = Math.floor((repeatPosition / spikeCount) * dataLength);
-      const amplitude: number = Math.abs((this.dataArray[dataIndex] - 128) / 128) * this.sensitivityFactor;
+      const amplitude: number = Math.abs((this.dataArray[dataIndex] - 128) / 128);
 
       const spikeLength: number = amplitude * spikeScale;
       const cos: number = Math.cos(angle);

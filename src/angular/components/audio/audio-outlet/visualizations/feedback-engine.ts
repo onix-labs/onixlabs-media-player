@@ -55,6 +55,9 @@ const HEX_RADIX: number = 16;
 /** Largest value of a colour channel. */
 const CHANNEL_MAX: number = 255;
 
+/** Value of the present pass's uAlpha, which scales the palette colour: full brightness. */
+const PRESENT_ALPHA: number = 1;
+
 /**
  * Multiplier applied to the surface each step.
  *
@@ -1063,8 +1066,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.uniform1i(this.traceUniforms['uWaveform'], 0);
     gl.uniform1f(
       this.traceUniforms['uAmplitude'],
-      TRACE_AMPLITUDE * (args[0] ?? 1) * this.sensitivityFactor
-        * (1 + this.bass * TRACE_BASS_FLEX)
+      TRACE_AMPLITUDE * (args[0] ?? 1) * (1 + this.bass * TRACE_BASS_FLEX)
     );
     gl.uniform1f(this.traceUniforms['uCentre'], 0.5 + (args[1] ?? 0));
     gl.uniform1f(this.traceUniforms['uGain'], TRACE_GAIN);
@@ -1096,10 +1098,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.uniform1i(this.radialUniforms['uWaveform'], 0);
     gl.uniform2f(this.radialUniforms['uSize'], this.surfaceWidth, this.surfaceHeight);
     gl.uniform1f(this.radialUniforms['uBase'], unit * fraction);
-    gl.uniform1f(
-      this.radialUniforms['uSwing'],
-      unit * CIRCLE_SWING * this.sensitivityFactor
-    );
+    gl.uniform1f(this.radialUniforms['uSwing'], unit * CIRCLE_SWING);
     gl.uniform1f(this.radialUniforms['uGain'], RING_GAIN);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
@@ -1137,7 +1136,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     if (count > 0) {
       let total: number = 0;
       for (let i: number = 0; i < count; i++) total += this.bins[i];
-      const level: number = (total / count / CHANNEL_MAX) * this.sensitivityFactor;
+      const level: number = total / count / CHANNEL_MAX;
       this.bass += (level - this.bass) * BASS_SMOOTHING;
     }
     this.phase = (this.phase + PHASE_BASE_RATE + this.bass * PHASE_BASS_RATE) % TWO_PI;
@@ -1188,7 +1187,7 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
     gl.uniform1i(this.presentUniforms['uPalette'], 1);
-    gl.uniform1f(this.presentUniforms['uAlpha'], this.getFadeMultiplier());
+    gl.uniform1f(this.presentUniforms['uAlpha'], PRESENT_ALPHA);
     // Idle sits at zero shift and no flash, so the palette is simply itself.
     gl.uniform1f(
       this.presentUniforms['uPaletteShift'],
@@ -1250,26 +1249,26 @@ export abstract class FeedbackVisualization extends WebGLVisualization {
    * Reads a time-domain sample as a signed deflection.
    *
    * @param fraction - Position along the buffer, 0 to 1
-   * @returns Deflection scaled by sensitivity, roughly -1 to 1
+   * @returns Deflection, roughly -1 to 1
    */
   private sampleAt(fraction: number): number {
     const length: number = this.samples.length;
     if (length === 0) return 0;
     const index: number = Math.min(length - 1, Math.floor(fraction * length));
-    return ((this.samples[index] - SAMPLE_CENTRE) / SAMPLE_CENTRE) * this.sensitivityFactor;
+    return (this.samples[index] - SAMPLE_CENTRE) / SAMPLE_CENTRE;
   }
 
   /**
    * Reads a frequency bin.
    *
    * @param fraction - Position across the spectrum, 0 to 1
-   * @returns Magnitude scaled by sensitivity, 0 upward
+   * @returns Magnitude, 0 to 1
    */
   private binAt(fraction: number): number {
     const length: number = this.bins.length;
     if (length === 0) return 0;
     const index: number = Math.min(length - 1, Math.floor(fraction * length));
-    return (this.bins[index] / CHANNEL_MAX) * this.sensitivityFactor;
+    return this.bins[index] / CHANNEL_MAX;
   }
 
   public override destroy(): void {

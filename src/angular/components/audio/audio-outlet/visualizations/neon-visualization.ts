@@ -31,8 +31,11 @@ export class NeonVisualization extends Canvas2DVisualization {
   /** Per-frame outward zoom applied to the trails. */
   private static readonly ZOOM_SCALE: number = 1.03;
 
-  /** Base glow blur radius in pixels. */
-  private static readonly BASE_GLOW_BLUR: number = 15;
+  /** Glow blur radius in pixels. */
+  private static readonly GLOW_BLUR: number = 7.5;
+
+  /** Gain applied to the waveform samples before they are drawn. */
+  private static readonly SENSITIVITY_FACTOR: number = 0.6;
 
   /** Number of points sampled across each waveform. */
   private static readonly WAVEFORM_POINTS: number = 72;
@@ -108,13 +111,6 @@ export class NeonVisualization extends Canvas2DVisualization {
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
-    // Hard-coded look; the setters below are no-ops so the (removed) controls can't change these.
-    this.sensitivity = 0.3;       // 30%
-    this.trailIntensity = 0.5;    // 50%
-    this.lineWidth = 1;           // 1px
-    this.glowIntensity = 0.5;     // 50%
-    this.waveformSmoothing = 1;   // 100%
-
     // Pre-allocate point arrays for both crosses
     this.cyanHorizontalPoints = [];
     this.cyanVerticalPoints = [];
@@ -189,12 +185,12 @@ export class NeonVisualization extends Canvas2DVisualization {
     this.drawPathWithLayers(
       (): void => { this.buildSmoothPath(this.cyanTrailCtx!, this.cyanHorizontalPoints, NeonVisualization.WAVEFORM_POINTS); },
       color1.main, color1.glow, NeonVisualization.COLOR_HIGHLIGHT,
-      {ctx: this.cyanTrailCtx!, baseGlowBlur: NeonVisualization.BASE_GLOW_BLUR}
+      {ctx: this.cyanTrailCtx!, glowBlur: NeonVisualization.GLOW_BLUR}
     );
     this.drawPathWithLayers(
       (): void => { this.buildSmoothPath(this.cyanTrailCtx!, this.cyanVerticalPoints, NeonVisualization.WAVEFORM_POINTS); },
       color1.main, color1.glow, NeonVisualization.COLOR_HIGHLIGHT,
-      {ctx: this.cyanTrailCtx!, baseGlowBlur: NeonVisualization.BASE_GLOW_BLUR}
+      {ctx: this.cyanTrailCtx!, glowBlur: NeonVisualization.GLOW_BLUR}
     );
 
     // Cross 2 (rotates counter-clockwise)
@@ -205,12 +201,12 @@ export class NeonVisualization extends Canvas2DVisualization {
     this.drawPathWithLayers(
       (): void => { this.buildSmoothPath(this.magentaTrailCtx!, this.magentaHorizontalPoints, NeonVisualization.WAVEFORM_POINTS); },
       color2.main, color2.glow, NeonVisualization.COLOR_HIGHLIGHT,
-      {ctx: this.magentaTrailCtx!, baseGlowBlur: NeonVisualization.BASE_GLOW_BLUR}
+      {ctx: this.magentaTrailCtx!, glowBlur: NeonVisualization.GLOW_BLUR}
     );
     this.drawPathWithLayers(
       (): void => { this.buildSmoothPath(this.magentaTrailCtx!, this.magentaVerticalPoints, NeonVisualization.WAVEFORM_POINTS); },
       color2.main, color2.glow, NeonVisualization.COLOR_HIGHLIGHT,
-      {ctx: this.magentaTrailCtx!, baseGlowBlur: NeonVisualization.BASE_GLOW_BLUR}
+      {ctx: this.magentaTrailCtx!, glowBlur: NeonVisualization.GLOW_BLUR}
     );
 
     // Composite both trail canvases to main canvas with additive blending
@@ -226,13 +222,6 @@ export class NeonVisualization extends Canvas2DVisualization {
   protected override onFftSizeChanged(): void {
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
   }
-
-  // Fixed visual parameters: ignore the global controls (values set in constructor).
-  public override setSensitivity(): void { /* fixed */ }
-  public override setTrailIntensity(): void { /* fixed */ }
-  public override setLineWidth(): void { /* fixed */ }
-  public override setGlowIntensity(): void { /* fixed */ }
-  public override setWaveformSmoothing(): void { /* fixed */ }
 
   protected override onResize(): void {
     const width: number = this.width;
@@ -299,7 +288,7 @@ export class NeonVisualization extends Canvas2DVisualization {
     const startX: number = this.horizontalStartX;
     const centerY: number = this.screenCenterY;
     const amplitude: number = this.waveformAmplitude;
-    const sensitivityFactor: number = this.sensitivityFactor;
+    const sensitivityFactor: number = NeonVisualization.SENSITIVITY_FACTOR;
 
     for (let i: number = 0; i <= numPoints; i++) {
       // Map point to data index with offset for variation between waveforms
@@ -321,7 +310,7 @@ export class NeonVisualization extends Canvas2DVisualization {
     const centerX: number = this.screenCenterX;
     const startY: number = this.verticalStartY;
     const amplitude: number = this.waveformAmplitude;
-    const sensitivityFactor: number = this.sensitivityFactor;
+    const sensitivityFactor: number = NeonVisualization.SENSITIVITY_FACTOR;
 
     for (let i: number = 0; i <= numPoints; i++) {
       // Map point to data index with offset for variation between waveforms
