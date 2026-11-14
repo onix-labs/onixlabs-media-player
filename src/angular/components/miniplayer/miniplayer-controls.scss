@@ -88,11 +88,13 @@
 // so they read over any frame in light and dark. Sizes and borders are
 // today's; borders go transparent rather than away.
 @include player-theme.pebble {
+  // The group casts the one drop shadow (see the main controls).
   .button-group {
     border-color: transparent;
+    border-radius: var(--pebble-radius-md);
     outline: none;
     background: transparent;
-    box-shadow: none;
+    box-shadow: var(--pebble-shadow-md);
   }
 
   button {
@@ -100,11 +102,21 @@
     --pebble-edge-bottom: var(--pebble-edge-button);
     color: var(--pebble-primary);
     background: color-mix(in srgb, var(--pebble-button-surface) 92%, transparent);
-    box-shadow: var(--pebble-edge-shadow), var(--pebble-shadow-md);
-    // One divider per seam, the button's right edge, soft enough to sit close
-    // to the button's own colour; no left edge.
+    box-shadow: var(--pebble-edge-shadow);
+    // No dividers: the buttons of a group run together as one raised shape,
+    // a little rounder at its ends than in the other themes.
     border-left: none;
-    border-right-color: color-mix(in srgb, var(--pebble-button-surface), var(--pebble-edge-dark) 30%);
+    border-right: none;
+
+    &:first-of-type {
+      border-top-left-radius: var(--pebble-radius-md);
+      border-bottom-left-radius: var(--pebble-radius-md);
+    }
+
+    &:last-of-type {
+      border-top-right-radius: var(--pebble-radius-md);
+      border-bottom-right-radius: var(--pebble-radius-md);
+    }
 
     &:hover:not(:disabled) {
       color: var(--pebble-heading);
