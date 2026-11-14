@@ -253,16 +253,17 @@
 // Pebble player theme
 // =============================================================================
 //
-// The bar is a raised Pebble surface; each button group a raised segmented
-// button whose segments are ghost buttons split by hairlines, with play/pause
-// the one primary; the tracks are Pebble ranges filled with the accent. Every
+// The bar sits on the window's page, seamless with it; each button group is a
+// raised segmented button whose segments are ghost buttons split by hairlines,
+// play/pause marked only by its icon in the accent; the tracks are Pebble
+// ranges filled with the accent. Every
 // size, gap and border width is today's (borders go transparent rather than
 // away), so nothing moves between themes. Colours come from the --pebble-*
 // tokens, which follow the colour scheme.
 @include player-theme.pebble {
-  @include pebble.surface(lg);
-  // Full-bleed along the window's bottom edge.
-  border-radius: 0;
+  // No panel of its own: the controls belong to the window, not a bar on it.
+  background: transparent;
+  box-shadow: none;
 
   .seek-bar-container {
     // Not Pebble's 1.5 line height: the readouts set the row's height, and
@@ -335,22 +336,13 @@
     }
   }
 
-  // Play/pause: the primary button, with the primary's own lit edges.
+  // Play/pause: a segment like its neighbours, told apart only by its icon in
+  // the accent.
   .button-group.center button:nth-of-type(2) {
-    --pebble-edge-top: color-mix(in srgb, var(--pebble-primary), white 25%);
-    --pebble-edge-bottom: color-mix(in srgb, var(--pebble-primary), black 25%);
-    color: var(--pebble-primary-contrast);
-    background: var(--pebble-primary);
-    box-shadow: var(--pebble-edge-shadow);
+    color: var(--player-accent);
 
     &:hover:not(:disabled) {
-      color: var(--pebble-primary-contrast);
-      background: color-mix(in srgb, var(--pebble-primary), var(--pebble-surface) 15%);
-    }
-
-    &:disabled {
-      color: var(--pebble-primary-contrast);
-      opacity: 0.55;
+      color: var(--player-accent);
     }
   }
 
