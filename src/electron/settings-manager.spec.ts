@@ -6,7 +6,7 @@
  * - All public update methods and their validators
  * - Save/load persistence cycle
  * - validateAndMerge partial settings merge with defaults
- * - v1 to v2 migration (perVisualizationSensitivity -> perVisualizationSettings)
+ * - Settings files from older versions that still carry per-visualization tuning
  * - Subtitle, equalizer and video adjustment settings (update and load)
  * - Recent files and playlists (ordering, de-duplication, caps, removal)
  * - Debounced saving, flush, and failed or interrupted writes
@@ -61,7 +61,6 @@ import type {
   SubtitleSettingsUpdate,
   EqualizerSettingsUpdate,
   VideoAdjustmentsSettingsUpdate,
-  PerVisualizationSettings,
   RecentItem,
   RecentItemsSettings,
   RenderResolution,
@@ -206,7 +205,6 @@ describe('SettingsManager', () => {
           defaultType: 'waveform',
           maxFrameRate: 60,
           fftSize: 1024,
-          perVisualizationSettings: {},
         },
         application: { serverPort: 3000, controlsAutoHideDelay: 10 },
         playback: {
@@ -374,53 +372,6 @@ describe('SettingsManager', () => {
       expect(r3.visualization.fftSize).toBe(2048);
     });
 
-    it('should deep-merge perVisualizationSettings with existing settings', () => {
-      const manager: SettingsManager = new SettingsManager();
-
-      // First update: set bars sensitivity
-      manager.updateVisualizationSettings({
-        perVisualizationSettings: { bars: { sensitivity: 0.7 } },
-      });
-
-      // Second update: set bars barDensity (should merge, not replace)
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: { bars: { barDensity: 'high' } },
-      });
-
-      expect(result.visualization.perVisualizationSettings['bars']?.sensitivity).toBe(0.7);
-      expect(result.visualization.perVisualizationSettings['bars']?.barDensity).toBe('high');
-    });
-
-    it('should strip invalid per-visualization settings keys', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          'unknownViz': { sensitivity: 0.5 },
-          'bars': { sensitivity: 0.9 },
-        },
-      });
-
-      expect(result.visualization.perVisualizationSettings['unknownViz']).toBeUndefined();
-      expect(result.visualization.perVisualizationSettings['bars']?.sensitivity).toBe(0.9);
-    });
-
-    it('should validate per-visualization local setting values', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          bars: {
-            sensitivity: 2.0,    // invalid: > 1
-            barDensity: 'ultra' as 'low',  // invalid
-            barColorBottom: '#00cc00',     // valid
-          },
-        },
-      });
-
-      const barsSettings = result.visualization.perVisualizationSettings['bars'];
-      expect(barsSettings?.sensitivity).toBeUndefined();
-      expect(barsSettings?.barDensity).toBeUndefined();
-      expect(barsSettings?.barColorBottom).toBe('#00cc00');
-    });
   });
 
   // ========================================================================
@@ -874,25 +825,6 @@ describe('SettingsManager', () => {
       expect(settings.windowState.miniplayerBounds).toEqual({ x: 10, y: 20, width: 300, height: 200 });
     });
 
-    it('should persist perVisualizationSettings through a round trip', () => {
-      const manager1: SettingsManager = new SettingsManager();
-      manager1.updateVisualizationSettings({
-        perVisualizationSettings: {
-          bars: { sensitivity: 0.8, barDensity: 'high', barColorBottom: '#112233' },
-          waveform: { lineWidth: 3.0, glowIntensity: 0.7 },
-        },
-      });
-
-      manager1.flush();
-      const manager2: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager2.getSettings();
-
-      expect(settings.visualization.perVisualizationSettings['bars']?.sensitivity).toBe(0.8);
-      expect(settings.visualization.perVisualizationSettings['bars']?.barDensity).toBe('high');
-      expect(settings.visualization.perVisualizationSettings['bars']?.barColorBottom).toBe('#112233');
-      expect(settings.visualization.perVisualizationSettings['waveform']?.lineWidth).toBe(3.0);
-      expect(settings.visualization.perVisualizationSettings['waveform']?.glowIntensity).toBe(0.7);
-    });
   });
 
   // ========================================================================
@@ -1001,102 +933,93 @@ describe('SettingsManager', () => {
   });
 
   // ========================================================================
-  // 10. v1 -> v2 migration
+  // 10. Legacy per-visualization settings
   // ========================================================================
 
-  describe('v1 to v2 migration', () => {
-    it('should migrate perVisualizationSensitivity to perVisualizationSettings', () => {
-      writeSettingsFile({
-        version: 1,
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          perVisualizationSensitivity: {
-            bars: 0.7,
-            waveform: 0.3,
-            tunnel: 0.9,
-          },
-        },
-      });
+  describe('legacy per-visualization settings', () => {
+    /** Every global visualization setting, each away from its default, as an older version stored them. */
+    const LEGACY_VISUALIZATION: Record<string, unknown> = {
+      defaultType: 'neon',
+      maxFrameRate: 30,
+      fftSize: 512,
+      renderResolution: '640x360',
+      crossfadeDuration: 1500,
+      crossfadeStyle: 'blur',
+    };
 
-      const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
+    /** The global visualization settings LEGACY_VISUALIZATION should load as. */
+    const EXPECTED_VISUALIZATION: AppSettings['visualization'] = {
+      defaultType: 'neon',
+      maxFrameRate: 30,
+      fftSize: 512,
+      renderResolution: '640x360',
+      crossfadeDuration: 1500,
+      crossfadeStyle: 'blur',
+    };
 
-      expect(settings.visualization.perVisualizationSettings['bars']?.sensitivity).toBe(0.7);
-      expect(settings.visualization.perVisualizationSettings['waveform']?.sensitivity).toBe(0.3);
-      expect(settings.visualization.perVisualizationSettings['tunnel']?.sensitivity).toBe(0.9);
+    /** What older versions may have left under visualization.perVisualizationSettings. */
+    const LEGACY_PER_VISUALIZATION_VALUES: readonly (readonly [string, unknown])[] = [
+      ['well-formed', { bars: { barDensity: 'high', barColorTop: '#ff0000' }, neon: { glowIntensity: 0.9, sensitivity: 0.3 } }],
+      ['empty', {}],
+      ['out of range', { bars: { sensitivity: 5, barDensity: 'extreme', lineWidth: -1, strobeFrequency: 2.5 } }],
+      ['keyed by unknown visualizations', { nonexistent: { sensitivity: 0.5 } }],
+      ['holding non-object entries', { bars: 'loud', waveform: null, tunnel: 7 }],
+      ['a string', 'everything'],
+      ['a number', 42],
+      ['null', null],
+      ['an array', [{ bars: { barDensity: 'low' } }]],
+    ];
+
+    it.each(LEGACY_PER_VISUALIZATION_VALUES)('should load a file whose perVisualizationSettings is %s and keep every other visualization setting', (_label: string, legacy: unknown) => {
+      writeSettingsFile({ version: 2, visualization: { ...LEGACY_VISUALIZATION, perVisualizationSettings: legacy } });
+      mockedLoggerError.mockClear();
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.visualization).toEqual(EXPECTED_VISUALIZATION);
+      expect(mockedLoggerError).not.toHaveBeenCalled();
     });
 
-    it('should skip invalid visualization types during migration', () => {
-      writeSettingsFile({
-        version: 1,
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          perVisualizationSensitivity: {
-            bars: 0.5,
-            nonexistent: 0.8,
-          },
-        },
-      });
-
+    it.each(LEGACY_PER_VISUALIZATION_VALUES)('should not write a perVisualizationSettings that is %s back on the next save', (_label: string, legacy: unknown) => {
+      writeSettingsFile({ version: 2, visualization: { ...LEGACY_VISUALIZATION, perVisualizationSettings: legacy } });
       const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
 
-      expect(settings.visualization.perVisualizationSettings['bars']?.sensitivity).toBe(0.5);
-      expect(settings.visualization.perVisualizationSettings['nonexistent']).toBeUndefined();
+      manager.updatePlaybackSettings({ skipDuration: 15 });
+      manager.flush();
+
+      const onDisk: AppSettings = readSettingsFile();
+      expect(Object.keys(onDisk.visualization)).not.toContain('perVisualizationSettings');
+      expect(onDisk.visualization).toEqual(EXPECTED_VISUALIZATION);
+      expect(onDisk.playback.skipDuration).toBe(15);
     });
 
-    it('should skip invalid sensitivity values during migration', () => {
+    it('should drop the v1 perVisualizationSensitivity map as well', () => {
       writeSettingsFile({
         version: 1,
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          perVisualizationSensitivity: {
-            bars: 1.5,       // out of range
-            waveform: -0.1,  // out of range
-            tunnel: 'high',  // wrong type
-          },
-        },
+        visualization: { ...LEGACY_VISUALIZATION, perVisualizationSensitivity: { bars: 0.7, waveform: 0.3 } },
       });
-
       const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
 
-      expect(settings.visualization.perVisualizationSettings['bars']?.sensitivity).toBeUndefined();
-      expect(settings.visualization.perVisualizationSettings['waveform']?.sensitivity).toBeUndefined();
-      expect(settings.visualization.perVisualizationSettings['tunnel']?.sensitivity).toBeUndefined();
+      expect(manager.getSettings().visualization).toEqual(EXPECTED_VISUALIZATION);
+
+      manager.updateVisualizationSettings({ fftSize: 1024 });
+      manager.flush();
+
+      const onDisk: Record<string, unknown> = readSettingsFile().visualization as unknown as Record<string, unknown>;
+      expect(Object.keys(onDisk)).not.toContain('perVisualizationSensitivity');
+      expect(onDisk['fftSize']).toBe(1024);
     });
 
-    it('should not overwrite existing v2 perVisualizationSettings with migrated data', () => {
-      writeSettingsFile({
-        version: 1,
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          perVisualizationSettings: {
-            bars: { sensitivity: 0.6, barDensity: 'high' },
-          },
-          perVisualizationSensitivity: {
-            bars: 0.9,
-          },
-        },
-      });
-
+    it('should ignore perVisualizationSettings sent by an older renderer and apply the rest of the update', () => {
       const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
+      const update: unknown = { maxFrameRate: 15, perVisualizationSettings: { bars: { barDensity: 'high' } } };
 
-      // The v2 data is loaded first, then the v1 migration merges over it.
-      // Since the migration simply sets sensitivity, the barDensity from v2 should remain
-      // but sensitivity gets overwritten by the migration value.
-      expect(settings.visualization.perVisualizationSettings['bars']?.barDensity).toBe('high');
-      // The v1 migration overwrites sensitivity
-      expect(settings.visualization.perVisualizationSettings['bars']?.sensitivity).toBe(0.9);
+      const result: AppSettings = manager.updateVisualizationSettings(update as VisualizationSettingsUpdate);
+      manager.flush();
+
+      expect(result.visualization.maxFrameRate).toBe(15);
+      expect(Object.keys(result.visualization)).not.toContain('perVisualizationSettings');
+      expect(Object.keys(readSettingsFile().visualization)).not.toContain('perVisualizationSettings');
     });
   });
 
@@ -1150,156 +1073,7 @@ describe('SettingsManager', () => {
   });
 
   // ========================================================================
-  // 12. Per-visualization local settings validators (via update)
-  // ========================================================================
-
-  describe('per-visualization local setting validators', () => {
-    it('should accept valid barDensity values (low, medium, high)', () => {
-      const validDensities: readonly string[] = ['low', 'medium', 'high'];
-
-      for (const density of validDensities) {
-        const manager: SettingsManager = new SettingsManager();
-        const result: AppSettings = manager.updateVisualizationSettings({
-          perVisualizationSettings: {
-            bars: { barDensity: density as 'low' | 'medium' | 'high' },
-          },
-        });
-        expect(result.visualization.perVisualizationSettings['bars']?.barDensity).toBe(density);
-      }
-    });
-
-    it('should reject invalid barDensity values', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          bars: { barDensity: 'extreme' as 'low' },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['bars']?.barDensity).toBeUndefined();
-    });
-
-    it('should accept valid trailIntensity (0.0 - 1.0)', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          tunnel: { trailIntensity: 0.75 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['tunnel']?.trailIntensity).toBe(0.75);
-    });
-
-    it('should reject invalid trailIntensity', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          tunnel: { trailIntensity: 1.5 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['tunnel']?.trailIntensity).toBeUndefined();
-    });
-
-    it('should accept valid lineWidth (1.0 - 5.0)', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          waveform: { lineWidth: 3.5 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['waveform']?.lineWidth).toBe(3.5);
-    });
-
-    it('should reject invalid lineWidth', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const r1: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: { waveform: { lineWidth: 0.5 } },
-      });
-      expect(r1.visualization.perVisualizationSettings['waveform']?.lineWidth).toBeUndefined();
-
-      const manager2: SettingsManager = new SettingsManager();
-      const r2: AppSettings = manager2.updateVisualizationSettings({
-        perVisualizationSettings: { waveform: { lineWidth: 6.0 } },
-      });
-      expect(r2.visualization.perVisualizationSettings['waveform']?.lineWidth).toBeUndefined();
-    });
-
-    it('should accept valid glowIntensity (0.0 - 1.0)', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          neon: { glowIntensity: 0.9 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['neon']?.glowIntensity).toBe(0.9);
-    });
-
-    it('should reject invalid glowIntensity', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          neon: { glowIntensity: -0.1 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['neon']?.glowIntensity).toBeUndefined();
-    });
-
-    it('should accept valid waveformSmoothing (0.0 - 1.0)', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          onix: { waveformSmoothing: 0.8 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['onix']?.waveformSmoothing).toBe(0.8);
-    });
-
-    it('should reject invalid waveformSmoothing', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          onix: { waveformSmoothing: 1.5 },
-        },
-      });
-      expect(result.visualization.perVisualizationSettings['onix']?.waveformSmoothing).toBeUndefined();
-    });
-
-    it('should accept valid hex color for bar colors', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          bars: {
-            barColorBottom: '#00ff00',
-            barColorMiddle: '#ffff00',
-            barColorTop: '#ff0000',
-          },
-        },
-      });
-
-      const barsSettings = result.visualization.perVisualizationSettings['bars'];
-      expect(barsSettings?.barColorBottom).toBe('#00ff00');
-      expect(barsSettings?.barColorMiddle).toBe('#ffff00');
-      expect(barsSettings?.barColorTop).toBe('#ff0000');
-    });
-
-    it('should reject invalid hex color for bar colors', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          bars: {
-            barColorBottom: '#FFF',       // too short
-            barColorMiddle: 'FFFF00',     // missing hash
-            barColorTop: '#ZZZZZZ',       // invalid hex
-          },
-        },
-      });
-
-      const barsSettings = result.visualization.perVisualizationSettings['bars'];
-      // All invalid -> no entry should exist at all (empty object filtered out)
-      expect(barsSettings).toBeUndefined();
-    });
-  });
-
-  // ========================================================================
-  // 13. Edge cases / additional coverage
+  // 12. Edge cases / additional coverage
   // ========================================================================
 
   describe('edge cases', () => {
@@ -1332,38 +1106,6 @@ describe('SettingsManager', () => {
 
       const settings: AppSettings = manager.getSettings();
       expect(settings.visualization.defaultType).toBe('neon');
-    });
-
-    it('should handle an empty perVisualizationSettings object in file', () => {
-      writeSettingsFile({
-        version: 2,
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          perVisualizationSettings: {},
-        },
-      });
-
-      const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
-
-      expect(settings.visualization.perVisualizationSettings).toEqual({});
-    });
-
-    it('should not include per-visualization entries with all invalid fields', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: {
-          bars: {
-            sensitivity: 5.0,       // invalid
-            barDensity: 'x' as 'low', // invalid
-          },
-        },
-      });
-
-      // The bars entry should not exist because all its fields were invalid
-      expect(result.visualization.perVisualizationSettings['bars']).toBeUndefined();
     });
 
     it('should use atomic write (temp file strategy)', () => {
@@ -1676,63 +1418,6 @@ describe('SettingsManager', () => {
       expect(settings.visualization.crossfadeStyle).toBe('fade');
     });
 
-    it('should accept a whole-number strobe frequency between 1 and 20 Hz', () => {
-      const validFrequencies: readonly number[] = [1, 10, 20];
-
-      for (const frequency of validFrequencies) {
-        const manager: SettingsManager = new SettingsManager();
-        const result: AppSettings = manager.updateVisualizationSettings({
-          perVisualizationSettings: { spotlight: { strobeFrequency: frequency } },
-        });
-        expect(result.visualization.perVisualizationSettings['spotlight']?.strobeFrequency).toBe(frequency);
-      }
-    });
-
-    it('should drop a strobe frequency that is fractional or out of range', () => {
-      const invalidFrequencies: readonly unknown[] = [0, 21, 2.5, -1, '5'];
-
-      for (const frequency of invalidFrequencies) {
-        const manager: SettingsManager = new SettingsManager();
-        const result: AppSettings = manager.updateVisualizationSettings({
-          perVisualizationSettings: { spotlight: { strobeFrequency: frequency as number, sensitivity: 0.5 } },
-        });
-        expect(result.visualization.perVisualizationSettings['spotlight']).toEqual({ sensitivity: 0.5 });
-      }
-    });
-
-    it('should skip a per-visualization entry that is not an object', () => {
-      const manager: SettingsManager = new SettingsManager();
-      const update: unknown = { bars: 'loud', waveform: null, tunnel: { sensitivity: 0.2 } };
-
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: update as PerVisualizationSettings,
-      });
-
-      expect(result.visualization.perVisualizationSettings).toEqual({ tunnel: { sensitivity: 0.2 } });
-    });
-
-    it('should leave per-visualization settings alone when the update is not an object', () => {
-      const manager: SettingsManager = new SettingsManager();
-      manager.updateVisualizationSettings({ perVisualizationSettings: { bars: { sensitivity: 0.3 } } });
-
-      const result: AppSettings = manager.updateVisualizationSettings({
-        perVisualizationSettings: null as unknown as PerVisualizationSettings,
-      });
-
-      expect(result.visualization.perVisualizationSettings).toEqual({ bars: { sensitivity: 0.3 } });
-    });
-
-    it('should ignore perVisualizationSettings in the file when it is not an object', () => {
-      writeSettingsFile({
-        version: 2,
-        visualization: { defaultType: 'bars', perVisualizationSettings: 'everything' },
-      });
-
-      const settings: AppSettings = new SettingsManager().getSettings();
-
-      expect(settings.visualization.defaultType).toBe('bars');
-      expect(settings.visualization.perVisualizationSettings).toEqual({});
-    });
   });
 
   // ===========================================================================

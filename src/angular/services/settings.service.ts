@@ -10,7 +10,7 @@
  * - Playback: volume, crossfade, skip duration, aspect mode, preferred audio language
  * - Subtitles: font size, colors, shadow effects
  * - Transcoding: video quality, audio bitrate
- * - Visualization: default type, frame rate, FFT size, per-visualization settings
+ * - Visualization: default type, frame rate, FFT size, render resolution, crossfade
  *
  * @module app/services/settings.service
  */
@@ -95,45 +95,12 @@ export const CROSSFADE_STYLES: readonly CrossfadeStyle[] = [
 ];
 
 /**
- * Bar density levels for bar-based visualizations.
- */
-export type BarDensity = 'low' | 'medium' | 'high';
-
-/**
- * Per-visualization local settings.
- * All values are optional - if not set, defaults are used.
- */
-export interface VisualizationLocalSettings {
-  readonly sensitivity?: number;
-  readonly barDensity?: BarDensity;
-  readonly trailIntensity?: number;
-  readonly lineWidth?: number;
-  readonly glowIntensity?: number;
-  readonly waveformSmoothing?: number;
-  readonly barColorBottom?: string;
-  readonly barColorMiddle?: string;
-  readonly barColorTop?: string;
-  readonly strobeFrequency?: number;
-}
-
-/**
- * Map of visualization type to its local settings.
- */
-export type PerVisualizationSettings = Partial<Record<string, VisualizationLocalSettings>>;
-
-/**
- * Keys for local settings that can be customized per visualization.
- */
-export type LocalSettingKey = keyof VisualizationLocalSettings;
-
-/**
- * Metadata for a visualization including applicable settings.
+ * Identifying metadata for a visualization: its id, display name and category.
  */
 export interface VisualizationMetadata {
   readonly id: string;
   readonly name: string;
   readonly category: 'Bars & Waves' | 'Signature' | 'Nostalgia' | 'Simple';
-  readonly applicableSettings: readonly LocalSettingKey[];
 }
 
 /**
@@ -243,8 +210,7 @@ export interface SubtitleSettings {
 
 /**
  * Visualization settings structure.
- * Global settings apply to all visualizations.
- * Per-visualization settings are stored in perVisualizationSettings.
+ * Every setting applies to all visualizations alike.
  */
 export interface VisualizationSettings {
   /** The default visualization to display on startup */
@@ -259,8 +225,6 @@ export interface VisualizationSettings {
   readonly crossfadeDuration: CrossfadeDuration;
   /** Visual style of the visualization switch transition (default 'fade') */
   readonly crossfadeStyle: CrossfadeStyle;
-  /** Per-visualization local settings (sensitivity, barDensity, trailIntensity, etc.) */
-  readonly perVisualizationSettings: PerVisualizationSettings;
 }
 
 /**
@@ -414,48 +378,31 @@ export interface VisualizationOption {
 // ============================================================================
 
 /**
- * Default values for per-visualization local settings.
- * Used when a setting is not customized for a visualization.
- */
-export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> = {
-  sensitivity: 0.5,
-  barDensity: 'medium',
-  trailIntensity: 0.5,
-  lineWidth: 2.0,
-  glowIntensity: 0.5,
-  waveformSmoothing: 0.5,
-  barColorBottom: '#00cc00',
-  barColorMiddle: '#cccc00',
-  barColorTop: '#cc0000',
-  strobeFrequency: 5,
-};
-
-/**
- * Metadata for all visualizations including which settings apply to each.
+ * Identifying metadata for every visualization.
  */
 export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   // Bars & Waves category
-  {id: 'bars', name: 'Analyzer', category: 'Bars & Waves', applicableSettings: ['barDensity', 'barColorBottom', 'barColorMiddle', 'barColorTop']},
-  {id: 'waveform', name: 'Classic', category: 'Bars & Waves', applicableSettings: []},
-  {id: 'modern', name: 'Modern', category: 'Bars & Waves', applicableSettings: []},
-  {id: 'tunnel', name: 'Plasma', category: 'Bars & Waves', applicableSettings: []},
-  {id: 'neon', name: 'Neon', category: 'Bars & Waves', applicableSettings: []},
-  {id: 'hawking', name: 'Hawking', category: 'Bars & Waves', applicableSettings: []},
-  {id: 'onix', name: 'Onix', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'bars', name: 'Analyzer', category: 'Bars & Waves'},
+  {id: 'waveform', name: 'Classic', category: 'Bars & Waves'},
+  {id: 'modern', name: 'Modern', category: 'Bars & Waves'},
+  {id: 'tunnel', name: 'Plasma', category: 'Bars & Waves'},
+  {id: 'neon', name: 'Neon', category: 'Bars & Waves'},
+  {id: 'hawking', name: 'Hawking', category: 'Bars & Waves'},
+  {id: 'onix', name: 'Onix', category: 'Bars & Waves'},
   // Signature category
-  {id: 'spotlight', name: 'Spotlight', category: 'Signature', applicableSettings: []},
-  {id: 'water', name: 'Reactor', category: 'Signature', applicableSettings: []},
-  {id: 'infinity', name: 'Infinity', category: 'Bars & Waves', applicableSettings: []},
+  {id: 'spotlight', name: 'Spotlight', category: 'Signature'},
+  {id: 'water', name: 'Reactor', category: 'Signature'},
+  {id: 'infinity', name: 'Infinity', category: 'Bars & Waves'},
   // Nostalgia category
-  {id: 'ambience-zoom', name: 'Twirl', category: 'Nostalgia', applicableSettings: []},
-  {id: 'ambience-stretch', name: 'Warp', category: 'Nostalgia', applicableSettings: []},
-  {id: 'ambience-ripple', name: 'Ripple', category: 'Nostalgia', applicableSettings: []},
-  {id: 'pulsar', name: 'Pulsar', category: 'Nostalgia', applicableSettings: []},
-  {id: 'hallucia', name: 'Hallucia', category: 'Nostalgia', applicableSettings: []},
+  {id: 'ambience-zoom', name: 'Twirl', category: 'Nostalgia'},
+  {id: 'ambience-stretch', name: 'Warp', category: 'Nostalgia'},
+  {id: 'ambience-ripple', name: 'Ripple', category: 'Nostalgia'},
+  {id: 'pulsar', name: 'Pulsar', category: 'Nostalgia'},
+  {id: 'hallucia', name: 'Hallucia', category: 'Nostalgia'},
   // Simple category
-  {id: 'blank', name: 'Blank', category: 'Simple', applicableSettings: []},
-  {id: 'logo', name: 'Logo', category: 'Simple', applicableSettings: []},
-  {id: 'album-art', name: 'Album Art', category: 'Simple', applicableSettings: []},
+  {id: 'blank', name: 'Blank', category: 'Simple'},
+  {id: 'logo', name: 'Logo', category: 'Simple'},
+  {id: 'album-art', name: 'Album Art', category: 'Simple'},
 ];
 
 /**
@@ -470,7 +417,6 @@ const DEFAULT_SETTINGS: AppSettings = {
     renderResolution: 'native',
     crossfadeDuration: 1000,
     crossfadeStyle: 'fade',
-    perVisualizationSettings: {},
   },
   application: {
     serverPort: 0,
@@ -533,7 +479,7 @@ const DEFAULT_SETTINGS: AppSettings = {
  */
 export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   // Bars & Waves category
-  {value: 'bars', label: 'Bars & Waves : Analyzer', description: 'Configurable frequency bars with gradient'},
+  {value: 'bars', label: 'Bars & Waves : Analyzer', description: 'Frequency bars with gradient'},
   {value: 'waveform', label: 'Bars & Waves : Classic', description: 'Oscilloscope-style waveform with glow'},
   {value: 'modern', label: 'Bars & Waves : Modern', description: 'Frequency spectrum with gradient glow'},
   {value: 'tunnel', label: 'Bars & Waves : Plasma', description: 'Dual waveforms with plasma zoom effect'},
@@ -868,11 +814,6 @@ export class SettingsService implements OnDestroy {
   /** Visual style of the visualization switch transition */
   public readonly visualizationCrossfadeStyle: ReturnType<typeof computed<CrossfadeStyle>> = computed(
     (): CrossfadeStyle => this.settings().visualization?.crossfadeStyle ?? 'fade'
-  );
-
-  /** Per-visualization settings map */
-  public readonly perVisualizationSettings: ReturnType<typeof computed<PerVisualizationSettings>> = computed(
-    (): PerVisualizationSettings => this.settings().visualization?.perVisualizationSettings ?? {}
   );
 
   /** Configured server port (0 = auto-assign) */
@@ -1361,49 +1302,8 @@ export class SettingsService implements OnDestroy {
   }
 
   // ============================================================================
-  // Per-Visualization Settings Methods
+  // Visualization Metadata Methods
   // ============================================================================
-
-  /**
-   * Gets the effective value for a local setting on a specific visualization.
-   * Returns the customized value if set, otherwise the default.
-   *
-   * @param vizId - The visualization type ID
-   * @param setting - The setting key to get
-   * @returns The effective setting value
-   */
-  public getEffectiveSetting<K extends LocalSettingKey>(vizId: string, setting: K): VisualizationLocalSettings[K] {
-    const perViz: PerVisualizationSettings = this.perVisualizationSettings();
-    const vizSettings: VisualizationLocalSettings | undefined = perViz[vizId];
-    const customValue: VisualizationLocalSettings[K] | undefined = vizSettings?.[setting];
-    return customValue !== undefined ? customValue : VISUALIZATION_LOCAL_DEFAULTS[setting];
-  }
-
-  /**
-   * Checks if a setting has been customized for a visualization.
-   *
-   * @param vizId - The visualization type ID
-   * @param setting - The setting key to check
-   * @returns True if the setting has been customized
-   */
-  public hasCustomSetting(vizId: string, setting: LocalSettingKey): boolean {
-    const perViz: PerVisualizationSettings = this.perVisualizationSettings();
-    return perViz[vizId]?.[setting] !== undefined;
-  }
-
-  /**
-   * Checks if a setting is applicable to a visualization.
-   *
-   * @param vizId - The visualization type ID
-   * @param setting - The setting key to check
-   * @returns True if the setting applies to this visualization
-   */
-  public hasApplicableSetting(vizId: string, setting: LocalSettingKey): boolean {
-    const meta: VisualizationMetadata | undefined = VISUALIZATION_METADATA.find(
-      (v: VisualizationMetadata): boolean => v.id === vizId
-    );
-    return meta?.applicableSettings.includes(setting) ?? false;
-  }
 
   /**
    * Gets visualization metadata by ID.
@@ -1413,106 +1313,6 @@ export class SettingsService implements OnDestroy {
    */
   public getVisualizationMetadata(vizId: string): VisualizationMetadata | undefined {
     return VISUALIZATION_METADATA.find((v: VisualizationMetadata): boolean => v.id === vizId);
-  }
-
-  /**
-   * Sets a local setting for a specific visualization.
-   *
-   * @param vizId - The visualization type ID
-   * @param setting - The setting key to set
-   * @param value - The value to set
-   */
-  public async setVisualizationSetting<K extends LocalSettingKey>(
-    vizId: string,
-    setting: K,
-    value: VisualizationLocalSettings[K]
-  ): Promise<void> {
-    // Validate and clamp numeric values
-    let validValue: VisualizationLocalSettings[K] = value;
-    if (setting === 'sensitivity' || setting === 'trailIntensity' || setting === 'glowIntensity' || setting === 'waveformSmoothing') {
-      validValue = this.clamp(value as number, 0, 1) as VisualizationLocalSettings[K];
-    } else if (setting === 'lineWidth') {
-      validValue = this.clamp(value as number, 1, 5) as VisualizationLocalSettings[K];
-    } else if (setting === 'strobeFrequency') {
-      validValue = this.clamp(value as number, 1, 20) as VisualizationLocalSettings[K];
-    } else if (setting === 'barDensity') {
-      const validDensities: readonly BarDensity[] = ['low', 'medium', 'high'];
-      if (!validDensities.includes(value as BarDensity)) {
-        console.error(`[SettingsService] Invalid bar density: ${value}`);
-        return;
-      }
-    }
-
-    // Send the whole map with this setting merged in. The local merge and the
-    // pending-write coalescing are both shallow, so sending only {[vizId]: …}
-    // would briefly drop every other visualization's settings from the local
-    // signal, and a second change inside the debounce window would overwrite
-    // the first before it was ever sent. The server deep-merges either way.
-    const current: PerVisualizationSettings = this.perVisualizationSettings();
-    const merged: PerVisualizationSettings = {
-      ...current,
-      [vizId]: {...current[vizId], [setting]: validValue},
-    };
-    await this.updateSetting('visualization', 'perVisualizationSettings', merged);
-  }
-
-  /**
-   * Resets a single setting for a visualization to its default.
-   *
-   * @param vizId - The visualization type ID
-   * @param setting - The setting key to reset
-   */
-  public async resetVisualizationSetting(vizId: string, setting: LocalSettingKey): Promise<void> {
-    const current: PerVisualizationSettings = {...this.perVisualizationSettings()};
-    const vizSettings: VisualizationLocalSettings | undefined = current[vizId];
-
-    if (!vizSettings || vizSettings[setting] === undefined) {
-      return; // Nothing to reset
-    }
-
-    // Create new settings object without the specified setting
-    const {[setting]: _removed, ...remaining}: Partial<VisualizationLocalSettings> = vizSettings;
-
-    // If no settings left, remove the visualization entry entirely
-    if (Object.keys(remaining).length === 0) {
-      delete current[vizId];
-    } else {
-      current[vizId] = remaining;
-    }
-
-    await this.sendVisualizationReset(current);
-  }
-
-  /**
-   * Resets all settings for a visualization to defaults.
-   *
-   * @param vizId - The visualization type ID
-   */
-  public async resetAllVisualizationSettings(vizId: string): Promise<void> {
-    const current: PerVisualizationSettings = {...this.perVisualizationSettings()};
-    delete current[vizId];
-
-    await this.sendVisualizationReset(current);
-  }
-
-  /**
-   * Applies a per-visualization map that has had settings removed, and sends
-   * it straight away.
-   *
-   * The map joins the visualization category's queued write and that write
-   * is flushed now, rather than being sent on its own. A change to the same
-   * map made within the debounce interval is still queued at this point, and
-   * would otherwise be sent afterwards and put back what was just reset.
-   * Flushing rather than discarding the queue keeps anything unrelated that
-   * was waiting in it (a frame rate, say): it travels in the same request.
-   *
-   * @param perVisualizationSettings - The whole map, without the reset settings
-   * @returns A promise that resolves once the write completes
-   */
-  private sendVisualizationReset(perVisualizationSettings: PerVisualizationSettings): Promise<void> {
-    const sent: Promise<void> = this.updateSettingGroup('visualization', {perVisualizationSettings});
-    this.flushCategory('visualization');
-    return sent;
   }
 
   /**

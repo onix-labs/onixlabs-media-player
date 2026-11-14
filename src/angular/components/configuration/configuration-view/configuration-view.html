@@ -14,54 +14,13 @@
     <div class="configuration-sidebar">
       <nav class="category-list">
         @for (category of categories; track category.id) {
-          @if (category.id === 'visualisations') {
-            <!-- Visualisations with accordion -->
-            <div class="accordion-category">
-              <!-- A row, not a button: it holds the toggle button, and a button may not contain another -->
-              <div
-                class="category-item has-accordion"
-                [class.active]="selectedCategory() === 'visualisations' && selectedVisualization() === null"
-                (click)="onSelectCategory('visualisations')"
-              >
-                <span
-                  role="button"
-                  tabindex="0"
-                  (keydown.enter)="onSelectCategory('visualisations')"
-                  (keydown.space)="onSelectCategory('visualisations'); $event.preventDefault()"
-                >{{ category.name }}</span>
-                <button
-                  class="accordion-toggle"
-                  [class.expanded]="isVisualisationsExpanded()"
-                  (click)="toggleVisualisationsAccordion($event)"
-                  title="Show individual visualizations"
-                >
-                  <i class="fa-solid fa-chevron-right"></i>
-                </button>
-              </div>
-              @if (isVisualisationsExpanded()) {
-                <div class="accordion-children">
-                  @for (viz of visualizationMetadata; track viz.id) {
-                    <button
-                      class="category-child"
-                      [class.active]="selectedVisualization() === viz.id"
-                      (click)="onSelectVisualization(viz.id)"
-                    >
-                      {{ viz.name }}
-                    </button>
-                  }
-                </div>
-              }
-            </div>
-          } @else {
-            <!-- Standard category -->
-            <button
-              class="category-item"
-              [class.active]="selectedCategory() === category.id"
-              (click)="onSelectCategory(category.id)"
-            >
-              <span>{{ category.name }}</span>
-            </button>
-          }
+          <button
+            class="category-item"
+            [class.active]="selectedCategory() === category.id"
+            (click)="onSelectCategory(category.id)"
+          >
+            <span>{{ category.name }}</span>
+          </button>
         }
       </nav>
     </div>
@@ -163,198 +122,103 @@
             }
 
             @case ('visualisations') {
-              @if (selectedVisualization(); as vizId) {
-                <!-- Per-Visualization Settings -->
-                <div class="setting-group">
-                  <!-- Bar Density (bars only) -->
-                  @if (hasApplicableSetting(vizId, 'barDensity')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Bar Density</label>
-                        <p class="setting-description">
-                          Controls the number of bars. Higher density shows more detail.
-                        </p>
-                      </div>
-                      <div class="setting-control">
-                        <select (change)="onPerVizBarDensityChange(vizId, $event)">
-                          @for (option of barDensityOptions; track option.value) {
-                            <option [value]="option.value" [selected]="option.value === getEffectiveSetting(vizId, 'barDensity')">{{ option.label }}</option>
-                          }
-                        </select>
-                      </div>
-                    </div>
-                  }
-
-                  <!-- Bar Color Bottom (Analyzer only) -->
-                  @if (hasApplicableSetting(vizId, 'barColorBottom')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Bar Color (Bottom)</label>
-                        <p class="setting-description">
-                          The color at the bottom of the bars.
-                        </p>
-                      </div>
-                      <div class="setting-control color-control">
-                        <input
-                          type="color"
-                          [value]="getEffectiveSetting(vizId, 'barColorBottom')"
-                          (input)="onPerVizColorChange(vizId, 'barColorBottom', $event)"
-                        />
-                        <span class="color-value">
-                          {{ getEffectiveSetting(vizId, 'barColorBottom') }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-
-                  <!-- Bar Color Middle (Analyzer only) -->
-                  @if (hasApplicableSetting(vizId, 'barColorMiddle')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Bar Color (Middle)</label>
-                        <p class="setting-description">
-                          The color at the middle of the bars.
-                        </p>
-                      </div>
-                      <div class="setting-control color-control">
-                        <input
-                          type="color"
-                          [value]="getEffectiveSetting(vizId, 'barColorMiddle')"
-                          (input)="onPerVizColorChange(vizId, 'barColorMiddle', $event)"
-                        />
-                        <span class="color-value">
-                          {{ getEffectiveSetting(vizId, 'barColorMiddle') }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-
-                  <!-- Bar Color Top (Analyzer only) -->
-                  @if (hasApplicableSetting(vizId, 'barColorTop')) {
-                    <div class="setting-row">
-                      <div class="setting-label">
-                        <label>Bar Color (Top)</label>
-                        <p class="setting-description">
-                          The color at the top of the bars.
-                        </p>
-                      </div>
-                      <div class="setting-control color-control">
-                        <input
-                          type="color"
-                          [value]="getEffectiveSetting(vizId, 'barColorTop')"
-                          (input)="onPerVizColorChange(vizId, 'barColorTop', $event)"
-                        />
-                        <span class="color-value">
-                          {{ getEffectiveSetting(vizId, 'barColorTop') }}
-                        </span>
-                      </div>
-                    </div>
-                  }
-                </div>
-              } @else {
-                <!-- Global Visualization Settings -->
-                <div class="setting-group">
-                  <div class="setting-row">
-                    <div class="setting-label">
-                      <label for="max-frame-rate">Max Frame Rate</label>
-                      <p class="setting-description">
-                        Limit visualization frame rate to reduce CPU/GPU usage.
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <select
-                        id="max-frame-rate"
-                        (change)="onMaxFrameRateChange($event)"
-                      >
-                        @for (option of frameRateOptions; track option.value) {
-                          <option [value]="option.value" [selected]="option.value === currentMaxFrameRate()">{{ option.label }}</option>
-                        }
-                      </select>
-                    </div>
+              <!-- Visualization settings -->
+              <div class="setting-group">
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="max-frame-rate">Max Frame Rate</label>
+                    <p class="setting-description">
+                      Limit visualization frame rate to reduce CPU/GPU usage.
+                    </p>
                   </div>
-
-                  <div class="setting-row">
-                    <div class="setting-label">
-                      <label for="fft-size">FFT Size</label>
-                      <p class="setting-description">
-                        Audio analysis resolution. Higher values use more CPU.
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <select
-                        id="fft-size"
-                        (change)="onFftSizeChange($event)"
-                      >
-                        @for (option of fftSizeOptions; track option.value) {
-                          <option [value]="option.value" [selected]="option.value === currentFftSize()">{{ option.label }}</option>
-                        }
-                      </select>
-                    </div>
-                  </div>
-
-                  <div class="setting-row">
-                    <div class="setting-label">
-                      <label for="render-resolution">Render Resolution</label>
-                      <p class="setting-description">
-                        Fullscreen render size. Fixed resolutions render small and stretch to fill for a pixelated look.
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <select
-                        id="render-resolution"
-                        (change)="onRenderResolutionChange($event)"
-                      >
-                        @for (option of renderResolutionOptions; track option.value) {
-                          <option [value]="option.value" [selected]="option.value === currentRenderResolution()">{{ option.label }}</option>
-                        }
-                      </select>
-                    </div>
-                  </div>
-
-                  <div class="setting-row">
-                    <div class="setting-label">
-                      <label for="visualization-crossfade-duration">Crossfade Duration</label>
-                      <p class="setting-description">
-                        How long visualizations take to crossfade when switching between them.
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <select
-                        id="visualization-crossfade-duration"
-                        (change)="onVisualizationCrossfadeDurationChange($event)"
-                      >
-                        @for (option of visualizationCrossfadeDurationOptions; track option.value) {
-                          <option [value]="option.value" [selected]="option.value === currentVisualizationCrossfadeDuration()">{{ option.label }}</option>
-                        }
-                      </select>
-                    </div>
-                  </div>
-
-                  <div class="setting-row">
-                    <div class="setting-label">
-                      <label for="crossfade-style">Crossfade Style</label>
-                      <p class="setting-description">
-                        The transition effect used when switching between visualizations.
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <select
-                        id="crossfade-style"
-                        (change)="onVisualizationCrossfadeStyleChange($event)"
-                      >
-                        @for (option of visualizationCrossfadeStyleOptions; track option.value) {
-                          <option [value]="option.value" [selected]="option.value === currentVisualizationCrossfadeStyle()">{{ option.label }}</option>
-                        }
-                      </select>
-                    </div>
-                  </div>
-
-                  <div class="info-notice">
-                    <i class="fa-solid fa-info-circle"></i>
-                    <span>Expand "Audio Visualizations" in the sidebar to configure individual visualization settings.</span>
+                  <div class="setting-control">
+                    <select
+                      id="max-frame-rate"
+                      (change)="onMaxFrameRateChange($event)"
+                    >
+                      @for (option of frameRateOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentMaxFrameRate()">{{ option.label }}</option>
+                      }
+                    </select>
                   </div>
                 </div>
-              }
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="fft-size">FFT Size</label>
+                    <p class="setting-description">
+                      Audio analysis resolution. Higher values use more CPU.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="fft-size"
+                      (change)="onFftSizeChange($event)"
+                    >
+                      @for (option of fftSizeOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentFftSize()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="render-resolution">Render Resolution</label>
+                    <p class="setting-description">
+                      Fullscreen render size. Fixed resolutions render small and stretch to fill for a pixelated look.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="render-resolution"
+                      (change)="onRenderResolutionChange($event)"
+                    >
+                      @for (option of renderResolutionOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentRenderResolution()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="visualization-crossfade-duration">Crossfade Duration</label>
+                    <p class="setting-description">
+                      How long visualizations take to crossfade when switching between them.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="visualization-crossfade-duration"
+                      (change)="onVisualizationCrossfadeDurationChange($event)"
+                    >
+                      @for (option of visualizationCrossfadeDurationOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentVisualizationCrossfadeDuration()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label for="crossfade-style">Crossfade Style</label>
+                    <p class="setting-description">
+                      The transition effect used when switching between visualizations.
+                    </p>
+                  </div>
+                  <div class="setting-control">
+                    <select
+                      id="crossfade-style"
+                      (change)="onVisualizationCrossfadeStyleChange($event)"
+                    >
+                      @for (option of visualizationCrossfadeStyleOptions; track option.value) {
+                        <option [value]="option.value" [selected]="option.value === currentVisualizationCrossfadeStyle()">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+              </div>
             }
             @case ('application') {
               <!-- Application settings -->

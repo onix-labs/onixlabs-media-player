@@ -29,7 +29,7 @@
 import {Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, computed, signal, effect, untracked, HostBinding, ChangeDetectionStrategy, Output, EventEmitter} from '@angular/core';
 import {MediaPlayerService} from '../../../services/media-player.service';
 import {ElectronService} from '../../../services/electron.service';
-import {SettingsService, PerVisualizationSettings, RenderResolution, CrossfadeStyle, CROSSFADE_STYLES} from '../../../services/settings.service';
+import {SettingsService, RenderResolution, CrossfadeStyle, CROSSFADE_STYLES} from '../../../services/settings.service';
 import {FileDropTarget} from '../../../directives/file-drop-target';
 import {MediaClockSync} from '../../../utils/media-clock-sync';
 import {ResumePositionTracker} from '../../../utils/resume-position';
@@ -220,16 +220,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
 
   /** Canvas the outgoing visualization renders into during a crossfade */
   private outgoingVizCanvas: HTMLCanvasElement | null = null;
-
-  /**
-   * The per-visualization values last pushed into the active visualization.
-   *
-   * Every settings broadcast is a freshly parsed object, so the settings
-   * effect fires on writes to any setting at all. Comparing against what was
-   * last applied keeps those from re-running every setter, some of which
-   * rebuild gradients.
-   */
-  private appliedSettingsKey: string | null = null;
 
   /** Whether a visualization crossfade is currently in progress */
   private isCrossfading: boolean = false;
@@ -528,17 +518,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
       }
     });
 
-    // React to per-visualization settings changes
-    effect((): void => {
-      // Watch the per-visualization settings and current visualization type
-      const _perViz: PerVisualizationSettings = this.settings.perVisualizationSettings();
-      const vizType: string = this.visualizationType();
-
-      if (this.visualization) {
-        this.applyVisualizationSettings(vizType);
-      }
-    });
-
     // React to FFT size setting changes (global setting)
     effect((): void => {
       const fftSize: number = this.settings.fftSize();
@@ -565,46 +544,6 @@ export class AudioOutlet implements OnInit, OnDestroy {
         this.renderingPaused = false;
       }
     });
-  }
-
-  /**
-   * Applies all per-visualization settings to the current visualization.
-   *
-   * @param vizId - The visualization type ID
-   */
-  private applyVisualizationSettings(vizId: string): void {
-    if (!this.visualization) return;
-
-    // Get effective settings for this visualization (custom or defaults)
-    const sensitivity: number = this.settings.getEffectiveSetting(vizId, 'sensitivity') ?? 0.5;
-    const barDensity: 'low' | 'medium' | 'high' = this.settings.getEffectiveSetting(vizId, 'barDensity') ?? 'medium';
-    const trailIntensity: number = this.settings.getEffectiveSetting(vizId, 'trailIntensity') ?? 0.5;
-    const lineWidth: number = this.settings.getEffectiveSetting(vizId, 'lineWidth') ?? 2.0;
-    const glowIntensity: number = this.settings.getEffectiveSetting(vizId, 'glowIntensity') ?? 0.5;
-    const waveformSmoothing: number = this.settings.getEffectiveSetting(vizId, 'waveformSmoothing') ?? 0.5;
-    const barColorBottom: string = this.settings.getEffectiveSetting(vizId, 'barColorBottom') as string ?? '#00cc00';
-    const barColorMiddle: string = this.settings.getEffectiveSetting(vizId, 'barColorMiddle') as string ?? '#cccc00';
-    const barColorTop: string = this.settings.getEffectiveSetting(vizId, 'barColorTop') as string ?? '#cc0000';
-    const strobeFrequency: number = this.settings.getEffectiveSetting(vizId, 'strobeFrequency') ?? 5;
-
-    const key: string = [
-      vizId, sensitivity, barDensity, trailIntensity, lineWidth, glowIntensity,
-      waveformSmoothing, barColorBottom, barColorMiddle, barColorTop, strobeFrequency,
-    ].join('|');
-    if (key === this.appliedSettingsKey) return;
-    this.appliedSettingsKey = key;
-
-    // Apply settings
-    this.visualization.setSensitivity(sensitivity);
-    this.visualization.setBarDensity(barDensity);
-    this.visualization.setTrailIntensity(trailIntensity);
-    this.visualization.setLineWidth(lineWidth);
-    this.visualization.setGlowIntensity(glowIntensity);
-    this.visualization.setWaveformSmoothing(waveformSmoothing);
-    this.visualization.setBarColorBottom(barColorBottom);
-    this.visualization.setBarColorMiddle(barColorMiddle);
-    this.visualization.setBarColorTop(barColorTop);
-    this.visualization.setStrobeFrequency(strobeFrequency);
   }
 
   // ============================================================================
@@ -1099,11 +1038,9 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const canvas: HTMLCanvasElement = this.createVizCanvas();
     this.visualization = createVisualization(type, {canvas, analyser: this.analyser});
     this.vizCanvas = canvas;
-    this.appliedSettingsKey = null;
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
     this.visualization.setFftSize(this.settings.fftSize());
     this.applyCurrentArtwork();
-    this.applyVisualizationSettings(type);
     this.applyRenderSize();
 
     if (outgoing && outgoingCanvas) {
@@ -1192,14 +1129,12 @@ export class AudioOutlet implements OnInit, OnDestroy {
     const canvas: HTMLCanvasElement = this.createVizCanvas();
     this.visualization = createVisualization(vizType, {canvas, analyser: this.analyser});
     this.vizCanvas = canvas;
-    this.appliedSettingsKey = null;
     this.visualizationNameSignal.set(this.visualization.name);
     this.visualizationCategorySignal.set(this.visualization.category);
     this.visualizationChange.emit(`${this.visualization.category} : ${this.visualization.name}`);
     this.visualization.setPlaying(this.mediaPlayer.playbackState() === 'playing');
     this.visualization.setFftSize(this.settings.fftSize());
     this.applyCurrentArtwork();
-    this.applyVisualizationSettings(vizType);
     this.applyRenderSize();
   }
 

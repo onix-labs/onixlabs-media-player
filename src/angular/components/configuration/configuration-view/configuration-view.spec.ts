@@ -8,7 +8,7 @@
  * conversion fails here.
  *
  * Tests cover:
- * - Category navigation, the visualizations accordion, the initialCategory
+ * - Category navigation, the visualizations category, the initialCategory
  *   input and the standalone-window URL parameter
  * - Every select, slider, colour picker and toggle writing the converted
  *   value to its setter
@@ -25,8 +25,8 @@ import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {signal, type WritableSignal} from '@angular/core';
 
 import {ConfigurationView} from './configuration-view';
-import {SettingsService, VISUALIZATION_METADATA} from '../../../services/settings.service';
-import type {AudioBitrate, ColorScheme, CrossfadeDuration, CrossfadeStyle, FftSize, HardwareAcceleration, LocalSettingKey, MacOSVisualEffectState, PerVisualizationSettings, PreferredAudioLanguage, PreferredSubtitleLanguage, RenderResolution, SeekMode, SubtitleFontFamily, VideoAspectMode, VideoQuality, VisualizationMetadata} from '../../../services/settings.service';
+import {SettingsService} from '../../../services/settings.service';
+import type {AudioBitrate, ColorScheme, CrossfadeDuration, CrossfadeStyle, FftSize, HardwareAcceleration, MacOSVisualEffectState, PreferredAudioLanguage, PreferredSubtitleLanguage, RenderResolution, SeekMode, SubtitleFontFamily, VideoAspectMode, VideoQuality} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import type {DependencyState, DependencyStatus, HardwareEncoderInfo, InstallProgress, SoundFontInfo} from '../../../services/dependency.service';
@@ -54,7 +54,6 @@ interface SettingsSignals {
   renderResolution: WritableSignal<RenderResolution>;
   visualizationCrossfadeDuration: WritableSignal<CrossfadeDuration>;
   visualizationCrossfadeStyle: WritableSignal<CrossfadeStyle>;
-  perVisualizationSettings: WritableSignal<PerVisualizationSettings>;
   defaultVolume: WritableSignal<number>;
   crossfadeDuration: WritableSignal<number>;
   videoQuality: WritableSignal<VideoQuality>;
@@ -100,8 +99,7 @@ interface SettingsSignals {
 /** Every SettingsService method the view writes through. */
 const SETTINGS_METHODS: readonly [
   'setMaxFrameRate', 'setFftSize', 'setRenderResolution', 'setVisualizationCrossfadeDuration',
-  'setVisualizationCrossfadeStyle', 'setVisualizationSetting', 'resetVisualizationSetting',
-  'resetAllVisualizationSettings', 'setServerPort', 'setControlsAutoHideDelay', 'setMiniplayerOnFocusLoss',
+  'setVisualizationCrossfadeStyle', 'setServerPort', 'setControlsAutoHideDelay', 'setMiniplayerOnFocusLoss',
   'setSeekMode', 'setPreviousTrackThreshold', 'setSkipDuration', 'setDefaultVolume', 'setCrossfadeDuration',
   'setEqualizerEnabled', 'setEqualizerPreset', 'setEqualizerBand', 'resetEqualizer',
   'setVideoAdjustmentsEnabled', 'setVideoAdjustmentPreset', 'setVideoAdjustment', 'resetVideoAdjustments',
@@ -114,8 +112,7 @@ const SETTINGS_METHODS: readonly [
   'setSubtitleShadowColor',
 ] = [
   'setMaxFrameRate', 'setFftSize', 'setRenderResolution', 'setVisualizationCrossfadeDuration',
-  'setVisualizationCrossfadeStyle', 'setVisualizationSetting', 'resetVisualizationSetting',
-  'resetAllVisualizationSettings', 'setServerPort', 'setControlsAutoHideDelay', 'setMiniplayerOnFocusLoss',
+  'setVisualizationCrossfadeStyle', 'setServerPort', 'setControlsAutoHideDelay', 'setMiniplayerOnFocusLoss',
   'setSeekMode', 'setPreviousTrackThreshold', 'setSkipDuration', 'setDefaultVolume', 'setCrossfadeDuration',
   'setEqualizerEnabled', 'setEqualizerPreset', 'setEqualizerBand', 'resetEqualizer',
   'setVideoAdjustmentsEnabled', 'setVideoAdjustmentPreset', 'setVideoAdjustment', 'resetVideoAdjustments',
@@ -131,11 +128,8 @@ const SETTINGS_METHODS: readonly [
 /** Name of a SettingsService method the view writes through. */
 type SettingsMethod = (typeof SETTINGS_METHODS)[number];
 
-/** The fake SettingsService: writable signals, spied setters and the two real lookups. */
-type FakeSettings = SettingsSignals & Record<SettingsMethod, Spy> & {
-  hasApplicableSetting: Spy;
-  getVisualizationMetadata: Spy;
-};
+/** The fake SettingsService: writable signals and spied setters. */
+type FakeSettings = SettingsSignals & Record<SettingsMethod, Spy>;
 
 /** The fake DependencyService. */
 interface FakeDeps {
@@ -181,7 +175,6 @@ function createFakeSettings(): FakeSettings {
     renderResolution: signal<RenderResolution>('native'),
     visualizationCrossfadeDuration: signal<CrossfadeDuration>(1000),
     visualizationCrossfadeStyle: signal<CrossfadeStyle>('fade'),
-    perVisualizationSettings: signal<PerVisualizationSettings>({}),
     defaultVolume: signal<number>(0.5),
     crossfadeDuration: signal<number>(100),
     videoQuality: signal<VideoQuality>('medium'),
@@ -232,10 +225,6 @@ function createFakeSettings(): FakeSettings {
   return {
     ...signals,
     ...(methods as Record<SettingsMethod, Spy>),
-    hasApplicableSetting: vi.fn((vizId: string, setting: LocalSettingKey): boolean =>
-      VISUALIZATION_METADATA.find((v: VisualizationMetadata): boolean => v.id === vizId)?.applicableSettings.includes(setting) ?? false),
-    getVisualizationMetadata: vi.fn((vizId: string): VisualizationMetadata | undefined =>
-      VISUALIZATION_METADATA.find((v: VisualizationMetadata): boolean => v.id === vizId)),
   };
 }
 
@@ -575,26 +564,6 @@ describe('ConfigurationView', (): void => {
     await fixture.whenStable();
   }
 
-  /** Expands or collapses the visualizations accordion. */
-  async function toggleAccordion(): Promise<void> {
-    get<HTMLButtonElement>('.accordion-toggle').click();
-    await fixture.whenStable();
-  }
-
-  /**
-   * Opens the per-visualization settings for a visualization.
-   *
-   * @param name - The visualization's display name
-   */
-  async function openVisualization(name: string): Promise<void> {
-    await toggleAccordion();
-    const child: HTMLButtonElement | undefined = all<HTMLButtonElement>('.category-child')
-      .find((item: HTMLButtonElement): boolean => item.textContent.trim() === name);
-    if (!child) throw new Error(`No visualization named ${name}`);
-    child.click();
-    await fixture.whenStable();
-  }
-
   /**
    * Picks an option in a select, as a user would.
    *
@@ -752,6 +721,16 @@ describe('ConfigurationView', (): void => {
       expect(get('.panel-header h2').textContent).toBe('Dependencies');
     });
 
+    it('opens the visualizations category named in the URL', async (): Promise<void> => {
+      window.history.replaceState({}, '', '?category=visualisations');
+
+      fixture.componentRef.setInput('isStandaloneWindow', true);
+      await fixture.whenStable();
+
+      expect(get('.panel-header h2').textContent).toBe('Audio Visualizations');
+      expect(host.querySelector('#max-frame-rate')).not.toBeNull();
+    });
+
     it('stays on the default category when the URL names none', async (): Promise<void> => {
       fixture.componentRef.setInput('isStandaloneWindow', true);
       await fixture.whenStable();
@@ -805,90 +784,26 @@ describe('ConfigurationView', (): void => {
     });
   });
 
-  describe('visualizations accordion', (): void => {
-    it('is collapsed to begin with', (): void => {
-      expect(host.querySelector('.accordion-children')).toBeNull();
-      expect(get('.accordion-toggle').classList.contains('expanded')).toBe(false);
-    });
-
-    it('lists only the visualizations that have their own settings', async (): Promise<void> => {
-      await toggleAccordion();
-
-      expect(texts('.category-child')).toEqual(['Analyzer']);
-      expect(get('.accordion-toggle').classList.contains('expanded')).toBe(true);
-    });
-
-    it('does not nest the toggle inside another button', (): void => {
-      expect(host.querySelector('button button')).toBeNull();
-    });
-
-    it('offers the category name as a keyboard stop of its own', (): void => {
-      const name: HTMLElement = get<HTMLElement>('.category-item.has-accordion > span');
-
-      expect(name.getAttribute('role')).toBe('button');
-      expect(name.tabIndex).toBe(0);
-    });
-
-    it.each([['Enter'], [' ']])('opens the category when "%s" is pressed on its name', async (key: string): Promise<void> => {
-      get<HTMLElement>('.category-item.has-accordion > span').dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true}));
-      await fixture.whenStable();
-
-      expect(get('.panel-header h2').textContent).toBe('Audio Visualizations');
-    });
-
-    it('keeps Space on the category name from scrolling the sidebar', (): void => {
-      const event: KeyboardEvent = new KeyboardEvent('keydown', {key: ' ', bubbles: true, cancelable: true});
-
-      get<HTMLElement>('.category-item.has-accordion > span').dispatchEvent(event);
-
-      expect(event.defaultPrevented).toBe(true);
-    });
-
-    it('names the category as it appears in the sidebar when pointing at the accordion', async (): Promise<void> => {
+  describe('visualizations category', (): void => {
+    it('shows only the settings shared by every visualization', async (): Promise<void> => {
       await open('Audio Visualizations');
 
-      expect(texts('.info-notice span')).toContain(
-        'Expand "Audio Visualizations" in the sidebar to configure individual visualization settings.',
-      );
+      expect(texts('.setting-label label')).toEqual(['Max Frame Rate', 'FFT Size', 'Render Resolution', 'Crossfade Duration', 'Crossfade Style']);
     });
 
-    it('expands without leaving the current category', async (): Promise<void> => {
-      await toggleAccordion();
+    it('is an ordinary sidebar entry with nothing nested beneath it', (): void => {
+      const entry: HTMLButtonElement | undefined = all<HTMLButtonElement>('.category-item')
+        .find((item: HTMLButtonElement): boolean => item.querySelector('span')?.textContent.trim() === 'Audio Visualizations');
 
-      expect(get('.panel-header h2').textContent).toBe('Application');
+      expect(entry?.tagName).toBe('BUTTON');
+      expect(entry?.querySelector('button')).toBeNull();
+      expect(entry?.nextElementSibling?.classList.contains('category-item')).toBe(true);
     });
 
-    it('collapses when toggled again', async (): Promise<void> => {
-      await toggleAccordion();
-
-      await toggleAccordion();
-
-      expect(host.querySelector('.accordion-children')).toBeNull();
-    });
-
-    it('shows a visualization\'s own settings when it is picked', async (): Promise<void> => {
-      await openVisualization('Analyzer');
-
-      expect(get('.panel-header h2').textContent).toBe('Audio Visualizations');
-      expect(texts('.setting-label label')).toEqual(['Bar Density', 'Bar Color (Bottom)', 'Bar Color (Middle)', 'Bar Color (Top)']);
-      expect(host.querySelector('#max-frame-rate')).toBeNull();
-    });
-
-    it('highlights the picked visualization rather than its parent category', async (): Promise<void> => {
-      await openVisualization('Analyzer');
-
-      expect(get('.category-child').classList.contains('active')).toBe(true);
-      expect(host.querySelector('.category-item.active')).toBeNull();
-    });
-
-    it('returns to the global settings when the category itself is clicked', async (): Promise<void> => {
-      await openVisualization('Analyzer');
-
+    it('points nowhere for settings of individual visualizations', async (): Promise<void> => {
       await open('Audio Visualizations');
 
-      expect(host.querySelector('#max-frame-rate')).not.toBeNull();
-      expect(get('.category-child').classList.contains('active')).toBe(false);
-      expect(texts('.category-item.active > span')).toEqual(['Audio Visualizations']);
+      expect(host.querySelector('.info-notice')).toBeNull();
     });
   });
 
@@ -1414,107 +1329,6 @@ describe('ConfigurationView', (): void => {
   });
 
   // ==========================================================================
-  // Per-visualization settings
-  // ==========================================================================
-
-  describe('per-visualization settings', (): void => {
-    beforeEach(async (): Promise<void> => {
-      await openVisualization('Analyzer');
-    });
-
-    it('shows the defaults for a visualization with no custom settings', (): void => {
-      expect(get<HTMLSelectElement>('.setting-control select').value).toBe('medium');
-      expect(texts('.color-value')).toEqual(['#00cc00', '#cccc00', '#cc0000']);
-    });
-
-    it('shows the visualization\'s custom settings', async (): Promise<void> => {
-      settings.perVisualizationSettings.set({bars: {barDensity: 'high', barColorBottom: '#111111', barColorTop: '#333333'}});
-      await fixture.whenStable();
-
-      expect(get<HTMLSelectElement>('.setting-control select').value).toBe('high');
-      expect(texts('.color-value')).toEqual(['#111111', '#cccc00', '#333333']);
-    });
-
-    it('ignores custom settings that belong to another visualization', async (): Promise<void> => {
-      settings.perVisualizationSettings.set({waveform: {barDensity: 'low'}});
-      await fixture.whenStable();
-
-      expect(get<HTMLSelectElement>('.setting-control select').value).toBe('medium');
-    });
-
-    it('saves a picked bar density against the visualization', async (): Promise<void> => {
-      await choose('.setting-control select', 'low');
-
-      expect(settings.setVisualizationSetting).toHaveBeenCalledWith('bars', 'barDensity', 'low');
-    });
-
-    it.each([
-      [0, 'barColorBottom'],
-      [1, 'barColorMiddle'],
-      [2, 'barColorTop'],
-    ] as const)('saves colour picker %i as %s', async (index: number, setting: LocalSettingKey): Promise<void> => {
-      const picker: HTMLInputElement = all<HTMLInputElement>('input[type="color"]')[index];
-      picker.value = '#123456';
-
-      picker.dispatchEvent(new Event('input', {bubbles: true}));
-      await fixture.whenStable();
-
-      expect(settings.setVisualizationSetting).toHaveBeenCalledTimes(1);
-      expect(settings.setVisualizationSetting).toHaveBeenCalledWith('bars', setting, '#123456');
-    });
-
-    it('hides the controls the visualization does not support', async (): Promise<void> => {
-      settings.hasApplicableSetting.mockImplementation((_vizId: string, setting: LocalSettingKey): boolean => setting === 'barDensity');
-      settings.perVisualizationSettings.set({bars: {}});
-      await fixture.whenStable();
-
-      expect(texts('.setting-label label')).toEqual(['Bar Density']);
-    });
-
-    it('reports whether a setting has been customised', async (): Promise<void> => {
-      settings.perVisualizationSettings.set({bars: {barDensity: 'high'}});
-      await fixture.whenStable();
-
-      expect(component.hasCustomSetting('bars', 'barDensity')).toBe(true);
-      expect(component.hasCustomSetting('bars', 'barColorTop')).toBe(false);
-    });
-
-    it('reports a customised setting of a visualization other than the one shown', async (): Promise<void> => {
-      settings.perVisualizationSettings.set({waveform: {lineWidth: 3}});
-      await fixture.whenStable();
-
-      expect(component.hasCustomSetting('waveform', 'lineWidth')).toBe(true);
-    });
-
-    it('does not credit the shown visualization\'s customised setting to another visualization', async (): Promise<void> => {
-      settings.perVisualizationSettings.set({bars: {barDensity: 'high'}});
-      await fixture.whenStable();
-
-      expect(component.hasCustomSetting('waveform', 'barDensity')).toBe(false);
-    });
-
-    it('resets a single setting through the service', async (): Promise<void> => {
-      await component.onResetPerVizSetting('bars', 'barDensity');
-
-      expect(settings.resetVisualizationSetting).toHaveBeenCalledWith('bars', 'barDensity');
-    });
-
-    it('resets all of a visualization\'s settings through the service', async (): Promise<void> => {
-      await component.onResetAllVisualizationSettings('bars');
-
-      expect(settings.resetAllVisualizationSettings).toHaveBeenCalledWith('bars');
-    });
-
-    it('names a known visualization by its display name', (): void => {
-      expect(component.getVisualizationName('bars')).toBe('Analyzer');
-    });
-
-    it('names an unknown visualization by its id', (): void => {
-      expect(component.getVisualizationName('nonsense')).toBe('nonsense');
-    });
-  });
-
-  // ==========================================================================
   // Dependencies
   // ==========================================================================
 
@@ -1994,14 +1808,6 @@ describe('ConfigurationView', (): void => {
       settings.backgroundColor.set('#0a0b0c');
 
       expect(component.currentBackgroundColor()).toBe('#0a0b0c');
-    });
-  });
-
-  describe('custom visualization settings with no visualization picked', (): void => {
-    it('reports a customised setting of the visualization asked about', (): void => {
-      settings.perVisualizationSettings.set({bars: {barDensity: 'high'}});
-
-      expect(component.hasCustomSetting('bars', 'barDensity')).toBe(true);
     });
   });
 

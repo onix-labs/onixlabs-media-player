@@ -9,7 +9,6 @@ import {
   AudioBitrate,
   VideoAspectMode,
   MacOSVisualEffectState,
-  VisualizationLocalSettings,
   VisualizationMetadata,
   RenderResolution,
   CrossfadeDuration,
@@ -20,7 +19,6 @@ import {
   PreferredSubtitleLanguage,
   ColorScheme,
   SubtitleFontFamily,
-  PerVisualizationSettings,
 } from './settings.service';
 
 // ============================================================================
@@ -58,7 +56,7 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       maxFrameRate: 0,
       fftSize: 2048,
       renderResolution: 'native',
-      perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade',
+      crossfadeDuration: 1000, crossfadeStyle: 'fade',
     },
     application: {
       serverPort: 0,
@@ -175,7 +173,7 @@ describe('SettingsService', (): void => {
   describe('computed signals', (): void => {
     it('defaultVisualization reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'waveform', maxFrameRate: 0, fftSize: 2048, renderResolution: 'native', perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade'},
+        visualization: {defaultType: 'waveform', maxFrameRate: 0, fftSize: 2048, renderResolution: 'native', crossfadeDuration: 1000, crossfadeStyle: 'fade'},
       });
       service.updateFromSSE(testSettings);
 
@@ -185,7 +183,7 @@ describe('SettingsService', (): void => {
 
     it('maxFrameRate reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'bars', maxFrameRate: 60, fftSize: 2048, renderResolution: 'native', perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade'},
+        visualization: {defaultType: 'bars', maxFrameRate: 60, fftSize: 2048, renderResolution: 'native', crossfadeDuration: 1000, crossfadeStyle: 'fade'},
       });
       service.updateFromSSE(testSettings);
 
@@ -195,7 +193,7 @@ describe('SettingsService', (): void => {
 
     it('fftSize reflects settings value', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'bars', maxFrameRate: 0, fftSize: 4096, renderResolution: 'native', perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade'},
+        visualization: {defaultType: 'bars', maxFrameRate: 0, fftSize: 4096, renderResolution: 'native', crossfadeDuration: 1000, crossfadeStyle: 'fade'},
       });
       service.updateFromSSE(testSettings);
 
@@ -311,7 +309,7 @@ describe('SettingsService', (): void => {
   describe('updateFromSSE', (): void => {
     it('updates settings signal', (): void => {
       const testSettings: AppSettings = createTestSettings({
-        visualization: {defaultType: 'tunnel', maxFrameRate: 30, fftSize: 1024, renderResolution: 'native', perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade'},
+        visualization: {defaultType: 'tunnel', maxFrameRate: 30, fftSize: 1024, renderResolution: 'native', crossfadeDuration: 1000, crossfadeStyle: 'fade'},
       });
 
       service.updateFromSSE(testSettings);
@@ -333,126 +331,6 @@ describe('SettingsService', (): void => {
   });
 
   // ============================================================================
-  // getEffectiveSetting
-  // ============================================================================
-
-  describe('getEffectiveSetting', (): void => {
-    it('returns custom value when set', (): void => {
-      const customSensitivity: number = 0.8;
-      const testSettings: AppSettings = createTestSettings({
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          renderResolution: 'native',
-          perVisualizationSettings: {
-            bars: {sensitivity: customSensitivity},
-          }, crossfadeDuration: 1000, crossfadeStyle: 'fade',
-        },
-      });
-      service.updateFromSSE(testSettings);
-
-      const result: number | undefined = service.getEffectiveSetting('bars', 'sensitivity');
-      expect(result).toBe(customSensitivity);
-    });
-
-    it('returns default when not customized', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          renderResolution: 'native',
-          perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade',
-        },
-      });
-      service.updateFromSSE(testSettings);
-
-      const result: number | undefined = service.getEffectiveSetting('bars', 'sensitivity');
-      expect(result).toBe(0.5); // VISUALIZATION_LOCAL_DEFAULTS.sensitivity
-    });
-
-    it('returns default for unknown visualization', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          renderResolution: 'native',
-          perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade',
-        },
-      });
-      service.updateFromSSE(testSettings);
-
-      const result: number | undefined = service.getEffectiveSetting('nonexistent', 'sensitivity');
-      expect(result).toBe(0.5); // VISUALIZATION_LOCAL_DEFAULTS.sensitivity
-    });
-  });
-
-  // ============================================================================
-  // hasCustomSetting
-  // ============================================================================
-
-  describe('hasCustomSetting', (): void => {
-    it('returns true when customized', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          renderResolution: 'native',
-          perVisualizationSettings: {
-            bars: {sensitivity: 0.9},
-          }, crossfadeDuration: 1000, crossfadeStyle: 'fade',
-        },
-      });
-      service.updateFromSSE(testSettings);
-
-      const result: boolean = service.hasCustomSetting('bars', 'sensitivity');
-      expect(result).toBe(true);
-    });
-
-    it('returns false when not customized', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          renderResolution: 'native',
-          perVisualizationSettings: {}, crossfadeDuration: 1000, crossfadeStyle: 'fade',
-        },
-      });
-      service.updateFromSSE(testSettings);
-
-      const result: boolean = service.hasCustomSetting('bars', 'sensitivity');
-      expect(result).toBe(false);
-    });
-  });
-
-  // ============================================================================
-  // hasApplicableSetting
-  // ============================================================================
-
-  describe('hasApplicableSetting', (): void => {
-    it('returns true for applicable setting', (): void => {
-      // 'bars' visualization has 'barDensity' in its applicableSettings
-      const result: boolean = service.hasApplicableSetting('bars', 'barDensity');
-      expect(result).toBe(true);
-    });
-
-    it('returns false for non-applicable setting', (): void => {
-      // 'bars' visualization does not have 'lineWidth' in its applicableSettings
-      const result: boolean = service.hasApplicableSetting('bars', 'lineWidth');
-      expect(result).toBe(false);
-    });
-
-    it('returns false for unknown visualization', (): void => {
-      const result: boolean = service.hasApplicableSetting('nonexistent', 'sensitivity');
-      expect(result).toBe(false);
-    });
-  });
-
-  // ============================================================================
   // getVisualizationMetadata
   // ============================================================================
 
@@ -464,9 +342,6 @@ describe('SettingsService', (): void => {
       expect(result!.id).toBe('bars');
       expect(result!.name).toBe('Analyzer');
       expect(result!.category).toBe('Bars & Waves');
-      expect(result!.applicableSettings).toContain('barDensity');
-      // Sensitivity is hard-coded for the Analyzer, so it is not a panel control.
-      expect(result!.applicableSettings).not.toContain('sensitivity');
     });
 
     it('returns undefined for unknown visualization', (): void => {
@@ -632,62 +507,6 @@ describe('SettingsService', (): void => {
       errorSpy.mockRestore();
     });
   });
-
-  // ============================================================================
-  // setVisualizationSetting
-  // ============================================================================
-
-  describe('setVisualizationSetting', (): void => {
-    it('clamps sensitivity to 0-1', async (): Promise<void> => {
-      fetchSpy.mockResolvedValue(createMockResponse(true));
-
-      // Value above 1 should clamp to 1
-      await service.setVisualizationSetting('bars', 'sensitivity', 2.0);
-      const highCall: [string, RequestInit] = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1] as [string, RequestInit];
-      const highBody: Record<string, unknown> = JSON.parse(highCall[1].body as string) as Record<string, unknown>;
-      const highVizSettings: Record<string, VisualizationLocalSettings> = highBody['perVisualizationSettings'] as Record<string, VisualizationLocalSettings>;
-      expect(highVizSettings['bars'].sensitivity).toBe(1);
-
-      // Value below 0 should clamp to 0
-      await service.setVisualizationSetting('bars', 'sensitivity', -0.5);
-      const lowCall: [string, RequestInit] = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1] as [string, RequestInit];
-      const lowBody: Record<string, unknown> = JSON.parse(lowCall[1].body as string) as Record<string, unknown>;
-      const lowVizSettings: Record<string, VisualizationLocalSettings> = lowBody['perVisualizationSettings'] as Record<string, VisualizationLocalSettings>;
-      expect(lowVizSettings['bars'].sensitivity).toBe(0);
-    });
-
-    it('clamps lineWidth to 1-5', async (): Promise<void> => {
-      fetchSpy.mockResolvedValue(createMockResponse(true));
-
-      // Value above 5 should clamp to 5
-      await service.setVisualizationSetting('waveform', 'lineWidth', 10.0);
-      const highCall: [string, RequestInit] = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1] as [string, RequestInit];
-      const highBody: Record<string, unknown> = JSON.parse(highCall[1].body as string) as Record<string, unknown>;
-      const highVizSettings: Record<string, VisualizationLocalSettings> = highBody['perVisualizationSettings'] as Record<string, VisualizationLocalSettings>;
-      expect(highVizSettings['waveform'].lineWidth).toBe(5);
-
-      // Value below 1 should clamp to 1
-      await service.setVisualizationSetting('waveform', 'lineWidth', 0.1);
-      const lowCall: [string, RequestInit] = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1] as [string, RequestInit];
-      const lowBody: Record<string, unknown> = JSON.parse(lowCall[1].body as string) as Record<string, unknown>;
-      const lowVizSettings: Record<string, VisualizationLocalSettings> = lowBody['perVisualizationSettings'] as Record<string, VisualizationLocalSettings>;
-      expect(lowVizSettings['waveform'].lineWidth).toBe(1);
-    });
-
-    it('rejects invalid bar density', async (): Promise<void> => {
-      fetchSpy.mockResolvedValue(createMockResponse(true));
-      const errorSpy: ReturnType<typeof vi.spyOn> = vi.spyOn(console, 'error').mockImplementation((): void => {});
-      const callCountBefore: number = fetchSpy.mock.calls.length;
-
-      await service.setVisualizationSetting('bars', 'barDensity', 'extreme' as VisualizationLocalSettings['barDensity']);
-
-      const callCountAfter: number = fetchSpy.mock.calls.length;
-      expect(callCountAfter).toBe(callCountBefore);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid bar density'));
-
-      errorSpy.mockRestore();
-    });
-  });
 });
 
 // ============================================================================
@@ -754,7 +573,6 @@ const NON_DEFAULT_SETTINGS: AppSettings = createTestSettings({
     renderResolution: '640x360',
     crossfadeDuration: 1500,
     crossfadeStyle: 'blur',
-    perVisualizationSettings: {bars: {barDensity: 'high'}},
   },
   application: {serverPort: 8080, controlsAutoHideDelay: 9, miniplayerOnFocusLoss: true},
   playback: {
@@ -815,7 +633,6 @@ const PUSHED_VALUE_CASES: readonly SignalCase[] = [
   {name: 'renderResolution', read: (s: SettingsService): unknown => s.renderResolution(), expected: '640x360'},
   {name: 'visualizationCrossfadeDuration', read: (s: SettingsService): unknown => s.visualizationCrossfadeDuration(), expected: 1500},
   {name: 'visualizationCrossfadeStyle', read: (s: SettingsService): unknown => s.visualizationCrossfadeStyle(), expected: 'blur'},
-  {name: 'perVisualizationSettings', read: (s: SettingsService): unknown => s.perVisualizationSettings(), expected: {bars: {barDensity: 'high'}}},
   {name: 'serverPort', read: (s: SettingsService): unknown => s.serverPort(), expected: 8080},
   {name: 'controlsAutoHideDelay', read: (s: SettingsService): unknown => s.controlsAutoHideDelay(), expected: 9},
   {name: 'miniplayerOnFocusLoss', read: (s: SettingsService): unknown => s.miniplayerOnFocusLoss(), expected: true},
@@ -923,7 +740,6 @@ const VISUALIZATION_FALLBACK_CASES: readonly SignalCase[] = [
   {name: 'renderResolution', read: (s: SettingsService): unknown => s.renderResolution(), expected: 'native'},
   {name: 'visualizationCrossfadeDuration', read: (s: SettingsService): unknown => s.visualizationCrossfadeDuration(), expected: 1000},
   {name: 'visualizationCrossfadeStyle', read: (s: SettingsService): unknown => s.visualizationCrossfadeStyle(), expected: 'fade'},
-  {name: 'perVisualizationSettings', read: (s: SettingsService): unknown => s.perVisualizationSettings(), expected: {}},
 ];
 
 /** Setter calls that should be persisted, with the exact body each should send. */
@@ -936,13 +752,6 @@ const PERSIST_CASES: readonly PersistCase[] = [
   {name: 'setRenderResolution("640x360")', act: (s: SettingsService): Promise<void> => s.setRenderResolution('640x360'), category: 'visualization', body: {renderResolution: '640x360'}},
   {name: 'setVisualizationCrossfadeDuration(750)', act: (s: SettingsService): Promise<void> => s.setVisualizationCrossfadeDuration(750), category: 'visualization', body: {crossfadeDuration: 750}},
   {name: 'setVisualizationCrossfadeStyle("zoom")', act: (s: SettingsService): Promise<void> => s.setVisualizationCrossfadeStyle('zoom'), category: 'visualization', body: {crossfadeStyle: 'zoom'}},
-  {name: 'setVisualizationSetting barDensity "high"', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('bars', 'barDensity', 'high'), category: 'visualization', body: {perVisualizationSettings: {bars: {barDensity: 'high'}}}},
-  {name: 'setVisualizationSetting barColorTop unchanged', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('bars', 'barColorTop', '#ff0000'), category: 'visualization', body: {perVisualizationSettings: {bars: {barColorTop: '#ff0000'}}}},
-  {name: 'setVisualizationSetting trailIntensity 2 clamped to 1', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('neon', 'trailIntensity', 2), category: 'visualization', body: {perVisualizationSettings: {neon: {trailIntensity: 1}}}},
-  {name: 'setVisualizationSetting glowIntensity -1 clamped to 0', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('neon', 'glowIntensity', -1), category: 'visualization', body: {perVisualizationSettings: {neon: {glowIntensity: 0}}}},
-  {name: 'setVisualizationSetting waveformSmoothing 0.3 unchanged', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('waveform', 'waveformSmoothing', 0.3), category: 'visualization', body: {perVisualizationSettings: {waveform: {waveformSmoothing: 0.3}}}},
-  {name: 'setVisualizationSetting strobeFrequency 50 clamped to 20', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('pulsar', 'strobeFrequency', 50), category: 'visualization', body: {perVisualizationSettings: {pulsar: {strobeFrequency: 20}}}},
-  {name: 'setVisualizationSetting strobeFrequency 0 clamped to 1', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('pulsar', 'strobeFrequency', 0), category: 'visualization', body: {perVisualizationSettings: {pulsar: {strobeFrequency: 1}}}},
   // Application
   {name: 'setServerPort(8080.4) rounded', act: (s: SettingsService): Promise<void> => s.setServerPort(8080.4), category: 'application', body: {serverPort: 8080}},
   {name: 'setControlsAutoHideDelay(12.4) rounded', act: (s: SettingsService): Promise<void> => s.setControlsAutoHideDelay(12.4), category: 'application', body: {controlsAutoHideDelay: 12}},
@@ -1035,7 +844,6 @@ const REJECT_CASES: readonly RejectCase[] = [
   {name: 'setSubtitleBackgroundColor with a non-hex digit', act: (s: SettingsService): Promise<void> => s.setSubtitleBackgroundColor('#12345g'), message: 'Invalid hex color: #12345g'},
   {name: 'setSubtitleShadowColor carrying injected CSS', act: (s: SettingsService): Promise<void> => s.setSubtitleShadowColor('#000000;} body {display: none'), message: 'Invalid hex color: #000000;} body {display: none'},
   {name: 'setSubtitleFontFamily("Comic Sans")', act: (s: SettingsService): Promise<void> => s.setSubtitleFontFamily('Comic Sans' as SubtitleFontFamily), message: 'Invalid font family: Comic Sans'},
-  {name: 'setVisualizationSetting barDensity "extreme"', act: (s: SettingsService): Promise<void> => s.setVisualizationSetting('bars', 'barDensity', 'extreme' as VisualizationLocalSettings['barDensity']), message: 'Invalid bar density: extreme'},
 ];
 
 describe('SettingsService persistence', (): void => {
@@ -1347,199 +1155,6 @@ describe('SettingsService persistence', (): void => {
         url: `${SERVER_URL}/settings/equalizer`,
         body: {enabled: true},
       })]);
-    });
-  });
-
-  // ============================================================================
-  // Per-visualization settings
-  // ============================================================================
-
-  describe('per-visualization settings', (): void => {
-    const customised: PerVisualizationSettings = {
-      bars: {barDensity: 'high', barColorTop: '#ff0000'},
-      neon: {glowIntensity: 0.9},
-    };
-
-    beforeEach(async (): Promise<void> => {
-      await createService();
-      settingsPushHandler()(createTestSettings({
-        visualization: {
-          defaultType: 'bars',
-          maxFrameRate: 0,
-          fftSize: 2048,
-          renderResolution: 'native',
-          crossfadeDuration: 1000,
-          crossfadeStyle: 'fade',
-          perVisualizationSettings: customised,
-        },
-      }));
-      fetchSpy.mockClear();
-    });
-
-    it('sends every visualization\'s settings when one setting changes', async (): Promise<void> => {
-      const pending: Promise<void> = service.setVisualizationSetting('bars', 'barDensity', 'low');
-      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-      await pending;
-
-      expect(sentWrites(fetchSpy)[0].body).toEqual({
-        perVisualizationSettings: {
-          bars: {barDensity: 'low', barColorTop: '#ff0000'},
-          neon: {glowIntensity: 0.9},
-        },
-      });
-    });
-
-    it('keeps both changes when two visualizations change in one burst', async (): Promise<void> => {
-      void service.setVisualizationSetting('bars', 'barDensity', 'low');
-      const pending: Promise<void> = service.setVisualizationSetting('neon', 'glowIntensity', 0.1);
-      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-      await pending;
-
-      expect(sentWrites(fetchSpy)).toEqual([expect.objectContaining({
-        body: {
-          perVisualizationSettings: {
-            bars: {barDensity: 'low', barColorTop: '#ff0000'},
-            neon: {glowIntensity: 0.1},
-          },
-        },
-      })]);
-    });
-
-    it('reports the changed value as the effective setting straight away', async (): Promise<void> => {
-      const pending: Promise<void> = service.setVisualizationSetting('waveform', 'lineWidth', 4);
-
-      expect(service.getEffectiveSetting('waveform', 'lineWidth')).toBe(4);
-      expect(service.hasCustomSetting('waveform', 'lineWidth')).toBe(true);
-      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-      await pending;
-    });
-
-    it('resetting one setting sends the map without that setting', async (): Promise<void> => {
-      await service.resetVisualizationSetting('bars', 'barDensity');
-
-      expect(sentWrites(fetchSpy)).toEqual([{
-        url: `${SERVER_URL}/settings/visualization`,
-        headers: {'Content-Type': 'application/json'},
-        body: {perVisualizationSettings: {bars: {barColorTop: '#ff0000'}, neon: {glowIntensity: 0.9}}},
-      }]);
-    });
-
-    it('resetting a visualization\'s last setting removes its entry', async (): Promise<void> => {
-      await service.resetVisualizationSetting('neon', 'glowIntensity');
-
-      expect(sentWrites(fetchSpy)[0].body).toEqual({
-        perVisualizationSettings: {bars: {barDensity: 'high', barColorTop: '#ff0000'}},
-      });
-    });
-
-    it('resetting a setting that was never customised sends nothing', async (): Promise<void> => {
-      await service.resetVisualizationSetting('bars', 'sensitivity');
-
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('resetting a setting of an uncustomised visualization sends nothing', async (): Promise<void> => {
-      await service.resetVisualizationSetting('tunnel', 'sensitivity');
-
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('resetting a setting sends nothing while the server URL is unknown', async (): Promise<void> => {
-      mockElectron.serverUrl.set('');
-
-      await service.resetVisualizationSetting('bars', 'barDensity');
-
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('logs when the server refuses to reset a setting', async (): Promise<void> => {
-      fetchSpy.mockResolvedValue(createMockResponse(false));
-
-      await service.resetVisualizationSetting('bars', 'barDensity');
-
-      expect(errorSpy).toHaveBeenCalledWith('[SettingsService] Failed to save visualization: 500');
-    });
-
-    it('resetting all settings sends the map without that visualization', async (): Promise<void> => {
-      await service.resetAllVisualizationSettings('bars');
-
-      expect(sentWrites(fetchSpy)).toEqual([{
-        url: `${SERVER_URL}/settings/visualization`,
-        headers: {'Content-Type': 'application/json'},
-        body: {perVisualizationSettings: {neon: {glowIntensity: 0.9}}},
-      }]);
-    });
-
-    it('resetting all settings sends nothing while the server URL is unknown', async (): Promise<void> => {
-      mockElectron.serverUrl.set('');
-
-      await service.resetAllVisualizationSettings('bars');
-
-      expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('logs when the server refuses to reset all settings', async (): Promise<void> => {
-      fetchSpy.mockResolvedValue(createMockResponse(false));
-
-      await service.resetAllVisualizationSettings('bars');
-
-      expect(errorSpy).toHaveBeenCalledWith('[SettingsService] Failed to save visualization: 500');
-    });
-
-    it('resetting one setting drops the custom value straight away', async (): Promise<void> => {
-      const pending: Promise<void> = service.resetVisualizationSetting('bars', 'barDensity');
-
-      expect(service.perVisualizationSettings()).toEqual({bars: {barColorTop: '#ff0000'}, neon: {glowIntensity: 0.9}});
-      await pending;
-    });
-
-    it('resetting all settings drops the visualization\'s custom values straight away', async (): Promise<void> => {
-      const pending: Promise<void> = service.resetAllVisualizationSettings('bars');
-
-      expect(service.perVisualizationSettings()).toEqual({neon: {glowIntensity: 0.9}});
-      await pending;
-    });
-
-    it('a change still waiting on its debounce cannot undo a later reset of that setting', async (): Promise<void> => {
-      void service.setVisualizationSetting('bars', 'barDensity', 'low');
-
-      await service.resetVisualizationSetting('bars', 'barDensity');
-      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-
-      expect(sentWrites(fetchSpy).at(-1)?.body).toEqual({
-        perVisualizationSettings: {bars: {barColorTop: '#ff0000'}, neon: {glowIntensity: 0.9}},
-      });
-    });
-
-    it('a change still waiting on its debounce cannot undo a later reset of the whole visualization', async (): Promise<void> => {
-      void service.setVisualizationSetting('bars', 'barDensity', 'low');
-
-      await service.resetAllVisualizationSettings('bars');
-      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-
-      expect(sentWrites(fetchSpy).at(-1)?.body).toEqual({perVisualizationSettings: {neon: {glowIntensity: 0.9}}});
-    });
-
-    it('a reset sends an unrelated visualization change that was still waiting on its debounce', async (): Promise<void> => {
-      void service.setMaxFrameRate(30);
-
-      await service.resetVisualizationSetting('bars', 'barDensity');
-      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
-
-      expect(sentWrites(fetchSpy)).toEqual([expect.objectContaining({
-        body: {
-          maxFrameRate: 30,
-          perVisualizationSettings: {bars: {barColorTop: '#ff0000'}, neon: {glowIntensity: 0.9}},
-        },
-      })]);
-    });
-
-    it('a reset settles a change that was still waiting on its debounce', async (): Promise<void> => {
-      const change: Promise<void> = service.setVisualizationSetting('neon', 'glowIntensity', 0.1);
-
-      await service.resetVisualizationSetting('bars', 'barDensity');
-
-      await expect(change).resolves.toBeUndefined();
     });
   });
 

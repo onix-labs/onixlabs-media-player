@@ -75,7 +75,6 @@ $row-padding-inline: 1.1rem;
 }
 
 // Icon buttons.
-.configuration-sidebar .accordion-toggle,
 .setting-control.port-control .reset-button,
 .dependency-link {
   @include pebble.button(ghost, sm);
@@ -101,8 +100,7 @@ $row-padding-inline: 1.1rem;
     gap: var(--pebble-space-1);
   }
 
-  .category-item,
-  .category-child {
+  .category-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -132,51 +130,6 @@ $row-padding-inline: 1.1rem;
     padding: 0.6rem 0.85rem;
     font-size: var(--pebble-text-sm);
     font-weight: var(--pebble-weight-medium);
-
-    &.has-accordion {
-      padding-right: 0.4rem;
-    }
-
-    // The Visualizations row is a div whose label is the focusable control.
-    > span[role='button'] {
-      flex: 1;
-      border-radius: var(--pebble-radius-sm);
-    }
-  }
-
-  .accordion-category {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .accordion-toggle {
-    width: 1.5rem;
-    min-height: 1.5rem;
-    height: 1.5rem;
-    padding: 0;
-    border-radius: var(--pebble-radius-sm);
-
-    i {
-      font-size: 0.625rem;
-      transition: transform var(--pebble-transition);
-    }
-
-    &.expanded i {
-      transform: rotate(90deg);
-    }
-  }
-
-  .accordion-children {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-    padding: var(--pebble-space-1) 0 var(--pebble-space-1) var(--pebble-space-3);
-  }
-
-  .category-child {
-    padding: 0.45rem 0.85rem;
-    font-size: var(--pebble-text-xs);
-    font-weight: var(--pebble-weight-normal);
   }
 }
 

@@ -36,38 +36,6 @@ import { settingsLogger } from './logger.js';
  */
 
 /**
- * Per-visualization local settings.
- * All values are optional - if not set, defaults are used.
- */
-export interface VisualizationLocalSettings {
-  /** Sensitivity for this visualization (0.0 - 1.0, default 0.5) */
-  readonly sensitivity?: number;
-  /** Bar density for bar-based visualizations (low, medium, high) - only for bars */
-  readonly barDensity?: BarDensity;
-  /** Trail intensity for trail effects (0.0 - 1.0) - only for tunnel, infinity, neon, onix, pulsar, water */
-  readonly trailIntensity?: number;
-  /** Line width for waveform lines (1.0 - 5.0) - only for waveform, tunnel, infinity, neon, onix, pulsar, water */
-  readonly lineWidth?: number;
-  /** Glow intensity for glow effects (0.0 - 1.0) - only for waveform, tunnel, infinity, neon, onix, pulsar, water */
-  readonly glowIntensity?: number;
-  /** Waveform smoothing for curves (0.0 - 1.0) - only for waveform, tunnel, infinity, neon, onix, pulsar, water */
-  readonly waveformSmoothing?: number;
-  /** Bar gradient bottom color (hex format, e.g., '#00cc00') - only for bars */
-  readonly barColorBottom?: string;
-  /** Bar gradient middle color (hex format, e.g., '#cccc00') - only for bars */
-  readonly barColorMiddle?: string;
-  /** Bar gradient top color (hex format, e.g., '#cc0000') - only for bars */
-  readonly barColorTop?: string;
-  /** Strobe frequency in Hz (1-20) - only for modern visualization */
-  readonly strobeFrequency?: number;
-}
-
-/**
- * Map of visualization type to its local settings.
- */
-export type PerVisualizationSettings = Partial<Record<string, VisualizationLocalSettings>>;
-
-/**
  * Valid FFT size values (must be powers of 2).
  */
 export type FftSize = 256 | 512 | 1024 | 2048 | 4096;
@@ -96,14 +64,6 @@ export type CrossfadeDuration = 500 | 750 | 1000 | 1500 | 2000;
  */
 export type CrossfadeStyle =
   | 'fade' | 'zoom' | 'shrink' | 'blur' | 'random';
-
-/**
- * Bar density levels for bar-based visualizations.
- * - low: Fewer bars, better performance
- * - medium: Default balance
- * - high: More bars, more detail
- */
-export type BarDensity = 'low' | 'medium' | 'high';
 
 /**
  * Video quality preset levels for transcoding.
@@ -253,8 +213,7 @@ export const SUBTITLE_LANGUAGE_OPTIONS: readonly { value: PreferredSubtitleLangu
 /**
  * Visualization settings.
  *
- * Global settings apply to all visualizations.
- * Per-visualization settings are stored in perVisualizationSettings.
+ * Every setting applies to all visualizations alike.
  */
 export interface VisualizationSettings {
   /** The default visualization to display on startup */
@@ -269,8 +228,6 @@ export interface VisualizationSettings {
   readonly crossfadeDuration: CrossfadeDuration;
   /** Visual style of the visualization switch transition (default 'fade') */
   readonly crossfadeStyle: CrossfadeStyle;
-  /** Per-visualization local settings (sensitivity, barDensity, trailIntensity, etc.) */
-  readonly perVisualizationSettings: PerVisualizationSettings;
 }
 
 /**
@@ -500,7 +457,6 @@ export interface VisualizationSettingsUpdate {
   readonly renderResolution?: RenderResolution;
   readonly crossfadeDuration?: CrossfadeDuration;
   readonly crossfadeStyle?: CrossfadeStyle;
-  readonly perVisualizationSettings?: PerVisualizationSettings;
 }
 
 /**
@@ -615,23 +571,6 @@ const SETTINGS_VERSION: number = 2;
 /** Delay before a settings change is written to disk, coalescing bursts of changes. */
 const SAVE_DEBOUNCE_MS: number = 250;
 
-/**
- * Default values for per-visualization local settings.
- * Used when a setting is not customized for a visualization.
- */
-export const VISUALIZATION_LOCAL_DEFAULTS: Required<VisualizationLocalSettings> = {
-  sensitivity: 0.5,
-  barDensity: 'medium',
-  trailIntensity: 0.5,
-  lineWidth: 2.0,
-  glowIntensity: 0.5,
-  waveformSmoothing: 0.5,
-  barColorBottom: '#00cc00',
-  barColorMiddle: '#cccc00',
-  barColorTop: '#cc0000',
-  strobeFrequency: 5,
-};
-
 /** Valid FFT size values */
 const VALID_FFT_SIZES: readonly FftSize[] = [256, 512, 1024, 2048, 4096];
 
@@ -652,9 +591,6 @@ const VALID_CROSSFADE_DURATIONS: readonly CrossfadeDuration[] = [500, 750, 1000,
 const VALID_CROSSFADE_STYLES: readonly CrossfadeStyle[] = [
   'fade', 'zoom', 'shrink', 'blur', 'random',
 ];
-
-/** Valid bar density values */
-const VALID_BAR_DENSITIES: readonly BarDensity[] = ['low', 'medium', 'high'];
 
 /** Valid video quality values */
 const VALID_VIDEO_QUALITIES: readonly VideoQuality[] = ['low', 'medium', 'high'];
@@ -698,7 +634,6 @@ const DEFAULT_SETTINGS: AppSettings = {
     renderResolution: 'native',  // 'native' = render at display pixel size
     crossfadeDuration: 1000,  // 1000 = 1s crossfade between visualizations
     crossfadeStyle: 'fade',  // 'fade' = classic opacity crossfade
-    perVisualizationSettings: {},  // Empty = use VISUALIZATION_LOCAL_DEFAULTS
   },
   application: {
     serverPort: 0,  // 0 = auto-assign
@@ -935,19 +870,6 @@ export class SettingsManager {
       }
     }
 
-    // Validate and merge per-visualization settings if provided
-    let mergedPerVizSettings: PerVisualizationSettings = this.settings.visualization.perVisualizationSettings;
-    if (update.perVisualizationSettings !== undefined) {
-      const validatedUpdate: PerVisualizationSettings = this.validatePerVisualizationSettings(update.perVisualizationSettings);
-      // Deep merge: for each visualization, merge its settings
-      mergedPerVizSettings = {...this.settings.visualization.perVisualizationSettings};
-      for (const vizId of Object.keys(validatedUpdate)) {
-        const existingVizSettings: VisualizationLocalSettings = mergedPerVizSettings[vizId] ?? {};
-        const newVizSettings: VisualizationLocalSettings = validatedUpdate[vizId] ?? {};
-        mergedPerVizSettings[vizId] = {...existingVizSettings, ...newVizSettings};
-      }
-    }
-
     // Merge the update
     this.settings = {
       ...this.settings,
@@ -958,7 +880,6 @@ export class SettingsManager {
         renderResolution: update.renderResolution ?? this.settings.visualization.renderResolution,
         crossfadeDuration: update.crossfadeDuration ?? this.settings.visualization.crossfadeDuration,
         crossfadeStyle: update.crossfadeStyle ?? this.settings.visualization.crossfadeStyle,
-        perVisualizationSettings: mergedPerVizSettings,
       },
     };
 
@@ -1957,7 +1878,12 @@ export class SettingsManager {
 
   /**
    * Validates visualization settings object.
-   * Handles migration from v1 (global settings) to v2 (per-visualization settings).
+   *
+   * Only the known fields are copied across. Files written by older versions
+   * may still carry per-visualization tuning (perVisualizationSettings, or the
+   * v1 perVisualizationSensitivity); the player no longer offers it, so those
+   * keys are dropped here, whatever they hold, and are therefore not written
+   * back on the next save.
    *
    * @param viz - The visualization settings to validate (unknown type)
    * @returns Valid visualization settings with defaults for invalid values
@@ -1974,32 +1900,6 @@ export class SettingsManager {
     const renderResolution: unknown = vizObj['renderResolution'];
     const crossfadeDuration: unknown = vizObj['crossfadeDuration'];
     const crossfadeStyle: unknown = vizObj['crossfadeStyle'];
-
-    // Handle migration from v1 to v2
-    let perVisualizationSettings: PerVisualizationSettings = {};
-
-    // Check if we have v2 format (perVisualizationSettings)
-    if (vizObj['perVisualizationSettings'] && typeof vizObj['perVisualizationSettings'] === 'object') {
-      perVisualizationSettings = this.validatePerVisualizationSettings(vizObj['perVisualizationSettings']);
-    }
-
-    // Migrate v1 settings if present (perVisualizationSensitivity and global values)
-    const oldPerVizSensitivity: unknown = vizObj['perVisualizationSensitivity'];
-    if (oldPerVizSensitivity && typeof oldPerVizSensitivity === 'object') {
-      // Migrate old per-visualization sensitivity to new format
-      const oldPerVizObj: Record<string, unknown> = oldPerVizSensitivity as Record<string, unknown>;
-      for (const vizId of Object.keys(oldPerVizObj)) {
-        if (this.isValidVisualizationType(vizId) && this.isValidSensitivity(oldPerVizObj[vizId])) {
-          if (!perVisualizationSettings[vizId]) {
-            perVisualizationSettings[vizId] = {};
-          }
-          perVisualizationSettings[vizId] = {
-            ...perVisualizationSettings[vizId],
-            sensitivity: oldPerVizObj[vizId] as number,
-          };
-        }
-      }
-    }
 
     return {
       defaultType: this.isValidVisualizationType(defaultType)
@@ -2020,87 +1920,7 @@ export class SettingsManager {
       crossfadeStyle: this.isValidCrossfadeStyle(crossfadeStyle)
         ? crossfadeStyle
         : DEFAULT_SETTINGS.visualization.crossfadeStyle,
-      perVisualizationSettings,
     };
-  }
-
-  /**
-   * Validates per-visualization settings object.
-   *
-   * @param perViz - The per-visualization settings to validate
-   * @returns Valid per-visualization settings with invalid entries removed
-   */
-  private validatePerVisualizationSettings(perViz: unknown): PerVisualizationSettings {
-    if (!perViz || typeof perViz !== 'object') {
-      return {};
-    }
-
-    const result: PerVisualizationSettings = {};
-    const perVizObj: Record<string, unknown> = perViz as Record<string, unknown>;
-
-    for (const vizId of Object.keys(perVizObj)) {
-      if (!this.isValidVisualizationType(vizId)) {
-        continue;
-      }
-
-      const vizSettings: unknown = perVizObj[vizId];
-      if (!vizSettings || typeof vizSettings !== 'object') {
-        continue;
-      }
-
-      const vizSettingsObj: Record<string, unknown> = vizSettings as Record<string, unknown>;
-
-      // Build validated object with only valid settings
-      const validated: VisualizationLocalSettings = {
-        ...(this.isValidSensitivity(vizSettingsObj['sensitivity'])
-          ? {sensitivity: vizSettingsObj['sensitivity'] as number}
-          : {}),
-        ...(this.isValidBarDensity(vizSettingsObj['barDensity'])
-          ? {barDensity: vizSettingsObj['barDensity'] as BarDensity}
-          : {}),
-        ...(this.isValidTrailIntensity(vizSettingsObj['trailIntensity'])
-          ? {trailIntensity: vizSettingsObj['trailIntensity'] as number}
-          : {}),
-        ...(this.isValidLineWidth(vizSettingsObj['lineWidth'])
-          ? {lineWidth: vizSettingsObj['lineWidth'] as number}
-          : {}),
-        ...(this.isValidGlowIntensity(vizSettingsObj['glowIntensity'])
-          ? {glowIntensity: vizSettingsObj['glowIntensity'] as number}
-          : {}),
-        ...(this.isValidWaveformSmoothing(vizSettingsObj['waveformSmoothing'])
-          ? {waveformSmoothing: vizSettingsObj['waveformSmoothing'] as number}
-          : {}),
-        ...(this.isValidHexColor(vizSettingsObj['barColorBottom'])
-          ? {barColorBottom: vizSettingsObj['barColorBottom'] as string}
-          : {}),
-        ...(this.isValidHexColor(vizSettingsObj['barColorMiddle'])
-          ? {barColorMiddle: vizSettingsObj['barColorMiddle'] as string}
-          : {}),
-        ...(this.isValidHexColor(vizSettingsObj['barColorTop'])
-          ? {barColorTop: vizSettingsObj['barColorTop'] as string}
-          : {}),
-        ...(this.isValidStrobeFrequency(vizSettingsObj['strobeFrequency'])
-          ? {strobeFrequency: vizSettingsObj['strobeFrequency'] as number}
-          : {}),
-      };
-
-      // Only add if there are any valid settings
-      if (Object.keys(validated).length > 0) {
-        result[vizId] = validated;
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Type guard to check if a value is a valid sensitivity value.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid sensitivity (number between 0 and 1)
-   */
-  private isValidSensitivity(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 1;
   }
 
   /**
@@ -2606,18 +2426,6 @@ export class SettingsManager {
   }
 
   /**
-   * Type guard to check if a value is a valid trail intensity.
-   *
-   * Valid values are between 0.0 and 1.0.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid trail intensity
-   */
-  private isValidTrailIntensity(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 1;
-  }
-
-  /**
    * Type guard to check if a value is a valid FFT size.
    *
    * Valid values are powers of 2: 256, 512, 1024, 2048, 4096.
@@ -2664,54 +2472,6 @@ export class SettingsManager {
   }
 
   /**
-   * Type guard to check if a value is a valid bar density.
-   *
-   * Valid values are 'low', 'medium', or 'high'.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid bar density
-   */
-  private isValidBarDensity(value: unknown): value is BarDensity {
-    return typeof value === 'string' && VALID_BAR_DENSITIES.includes(value as BarDensity);
-  }
-
-  /**
-   * Type guard to check if a value is a valid line width.
-   *
-   * Valid values are between 1.0 and 5.0.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid line width
-   */
-  private isValidLineWidth(value: unknown): value is number {
-    return typeof value === 'number' && value >= 1 && value <= 5;
-  }
-
-  /**
-   * Type guard to check if a value is a valid glow intensity.
-   *
-   * Valid values are between 0.0 and 1.0.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid glow intensity
-   */
-  private isValidGlowIntensity(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 1;
-  }
-
-  /**
-   * Type guard to check if a value is a valid waveform smoothing.
-   *
-   * Valid values are between 0.0 and 1.0.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid waveform smoothing
-   */
-  private isValidWaveformSmoothing(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 1;
-  }
-
-  /**
    * Type guard to check if a value is a valid hex color.
    *
    * Valid values are strings matching #RRGGBB format.
@@ -2721,18 +2481,6 @@ export class SettingsManager {
    */
   private isValidHexColor(value: unknown): value is string {
     return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
-  }
-
-  /**
-   * Type guard to check if a value is a valid strobe frequency.
-   *
-   * Valid values are integers between 1 and 20 Hz.
-   *
-   * @param value - The value to check
-   * @returns True if the value is a valid strobe frequency
-   */
-  private isValidStrobeFrequency(value: unknown): value is number {
-    return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 20;
   }
 
   /**

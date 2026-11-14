@@ -16,7 +16,7 @@ import {Component, signal, computed, inject, input, effect, ChangeDetectionStrat
 import type {InputSignal, EffectRef} from '@angular/core';
 import {FormsModule} from '@angular/forms';
 import {SoundFontList} from '../../shared/soundfont-list/soundfont-list';
-import {SettingsService, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, SEEK_MODE_OPTIONS, VISUALIZATION_METADATA, VisualizationMetadata, LocalSettingKey, FftSize, RenderResolution, CrossfadeDuration, CrossfadeStyle, BarDensity, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, SeekMode, MacOSVisualEffectState, ColorScheme, PerVisualizationSettings, VisualizationLocalSettings, VISUALIZATION_LOCAL_DEFAULTS, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
+import {SettingsService, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, SEEK_MODE_OPTIONS, FftSize, RenderResolution, CrossfadeDuration, CrossfadeStyle, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, SeekMode, MacOSVisualEffectState, ColorScheme, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import {EQ_FREQUENCIES, EQ_PRESETS, EQ_GAIN_MIN, EQ_GAIN_MAX, type EqualizerPreset} from '../../../services/equalizer';
@@ -238,9 +238,6 @@ export class ConfigurationView {
   /** Currently selected category ID */
   public readonly selectedCategory: ReturnType<typeof signal<string>> = signal<string>('application');
 
-  /** Whether the visualisations accordion is expanded */
-  public readonly isVisualisationsExpanded: ReturnType<typeof signal<boolean>> = signal<boolean>(false);
-
   /** Effect to apply initialCategory input or URL param for standalone windows */
   private readonly initialCategoryEffect: EffectRef = effect((): void => {
     // First priority: input binding
@@ -257,23 +254,6 @@ export class ConfigurationView {
       }
     }
   });
-
-  /** Currently selected visualization ID (null = global settings) */
-  public readonly selectedVisualization: ReturnType<typeof signal<string | null>> = signal<string | null>(null);
-
-  /**
-   * Per-visualization settings for the currently selected visualization.
-   * This computed signal ensures Angular tracks changes from SSE updates.
-   */
-  public readonly currentVizSettings: ReturnType<typeof computed<Record<string, number | string | undefined>>> = computed(
-    (): Record<string, number | string | undefined> => {
-      const vizId: string | null = this.selectedVisualization();
-      if (!vizId) return {};
-      // Reading from perVisualizationSettings() creates a reactive dependency
-      const allSettings: PerVisualizationSettings = this.settingsService.perVisualizationSettings();
-      return (allSettings[vizId] ?? {}) as Record<string, number | string | undefined>;
-    }
-  );
 
   // ============================================================================
   // Computed Values
@@ -314,11 +294,6 @@ export class ConfigurationView {
   public readonly currentVisualizationCrossfadeStyle: ReturnType<typeof computed<CrossfadeStyle>> = computed(
     (): CrossfadeStyle => this.settingsService.visualizationCrossfadeStyle()
   );
-
-  /** Visualization metadata for accordion items */
-  /** Visualizations that still expose per-viz controls (those with none are hidden). */
-  public readonly visualizationMetadata: readonly VisualizationMetadata[] =
-    VISUALIZATION_METADATA.filter((viz: VisualizationMetadata): boolean => viz.applicableSettings.length > 0);
 
   /** Current default volume (0.0 - 1.0) */
   public readonly currentDefaultVolume: ReturnType<typeof computed<number>> = computed(
@@ -485,13 +460,6 @@ export class ConfigurationView {
     {value: 'shrink', label: 'Shrink'},
     {value: 'blur', label: 'Blur'},
     {value: 'random', label: 'Random'},
-  ];
-
-  /** Available bar density options for the dropdown */
-  public readonly barDensityOptions: readonly {value: BarDensity; label: string}[] = [
-    {value: 'low', label: 'Low'},
-    {value: 'medium', label: 'Medium (Default)'},
-    {value: 'high', label: 'High'},
   ];
 
   /** Available video quality options for the dropdown */
@@ -864,35 +832,11 @@ export class ConfigurationView {
 
   /**
    * Handles category selection.
-   * For visualisations, clicking the category name shows global settings.
    *
    * @param categoryId - The ID of the category to select
    */
   public onSelectCategory(categoryId: string): void {
     this.selectedCategory.set(categoryId);
-    if (categoryId === 'visualisations') {
-      this.selectedVisualization.set(null);
-    }
-  }
-
-  /**
-   * Toggles the visualisations accordion expansion.
-   *
-   * @param event - The mouse event (to prevent propagation)
-   */
-  public toggleVisualisationsAccordion(event: MouseEvent): void {
-    event.stopPropagation();
-    this.isVisualisationsExpanded.set(!this.isVisualisationsExpanded());
-  }
-
-  /**
-   * Selects a specific visualization for per-viz settings.
-   *
-   * @param vizId - The visualization ID to select
-   */
-  public onSelectVisualization(vizId: string): void {
-    this.selectedCategory.set('visualisations');
-    this.selectedVisualization.set(vizId);
   }
 
   /**
@@ -1561,109 +1505,6 @@ export class ConfigurationView {
   public formatCrossfadeDuration(): string {
     const duration: number = this.currentCrossfadeDuration();
     return duration === 0 ? 'Off' : `${duration}ms`;
-  }
-
-  // ============================================================================
-  // Per-Visualization Settings
-  // ============================================================================
-
-  /**
-   * Checks if a setting is applicable to the given visualization.
-   *
-   * @param vizId - The visualization ID
-   * @param setting - The setting key
-   * @returns True if the setting applies to this visualization
-   */
-  public hasApplicableSetting(vizId: string, setting: LocalSettingKey): boolean {
-    return this.settingsService.hasApplicableSetting(vizId, setting);
-  }
-
-  /**
-   * Checks if a visualization has a custom value for a setting.
-   * Reads the settings signal directly to ensure reactive updates.
-   *
-   * @param vizId - The visualization ID
-   * @param setting - The setting key
-   * @returns True if the setting has a custom value
-   */
-  public hasCustomSetting(vizId: string, setting: LocalSettingKey): boolean {
-    // Read from perVisualizationSettings() to establish reactive dependency.
-    // Not currentVizSettings(): that is the selected visualization's, which
-    // need not be the one being asked about.
-    const allSettings: PerVisualizationSettings = this.settingsService.perVisualizationSettings();
-    return allSettings[vizId]?.[setting] !== undefined;
-  }
-
-  /**
-   * Gets the effective value for a per-visualization setting.
-   * Uses currentVizSettings computed to ensure reactive updates.
-   *
-   * @param vizId - The visualization ID
-   * @param setting - The setting key
-   * @returns The effective value (custom or default)
-   */
-  public getEffectiveSetting<K extends LocalSettingKey>(vizId: string, setting: K): number | BarDensity {
-    // Read from currentVizSettings() to establish reactive dependency
-    const vizSettings: Record<string, number | string | undefined> = this.currentVizSettings();
-    const customValue: number | string | undefined = vizSettings[setting];
-    if (customValue !== undefined) {
-      return customValue as number | BarDensity;
-    }
-    // Fall back to default value
-    return VISUALIZATION_LOCAL_DEFAULTS[setting] as number | BarDensity;
-  }
-
-  /**
-   * Handles per-visualization bar density change.
-   *
-   * @param vizId - The visualization ID
-   * @param event - The change event from the select element
-   */
-  public async onPerVizBarDensityChange(vizId: string, event: Event): Promise<void> {
-    const density: BarDensity = getSelectValue(event) as BarDensity;
-    await this.settingsService.setVisualizationSetting(vizId, 'barDensity', density);
-  }
-
-  /**
-   * Handles per-visualization color setting change.
-   *
-   * @param vizId - The visualization ID
-   * @param setting - The color setting key
-   * @param event - The input event from the color picker
-   */
-  public async onPerVizColorChange(vizId: string, setting: LocalSettingKey, event: Event): Promise<void> {
-    const color: string = getInputValue(event);
-    await this.settingsService.setVisualizationSetting(vizId, setting, color);
-  }
-
-  /**
-   * Resets a per-visualization setting to its default.
-   *
-   * @param vizId - The visualization ID
-   * @param setting - The setting key
-   */
-  public async onResetPerVizSetting(vizId: string, setting: LocalSettingKey): Promise<void> {
-    await this.settingsService.resetVisualizationSetting(vizId, setting);
-  }
-
-  /**
-   * Resets all settings for a visualization to defaults.
-   *
-   * @param vizId - The visualization ID
-   */
-  public async onResetAllVisualizationSettings(vizId: string): Promise<void> {
-    await this.settingsService.resetAllVisualizationSettings(vizId);
-  }
-
-  /**
-   * Gets the display name for a visualization by its ID.
-   *
-   * @param vizId - The visualization ID
-   * @returns The display name or the ID if not found
-   */
-  public getVisualizationName(vizId: string): string {
-    const meta: VisualizationMetadata | undefined = this.settingsService.getVisualizationMetadata(vizId);
-    return meta?.name ?? vizId;
   }
 
   // ============================================================================
