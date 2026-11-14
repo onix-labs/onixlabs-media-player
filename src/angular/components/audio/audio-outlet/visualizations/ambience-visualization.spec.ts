@@ -729,6 +729,26 @@ describe('AmbienceVisualization', (): void => {
       expect(gl.callsTo('drawArrays')).toEqual([]);
     });
 
+    it('leaves the released context alone if drawn after being destroyed', (): void => {
+      const viz: AmbienceTwirlVisualization = playing(new AmbienceTwirlVisualization(config()));
+      viz.destroy();
+      gl.clear();
+
+      viz.draw();
+
+      expect(gl.calls).toEqual([]);
+    });
+
+    it('does not read the analyser if drawn after being destroyed', (): void => {
+      const viz: AmbienceTwirlVisualization = playing(new AmbienceTwirlVisualization(config()));
+      viz.destroy();
+
+      viz.draw();
+
+      expect(analyser.spectrumReads).toEqual([]);
+      expect(analyser.waveformReads).toEqual([]);
+    });
+
     it('does not delete anything twice when destroyed twice', (): void => {
       const viz: AmbienceTwirlVisualization = playing(new AmbienceTwirlVisualization(config()));
       viz.destroy();

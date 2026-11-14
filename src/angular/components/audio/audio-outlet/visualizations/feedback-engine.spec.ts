@@ -1114,5 +1114,25 @@ describe('feedback engine', (): void => {
 
       expect(gl.contextLosses).toBe(1);
     });
+
+    it('leaves the released context alone if drawn after being destroyed', (): void => {
+      const viz: Visualization = createSized();
+      viz.destroy();
+      gl.forget();
+
+      frames(viz, FRAMES_PER_STEP);
+
+      expect(gl.calls).toEqual([]);
+    });
+
+    it('does not read the analyser if drawn after being destroyed', (): void => {
+      const viz: Visualization = createSized();
+      viz.destroy();
+
+      frames(viz, FRAMES_PER_STEP);
+
+      expect(analyser.spectrumReads).toEqual([]);
+      expect(analyser.waveformReads).toEqual([]);
+    });
   });
 });

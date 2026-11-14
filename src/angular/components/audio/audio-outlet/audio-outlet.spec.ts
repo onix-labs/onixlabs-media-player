@@ -652,6 +652,67 @@ describe('AudioOutlet', (): void => {
       expect(audioElement().src).toBe(streamUrl(track.filePath, 1));
     });
 
+    it('reloads exactly once for a forced reload', async (): Promise<void> => {
+      await loadTrack(createTrack());
+      loadSpy.mockClear();
+
+      electron.forceReloadCounter.set(1);
+      await settle();
+
+      expect(loadSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the reloaded source through a later pause and resume', async (): Promise<void> => {
+      await loadTrack(createTrack());
+      electron.forceReloadCounter.set(1);
+      await settle();
+      loadSpy.mockClear();
+
+      mediaPlayer.playbackState.set('paused');
+      await settle();
+      mediaPlayer.playbackState.set('playing');
+      await settle();
+
+      expect(loadSpy).not.toHaveBeenCalled();
+    });
+
+    it('keeps the reloaded source through a later volume change', async (): Promise<void> => {
+      await loadTrack(createTrack());
+      electron.forceReloadCounter.set(1);
+      await settle();
+      loadSpy.mockClear();
+
+      mediaPlayer.volume.set(0.3);
+      await settle();
+
+      expect(loadSpy).not.toHaveBeenCalled();
+    });
+
+    it('reloads once more for a second forced reload', async (): Promise<void> => {
+      const track: PlaylistItem = createTrack();
+      await loadTrack(track);
+      electron.forceReloadCounter.set(1);
+      await settle();
+      loadSpy.mockClear();
+
+      electron.forceReloadCounter.set(2);
+      await settle();
+
+      expect(loadSpy).toHaveBeenCalledTimes(1);
+      expect(audioElement().src).toBe(streamUrl(track.filePath, 2));
+    });
+
+    it('loads a track that was waiting once the media server URL becomes known', async (): Promise<void> => {
+      const track: PlaylistItem = createTrack();
+      mediaPlayer.currentTrack.set(track);
+      await settle();
+
+      mediaPlayer.serverUrl.set(SERVER_URL);
+      await settle();
+
+      expect(audioElement().src).toBe(streamUrl(track.filePath));
+    });
+
     it('starts playback straight away while the server is waiting in loading', async (): Promise<void> => {
       await loadTrack(createTrack(), 'loading');
 
@@ -1446,6 +1507,11 @@ describe('AudioOutlet', (): void => {
       expect(canvases()).toHaveLength(0);
     });
 
+    it('names the default visualization before settings load or the audio graph exists', (): void => {
+      expect(component.visualizationName()).toBe('Analyzer');
+      expect(component.visualizationCategory()).toBe('Bars & Waves');
+    });
+
     it('puts one canvas on screen once the audio graph is built', (): void => {
       gesture();
 
@@ -1514,6 +1580,23 @@ describe('AudioOutlet', (): void => {
       expect(component.visualizationName()).toBe('Classic');
       expect(settings.setDefaultVisualization).not.toHaveBeenCalled();
     });
+
+    it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty', 'no-such-visualization'])(
+      'keeps the current visualization when the saved default is the unknown id "%s"',
+      async (id: string): Promise<void> => {
+        gesture();
+        emitted = [];
+
+        settings.defaultVisualization.set(id);
+        settings.isLoaded.set(true);
+        await settle();
+
+        expect(component.visualizationName()).toBe('Analyzer');
+        expect(component.visualizationCategory()).toBe('Bars & Waves');
+        expect(emitted).toEqual([]);
+        expect(canvases()).toHaveLength(1);
+      }
+    );
 
     it('applies the saved default only once', async (): Promise<void> => {
       settings.isLoaded.set(true);

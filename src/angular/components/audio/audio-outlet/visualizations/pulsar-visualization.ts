@@ -370,6 +370,9 @@ export class PulsarVisualization extends Canvas2DVisualization {
   /** Small intermediate the bloom is blurred in. */
   private bloom: OffscreenCanvasPair | null = null;
 
+  /** Set once destroy() runs so a trailing frame cannot resurrect the surfaces. */
+  private destroyed: boolean = false;
+
   /** Hue cycling with caching. */
   private hueOffset: number = 210;
   private cachedHue: number = -1;
@@ -436,6 +439,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
   }
 
   public draw(): void {
+    if (this.destroyed) return;
     this.updateFade();
 
     const ctx: CanvasRenderingContext2D = this.ctx;
@@ -443,6 +447,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
     const height: number = this.height;
     const centerX: number = this.centerX;
     const centerY: number = this.centerY;
+    if (width <= 0 || height <= 0) return;
 
     // Cycle hue and update cached colors if needed
     this.hueOffset = (this.hueOffset + PulsarVisualization.HUE_CYCLE_SPEED) % 360;
@@ -949,6 +954,7 @@ export class PulsarVisualization extends Canvas2DVisualization {
   }
 
   public override destroy(): void {
+    this.destroyed = true;
     this.trailCanvas = null;
     this.trailCtx = null;
     this.tempCanvas = null;

@@ -260,6 +260,18 @@ describe('AlbumArtVisualization', (): void => {
       expect(main.calls.map((call: RecordedCall): string => call.name)).toEqual(['clearRect']);
     });
 
+    it.each([
+      ['a width but no height', 100, 0],
+      ['a height but no width', 0, 100],
+    ])('only clears the canvas for an image with %s', (_label: string, width: number, height: number): void => {
+      loadArtwork(TRACK_A, width, height);
+      main.clear();
+
+      viz.draw();
+
+      expect(main.calls.map((call: RecordedCall): string => call.name)).toEqual(['clearRect']);
+    });
+
     it('does nothing at all on a zero-sized canvas', (): void => {
       loadArtwork(TRACK_A);
       viz.resize(0, 0);
@@ -529,6 +541,40 @@ describe('AlbumArtVisualization', (): void => {
       expect(shadow().callsTo('fill')).toHaveLength(2);
       expect(shadow().callsTo('roundRect')[1].args[2]).toBeCloseTo(210, 6);
     });
+
+    it.each([
+      ['wide', 10000, 1],
+      ['tall', 1, 10000],
+    ])('still draws artwork too %s to be a whole pixel thick', (_label: string, width: number, height: number): void => {
+      loadArtwork(TRACK_A, width, height);
+
+      viz.draw();
+
+      expect(artworkDraws()).toHaveLength(1);
+    });
+
+    it.each([
+      ['wide', 10000, 1],
+      ['tall', 1, 10000],
+    ])('casts no shadow for artwork too %s to be a whole pixel thick', (_label: string, width: number, height: number): void => {
+      loadArtwork(TRACK_A, width, height);
+
+      viz.draw();
+
+      // The blurred background and the artwork itself, with no shadow between.
+      expect(main.callsTo('drawImage')).toHaveLength(2);
+    });
+
+    it('casts a shadow again once thicker artwork replaces a sliver', (): void => {
+      loadArtwork(TRACK_A, 10000, 1);
+      viz.draw();
+      loadArtwork(TRACK_B, 1000, 1000);
+      main.clear();
+
+      viz.draw();
+
+      expect(main.callsTo('drawImage')).toHaveLength(3);
+    });
   });
 
   describe('numeric safety', (): void => {
@@ -537,6 +583,8 @@ describe('AlbumArtVisualization', (): void => {
       ['a one-pixel image', 1, 1],
       ['a very wide image', 4000, 10],
       ['a very tall image', 10, 4000],
+      ['an image too wide to be a pixel thick', 10000, 1],
+      ['an image too tall to be a pixel thick', 1, 10000],
     ])('passes only finite numbers to the canvas for %s', (_label: string, width: number, height: number): void => {
       loadArtwork(TRACK_A, width, height);
 

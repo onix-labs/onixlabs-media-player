@@ -480,6 +480,25 @@ describe('SpotlightVisualization', (): void => {
         .toBeCloseTo(midBand, 9);
     });
 
+    it('draws one ring for each circle that has another outside it to rise to', (): void => {
+      analyser.spectrum = flat(255);
+
+      frame();
+
+      expect(surfaces().rings.callsTo('fill')).toHaveLength(BANDS);
+    });
+
+    it('raises no ring beyond the outermost circle', (): void => {
+      analyser.spectrum = flat(255);
+
+      frame();
+
+      const reach: number[] = surfaces().rings.callsTo('arc')
+        .filter((call: RecordedCall): boolean => call.state.globalAlpha === 0.1)
+        .map((call: RecordedCall): number => call.args[2] as number);
+      expect(Math.max(...reach)).toBeCloseTo(OUTER_RADIUS, 9);
+    });
+
     it('fills each ring faintly in the colour of the circle it sits on', (): void => {
       analyser.spectrum = flat(255);
 
@@ -924,12 +943,10 @@ describe('SpotlightVisualization', (): void => {
   // ==========================================================================
 
   describe('edge inputs', (): void => {
-    // The rings trail is left out of these: the three outermost rings have no
-    // bounding circle to stand on, so what they draw there is not meaningful.
     it.each([
       {spectrum: 0},
       {spectrum: 255},
-    ])('hands the visible layers only finite numbers for an all-$spectrum spectrum', ({spectrum}): void => {
+    ])('hands the canvas only finite numbers for an all-$spectrum spectrum', ({spectrum}): void => {
       viz.resize(WIDTH, HEIGHT);
       viz.setPlaying(true);
       analyser.spectrum = flat(spectrum);
@@ -937,24 +954,18 @@ describe('SpotlightVisualization', (): void => {
       frame();
       frames(3, 10_000);
 
-      const {main, tower, freeze, scratch}: Surfaces = surfaces();
-      for (const context of [main, tower, freeze, scratch]) {
-        expect(context.unusableCalls()).toEqual([]);
-        expect(context.unusableSets()).toEqual([]);
-      }
+      expect(fakes.unusableCalls()).toEqual([]);
+      expect(fakes.unusableSets()).toEqual([]);
     });
 
-    it('hands the visible layers only finite numbers on a one-pixel canvas', (): void => {
+    it('hands the canvas only finite numbers on a one-pixel canvas', (): void => {
       viz.resize(1, 1);
       analyser.spectrum = flat(255);
 
       frames(3);
 
-      const {main, tower, freeze, scratch}: Surfaces = surfaces();
-      for (const context of [main, tower, freeze, scratch]) {
-        expect(context.unusableCalls()).toEqual([]);
-        expect(context.unusableSets()).toEqual([]);
-      }
+      expect(fakes.unusableCalls()).toEqual([]);
+      expect(fakes.unusableSets()).toEqual([]);
     });
 
     it.each([

@@ -454,7 +454,6 @@ describe('ClassicVisualization', (): void => {
       ['silence', TIME_DOMAIN_SILENCE, WIDTH, HEIGHT],
       ['all-zero samples', 0, WIDTH, HEIGHT],
       ['all-255 samples', BYTE_MAX, WIDTH, HEIGHT],
-      ['a zero-sized canvas', BYTE_MAX, 0, 0],
     ])('passes only finite numbers to the canvas for %s', (_label: string, level: number, width: number, height: number): void => {
       analyser.timeDomainData = constantSamples(level);
       viz.resize(width, height);
@@ -464,6 +463,28 @@ describe('ClassicVisualization', (): void => {
 
       expect(recording.callsTo('stroke')).toHaveLength(30);
       expect(recording.nonFiniteOperations()).toEqual([]);
+    });
+
+    it.each([
+      [0, 0],
+      [0, HEIGHT],
+      [WIDTH, 0],
+    ])('draws nothing on a %i by %i canvas', (width: number, height: number): void => {
+      analyser.timeDomainData = constantSamples(BYTE_MAX);
+      viz.resize(width, height);
+      recording.clear();
+
+      drawFrames(10);
+
+      expect(recording.operations).toEqual([]);
+    });
+
+    it('does not read the analyser on a zero-sized canvas', (): void => {
+      viz.resize(0, 0);
+
+      drawFrames(10);
+
+      expect(analyser.timeDomainReads).toEqual([]);
     });
 
     it('does not read back a zero-sized canvas', (): void => {

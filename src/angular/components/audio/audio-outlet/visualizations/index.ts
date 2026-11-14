@@ -140,10 +140,12 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
  * viz.draw();
  */
 export function createVisualization(type: string, config: VisualizationConfig): Visualization {
-  const Constructor: new (config: VisualizationConfig) => Visualization = VISUALIZATION_CONSTRUCTORS[type];
-  if (!Constructor) {
+  // An own-property check: a plain lookup also finds inherited keys, so
+  // 'constructor' would resolve to Object and be instantiated.
+  if (!Object.hasOwn(VISUALIZATION_CONSTRUCTORS, type)) {
     throw new Error(`Unknown visualization type: ${type}`);
   }
+  const Constructor: new (config: VisualizationConfig) => Visualization = VISUALIZATION_CONSTRUCTORS[type];
   return new Constructor(config);
 }
 

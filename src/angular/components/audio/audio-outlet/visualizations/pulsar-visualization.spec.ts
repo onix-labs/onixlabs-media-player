@@ -1004,6 +1004,40 @@ describe('PulsarVisualization', (): void => {
       expect(scratch.calls).toEqual([]);
       expect(bloom.calls).toEqual([]);
     });
+
+    it('stops a trailing frame from drawing anything', (): void => {
+      viz.resize(WIDTH, HEIGHT);
+      frame();
+      fakes.forget();
+
+      viz.destroy();
+      frame();
+
+      for (const context of fakes.contexts) {
+        expect(context.calls).toEqual([]);
+      }
+    });
+
+    it('stops a trailing frame from rebuilding the surfaces', (): void => {
+      viz.resize(WIDTH, HEIGHT);
+      frame();
+      const surfaceCount: number = fakes.contexts.length;
+
+      viz.destroy();
+      frame();
+
+      expect(fakes.contexts).toHaveLength(surfaceCount);
+    });
+
+    it('stops a trailing frame from reading the analyser', (): void => {
+      viz.resize(WIDTH, HEIGHT);
+
+      viz.destroy();
+      frame();
+
+      expect(analyser.spectrumReads).toEqual([]);
+      expect(analyser.waveformReads).toEqual([]);
+    });
   });
 
   // ==========================================================================
@@ -1047,6 +1081,39 @@ describe('PulsarVisualization', (): void => {
 
       expect(fakes.unusableCalls()).toEqual([]);
       expect(fakes.unusableSets()).toEqual([]);
+    });
+
+    it('hands the canvas nothing unusable when drawn before the first resize', (): void => {
+      analyser.waveform = flat(255);
+
+      frames(3);
+
+      expect(fakes.unusableCalls()).toEqual([]);
+      expect(fakes.unusableSets()).toEqual([]);
+    });
+
+    it.each([
+      {width: 0, height: 0},
+      {width: 0, height: HEIGHT},
+      {width: WIDTH, height: 0},
+    ])('draws nothing on a $width by $height canvas', ({width, height}): void => {
+      viz.resize(width, height);
+      fakes.forget();
+
+      frame();
+
+      for (const context of fakes.contexts) {
+        expect(context.calls).toEqual([]);
+      }
+    });
+
+    it('does not read the analyser on a zero-sized canvas', (): void => {
+      viz.resize(0, 0);
+
+      frame();
+
+      expect(analyser.spectrumReads).toEqual([]);
+      expect(analyser.waveformReads).toEqual([]);
     });
   });
 });

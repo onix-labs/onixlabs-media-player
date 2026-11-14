@@ -80,6 +80,9 @@ export class ClassicVisualization extends Canvas2DVisualization {
     const height: number = this.height;
     const dataArray: Uint8Array<ArrayBuffer> = this.dataArray;
 
+    // Skip if canvas has no valid size
+    if (width <= 0 || height <= 0) return;
+
     // Slow fade creates the LCD ghosting/persistence (transparent background).
     this.applyPersistenceFade(ClassicVisualization.FADE_RATE);
 

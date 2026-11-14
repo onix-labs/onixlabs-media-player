@@ -659,5 +659,40 @@ describe('OnixVisualization', (): void => {
         expect(ctx.invalidCalls()).toEqual([]);
       }
     });
+
+    it('draws nothing when drawn before the first resize', (): void => {
+      analyser.spectrum = FULL_SPECTRUM;
+      analyser.waveform = LOUD_WAVEFORM;
+
+      drawFrames(3);
+
+      for (const ctx of fakes.contexts) {
+        expect(ctx.calls).toEqual([]);
+      }
+    });
+
+    it.each([
+      [0, 0],
+      [0, HEIGHT],
+      [WIDTH, 0],
+    ])('draws nothing on a %i by %i canvas', (width: number, height: number): void => {
+      viz.resize(width, height);
+      clearRecordings();
+
+      drawFrames(3);
+
+      for (const ctx of fakes.contexts) {
+        expect(ctx.calls).toEqual([]);
+      }
+    });
+
+    it('does not read the analyser on a zero-sized canvas', (): void => {
+      viz.resize(0, 0);
+
+      drawFrames(3);
+
+      expect(analyser.spectrumReads).toEqual([]);
+      expect(analyser.waveformReads).toEqual([]);
+    });
   });
 });

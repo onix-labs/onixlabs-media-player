@@ -121,6 +121,13 @@ describe('visualization registry', (): void => {
       expect((): Visualization => createVisualization(id, config)).toThrow(`Unknown visualization type: ${id}`);
     });
 
+    it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty'])(
+      'rejects "%s", which names an inherited property rather than a visualization',
+      (id: string): void => {
+        expect((): Visualization => createVisualization(id, config)).toThrow(`Unknown visualization type: ${id}`);
+      }
+    );
+
     it('requests no rendering context for an unknown id', (): void => {
       expect((): Visualization => createVisualization('nope', config)).toThrow();
 

@@ -322,6 +322,15 @@ describe('HawkingVisualization', (): void => {
       clearRecordings();
     });
 
+    it('builds only the gradients the spikes are stroked with', (): void => {
+      drawFrames(3);
+
+      for (const ctx of fakes.contexts) {
+        expect(ctx.callsTo('createRadialGradient')).toEqual([]);
+      }
+      expect(redTrail().callsTo('createLinearGradient')).toHaveLength(6);
+    });
+
     it('starts the circles at red and blue', (): void => {
       viz.draw();
 
