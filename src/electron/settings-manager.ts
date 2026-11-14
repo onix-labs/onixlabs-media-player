@@ -128,6 +128,22 @@ export type MacOSVisualEffectState = 'followWindow' | 'active' | 'inactive';
 export type ColorScheme = 'system' | 'dark' | 'light';
 
 /**
+ * Skin of the player window. Themes only restyle the player; they never move
+ * its controls.
+ * - solid: an opaque neutral background
+ * - glass: a translucent window (vibrancy on macOS, acrylic on Windows);
+ *   treated as solid where the platform has no glass effect
+ * - pebble: the ONIXLabs brand style
+ */
+export type PlayerTheme = 'solid' | 'glass' | 'pebble';
+
+/**
+ * Accent colour of the player's controls: monochrome or one of the eight
+ * ONIXLabs brand colours.
+ */
+export type AccentColor = 'mono' | 'amber' | 'coral' | 'rose' | 'violet' | 'blue' | 'cyan' | 'teal' | 'green';
+
+/**
  * Preferred audio language codes (ISO 639-2/B).
  * 'default' means use the file's default track.
  */
@@ -285,31 +301,18 @@ export interface TranscodingSettings {
 
 /**
  * Appearance settings (cross-platform).
- * Supports glass effects (vibrancy on macOS, acrylic on Windows), background color via HSL, and window tint via HSLA.
+ * The theme skins the player window; the colour scheme and accent colour apply
+ * to every theme.
  */
 export interface AppearanceSettings {
-  /** Whether glass effect (transparency/blur) is enabled (default true on supported platforms) */
-  readonly glassEnabled: boolean;
-  /** macOS visual effect state (followWindow, active, inactive, default active) - only used on macOS when glassEnabled */
+  /** Player window theme (default 'glass' on macOS, 'solid' elsewhere) */
+  readonly theme: PlayerTheme;
+  /** macOS visual effect state (followWindow, active, inactive, default active) - only used on macOS with the glass theme */
   readonly macOSVisualEffectState: MacOSVisualEffectState;
   /** Color scheme preference (system, dark, light) - default system */
   readonly colorScheme: ColorScheme;
-  /** Background color when glass is disabled or unsupported (hex format, e.g., '#1e1e1e') — derived from HSL values */
-  readonly backgroundColor: string;
-  /** Background hue (0-360) when glass is disabled */
-  readonly backgroundHue: number;
-  /** Background saturation (0-100) when glass is disabled */
-  readonly backgroundSaturation: number;
-  /** Background lightness (0-100) when glass is disabled */
-  readonly backgroundLightness: number;
-  /** Window tint hue (0-360) when glass is enabled */
-  readonly windowTintHue: number;
-  /** Window tint saturation (0-100) when glass is enabled */
-  readonly windowTintSaturation: number;
-  /** Window tint lightness (0-100) when glass is enabled */
-  readonly windowTintLightness: number;
-  /** Window tint alpha (0-1) when glass is enabled — controls how much tint is applied */
-  readonly windowTintAlpha: number;
+  /** Accent colour of the player's controls (default 'blue') */
+  readonly accentColor: AccentColor;
 }
 
 /**
@@ -498,17 +501,10 @@ export interface TranscodingSettingsUpdate {
  * Partial appearance settings for updates.
  */
 export interface AppearanceSettingsUpdate {
-  readonly glassEnabled?: boolean;
+  readonly theme?: PlayerTheme;
   readonly macOSVisualEffectState?: MacOSVisualEffectState;
   readonly colorScheme?: ColorScheme;
-  readonly backgroundColor?: string;
-  readonly backgroundHue?: number;
-  readonly backgroundSaturation?: number;
-  readonly backgroundLightness?: number;
-  readonly windowTintHue?: number;
-  readonly windowTintSaturation?: number;
-  readonly windowTintLightness?: number;
-  readonly windowTintAlpha?: number;
+  readonly accentColor?: AccentColor;
 }
 
 /**
@@ -615,6 +611,14 @@ const VALID_MACOS_VISUAL_EFFECT_STATE: readonly MacOSVisualEffectState[] = ['fol
 /** Valid color scheme values */
 const VALID_COLOR_SCHEME: readonly ColorScheme[] = ['system', 'dark', 'light'];
 
+/** Valid player theme values */
+const VALID_PLAYER_THEMES: readonly PlayerTheme[] = ['solid', 'glass', 'pebble'];
+
+/** Valid accent colour values */
+const VALID_ACCENT_COLORS: readonly AccentColor[] = [
+  'mono', 'amber', 'coral', 'rose', 'violet', 'blue', 'cyan', 'teal', 'green',
+];
+
 /** Valid subtitle font family values */
 const VALID_SUBTITLE_FONT_FAMILIES: readonly SubtitleFontFamily[] = ['sans-serif', 'serif', 'monospace', 'Arial'];
 
@@ -660,18 +664,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   appearance: {
     // Vibrancy on macOS is cheap; Windows acrylic makes DWM re-blur behind the
-    // window on every frame the visualization repaints, so it is opt-in there.
-    glassEnabled: process.platform !== 'win32',
+    // window on every frame the visualization repaints, so it is opt-in there,
+    // and Linux has no glass at all.
+    theme: process.platform === 'darwin' ? 'glass' : 'solid',
     macOSVisualEffectState: 'active',  // always active (even when window inactive)
     colorScheme: 'system',  // follow system preference by default
-    backgroundColor: '#1e1e1e',  // derived from HSL values for BrowserWindow creation
-    backgroundHue: 0,  // HSL hue (0-360) — #1e1e1e is achromatic
-    backgroundSaturation: 0,  // HSL saturation (0-100) — #1e1e1e has no saturation
-    backgroundLightness: 12,  // HSL lightness (0-100) — #1e1e1e ≈ 12% lightness
-    windowTintHue: 0,  // HSLA hue (0-360) for glass tint
-    windowTintSaturation: 0,  // HSLA saturation (0-100) for glass tint
-    windowTintLightness: 0,  // HSLA lightness (0-100) for glass tint
-    windowTintAlpha: 0,  // HSLA alpha (0-1) — 0 = no tint by default
+    accentColor: 'blue',
   },
   subtitles: {
     fontSize: 100,  // 100% = default size
@@ -1171,17 +1169,18 @@ export class SettingsManager {
    * Only provided fields are updated; others retain their current values.
    * Changes are immediately persisted to disk.
    *
-   * Note: These settings require an application restart to take effect
-   * as they are applied during window creation.
+   * Note: a theme change into or out of 'glass' and a macOS visual effect
+   * state change need an application restart to take effect, as the window's
+   * vibrancy/acrylic is fixed when the window is created.
    *
    * @param update - Partial appearance settings to apply
    * @returns The updated complete settings object
    */
   public updateAppearanceSettings(update: AppearanceSettingsUpdate): AppSettings {
-    // Validate glassEnabled if provided
-    if (update.glassEnabled !== undefined) {
-      if (typeof update.glassEnabled !== 'boolean') {
-        console.warn(`[SettingsManager] Invalid glassEnabled: ${update.glassEnabled}, ignoring`);
+    // Validate theme if provided
+    if (update.theme !== undefined) {
+      if (!this.isValidPlayerTheme(update.theme)) {
+        console.warn(`[SettingsManager] Invalid theme: ${update.theme}, ignoring`);
         return this.settings;
       }
     }
@@ -1202,72 +1201,23 @@ export class SettingsManager {
       }
     }
 
-    // Validate backgroundColor if provided
-    if (update.backgroundColor !== undefined) {
-      if (!this.isValidHexColor(update.backgroundColor)) {
-        console.warn(`[SettingsManager] Invalid background color: ${update.backgroundColor}, ignoring`);
+    // Validate accentColor if provided
+    if (update.accentColor !== undefined) {
+      if (!this.isValidAccentColor(update.accentColor)) {
+        console.warn(`[SettingsManager] Invalid accent color: ${update.accentColor}, ignoring`);
         return this.settings;
       }
     }
-
-    // Validate background HSL fields if provided
-    if (update.backgroundHue !== undefined && !this.isValidHue(update.backgroundHue)) {
-      console.warn(`[SettingsManager] Invalid backgroundHue: ${update.backgroundHue}, ignoring`);
-      return this.settings;
-    }
-    if (update.backgroundSaturation !== undefined && !this.isValidPercentage(update.backgroundSaturation)) {
-      console.warn(`[SettingsManager] Invalid backgroundSaturation: ${update.backgroundSaturation}, ignoring`);
-      return this.settings;
-    }
-    if (update.backgroundLightness !== undefined && !this.isValidPercentage(update.backgroundLightness)) {
-      console.warn(`[SettingsManager] Invalid backgroundLightness: ${update.backgroundLightness}, ignoring`);
-      return this.settings;
-    }
-
-    // Validate window tint HSLA fields if provided
-    if (update.windowTintHue !== undefined && !this.isValidHue(update.windowTintHue)) {
-      console.warn(`[SettingsManager] Invalid windowTintHue: ${update.windowTintHue}, ignoring`);
-      return this.settings;
-    }
-    if (update.windowTintSaturation !== undefined && !this.isValidPercentage(update.windowTintSaturation)) {
-      console.warn(`[SettingsManager] Invalid windowTintSaturation: ${update.windowTintSaturation}, ignoring`);
-      return this.settings;
-    }
-    if (update.windowTintLightness !== undefined && !this.isValidPercentage(update.windowTintLightness)) {
-      console.warn(`[SettingsManager] Invalid windowTintLightness: ${update.windowTintLightness}, ignoring`);
-      return this.settings;
-    }
-    if (update.windowTintAlpha !== undefined && !this.isValidAlpha(update.windowTintAlpha)) {
-      console.warn(`[SettingsManager] Invalid windowTintAlpha: ${update.windowTintAlpha}, ignoring`);
-      return this.settings;
-    }
-
-    // Resolve HSL values (use updated or current)
-    const bgHue: number = update.backgroundHue ?? this.settings.appearance.backgroundHue;
-    const bgSat: number = update.backgroundSaturation ?? this.settings.appearance.backgroundSaturation;
-    const bgLit: number = update.backgroundLightness ?? this.settings.appearance.backgroundLightness;
-
-    // Derive hex backgroundColor from HSL values when any HSL field changes
-    const derivedBgColor: string = (update.backgroundHue !== undefined || update.backgroundSaturation !== undefined || update.backgroundLightness !== undefined)
-      ? this.hslToHex(bgHue, bgSat, bgLit)
-      : (update.backgroundColor ?? this.settings.appearance.backgroundColor);
 
     // Merge the update
     this.settings = {
       ...this.settings,
       appearance: {
         ...this.settings.appearance,
-        glassEnabled: update.glassEnabled ?? this.settings.appearance.glassEnabled,
+        theme: update.theme ?? this.settings.appearance.theme,
         macOSVisualEffectState: update.macOSVisualEffectState ?? this.settings.appearance.macOSVisualEffectState,
         colorScheme: update.colorScheme ?? this.settings.appearance.colorScheme,
-        backgroundColor: derivedBgColor,
-        backgroundHue: bgHue,
-        backgroundSaturation: bgSat,
-        backgroundLightness: bgLit,
-        windowTintHue: update.windowTintHue ?? this.settings.appearance.windowTintHue,
-        windowTintSaturation: update.windowTintSaturation ?? this.settings.appearance.windowTintSaturation,
-        windowTintLightness: update.windowTintLightness ?? this.settings.appearance.windowTintLightness,
-        windowTintAlpha: update.windowTintAlpha ?? this.settings.appearance.windowTintAlpha,
+        accentColor: update.accentColor ?? this.settings.appearance.accentColor,
       },
     };
 
@@ -2054,7 +2004,10 @@ export class SettingsManager {
 
   /**
    * Validates appearance settings object.
-   * Includes migration from old macOSVibrancy format to new glassEnabled format.
+   *
+   * Only the known keys are copied into the result, so the window colour and
+   * tint keys of older files (backgroundColor, backgroundHue/Saturation/
+   * Lightness, windowTint*) are dropped here and never written back.
    *
    * @param appearance - The appearance settings to validate (unknown type)
    * @returns Valid appearance settings with defaults for invalid values
@@ -2065,58 +2018,53 @@ export class SettingsManager {
     }
 
     const appearanceObj: Record<string, unknown> = appearance as Record<string, unknown>;
-
-    // Migration: Convert old macOSVibrancy to new glassEnabled format
-    let glassEnabled: boolean = DEFAULT_SETTINGS.appearance.glassEnabled;
-    if (typeof appearanceObj['glassEnabled'] === 'boolean') {
-      // New format - use directly
-      glassEnabled = appearanceObj['glassEnabled'];
-    } else if (typeof appearanceObj['macOSVibrancy'] === 'string') {
-      // Old format - migrate: 'none' means glass disabled, anything else means enabled
-      glassEnabled = appearanceObj['macOSVibrancy'] !== 'none';
-    }
-
     const macOSVisualEffectState: unknown = appearanceObj['macOSVisualEffectState'];
     const colorScheme: unknown = appearanceObj['colorScheme'];
-    const backgroundColor: unknown = appearanceObj['backgroundColor'];
-
-    // Validate HSL fields (use defaults if missing — backward compat with old settings)
-    const backgroundHue: number = this.isValidHue(appearanceObj['backgroundHue'])
-      ? appearanceObj['backgroundHue'] : DEFAULT_SETTINGS.appearance.backgroundHue;
-    const backgroundSaturation: number = this.isValidPercentage(appearanceObj['backgroundSaturation'])
-      ? appearanceObj['backgroundSaturation'] : DEFAULT_SETTINGS.appearance.backgroundSaturation;
-    const backgroundLightness: number = this.isValidPercentage(appearanceObj['backgroundLightness'])
-      ? appearanceObj['backgroundLightness'] : DEFAULT_SETTINGS.appearance.backgroundLightness;
-
-    // Validate window tint HSLA fields
-    const windowTintHue: number = this.isValidHue(appearanceObj['windowTintHue'])
-      ? appearanceObj['windowTintHue'] : DEFAULT_SETTINGS.appearance.windowTintHue;
-    const windowTintSaturation: number = this.isValidPercentage(appearanceObj['windowTintSaturation'])
-      ? appearanceObj['windowTintSaturation'] : DEFAULT_SETTINGS.appearance.windowTintSaturation;
-    const windowTintLightness: number = this.isValidPercentage(appearanceObj['windowTintLightness'])
-      ? appearanceObj['windowTintLightness'] : DEFAULT_SETTINGS.appearance.windowTintLightness;
-    const windowTintAlpha: number = this.isValidAlpha(appearanceObj['windowTintAlpha'])
-      ? appearanceObj['windowTintAlpha'] : DEFAULT_SETTINGS.appearance.windowTintAlpha;
+    const accentColor: unknown = appearanceObj['accentColor'];
 
     return {
-      glassEnabled,
+      theme: this.migrateTheme(appearanceObj),
       macOSVisualEffectState: this.isValidMacOSVisualEffectState(macOSVisualEffectState)
         ? macOSVisualEffectState
         : DEFAULT_SETTINGS.appearance.macOSVisualEffectState,
       colorScheme: this.isValidColorScheme(colorScheme)
         ? colorScheme
         : DEFAULT_SETTINGS.appearance.colorScheme,
-      backgroundColor: this.isValidHexColor(backgroundColor)
-        ? backgroundColor
-        : DEFAULT_SETTINGS.appearance.backgroundColor,
-      backgroundHue,
-      backgroundSaturation,
-      backgroundLightness,
-      windowTintHue,
-      windowTintSaturation,
-      windowTintLightness,
-      windowTintAlpha,
+      accentColor: this.isValidAccentColor(accentColor)
+        ? accentColor
+        : DEFAULT_SETTINGS.appearance.accentColor,
     };
+  }
+
+  /**
+   * Resolves the player theme of a stored appearance section, migrating the
+   * glass switch of older files.
+   *
+   * A valid explicit theme wins, because a file that has one was written after
+   * the switch was replaced. Otherwise the older glassEnabled flag maps onto
+   * glass/solid, and before that the even older macOSVibrancy string ('none'
+   * meaning no glass). Anything else falls back to the platform default.
+   *
+   * @param appearanceObj - The stored appearance section
+   * @returns The theme to use
+   */
+  private migrateTheme(appearanceObj: Record<string, unknown>): PlayerTheme {
+    const theme: unknown = appearanceObj['theme'];
+    if (this.isValidPlayerTheme(theme)) {
+      return theme;
+    }
+
+    const glassEnabled: unknown = appearanceObj['glassEnabled'];
+    if (typeof glassEnabled === 'boolean') {
+      return glassEnabled ? 'glass' : 'solid';
+    }
+
+    const macOSVibrancy: unknown = appearanceObj['macOSVibrancy'];
+    if (typeof macOSVibrancy === 'string') {
+      return macOSVibrancy === 'none' ? 'solid' : 'glass';
+    }
+
+    return DEFAULT_SETTINGS.appearance.theme;
   }
 
   /**
@@ -2614,23 +2562,23 @@ export class SettingsManager {
   }
 
   /**
-   * Type guard to check if a value is a valid hue (0-360).
+   * Type guard to check if a value is a valid player theme.
    *
    * @param value - The value to check
-   * @returns True if the value is a valid hue
+   * @returns True if the value is a valid player theme
    */
-  private isValidHue(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 360;
+  private isValidPlayerTheme(value: unknown): value is PlayerTheme {
+    return typeof value === 'string' && VALID_PLAYER_THEMES.includes(value as PlayerTheme);
   }
 
   /**
-   * Type guard to check if a value is a valid saturation or lightness (0-100).
+   * Type guard to check if a value is a valid accent colour.
    *
    * @param value - The value to check
-   * @returns True if the value is a valid percentage
+   * @returns True if the value is a valid accent colour
    */
-  private isValidPercentage(value: unknown): value is number {
-    return typeof value === 'number' && value >= 0 && value <= 100;
+  private isValidAccentColor(value: unknown): value is AccentColor {
+    return typeof value === 'string' && VALID_ACCENT_COLORS.includes(value as AccentColor);
   }
 
   /**
@@ -2689,26 +2637,5 @@ export class SettingsManager {
    */
   private isValidSubtitleShadowBlur(value: unknown): value is number {
     return typeof value === 'number' && value >= 0 && value <= 10;
-  }
-
-  /**
-   * Converts HSL values to a hex color string.
-   *
-   * @param h - Hue (0-360)
-   * @param s - Saturation (0-100)
-   * @param l - Lightness (0-100)
-   * @returns Hex color string (e.g., '#1e1e1e')
-   */
-  private hslToHex(h: number, s: number, l: number): string {
-    const sNorm: number = s / 100;
-    const lNorm: number = l / 100;
-    const a: number = sNorm * Math.min(lNorm, 1 - lNorm);
-    const f: (n: number) => number = (n: number): number => {
-      const k: number = (n + h / 30) % 12;
-      const color: number = lNorm - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-      return Math.round(255 * color);
-    };
-    const toHex: (x: number) => string = (x: number): string => x.toString(16).padStart(2, '0');
-    return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
   }
 }

@@ -19,6 +19,10 @@ import {
   PreferredSubtitleLanguage,
   ColorScheme,
   SubtitleFontFamily,
+  PlayerTheme,
+  AccentColor,
+  AccentOption,
+  ACCENT_OPTIONS,
 } from './settings.service';
 
 // ============================================================================
@@ -34,9 +38,11 @@ function createMockElectronService(): {
   onSettingsUpdate: ReturnType<typeof vi.fn>;
   onDependencyStateUpdate: ReturnType<typeof vi.fn>;
   onDependencyProgressUpdate: ReturnType<typeof vi.fn>;
+  platformInfo: ReturnType<typeof signal<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}>>;
 } {
   return {
     serverUrl: signal('http://127.0.0.1:12345'),
+    platformInfo: signal<{platform: string; supportsGlass: boolean; systemTheme: 'dark' | 'light'}>({platform: 'darwin', supportsGlass: true, systemTheme: 'dark'}),
     // Delegates to the stubbed global fetch so tests keep asserting on it.
     authFetch: (url: string, init?: RequestInit): Promise<Response> => fetch(url, init),
     onSettingsUpdate: vi.fn().mockReturnValue((): void => {}),
@@ -79,17 +85,10 @@ function createTestSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       hardwareAcceleration: 'auto',
     },
     appearance: {
-      glassEnabled: true,
+      theme: 'glass',
       macOSVisualEffectState: 'active',
-      backgroundColor: '#1e1e1e',
-      backgroundHue: 0,
-      backgroundSaturation: 0,
-      backgroundLightness: 12,
-      windowTintHue: 0,
-      windowTintSaturation: 0,
-      windowTintLightness: 0,
-      windowTintAlpha: 0,
       colorScheme: 'system',
+      accentColor: 'blue',
     },
     subtitles: {
       fontSize: 100,
@@ -271,34 +270,71 @@ describe('SettingsService', (): void => {
       expect(result).toBe(320);
     });
 
-    it('glassEnabled reflects settings value', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        appearance: {glassEnabled: false, macOSVisualEffectState: 'active', backgroundColor: '#1e1e1e', backgroundHue: 0, backgroundSaturation: 0, backgroundLightness: 12, windowTintHue: 0, windowTintSaturation: 0, windowTintLightness: 0, windowTintAlpha: 0, colorScheme: 'system'},
-      });
-      service.updateFromSSE(testSettings);
+    it('theme reflects settings value', (): void => {
+      service.updateFromSSE(createTestSettings({
+        appearance: {theme: 'pebble', macOSVisualEffectState: 'active', colorScheme: 'system', accentColor: 'blue'},
+      }));
 
-      const result: boolean = service.glassEnabled();
-      expect(result).toBe(false);
+      const result: PlayerTheme = service.theme();
+      expect(result).toBe('pebble');
     });
 
     it('macOSVisualEffectState reflects settings value', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        appearance: {glassEnabled: true, macOSVisualEffectState: 'followWindow', backgroundColor: '#1e1e1e', backgroundHue: 0, backgroundSaturation: 0, backgroundLightness: 12, windowTintHue: 0, windowTintSaturation: 0, windowTintLightness: 0, windowTintAlpha: 0, colorScheme: 'system'},
-      });
-      service.updateFromSSE(testSettings);
+      service.updateFromSSE(createTestSettings({
+        appearance: {theme: 'glass', macOSVisualEffectState: 'followWindow', colorScheme: 'system', accentColor: 'blue'},
+      }));
 
       const result: MacOSVisualEffectState = service.macOSVisualEffectState();
       expect(result).toBe('followWindow');
     });
 
-    it('backgroundColor reflects settings value', (): void => {
-      const testSettings: AppSettings = createTestSettings({
-        appearance: {glassEnabled: true, macOSVisualEffectState: 'active', backgroundColor: '#ff0000', backgroundHue: 0, backgroundSaturation: 0, backgroundLightness: 12, windowTintHue: 0, windowTintSaturation: 0, windowTintLightness: 0, windowTintAlpha: 0, colorScheme: 'system'},
-      });
-      service.updateFromSSE(testSettings);
+    it('accentColor reflects settings value', (): void => {
+      service.updateFromSSE(createTestSettings({
+        appearance: {theme: 'glass', macOSVisualEffectState: 'active', colorScheme: 'system', accentColor: 'coral'},
+      }));
 
-      const result: string = service.backgroundColor();
-      expect(result).toBe('#ff0000');
+      const result: AccentColor = service.accentColor();
+      expect(result).toBe('coral');
+    });
+
+    it.each([
+      {theme: 'solid', supportsGlass: true, expected: 'solid'},
+      {theme: 'glass', supportsGlass: true, expected: 'glass'},
+      {theme: 'pebble', supportsGlass: true, expected: 'pebble'},
+      {theme: 'solid', supportsGlass: false, expected: 'solid'},
+      {theme: 'glass', supportsGlass: false, expected: 'solid'},
+      {theme: 'pebble', supportsGlass: false, expected: 'pebble'},
+    ] as const)('effectiveTheme is $expected for $theme when glass support is $supportsGlass', ({theme, supportsGlass, expected}): void => {
+      mockElectron.platformInfo.set({platform: supportsGlass ? 'darwin' : 'linux', supportsGlass, systemTheme: 'dark'});
+      service.updateFromSSE(createTestSettings({
+        appearance: {theme, macOSVisualEffectState: 'active', colorScheme: 'system', accentColor: 'blue'},
+      }));
+
+      expect(service.effectiveTheme()).toBe(expected);
+    });
+
+    it('effectiveTheme follows glass support arriving after the settings', (): void => {
+      mockElectron.platformInfo.set({platform: 'linux', supportsGlass: false, systemTheme: 'dark'});
+      service.updateFromSSE(createTestSettings());
+      expect(service.effectiveTheme()).toBe('solid');
+
+      mockElectron.platformInfo.set({platform: 'win32', supportsGlass: true, systemTheme: 'dark'});
+
+      expect(service.effectiveTheme()).toBe('glass');
+    });
+
+    it('lists the nine accent colours in display order with their brand swatches', (): void => {
+      expect(ACCENT_OPTIONS.map((option: AccentOption): string => `${option.id}:${option.name}:${option.swatch}`)).toEqual([
+        'mono:Monochrome:linear-gradient(135deg, #212529 50%, #f8f9fa 50%)',
+        'amber:Amber:#f79533',
+        'coral:Coral:#f37055',
+        'rose:Rose:#ef4e7b',
+        'violet:Violet:#a166ab',
+        'blue:Blue:#5073b8',
+        'cyan:Cyan:#1098ad',
+        'teal:Teal:#07b39b',
+        'green:Green:#6fba82',
+      ]);
     });
   });
 
@@ -479,20 +515,6 @@ describe('SettingsService', (): void => {
       errorSpy.mockRestore();
     });
 
-    it('setBackgroundColor rejects invalid hex', async (): Promise<void> => {
-      fetchSpy.mockResolvedValue(createMockResponse(true));
-      const errorSpy: ReturnType<typeof vi.spyOn> = vi.spyOn(console, 'error').mockImplementation((): void => {});
-      const callCountBefore: number = fetchSpy.mock.calls.length;
-
-      await service.setBackgroundColor('not-a-color');
-
-      const callCountAfter: number = fetchSpy.mock.calls.length;
-      expect(callCountAfter).toBe(callCountBefore);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid hex color'));
-
-      errorSpy.mockRestore();
-    });
-
     it('setMacOSVisualEffectState rejects invalid state', async (): Promise<void> => {
       fetchSpy.mockResolvedValue(createMockResponse(true));
       const errorSpy: ReturnType<typeof vi.spyOn> = vi.spyOn(console, 'error').mockImplementation((): void => {});
@@ -587,17 +609,10 @@ const NON_DEFAULT_SETTINGS: AppSettings = createTestSettings({
   },
   transcoding: {videoQuality: 'low', audioBitrate: 320, hardwareAcceleration: 'h264_qsv'},
   appearance: {
-    glassEnabled: false,
+    theme: 'pebble',
     macOSVisualEffectState: 'inactive',
     colorScheme: 'light',
-    backgroundColor: '#102030',
-    backgroundHue: 210,
-    backgroundSaturation: 40,
-    backgroundLightness: 20,
-    windowTintHue: 120,
-    windowTintSaturation: 30,
-    windowTintLightness: 15,
-    windowTintAlpha: 0.4,
+    accentColor: 'teal',
   },
   subtitles: {
     fontSize: 150,
@@ -647,17 +662,11 @@ const PUSHED_VALUE_CASES: readonly SignalCase[] = [
   {name: 'seekMode', read: (s: SettingsService): unknown => s.seekMode(), expected: 'drag'},
   {name: 'preferredAudioLanguage', read: (s: SettingsService): unknown => s.preferredAudioLanguage(), expected: 'jpn'},
   {name: 'preferredSubtitleLanguage', read: (s: SettingsService): unknown => s.preferredSubtitleLanguage(), expected: 'ger'},
-  {name: 'glassEnabled', read: (s: SettingsService): unknown => s.glassEnabled(), expected: false},
+  {name: 'theme', read: (s: SettingsService): unknown => s.theme(), expected: 'pebble'},
+  {name: 'effectiveTheme', read: (s: SettingsService): unknown => s.effectiveTheme(), expected: 'pebble'},
   {name: 'macOSVisualEffectState', read: (s: SettingsService): unknown => s.macOSVisualEffectState(), expected: 'inactive'},
   {name: 'colorScheme', read: (s: SettingsService): unknown => s.colorScheme(), expected: 'light'},
-  {name: 'backgroundColor', read: (s: SettingsService): unknown => s.backgroundColor(), expected: '#102030'},
-  {name: 'backgroundHue', read: (s: SettingsService): unknown => s.backgroundHue(), expected: 210},
-  {name: 'backgroundSaturation', read: (s: SettingsService): unknown => s.backgroundSaturation(), expected: 40},
-  {name: 'backgroundLightness', read: (s: SettingsService): unknown => s.backgroundLightness(), expected: 20},
-  {name: 'windowTintHue', read: (s: SettingsService): unknown => s.windowTintHue(), expected: 120},
-  {name: 'windowTintSaturation', read: (s: SettingsService): unknown => s.windowTintSaturation(), expected: 30},
-  {name: 'windowTintLightness', read: (s: SettingsService): unknown => s.windowTintLightness(), expected: 15},
-  {name: 'windowTintAlpha', read: (s: SettingsService): unknown => s.windowTintAlpha(), expected: 0.4},
+  {name: 'accentColor', read: (s: SettingsService): unknown => s.accentColor(), expected: 'teal'},
   {name: 'subtitleFontSize', read: (s: SettingsService): unknown => s.subtitleFontSize(), expected: 150},
   {name: 'subtitleFontColor', read: (s: SettingsService): unknown => s.subtitleFontColor(), expected: '#ffcc00'},
   {name: 'subtitleBackgroundColor', read: (s: SettingsService): unknown => s.subtitleBackgroundColor(), expected: '#112233'},
@@ -698,17 +707,10 @@ const FALLBACK_CASES: readonly SignalCase[] = [
   {name: 'seekMode', read: (s: SettingsService): unknown => s.seekMode(), expected: 'drop'},
   {name: 'preferredAudioLanguage', read: (s: SettingsService): unknown => s.preferredAudioLanguage(), expected: 'eng'},
   {name: 'preferredSubtitleLanguage', read: (s: SettingsService): unknown => s.preferredSubtitleLanguage(), expected: 'off'},
-  {name: 'glassEnabled', read: (s: SettingsService): unknown => s.glassEnabled(), expected: true},
+  {name: 'theme', read: (s: SettingsService): unknown => s.theme(), expected: 'glass'},
   {name: 'macOSVisualEffectState', read: (s: SettingsService): unknown => s.macOSVisualEffectState(), expected: 'active'},
   {name: 'colorScheme', read: (s: SettingsService): unknown => s.colorScheme(), expected: 'system'},
-  {name: 'backgroundColor', read: (s: SettingsService): unknown => s.backgroundColor(), expected: '#1e1e1e'},
-  {name: 'backgroundHue', read: (s: SettingsService): unknown => s.backgroundHue(), expected: 0},
-  {name: 'backgroundSaturation', read: (s: SettingsService): unknown => s.backgroundSaturation(), expected: 0},
-  {name: 'backgroundLightness', read: (s: SettingsService): unknown => s.backgroundLightness(), expected: 12},
-  {name: 'windowTintHue', read: (s: SettingsService): unknown => s.windowTintHue(), expected: 0},
-  {name: 'windowTintSaturation', read: (s: SettingsService): unknown => s.windowTintSaturation(), expected: 0},
-  {name: 'windowTintLightness', read: (s: SettingsService): unknown => s.windowTintLightness(), expected: 0},
-  {name: 'windowTintAlpha', read: (s: SettingsService): unknown => s.windowTintAlpha(), expected: 0},
+  {name: 'accentColor', read: (s: SettingsService): unknown => s.accentColor(), expected: 'blue'},
   {name: 'subtitleFontSize', read: (s: SettingsService): unknown => s.subtitleFontSize(), expected: 100},
   {name: 'subtitleFontColor', read: (s: SettingsService): unknown => s.subtitleFontColor(), expected: '#ffffff'},
   {name: 'subtitleBackgroundColor', read: (s: SettingsService): unknown => s.subtitleBackgroundColor(), expected: '#000000'},
@@ -791,17 +793,13 @@ const PERSIST_CASES: readonly PersistCase[] = [
   {name: 'setAudioBitrate(256)', act: (s: SettingsService): Promise<void> => s.setAudioBitrate(256), category: 'transcoding', body: {audioBitrate: 256}},
   {name: 'setHardwareAcceleration("h264_nvenc")', act: (s: SettingsService): Promise<void> => s.setHardwareAcceleration('h264_nvenc'), category: 'transcoding', body: {hardwareAcceleration: 'h264_nvenc'}},
   // Appearance
-  {name: 'setGlassEnabled(false)', act: (s: SettingsService): Promise<void> => s.setGlassEnabled(false), category: 'appearance', body: {glassEnabled: false}},
+  {name: 'setTheme("solid")', act: (s: SettingsService): Promise<void> => s.setTheme('solid'), category: 'appearance', body: {theme: 'solid'}},
+  {name: 'setTheme("glass")', act: (s: SettingsService): Promise<void> => s.setTheme('glass'), category: 'appearance', body: {theme: 'glass'}},
+  {name: 'setTheme("pebble")', act: (s: SettingsService): Promise<void> => s.setTheme('pebble'), category: 'appearance', body: {theme: 'pebble'}},
+  {name: 'setAccentColor("mono")', act: (s: SettingsService): Promise<void> => s.setAccentColor('mono'), category: 'appearance', body: {accentColor: 'mono'}},
+  {name: 'setAccentColor("rose")', act: (s: SettingsService): Promise<void> => s.setAccentColor('rose'), category: 'appearance', body: {accentColor: 'rose'}},
   {name: 'setMacOSVisualEffectState("inactive")', act: (s: SettingsService): Promise<void> => s.setMacOSVisualEffectState('inactive'), category: 'appearance', body: {macOSVisualEffectState: 'inactive'}},
   {name: 'setColorScheme("dark")', act: (s: SettingsService): Promise<void> => s.setColorScheme('dark'), category: 'appearance', body: {colorScheme: 'dark'}},
-  {name: 'setBackgroundColor("#A1b2C3") in mixed case', act: (s: SettingsService): Promise<void> => s.setBackgroundColor('#A1b2C3'), category: 'appearance', body: {backgroundColor: '#A1b2C3'}},
-  {name: 'setBackgroundHue(210)', act: (s: SettingsService): Promise<void> => s.setBackgroundHue(210), category: 'appearance', body: {backgroundHue: 210}},
-  {name: 'setBackgroundSaturation(40)', act: (s: SettingsService): Promise<void> => s.setBackgroundSaturation(40), category: 'appearance', body: {backgroundSaturation: 40}},
-  {name: 'setBackgroundLightness(20)', act: (s: SettingsService): Promise<void> => s.setBackgroundLightness(20), category: 'appearance', body: {backgroundLightness: 20}},
-  {name: 'setWindowTintHue(120)', act: (s: SettingsService): Promise<void> => s.setWindowTintHue(120), category: 'appearance', body: {windowTintHue: 120}},
-  {name: 'setWindowTintSaturation(30)', act: (s: SettingsService): Promise<void> => s.setWindowTintSaturation(30), category: 'appearance', body: {windowTintSaturation: 30}},
-  {name: 'setWindowTintLightness(15)', act: (s: SettingsService): Promise<void> => s.setWindowTintLightness(15), category: 'appearance', body: {windowTintLightness: 15}},
-  {name: 'setWindowTintAlpha(0.4)', act: (s: SettingsService): Promise<void> => s.setWindowTintAlpha(0.4), category: 'appearance', body: {windowTintAlpha: 0.4}},
   // Subtitles
   {name: 'setSubtitleFontSize(120.6) rounded', act: (s: SettingsService): Promise<void> => s.setSubtitleFontSize(120.6), category: 'subtitles', body: {fontSize: 121}},
   {name: 'setSubtitleFontSize(10) clamped to 50', act: (s: SettingsService): Promise<void> => s.setSubtitleFontSize(10), category: 'subtitles', body: {fontSize: 50}},
@@ -837,8 +835,10 @@ const REJECT_CASES: readonly RejectCase[] = [
   {name: 'setPreferredSubtitleLanguage("xxx")', act: (s: SettingsService): Promise<void> => s.setPreferredSubtitleLanguage('xxx' as PreferredSubtitleLanguage), message: 'Invalid subtitle language: xxx'},
   {name: 'setMacOSVisualEffectState("sometimes")', act: (s: SettingsService): Promise<void> => s.setMacOSVisualEffectState('sometimes' as MacOSVisualEffectState), message: 'Invalid macOS visual effect state: sometimes'},
   {name: 'setColorScheme("sepia")', act: (s: SettingsService): Promise<void> => s.setColorScheme('sepia' as ColorScheme), message: 'Invalid color scheme: sepia'},
-  {name: 'setBackgroundColor with seven hex digits', act: (s: SettingsService): Promise<void> => s.setBackgroundColor('#1234567'), message: 'Invalid hex color: #1234567'},
-  {name: 'setBackgroundColor without the leading hash', act: (s: SettingsService): Promise<void> => s.setBackgroundColor('1e1e1e'), message: 'Invalid hex color: 1e1e1e'},
+  {name: 'setTheme("aero")', act: (s: SettingsService): Promise<void> => s.setTheme('aero' as PlayerTheme), message: 'Invalid theme: aero'},
+  {name: 'setTheme("Glass") in the wrong case', act: (s: SettingsService): Promise<void> => s.setTheme('Glass' as PlayerTheme), message: 'Invalid theme: Glass'},
+  {name: 'setAccentColor("purple")', act: (s: SettingsService): Promise<void> => s.setAccentColor('purple' as AccentColor), message: 'Invalid accent color: purple'},
+  {name: 'setAccentColor with a hex colour', act: (s: SettingsService): Promise<void> => s.setAccentColor('#5073b8' as AccentColor), message: 'Invalid accent color: #5073b8'},
   {name: 'setSubtitleFontColor with a colour name', act: (s: SettingsService): Promise<void> => s.setSubtitleFontColor('red'), message: 'Invalid hex color: red'},
   {name: 'setSubtitleFontColor with shorthand hex', act: (s: SettingsService): Promise<void> => s.setSubtitleFontColor('#fff'), message: 'Invalid hex color: #fff'},
   {name: 'setSubtitleBackgroundColor with a non-hex digit', act: (s: SettingsService): Promise<void> => s.setSubtitleBackgroundColor('#12345g'), message: 'Invalid hex color: #12345g'},
@@ -1223,7 +1223,7 @@ describe('SettingsService persistence', (): void => {
 
     it('writes each category separately', async (): Promise<void> => {
       void service.setDefaultVolume(0.6);
-      const pending: Promise<void> = service.setGlassEnabled(false);
+      const pending: Promise<void> = service.setAccentColor('green');
       await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
       await pending;
 
@@ -1232,7 +1232,7 @@ describe('SettingsService persistence', (): void => {
     });
 
     it('does not delay one category because another keeps changing', async (): Promise<void> => {
-      void service.setGlassEnabled(false);
+      void service.setAccentColor('green');
       await vi.advanceTimersByTimeAsync(DEBOUNCE_MS - 1);
       void service.setDefaultVolume(0.6);
 
@@ -1303,14 +1303,14 @@ describe('SettingsService persistence', (): void => {
 
     it('writes pending changes immediately when the page is hidden', async (): Promise<void> => {
       const volume: Promise<void> = service.setDefaultVolume(0.6);
-      const glass: Promise<void> = service.setGlassEnabled(false);
+      const accent: Promise<void> = service.setAccentColor('green');
 
       window.dispatchEvent(new Event('pagehide'));
       await vi.advanceTimersByTimeAsync(0);
-      await Promise.all([volume, glass]);
+      await Promise.all([volume, accent]);
 
       const bodies: Record<string, unknown>[] = sentWrites(fetchSpy).map((write: SentWrite): Record<string, unknown> => write.body);
-      expect(bodies).toEqual([{defaultVolume: 0.6}, {glassEnabled: false}]);
+      expect(bodies).toEqual([{defaultVolume: 0.6}, {accentColor: 'green'}]);
     });
 
     it('does not write a second time when the debounce elapses after a page-hide flush', async (): Promise<void> => {

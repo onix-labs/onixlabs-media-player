@@ -1084,7 +1084,7 @@ describe('UnifiedMediaServer handlers', () => {
       ['application', { serverPort: 0 }],
       ['playback', { crossfadeDuration: 2 }],
       ['transcoding', { videoQuality: 'medium' }],
-      ['appearance', { backgroundColor: '#101010' }],
+      ['appearance', { accentColor: 'coral' }],
       ['subtitles', { fontSize: 120 }],
       ['equalizer', { preset: 'pop' }],
       ['videoAdjustments', { preset: 'warm' }],

@@ -19,7 +19,7 @@ import * as path from "path";
 import {fileURLToPath} from "url";
 import {UnifiedMediaServer} from './unified-media-server.js';
 import {createApplicationMenu, updateMenuState} from './application-menu.js';
-import type {WindowBounds, MacOSVisualEffectState, AppearanceSettings, RecentItem, RecentItemsSettings} from './settings-manager.js';
+import type {WindowBounds, MacOSVisualEffectState, AppearanceSettings, PlayerTheme, RecentItem, RecentItemsSettings} from './settings-manager.js';
 import type {SettingsManager} from './settings-manager.js';
 import type {DependencyState} from './dependency-manager.js';
 import {initializeLogger, mainLogger, ipcLogger, windowLogger, getLogFilePath} from './logger.js';
@@ -124,6 +124,12 @@ class Program {
   /** Pebble's page colour in dark. */
   private static readonly PEBBLE_BACKGROUND_DARK: string = '#212529';
 
+  /** The Solid theme's neutral background in light, before the page paints. */
+  private static readonly SOLID_BACKGROUND_LIGHT: string = '#e0e0e0';
+
+  /** The Solid theme's neutral background in dark. */
+  private static readonly SOLID_BACKGROUND_DARK: string = '#1e1e1e';
+
   /**
    * Calculates the project root directory path.
    *
@@ -206,17 +212,36 @@ class Program {
   private mainWindowBoundsBeforeConfig: Electron.Rectangle | null = null;
 
   /**
-   * Gets the default background color based on system theme.
-   * Used when glass is disabled or on platforms without glass support.
+   * Whether windows should be drawn dark: the colour scheme setting when it
+   * forces one, otherwise the operating system's preference. Dark when the
+   * system preference cannot be read, as the player has always defaulted dark.
    *
-   * @returns Dark gray (#1e1e1e) for dark mode, light gray (#e0e0e0) for light mode
+   * @returns True for the dark scheme, false for light
    */
-  private getDefaultBackgroundColor(): string {
-    try {
-      return nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#e0e0e0';
-    } catch {
-      return '#1e1e1e'; // Fallback to dark
+  private isDarkColorScheme(): boolean {
+    const scheme: string | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance?.colorScheme;
+    if (scheme === 'dark' || scheme === 'light') {
+      return scheme === 'dark';
     }
+    try {
+      return nativeTheme.shouldUseDarkColors;
+    } catch {
+      return true;
+    }
+  }
+
+  /**
+   * Gets the theme the main window actually wears: the theme setting, with
+   * Glass falling back to Solid where the platform has no glass effect
+   * (anything but macOS and Windows), matching the renderer's effective theme.
+   *
+   * @returns The effective player theme
+   */
+  private getEffectivePlayerTheme(): PlayerTheme {
+    const defaultTheme: PlayerTheme = process.platform === 'darwin' ? 'glass' : 'solid';
+    const theme: PlayerTheme = this.mediaServer?.getSettingsManager().getSettings().appearance?.theme ?? defaultTheme;
+    const supportsGlass: boolean = process.platform === 'darwin' || process.platform === 'win32';
+    return theme === 'glass' && !supportsGlass ? 'solid' : theme;
   }
 
   /**
@@ -225,7 +250,7 @@ class Program {
    *
    * They wear the ONIXLabs brand style, Pebble (src/styles/_pebble.scss), which
    * paints an opaque page, so unlike the player they never take vibrancy or
-   * acrylic, whatever the glass setting says. The background is Pebble's page
+   * acrylic, whatever the player theme is. The background is Pebble's page
    * colour for the colour scheme in use, so nothing flashes before the page
    * paints. On macOS the title bar is hidden behind inset traffic lights, as on
    * the player; elsewhere the platform's own frame is kept.
@@ -233,9 +258,7 @@ class Program {
    * @returns Options to spread into the window's constructor options
    */
   private getPebbleWindowOptions(): Electron.BrowserWindowConstructorOptions {
-    const scheme: string | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance?.colorScheme;
-    const dark: boolean = scheme === 'dark' || (scheme !== 'light' && nativeTheme.shouldUseDarkColors);
-    const backgroundColor: string = dark ? Program.PEBBLE_BACKGROUND_DARK : Program.PEBBLE_BACKGROUND_LIGHT;
+    const backgroundColor: string = this.isDarkColorScheme() ? Program.PEBBLE_BACKGROUND_DARK : Program.PEBBLE_BACKGROUND_LIGHT;
 
     if (process.platform === 'darwin') {
       return {titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 12, y: 13}, backgroundColor};
@@ -623,11 +646,18 @@ class Program {
     // Platform-specific transparency and window chrome options
     let platformOptions: Electron.BrowserWindowConstructorOptions = {};
 
-    // Get appearance settings
+    // Get appearance settings. Glass is fixed into the window here, so moving
+    // into or out of the Glass theme needs a restart; Solid and Pebble are
+    // painted by the page from data-player-theme, so they swap live and the
+    // background colour below only covers the moment before the page paints.
     const appearanceSettings: AppearanceSettings | undefined = this.mediaServer?.getSettingsManager().getSettings().appearance;
-    const glassEnabled: boolean = appearanceSettings?.glassEnabled ?? (process.platform !== 'win32');
+    const theme: PlayerTheme = this.getEffectivePlayerTheme();
+    const glassEnabled: boolean = theme === 'glass';
     const visualEffectState: MacOSVisualEffectState = appearanceSettings?.macOSVisualEffectState ?? 'active';
-    const backgroundColor: string = appearanceSettings?.backgroundColor ?? this.getDefaultBackgroundColor();
+    const dark: boolean = this.isDarkColorScheme();
+    const backgroundColor: string = theme === 'pebble'
+      ? (dark ? Program.PEBBLE_BACKGROUND_DARK : Program.PEBBLE_BACKGROUND_LIGHT)
+      : (dark ? Program.SOLID_BACKGROUND_DARK : Program.SOLID_BACKGROUND_LIGHT);
 
     if (process.platform === 'darwin') {
       // macOS: native vibrancy with hidden title bar
@@ -636,21 +666,21 @@ class Program {
         titleBarStyle: 'hiddenInset',
         trafficLightPosition: {x: 12, y: 13},
         fullscreenable: false,
-        // Apply vibrancy if glass enabled, otherwise use background color
+        // Apply vibrancy for the Glass theme, otherwise the theme's background colour
         ...(glassEnabled
           ? { vibrancy: 'fullscreen-ui' as const, visualEffectState }
           : { backgroundColor }
         )
       };
     } else if (process.platform === 'win32') {
-      // Windows 11: acrylic blur effect when glass enabled
+      // Windows 11: acrylic blur effect for the Glass theme
       // Note: Do NOT use transparent:true with backgroundMaterial - it removes the native frame
       // Auto-hide menu bar for cleaner look (press Alt to show)
       platformOptions = glassEnabled
         ? { backgroundMaterial: 'acrylic' as const, autoHideMenuBar: true }
         : { backgroundColor, autoHideMenuBar: true };
     } else {
-      // Linux: no native blur support, always use background color
+      // Linux: no native blur support (Glass has already fallen back to Solid)
       // Auto-hide menu bar for cleaner look (press Alt to show)
       platformOptions = { backgroundColor, autoHideMenuBar: true };
     }

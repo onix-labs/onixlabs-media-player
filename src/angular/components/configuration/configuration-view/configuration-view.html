@@ -976,34 +976,42 @@
 
             @case ('appearance') {
               <div class="setting-group">
-                <!-- Glass Effect Toggle -->
+                <!-- Theme -->
                 <div class="setting-row">
                   <div class="setting-label">
-                    <label for="glass-enabled">Glass Effect</label>
+                    <label for="player-theme">Theme</label>
                     <p class="setting-description">
                       @if (supportsGlass()) {
-                        Enables transparency with blur behind the player window.
+                        Restyles the player window: an opaque Solid background, translucent Glass, or the ONIXLabs Pebble style.
                       } @else {
-                        Glass effects are not supported on this platform.
+                        Restyles the player window: an opaque Solid background or the ONIXLabs Pebble style. Glass is not supported on this platform.
                       }
                     </p>
                   </div>
                   <div class="setting-control">
-                    <label class="toggle">
-                      <input
-                        type="checkbox"
-                        id="glass-enabled"
-                        [checked]="currentGlassEnabled()"
-                        [disabled]="!supportsGlass()"
-                        (change)="onGlassEnabledChange($event)"
-                      />
-                      <span class="toggle-slider"></span>
-                    </label>
+                    <select
+                      id="player-theme"
+                      (change)="onThemeChange($event)"
+                    >
+                      @for (option of themeOptions; track option.value) {
+                        <option
+                          [value]="option.value"
+                          [selected]="option.value === currentTheme()"
+                          [disabled]="option.value === 'glass' && !supportsGlass()"
+                        >{{ option.label }}</option>
+                      }
+                    </select>
                   </div>
                 </div>
+                @if (themeRestartRequired()) {
+                  <div class="restart-notice">
+                    <i class="fa-solid fa-info-circle"></i>
+                    <span>Switching to or from the Glass theme requires an application restart to take effect.</span>
+                  </div>
+                }
 
-                <!-- Visual Effect State (macOS only, when glass enabled) -->
-                @if (isMacOS() && currentGlassEnabled()) {
+                <!-- Visual Effect State (macOS only, with the Glass theme) -->
+                @if (isMacOS() && currentTheme() === 'glass') {
                   <div class="setting-row">
                     <div class="setting-label">
                       <label for="macos-visual-effect-state">Visual Effect State</label>
@@ -1050,85 +1058,32 @@
                   </div>
                 </div>
 
-                <!-- Window Color (unified: background when glass off, tint when glass on) -->
-                <div class="setting-box">
-                  <div class="setting-box-header">
-                    <div class="setting-label">
-                      <label>Window Color</label>
-                      <p class="setting-description">
-                        @if (currentGlassEnabled() && supportsGlass()) {
-                          Color tint over the player window's glass effect. Use Alpha to control tint intensity.
-                        } @else {
-                          The player window's background color.
-                        }
-                      </p>
-                    </div>
-                    <div class="setting-control">
-                      <div class="color-preview" [style.background]="windowColorPreview()"></div>
-                    </div>
+                <!-- Accent Color -->
+                <div class="setting-row">
+                  <div class="setting-label">
+                    <label id="accent-color-label">Accent Color</label>
+                    <p class="setting-description">
+                      The color of the player's track bar and volume slider.
+                    </p>
                   </div>
-                  <div class="setting-box-content">
-                    <div class="inline-slider-row">
-                      <label for="window-color-hue">Hue</label>
-                      <input
-                        type="range"
-                        id="window-color-hue"
-                        class="hue-slider"
-                        min="0"
-                        max="360"
-                        step="1"
-                        [value]="windowColorHue()"
-                        (input)="onWindowColorHueChange($event)"
-                      />
-                      <span class="slider-value">{{ windowColorHue() }}°</span>
+                  <div class="setting-control">
+                    <div class="accent-options" role="radiogroup" aria-labelledby="accent-color-label">
+                      @for (option of accentOptions; track option.id) {
+                        <label [title]="option.name">
+                          <input
+                            type="radio"
+                            name="accent-color"
+                            [value]="option.id"
+                            [checked]="option.id === currentAccentColor()"
+                            [attr.aria-label]="option.name"
+                            (change)="onAccentColorChange(option.id)"
+                          />
+                          <span class="accent-swatch" [style.background]="option.swatch"></span>
+                        </label>
+                      }
                     </div>
-                    <div class="inline-slider-row">
-                      <label for="window-color-saturation">Saturation</label>
-                      <input
-                        type="range"
-                        id="window-color-saturation"
-                        min="0"
-                        max="100"
-                        step="1"
-                        [value]="windowColorSaturation()"
-                        [style.--pebble-range-percent]="rangeFill(windowColorSaturation(), 0, 100)"
-                        (input)="onWindowColorSaturationChange($event)"
-                      />
-                      <span class="slider-value">{{ windowColorSaturation() }}%</span>
-                    </div>
-                    <div class="inline-slider-row">
-                      <label for="window-color-lightness">Lightness</label>
-                      <input
-                        type="range"
-                        id="window-color-lightness"
-                        min="0"
-                        max="100"
-                        step="1"
-                        [value]="windowColorLightness()"
-                        [style.--pebble-range-percent]="rangeFill(windowColorLightness(), 0, 100)"
-                        (input)="onWindowColorLightnessChange($event)"
-                      />
-                      <span class="slider-value">{{ windowColorLightness() }}%</span>
-                    </div>
-                    @if (currentGlassEnabled() && supportsGlass()) {
-                      <div class="inline-slider-row">
-                        <label for="window-color-alpha">Alpha</label>
-                        <input
-                          type="range"
-                          id="window-color-alpha"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          [value]="currentWindowTintAlpha()"
-                          [style.--pebble-range-percent]="rangeFill(currentWindowTintAlpha(), 0, 1)"
-                          (input)="onWindowTintAlphaChange($event)"
-                        />
-                        <span class="slider-value">{{ (currentWindowTintAlpha() * 100).toFixed(0) }}%</span>
-                      </div>
-                    }
                   </div>
                 </div>
-
               </div>
             }
           }

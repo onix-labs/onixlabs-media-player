@@ -6,7 +6,7 @@
  *
  * Current settings:
  * - Application: server port, controls auto-hide delay
- * - Appearance: glass effects, background/tint colors
+ * - Appearance: player theme, colour scheme, accent colour
  * - Playback: volume, crossfade, skip duration, aspect mode, preferred audio language
  * - Subtitles: font size, colors, shadow effects
  * - Transcoding: video quality, audio bitrate
@@ -287,32 +287,69 @@ export type MacOSVisualEffectState = 'followWindow' | 'active' | 'inactive';
 export type ColorScheme = 'system' | 'dark' | 'light';
 
 /**
+ * Skin of the player window. Themes only restyle the player; they never move
+ * its controls. The Settings, About, Setup and Open URL windows wear Pebble
+ * whatever the theme.
+ * - solid: an opaque neutral background
+ * - glass: a translucent window (vibrancy on macOS, acrylic on Windows);
+ *   treated as solid where the platform has no glass effect
+ * - pebble: the ONIXLabs brand style
+ */
+export type PlayerTheme = 'solid' | 'glass' | 'pebble';
+
+/**
+ * Accent colour of the player's controls: monochrome or one of the eight
+ * ONIXLabs brand colours.
+ */
+export type AccentColor = 'mono' | 'amber' | 'coral' | 'rose' | 'violet' | 'blue' | 'cyan' | 'teal' | 'green';
+
+/**
+ * A selectable accent colour.
+ */
+export interface AccentOption {
+  /** Stored identifier, also the value of the player's data-accent attribute */
+  readonly id: AccentColor;
+  /** Display name */
+  readonly name: string;
+  /** CSS background of the option's swatch: a colour, or for Monochrome a gradient */
+  readonly swatch: string;
+}
+
+/**
+ * The accent colours, in display order. Monochrome has no hue of its own, so
+ * its swatch shows both of Pebble's monochrome primaries.
+ */
+export const ACCENT_OPTIONS: readonly AccentOption[] = [
+  // Half near-black, half near-white: the player shows whichever reads on the
+  // page, and either colour alone would vanish into one of the two schemes.
+  {id: 'mono', name: 'Monochrome', swatch: 'linear-gradient(135deg, #212529 50%, #f8f9fa 50%)'},
+  {id: 'amber', name: 'Amber', swatch: '#f79533'},
+  {id: 'coral', name: 'Coral', swatch: '#f37055'},
+  {id: 'rose', name: 'Rose', swatch: '#ef4e7b'},
+  {id: 'violet', name: 'Violet', swatch: '#a166ab'},
+  {id: 'blue', name: 'Blue', swatch: '#5073b8'},
+  {id: 'cyan', name: 'Cyan', swatch: '#1098ad'},
+  {id: 'teal', name: 'Teal', swatch: '#07b39b'},
+  {id: 'green', name: 'Green', swatch: '#6fba82'},
+];
+
+/** Valid player theme values. */
+const VALID_PLAYER_THEMES: readonly PlayerTheme[] = ['solid', 'glass', 'pebble'];
+
+/**
  * Appearance settings (cross-platform).
- * Supports glass effects (vibrancy on macOS, acrylic on Windows) and background color.
+ * The theme skins the player window; the colour scheme and accent colour apply
+ * to every theme.
  */
 export interface AppearanceSettings {
-  /** Whether glass effect (transparency/blur) is enabled */
-  readonly glassEnabled: boolean;
-  /** macOS visual effect state - only used on macOS when glassEnabled */
+  /** Player window theme */
+  readonly theme: PlayerTheme;
+  /** macOS visual effect state - only used on macOS with the glass theme */
   readonly macOSVisualEffectState: MacOSVisualEffectState;
   /** Color scheme preference (system, dark, light) */
   readonly colorScheme: ColorScheme;
-  /** Background color when glass is disabled or unsupported (hex format, derived from HSL) */
-  readonly backgroundColor: string;
-  /** Background hue (0-360) when glass is disabled */
-  readonly backgroundHue: number;
-  /** Background saturation (0-100) when glass is disabled */
-  readonly backgroundSaturation: number;
-  /** Background lightness (0-100) when glass is disabled */
-  readonly backgroundLightness: number;
-  /** Window tint hue (0-360) when glass is enabled */
-  readonly windowTintHue: number;
-  /** Window tint saturation (0-100) when glass is enabled */
-  readonly windowTintSaturation: number;
-  /** Window tint lightness (0-100) when glass is enabled */
-  readonly windowTintLightness: number;
-  /** Window tint alpha (0-1) when glass is enabled */
-  readonly windowTintAlpha: number;
+  /** Accent colour of the player's controls */
+  readonly accentColor: AccentColor;
 }
 
 /**
@@ -439,17 +476,13 @@ const DEFAULT_SETTINGS: AppSettings = {
     hardwareAcceleration: 'auto',
   },
   appearance: {
-    glassEnabled: true,
+    // Placeholder until the server's settings arrive, which carry the real
+    // platform default; effectiveTheme shows it as solid until glass support
+    // is known.
+    theme: 'glass',
     macOSVisualEffectState: 'active',
     colorScheme: 'system',
-    backgroundColor: '#1e1e1e',
-    backgroundHue: 0,
-    backgroundSaturation: 0,
-    backgroundLightness: 12,
-    windowTintHue: 0,
-    windowTintSaturation: 0,
-    windowTintLightness: 0,
-    windowTintAlpha: 0,
+    accentColor: 'blue',
   },
   subtitles: {
     fontSize: 100,
@@ -899,9 +932,26 @@ export class SettingsService implements OnDestroy {
     (): PreferredSubtitleLanguage => this.settings().playback?.preferredSubtitleLanguage ?? 'off'
   );
 
-  /** Whether glass effect is enabled (requires restart to apply) */
-  public readonly glassEnabled: ReturnType<typeof computed<boolean>> = computed(
-    (): boolean => this.settings().appearance?.glassEnabled ?? true
+  /** Chosen player theme (a change into or out of 'glass' requires restart to apply) */
+  public readonly theme: ReturnType<typeof computed<PlayerTheme>> = computed(
+    (): PlayerTheme => this.settings().appearance?.theme ?? 'glass'
+  );
+
+  /**
+   * Theme the player actually wears: the chosen theme, except that Glass is
+   * Solid where the platform has no glass effect (Linux), since the window
+   * there is opaque whatever the setting says.
+   */
+  public readonly effectiveTheme: ReturnType<typeof computed<PlayerTheme>> = computed(
+    (): PlayerTheme => {
+      const theme: PlayerTheme = this.theme();
+      return theme === 'glass' && !this.electron.platformInfo().supportsGlass ? 'solid' : theme;
+    }
+  );
+
+  /** Accent colour of the player's controls */
+  public readonly accentColor: ReturnType<typeof computed<AccentColor>> = computed(
+    (): AccentColor => this.settings().appearance?.accentColor ?? 'blue'
   );
 
   /** macOS visual effect state (requires restart to apply) */
@@ -912,46 +962,6 @@ export class SettingsService implements OnDestroy {
   /** Color scheme preference (system, dark, light) */
   public readonly colorScheme: ReturnType<typeof computed<ColorScheme>> = computed(
     (): ColorScheme => this.settings().appearance?.colorScheme ?? 'system'
-  );
-
-  /** Background color when glass is disabled (hex, derived from HSL) */
-  public readonly backgroundColor: ReturnType<typeof computed<string>> = computed(
-    (): string => this.settings().appearance?.backgroundColor ?? '#1e1e1e'
-  );
-
-  /** Background hue (0-360) when glass is disabled */
-  public readonly backgroundHue: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.backgroundHue ?? 0
-  );
-
-  /** Background saturation (0-100) when glass is disabled */
-  public readonly backgroundSaturation: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.backgroundSaturation ?? 0
-  );
-
-  /** Background lightness (0-100) when glass is disabled */
-  public readonly backgroundLightness: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.backgroundLightness ?? 12
-  );
-
-  /** Window tint hue (0-360) when glass is enabled */
-  public readonly windowTintHue: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.windowTintHue ?? 0
-  );
-
-  /** Window tint saturation (0-100) when glass is enabled */
-  public readonly windowTintSaturation: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.windowTintSaturation ?? 0
-  );
-
-  /** Window tint lightness (0-100) when glass is enabled */
-  public readonly windowTintLightness: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.windowTintLightness ?? 0
-  );
-
-  /** Window tint alpha (0-1) when glass is enabled */
-  public readonly windowTintAlpha: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settings().appearance?.windowTintAlpha ?? 0
   );
 
   // ============================================================================
@@ -1600,13 +1610,32 @@ export class SettingsService implements OnDestroy {
   // ============================================================================
 
   /**
-   * Sets whether glass effect is enabled.
-   * Requires application restart to take effect.
+   * Sets the player theme.
+   * Solid and Pebble swap live; a change into or out of Glass needs an
+   * application restart, as the window's vibrancy/acrylic is fixed when it is
+   * created.
    *
-   * @param enabled - Whether glass should be enabled
+   * @param theme - Player theme ('solid', 'glass', 'pebble')
    */
-  public async setGlassEnabled(enabled: boolean): Promise<void> {
-    await this.updateSetting('appearance', 'glassEnabled', enabled);
+  public async setTheme(theme: PlayerTheme): Promise<void> {
+    if (!VALID_PLAYER_THEMES.includes(theme)) {
+      console.error(`[SettingsService] Invalid theme: ${theme}`);
+      return;
+    }
+    await this.updateSetting('appearance', 'theme', theme);
+  }
+
+  /**
+   * Sets the accent colour of the player's controls.
+   *
+   * @param accentColor - One of the ACCENT_OPTIONS ids
+   */
+  public async setAccentColor(accentColor: AccentColor): Promise<void> {
+    if (!ACCENT_OPTIONS.some((option: AccentOption): boolean => option.id === accentColor)) {
+      console.error(`[SettingsService] Invalid accent color: ${accentColor}`);
+      return;
+    }
+    await this.updateSetting('appearance', 'accentColor', accentColor);
   }
 
   /**
@@ -1636,83 +1665,6 @@ export class SettingsService implements OnDestroy {
       return;
     }
     await this.updateSetting('appearance', 'colorScheme', scheme);
-  }
-
-  /**
-   * Sets the background color when glass is disabled.
-   *
-   * @param color - Hex color string (e.g., '#1e1e1e')
-   */
-  public async setBackgroundColor(color: string): Promise<void> {
-    // Validate hex color format
-    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
-      console.error(`[SettingsService] Invalid hex color: ${color}`);
-      return;
-    }
-    await this.updateSetting('appearance', 'backgroundColor', color);
-  }
-
-  /**
-   * Sets the background hue (0-360) when glass is disabled.
-   *
-   * @param hue - Hue value (0-360)
-   */
-  public async setBackgroundHue(hue: number): Promise<void> {
-    await this.updateSetting('appearance', 'backgroundHue', hue);
-  }
-
-  /**
-   * Sets the background saturation (0-100) when glass is disabled.
-   *
-   * @param saturation - Saturation value (0-100)
-   */
-  public async setBackgroundSaturation(saturation: number): Promise<void> {
-    await this.updateSetting('appearance', 'backgroundSaturation', saturation);
-  }
-
-  /**
-   * Sets the background lightness (0-100) when glass is disabled.
-   *
-   * @param lightness - Lightness value (0-100)
-   */
-  public async setBackgroundLightness(lightness: number): Promise<void> {
-    await this.updateSetting('appearance', 'backgroundLightness', lightness);
-  }
-
-  /**
-   * Sets the window tint hue (0-360) when glass is enabled.
-   *
-   * @param hue - Hue value (0-360)
-   */
-  public async setWindowTintHue(hue: number): Promise<void> {
-    await this.updateSetting('appearance', 'windowTintHue', hue);
-  }
-
-  /**
-   * Sets the window tint saturation (0-100) when glass is enabled.
-   *
-   * @param saturation - Saturation value (0-100)
-   */
-  public async setWindowTintSaturation(saturation: number): Promise<void> {
-    await this.updateSetting('appearance', 'windowTintSaturation', saturation);
-  }
-
-  /**
-   * Sets the window tint lightness (0-100) when glass is enabled.
-   *
-   * @param lightness - Lightness value (0-100)
-   */
-  public async setWindowTintLightness(lightness: number): Promise<void> {
-    await this.updateSetting('appearance', 'windowTintLightness', lightness);
-  }
-
-  /**
-   * Sets the window tint alpha (0-1) when glass is enabled.
-   *
-   * @param alpha - Alpha value (0-1)
-   */
-  public async setWindowTintAlpha(alpha: number): Promise<void> {
-    await this.updateSetting('appearance', 'windowTintAlpha', alpha);
   }
 
   // ============================================================================

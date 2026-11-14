@@ -12,11 +12,11 @@
  * @module app/components/configuration/configuration-view
  */
 
-import {Component, signal, computed, inject, input, effect, ChangeDetectionStrategy} from '@angular/core';
-import type {InputSignal, EffectRef} from '@angular/core';
+import {Component, signal, computed, inject, input, effect, untracked, ChangeDetectionStrategy} from '@angular/core';
+import type {InputSignal, EffectRef, WritableSignal} from '@angular/core';
 import {FormsModule} from '@angular/forms';
 import {SoundFontList} from '../../shared/soundfont-list/soundfont-list';
-import {SettingsService, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, SEEK_MODE_OPTIONS, FftSize, RenderResolution, CrossfadeDuration, CrossfadeStyle, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, SeekMode, MacOSVisualEffectState, ColorScheme, SubtitleFontFamily, HardwareAcceleration} from '../../../services/settings.service';
+import {SettingsService, VIDEO_ASPECT_OPTIONS, AUDIO_LANGUAGE_OPTIONS, SUBTITLE_LANGUAGE_OPTIONS, SEEK_MODE_OPTIONS, FftSize, RenderResolution, CrossfadeDuration, CrossfadeStyle, VideoQuality, AudioBitrate, VideoAspectMode, PreferredAudioLanguage, PreferredSubtitleLanguage, SeekMode, MacOSVisualEffectState, ColorScheme, SubtitleFontFamily, HardwareAcceleration, ACCENT_OPTIONS, type PlayerTheme, type AccentColor} from '../../../services/settings.service';
 import {ElectronService} from '../../../services/electron.service';
 import {DependencyService} from '../../../services/dependency.service';
 import {EQ_FREQUENCIES, EQ_PRESETS, EQ_GAIN_MIN, EQ_GAIN_MAX, type EqualizerPreset} from '../../../services/equalizer';
@@ -32,6 +32,15 @@ export const MACOS_VISUAL_EFFECT_STATE_OPTIONS: readonly {value: MacOSVisualEffe
   {value: 'followWindow', label: 'Follow Window'},
   {value: 'active', label: 'Always Active'},
   {value: 'inactive', label: 'Always Inactive'},
+];
+
+/**
+ * Player theme options for the settings UI, in display order.
+ */
+export const PLAYER_THEME_OPTIONS: readonly {value: PlayerTheme; label: string}[] = [
+  {value: 'solid', label: 'Solid'},
+  {value: 'glass', label: 'Glass'},
+  {value: 'pebble', label: 'Pebble'},
 ];
 
 /**
@@ -146,7 +155,7 @@ const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     id: 'appearance',
     name: 'Appearance',
     icon: 'fa-solid fa-palette',
-    description: 'Configure the player window\'s transparency and background.',
+    description: 'Configure the player window\'s theme, color scheme and accent color.',
   },
   {
     id: 'dependencies',
@@ -590,14 +599,50 @@ export class ConfigurationView {
     (): boolean => this.platform() === 'darwin'
   );
 
-  /** Current glass enabled setting */
-  public readonly currentGlassEnabled: ReturnType<typeof computed<boolean>> = computed(
-    (): boolean => this.settingsService.glassEnabled()
+  /** Available player theme options for the dropdown */
+  public readonly themeOptions: typeof PLAYER_THEME_OPTIONS = PLAYER_THEME_OPTIONS;
+
+  /** Available accent colours for the swatch group */
+  public readonly accentOptions: typeof ACCENT_OPTIONS = ACCENT_OPTIONS;
+
+  /** Current player theme setting (as chosen, before any glass fallback) */
+  public readonly currentTheme: ReturnType<typeof computed<PlayerTheme>> = computed(
+    (): PlayerTheme => this.settingsService.theme()
   );
 
-  /** Current background color setting (hex, derived from HSL) */
-  public readonly currentBackgroundColor: ReturnType<typeof computed<string>> = computed(
-    (): string => this.settingsService.backgroundColor()
+  /** Current accent colour setting */
+  public readonly currentAccentColor: ReturnType<typeof computed<AccentColor>> = computed(
+    (): AccentColor => this.settingsService.accentColor()
+  );
+
+  /**
+   * The theme as it stood when this window's settings first arrived.
+   *
+   * Captured on load rather than at creation, because this window's settings
+   * start as built-in defaults and are fetched asynchronously; capturing the
+   * placeholder would announce a restart nobody caused.
+   */
+  private readonly initialTheme: WritableSignal<PlayerTheme | null> = signal<PlayerTheme | null>(null);
+
+  /** Records initialTheme once the settings have loaded */
+  private readonly initialThemeEffect: EffectRef = effect((): void => {
+    if (this.settingsService.isLoaded() && untracked(this.initialTheme) === null) {
+      this.initialTheme.set(untracked(this.settingsService.theme));
+    }
+  });
+
+  /**
+   * Whether the theme change made here needs a restart: Glass is fixed into
+   * the player window when it is created, so moving into or out of it only
+   * applies on the next launch, while Solid and Pebble swap live. Never where
+   * glass is unsupported, since there Glass is shown as Solid anyway.
+   */
+  public readonly themeRestartRequired: ReturnType<typeof computed<boolean>> = computed(
+    (): boolean => {
+      const initial: PlayerTheme | null = this.initialTheme();
+      if (initial === null || !this.supportsGlass()) return false;
+      return (initial === 'glass') !== (this.currentTheme() === 'glass');
+    }
   );
 
   /** Current macOS visual effect state setting */
@@ -611,83 +656,6 @@ export class ConfigurationView {
   /** Whether the macOS visual effect state has been changed from its initial value */
   public readonly visualEffectStateChanged: ReturnType<typeof computed<boolean>> = computed(
     (): boolean => this.currentMacOSVisualEffectState() !== this.initialMacOSVisualEffectState
-  );
-
-  /** Current background hue (0-360) */
-  public readonly currentBackgroundHue: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.backgroundHue()
-  );
-
-  /** Current background saturation (0-100) */
-  public readonly currentBackgroundSaturation: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.backgroundSaturation()
-  );
-
-  /** Current background lightness (0-100) */
-  public readonly currentBackgroundLightness: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.backgroundLightness()
-  );
-
-  /** Current window tint hue (0-360) */
-  public readonly currentWindowTintHue: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.windowTintHue()
-  );
-
-  /** Current window tint saturation (0-100) */
-  public readonly currentWindowTintSaturation: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.windowTintSaturation()
-  );
-
-  /** Current window tint lightness (0-100) */
-  public readonly currentWindowTintLightness: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.windowTintLightness()
-  );
-
-  /** Current window tint alpha (0-1) */
-  public readonly currentWindowTintAlpha: ReturnType<typeof computed<number>> = computed(
-    (): number => this.settingsService.windowTintAlpha()
-  );
-
-  /** Preview color for background HSL sliders */
-  public readonly backgroundPreviewColor: ReturnType<typeof computed<string>> = computed(
-    (): string => `hsl(${this.currentBackgroundHue()}, ${this.currentBackgroundSaturation()}%, ${this.currentBackgroundLightness()}%)`
-  );
-
-  /** Preview color for window tint HSLA sliders */
-  public readonly windowTintPreviewColor: ReturnType<typeof computed<string>> = computed(
-    (): string => `hsla(${this.currentWindowTintHue()}, ${this.currentWindowTintSaturation()}%, ${this.currentWindowTintLightness()}%, ${this.currentWindowTintAlpha()})`
-  );
-
-  // ============================================================================
-  // Unified Window Color (uses background when glass off, tint when glass on)
-  // ============================================================================
-
-  /** Unified window color hue - uses background or tint based on glass state */
-  public readonly windowColorHue: ReturnType<typeof computed<number>> = computed(
-    (): number => this.currentGlassEnabled() && this.supportsGlass()
-      ? this.currentWindowTintHue()
-      : this.currentBackgroundHue()
-  );
-
-  /** Unified window color saturation - uses background or tint based on glass state */
-  public readonly windowColorSaturation: ReturnType<typeof computed<number>> = computed(
-    (): number => this.currentGlassEnabled() && this.supportsGlass()
-      ? this.currentWindowTintSaturation()
-      : this.currentBackgroundSaturation()
-  );
-
-  /** Unified window color lightness - uses background or tint based on glass state */
-  public readonly windowColorLightness: ReturnType<typeof computed<number>> = computed(
-    (): number => this.currentGlassEnabled() && this.supportsGlass()
-      ? this.currentWindowTintLightness()
-      : this.currentBackgroundLightness()
-  );
-
-  /** Unified window color preview - uses background or tint based on glass state */
-  public readonly windowColorPreview: ReturnType<typeof computed<string>> = computed(
-    (): string => this.currentGlassEnabled() && this.supportsGlass()
-      ? this.windowTintPreviewColor()
-      : this.backgroundPreviewColor()
   );
 
   // ============================================================================
@@ -1109,33 +1077,27 @@ export class ConfigurationView {
   }
 
   // ============================================================================
-  // Appearance Settings Event Handlers (macOS)
+  // Appearance Settings Event Handlers
   // ============================================================================
 
   /**
-   * Handles glass enabled toggle change.
-   * Note: Requires application restart to take effect.
+   * Handles player theme selection change.
+   * Note: a change into or out of Glass requires an application restart.
    *
-   * @param event - The change event from the checkbox
+   * @param event - The change event from the select element
    */
-  public async onGlassEnabledChange(event: Event): Promise<void> {
-    const target: EventTarget | null = event.target;
-    if (target instanceof HTMLInputElement) {
-      await this.settingsService.setGlassEnabled(target.checked);
-    }
+  public async onThemeChange(event: Event): Promise<void> {
+    const theme: string = getSelectValue(event);
+    await this.settingsService.setTheme(theme as PlayerTheme);
   }
 
   /**
-   * Handles background color change.
-   * Note: Requires application restart to take effect.
+   * Handles accent colour selection.
    *
-   * @param event - The change event from the color picker
+   * @param accentColor - The id of the chosen swatch
    */
-  public async onBackgroundColorChange(event: Event): Promise<void> {
-    const color: string = getInputValue(event);
-    if (color) {
-      await this.settingsService.setBackgroundColor(color);
-    }
+  public async onAccentColorChange(accentColor: AccentColor): Promise<void> {
+    await this.settingsService.setAccentColor(accentColor);
   }
 
   /**
@@ -1157,139 +1119,6 @@ export class ConfigurationView {
   public async onColorSchemeChange(event: Event): Promise<void> {
     const scheme: string = getSelectValue(event);
     await this.settingsService.setColorScheme(scheme as ColorScheme);
-  }
-
-  // ============================================================================
-  // Background HSL Event Handlers
-  // ============================================================================
-
-  /**
-   * Handles background hue slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onBackgroundHueChange(event: Event): Promise<void> {
-    const hue: number = parseFloat(getInputValue(event));
-    if (!isNaN(hue)) await this.settingsService.setBackgroundHue(hue);
-  }
-
-  /**
-   * Handles background saturation slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onBackgroundSaturationChange(event: Event): Promise<void> {
-    const saturation: number = parseFloat(getInputValue(event));
-    if (!isNaN(saturation)) await this.settingsService.setBackgroundSaturation(saturation);
-  }
-
-  /**
-   * Handles background lightness slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onBackgroundLightnessChange(event: Event): Promise<void> {
-    const lightness: number = parseFloat(getInputValue(event));
-    if (!isNaN(lightness)) await this.settingsService.setBackgroundLightness(lightness);
-  }
-
-  // ============================================================================
-  // Window Tint HSLA Event Handlers
-  // ============================================================================
-
-  /**
-   * Handles window tint hue slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowTintHueChange(event: Event): Promise<void> {
-    const hue: number = parseFloat(getInputValue(event));
-    if (!isNaN(hue)) await this.settingsService.setWindowTintHue(hue);
-  }
-
-  /**
-   * Handles window tint saturation slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowTintSaturationChange(event: Event): Promise<void> {
-    const saturation: number = parseFloat(getInputValue(event));
-    if (!isNaN(saturation)) await this.settingsService.setWindowTintSaturation(saturation);
-  }
-
-  /**
-   * Handles window tint lightness slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowTintLightnessChange(event: Event): Promise<void> {
-    const lightness: number = parseFloat(getInputValue(event));
-    if (!isNaN(lightness)) await this.settingsService.setWindowTintLightness(lightness);
-  }
-
-  /**
-   * Handles window tint alpha slider change.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowTintAlphaChange(event: Event): Promise<void> {
-    const alpha: number = parseFloat(getInputValue(event));
-    if (!isNaN(alpha)) await this.settingsService.setWindowTintAlpha(alpha);
-  }
-
-  // ============================================================================
-  // Unified Window Color Event Handlers (routes to background or tint based on glass state)
-  // ============================================================================
-
-  /**
-   * Handles unified window color hue slider change.
-   * Routes to background or tint based on glass state.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowColorHueChange(event: Event): Promise<void> {
-    const hue: number = parseFloat(getInputValue(event));
-    if (isNaN(hue)) return;
-
-    if (this.currentGlassEnabled() && this.supportsGlass()) {
-      await this.settingsService.setWindowTintHue(hue);
-    } else {
-      await this.settingsService.setBackgroundHue(hue);
-    }
-  }
-
-  /**
-   * Handles unified window color saturation slider change.
-   * Routes to background or tint based on glass state.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowColorSaturationChange(event: Event): Promise<void> {
-    const saturation: number = parseFloat(getInputValue(event));
-    if (isNaN(saturation)) return;
-
-    if (this.currentGlassEnabled() && this.supportsGlass()) {
-      await this.settingsService.setWindowTintSaturation(saturation);
-    } else {
-      await this.settingsService.setBackgroundSaturation(saturation);
-    }
-  }
-
-  /**
-   * Handles unified window color lightness slider change.
-   * Routes to background or tint based on glass state.
-   *
-   * @param event - The input event from the slider
-   */
-  public async onWindowColorLightnessChange(event: Event): Promise<void> {
-    const lightness: number = parseFloat(getInputValue(event));
-    if (isNaN(lightness)) return;
-
-    if (this.currentGlassEnabled() && this.supportsGlass()) {
-      await this.settingsService.setWindowTintLightness(lightness);
-    } else {
-      await this.settingsService.setBackgroundLightness(lightness);
-    }
   }
 
   // ============================================================================

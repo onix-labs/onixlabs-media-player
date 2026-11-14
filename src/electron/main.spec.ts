@@ -62,9 +62,8 @@ const h = vi.hoisted(() => {
   ) => void;
 
   interface Appearance {
-    glassEnabled?: boolean;
+    theme?: string;
     macOSVisualEffectState?: string;
-    backgroundColor?: string;
     colorScheme?: string;
   }
 
@@ -1425,16 +1424,49 @@ describe('main', (): void => {
     });
 
     it('should apply the configured macOS visual effect state', async (): Promise<void> => {
-      await boot({platform: 'darwin', config: {appearance: {glassEnabled: true, macOSVisualEffectState: 'followWindow'}}});
+      await boot({platform: 'darwin', config: {appearance: {theme: 'glass', macOSVisualEffectState: 'followWindow'}}});
 
       expect(mainWindow().options.visualEffectState).toBe('followWindow');
     });
 
-    it('should replace vibrancy with the configured colour on macOS when glass is off', async (): Promise<void> => {
-      await boot({platform: 'darwin', config: {appearance: {glassEnabled: false, backgroundColor: '#123456'}}});
+    it('should replace vibrancy with the Solid background on macOS for the Solid theme', async (): Promise<void> => {
+      await boot({platform: 'darwin', config: {dark: true, appearance: {theme: 'solid'}}});
 
-      expect(mainWindow().options.backgroundColor).toBe('#123456');
+      expect(mainWindow().options.backgroundColor).toBe('#1e1e1e');
       expect(mainWindow().options.vibrancy).toBeUndefined();
+      expect(mainWindow().options.visualEffectState).toBeUndefined();
+      expect(mainWindow().options).toMatchObject({titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 12, y: 13}});
+    });
+
+    it('should replace vibrancy with Pebble\'s page colour on macOS for the Pebble theme', async (): Promise<void> => {
+      await boot({platform: 'darwin', config: {dark: true, appearance: {theme: 'pebble'}}});
+
+      expect(mainWindow().options.backgroundColor).toBe('#212529');
+      expect(mainWindow().options.vibrancy).toBeUndefined();
+      expect(mainWindow().options).toMatchObject({titleBarStyle: 'hiddenInset', trafficLightPosition: {x: 12, y: 13}});
+    });
+
+    it.each([
+      {theme: 'solid', dark: true, expected: '#1e1e1e'},
+      {theme: 'solid', dark: false, expected: '#e0e0e0'},
+      {theme: 'pebble', dark: true, expected: '#212529'},
+      {theme: 'pebble', dark: false, expected: '#d8dde2'},
+    ])('should paint the $theme theme $expected when the system is dark=$dark', async ({theme, dark, expected}): Promise<void> => {
+      await boot({platform: 'win32', config: {dark, appearance: {theme}}});
+
+      expect(mainWindow().options).toMatchObject({backgroundColor: expected, autoHideMenuBar: true});
+      expect(mainWindow().options.backgroundMaterial).toBeUndefined();
+    });
+
+    it.each([
+      {theme: 'solid', colorScheme: 'light', dark: true, expected: '#e0e0e0'},
+      {theme: 'solid', colorScheme: 'dark', dark: false, expected: '#1e1e1e'},
+      {theme: 'pebble', colorScheme: 'light', dark: true, expected: '#d8dde2'},
+      {theme: 'pebble', colorScheme: 'dark', dark: false, expected: '#212529'},
+    ])('should follow the $colorScheme colour scheme setting over the system for the $theme theme', async ({theme, colorScheme, dark, expected}): Promise<void> => {
+      await boot({platform: 'linux', config: {dark, appearance: {theme, colorScheme}}});
+
+      expect(mainWindow().options.backgroundColor).toBe(expected);
     });
 
     it('should set the dock icon on macOS when unpackaged', async (): Promise<void> => {
@@ -1462,17 +1494,17 @@ describe('main', (): void => {
       expect(mainWindow().options.backgroundColor).toBe('#1e1e1e');
     });
 
-    it('should use acrylic on Windows when glass is enabled', async (): Promise<void> => {
-      await boot({platform: 'win32', config: {appearance: {glassEnabled: true}}});
+    it('should use acrylic on Windows for the Glass theme', async (): Promise<void> => {
+      await boot({platform: 'win32', config: {appearance: {theme: 'glass'}}});
 
       expect(mainWindow().options).toMatchObject({backgroundMaterial: 'acrylic', autoHideMenuBar: true});
       expect(mainWindow().options.backgroundColor).toBeUndefined();
     });
 
-    it('should never request a blur effect on Linux', async (): Promise<void> => {
-      await boot({platform: 'linux', config: {appearance: {glassEnabled: true, backgroundColor: '#abcdef'}}});
+    it('should treat the Glass theme as Solid on Linux and never request a blur effect', async (): Promise<void> => {
+      await boot({platform: 'linux', config: {dark: false, appearance: {theme: 'glass'}}});
 
-      expect(mainWindow().options).toMatchObject({backgroundColor: '#abcdef', autoHideMenuBar: true});
+      expect(mainWindow().options).toMatchObject({backgroundColor: '#e0e0e0', autoHideMenuBar: true});
       expect(mainWindow().options.vibrancy).toBeUndefined();
       expect(mainWindow().options.backgroundMaterial).toBeUndefined();
     });
@@ -1504,15 +1536,15 @@ describe('main', (): void => {
     });
 
     // Every window but the player wears Pebble, which paints an opaque page.
-    it.each(SECONDARY_WINDOW_KINDS)('should never give the %s window vibrancy on macOS, even with glass on', async (kind: WindowKind): Promise<void> => {
-      const window: FakeWindow = await bootWithWindow(kind, {platform: 'darwin', config: {appearance: {glassEnabled: true}}});
+    it.each(SECONDARY_WINDOW_KINDS)('should never give the %s window vibrancy on macOS, even with the Glass theme', async (kind: WindowKind): Promise<void> => {
+      const window: FakeWindow = await bootWithWindow(kind, {platform: 'darwin', config: {appearance: {theme: 'glass'}}});
 
       expect(window.options.vibrancy).toBeUndefined();
       expect(window.options.visualEffectState).toBeUndefined();
     });
 
-    it.each(SECONDARY_WINDOW_KINDS)('should never give the %s window acrylic on Windows, even with glass on', async (kind: WindowKind): Promise<void> => {
-      const window: FakeWindow = await bootWithWindow(kind, {platform: 'win32', config: {appearance: {glassEnabled: true}}});
+    it.each(SECONDARY_WINDOW_KINDS)('should never give the %s window acrylic on Windows, even with the Glass theme', async (kind: WindowKind): Promise<void> => {
+      const window: FakeWindow = await bootWithWindow(kind, {platform: 'win32', config: {appearance: {theme: 'glass'}}});
 
       expect(window.options.backgroundMaterial).toBeUndefined();
     });
@@ -1541,13 +1573,19 @@ describe('main', (): void => {
       expect(window.options.backgroundColor).toBe('#212529');
     });
 
-    it.each(SECONDARY_WINDOW_KINDS)('should ignore the player\'s background colour for the %s window', async (kind: WindowKind): Promise<void> => {
+    it.each(SECONDARY_WINDOW_KINDS)('should paint the %s window Pebble\'s page colour whatever the player theme', async (kind: WindowKind): Promise<void> => {
       const window: FakeWindow = await bootWithWindow(kind, {
         platform: 'darwin',
-        config: {dark: false, appearance: {glassEnabled: false, backgroundColor: '#123456'}},
+        config: {dark: false, appearance: {theme: 'solid'}},
       });
 
       expect(window.options.backgroundColor).toBe('#d8dde2');
+    });
+
+    it.each(SECONDARY_WINDOW_KINDS)('should paint the %s window dark when the system theme cannot be read', async (kind: WindowKind): Promise<void> => {
+      const window: FakeWindow = await bootWithWindow(kind, {platform: 'linux', config: {themeThrows: true}});
+
+      expect(window.options.backgroundColor).toBe('#212529');
     });
 
     it.each(SECONDARY_WINDOW_KINDS)('should make the %s window a fixed-size dialog', async (kind: WindowKind): Promise<void> => {

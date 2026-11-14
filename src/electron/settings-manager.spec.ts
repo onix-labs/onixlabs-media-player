@@ -57,7 +57,6 @@ import type {
   ApplicationSettingsUpdate,
   PlaybackSettingsUpdate,
   TranscodingSettingsUpdate,
-  AppearanceSettingsUpdate,
   SubtitleSettingsUpdate,
   EqualizerSettingsUpdate,
   VideoAdjustmentsSettingsUpdate,
@@ -72,6 +71,8 @@ import type {
   ColorScheme,
   SeekMode,
   SubtitleFontFamily,
+  PlayerTheme,
+  AccentColor,
 } from './settings-manager.js';
 
 // ---------------------------------------------------------------------------
@@ -136,6 +137,9 @@ function pathsOf(items: readonly RecentItem[]): string[] {
 
 const mockedLoggerError: ReturnType<typeof vi.fn> = vi.mocked(settingsLogger.error);
 
+/** The theme the module defaults to on the platform the tests run on. */
+const PLATFORM_DEFAULT_THEME: PlayerTheme = process.platform === 'darwin' ? 'glass' : 'solid';
+
 // ---------------------------------------------------------------------------
 // Test suites
 // ---------------------------------------------------------------------------
@@ -173,9 +177,10 @@ describe('SettingsManager', () => {
       expect(settings.playback.videoAspectMode).toBe('default');
       expect(settings.transcoding.videoQuality).toBe('medium');
       expect(settings.transcoding.audioBitrate).toBe(192);
-      expect(settings.appearance.glassEnabled).toBe(process.platform !== 'win32');
+      expect(settings.appearance.theme).toBe(PLATFORM_DEFAULT_THEME);
       expect(settings.appearance.macOSVisualEffectState).toBe('active');
-      expect(settings.appearance.backgroundColor).toBe('#1e1e1e');
+      expect(settings.appearance.colorScheme).toBe('system');
+      expect(settings.appearance.accentColor).toBe('blue');
       expect(settings.windowState.miniplayerBounds).toBeNull();
     });
 
@@ -216,9 +221,9 @@ describe('SettingsManager', () => {
         },
         transcoding: { videoQuality: 'high', audioBitrate: 320 },
         appearance: {
-          glassEnabled: false,
+          theme: 'pebble',
           macOSVisualEffectState: 'inactive',
-          backgroundColor: '#222222',
+          accentColor: 'violet',
         },
         windowState: { miniplayerBounds: null },
       };
@@ -239,9 +244,9 @@ describe('SettingsManager', () => {
       expect(settings.playback.videoAspectMode).toBe('16:9');
       expect(settings.transcoding.videoQuality).toBe('high');
       expect(settings.transcoding.audioBitrate).toBe(320);
-      expect(settings.appearance.glassEnabled).toBe(false);
+      expect(settings.appearance.theme).toBe('pebble');
       expect(settings.appearance.macOSVisualEffectState).toBe('inactive');
-      expect(settings.appearance.backgroundColor).toBe('#222222');
+      expect(settings.appearance.accentColor).toBe('violet');
     });
 
     it('should use defaults for missing top-level sections', () => {
@@ -254,7 +259,7 @@ describe('SettingsManager', () => {
       expect(settings.application.serverPort).toBe(0);
       expect(settings.playback.defaultVolume).toBe(0.5);
       expect(settings.transcoding.videoQuality).toBe('medium');
-      expect(settings.appearance.glassEnabled).toBe(process.platform !== 'win32');
+      expect(settings.appearance.theme).toBe(PLATFORM_DEFAULT_THEME);
       expect(settings.windowState.miniplayerBounds).toBeNull();
     });
 
@@ -265,7 +270,7 @@ describe('SettingsManager', () => {
         application: { serverPort: -5, controlsAutoHideDelay: 100 },
         playback: { defaultVolume: 5.0, crossfadeDuration: 9999, previousTrackThreshold: 99, skipDuration: 0, videoAspectMode: 'stretch' },
         transcoding: { videoQuality: 'ultra', audioBitrate: 64 },
-        appearance: { glassEnabled: 'yes', macOSVisualEffectState: 'turbo', backgroundColor: 'red' },
+        appearance: { theme: 'aero', glassEnabled: 'yes', macOSVisualEffectState: 'turbo', accentColor: 'red' },
       });
 
       const manager: SettingsManager = new SettingsManager();
@@ -283,10 +288,10 @@ describe('SettingsManager', () => {
       expect(settings.playback.videoAspectMode).toBe('default');
       expect(settings.transcoding.videoQuality).toBe('medium');
       expect(settings.transcoding.audioBitrate).toBe(192);
-      // glassEnabled is not boolean -> falls through to default
-      expect(settings.appearance.glassEnabled).toBe(process.platform !== 'win32');
+      // Neither theme nor glassEnabled is usable -> falls through to the platform default
+      expect(settings.appearance.theme).toBe(PLATFORM_DEFAULT_THEME);
       expect(settings.appearance.macOSVisualEffectState).toBe('active');
-      expect(settings.appearance.backgroundColor).toBe('#1e1e1e');
+      expect(settings.appearance.accentColor).toBe('blue');
     });
   });
 
@@ -636,23 +641,57 @@ describe('SettingsManager', () => {
   // ========================================================================
 
   describe('updateAppearanceSettings', () => {
-    it('should accept valid glassEnabled boolean values', () => {
+    it.each(['solid', 'glass', 'pebble'] as const)('should accept the %s theme', (theme: PlayerTheme) => {
       const manager: SettingsManager = new SettingsManager();
 
-      const r1: AppSettings = manager.updateAppearanceSettings({ glassEnabled: false });
-      expect(r1.appearance.glassEnabled).toBe(false);
+      const result: AppSettings = manager.updateAppearanceSettings({ theme });
 
-      const r2: AppSettings = manager.updateAppearanceSettings({ glassEnabled: true });
-      expect(r2.appearance.glassEnabled).toBe(true);
+      expect(result.appearance.theme).toBe(theme);
     });
 
-    it('should reject non-boolean glassEnabled values', () => {
+    it.each([['aero'], [''], ['Glass'], [true], [1], [null]] as const)('should reject the theme %j and keep the current one', (theme: unknown) => {
       const manager: SettingsManager = new SettingsManager();
-      const result: AppSettings = manager.updateAppearanceSettings({
-        glassEnabled: 'true' as unknown as boolean,
+      manager.updateAppearanceSettings({ theme: 'pebble' });
+
+      const result: AppSettings = manager.updateAppearanceSettings({ theme: theme as PlayerTheme, accentColor: 'rose' });
+
+      expect(result.appearance.theme).toBe('pebble');
+      // The whole update is rejected, so its valid fields are not applied either.
+      expect(result.appearance.accentColor).toBe('blue');
+    });
+
+    it.each(['mono', 'amber', 'coral', 'rose', 'violet', 'blue', 'cyan', 'teal', 'green'] as const)(
+      'should accept the %s accent colour',
+      (accentColor: AccentColor) => {
+        const manager: SettingsManager = new SettingsManager();
+
+        const result: AppSettings = manager.updateAppearanceSettings({ accentColor });
+
+        expect(result.appearance.accentColor).toBe(accentColor);
+      },
+    );
+
+    it.each([['red'], ['#5073b8'], ['Blue'], [''], [3], [null]] as const)('should reject the accent colour %j and keep the current one', (accentColor: unknown) => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateAppearanceSettings({ accentColor: 'teal' });
+
+      const result: AppSettings = manager.updateAppearanceSettings({ accentColor: accentColor as AccentColor });
+
+      expect(result.appearance.accentColor).toBe('teal');
+    });
+
+    it('should leave the other appearance fields alone when one changes', () => {
+      const manager: SettingsManager = new SettingsManager();
+      manager.updateAppearanceSettings({ theme: 'pebble', colorScheme: 'light', macOSVisualEffectState: 'inactive' });
+
+      const result: AppSettings = manager.updateAppearanceSettings({ accentColor: 'green' });
+
+      expect(result.appearance).toEqual({
+        theme: 'pebble',
+        macOSVisualEffectState: 'inactive',
+        colorScheme: 'light',
+        accentColor: 'green',
       });
-      // Should remain at default (true)
-      expect(result.appearance.glassEnabled).toBe(process.platform !== 'win32');
     });
 
     it('should accept valid macOSVisualEffectState values', () => {
@@ -673,34 +712,6 @@ describe('SettingsManager', () => {
         macOSVisualEffectState: 'turbo' as 'followWindow',
       });
       expect(result.appearance.macOSVisualEffectState).toBe('active');
-    });
-
-    it('should accept valid hex color for backgroundColor (#RRGGBB)', () => {
-      const validColors: readonly string[] = ['#000000', '#FFFFFF', '#1e1e1e', '#aAbBcC', '#123456'];
-
-      for (const color of validColors) {
-        const manager: SettingsManager = new SettingsManager();
-        const result: AppSettings = manager.updateAppearanceSettings({ backgroundColor: color });
-        expect(result.appearance.backgroundColor).toBe(color);
-      }
-    });
-
-    it('should reject invalid hex color formats', () => {
-      const invalidColors: readonly string[] = [
-        '#FFF',        // too short (#RGB)
-        'FF0000',      // missing hash
-        '#GGHHII',     // invalid hex chars
-        '#12345',      // 5 digits
-        '#1234567',    // 7 digits
-        'red',         // named color
-        '',            // empty
-      ];
-
-      for (const color of invalidColors) {
-        const manager: SettingsManager = new SettingsManager();
-        const result: AppSettings = manager.updateAppearanceSettings({ backgroundColor: color });
-        expect(result.appearance.backgroundColor).toBe('#1e1e1e');
-      }
     });
   });
 
@@ -801,7 +812,7 @@ describe('SettingsManager', () => {
       manager1.updateApplicationSettings({ serverPort: 4000, controlsAutoHideDelay: 10 });
       manager1.updatePlaybackSettings({ defaultVolume: 0.75, crossfadeDuration: 250, skipDuration: 15, videoAspectMode: 'fit' });
       manager1.updateTranscodingSettings({ videoQuality: 'high', audioBitrate: 320 });
-      manager1.updateAppearanceSettings({ glassEnabled: false, backgroundColor: '#333333' });
+      manager1.updateAppearanceSettings({ theme: 'pebble', accentColor: 'amber' });
       manager1.setMiniplayerBounds({ x: 10, y: 20, width: 300, height: 200 });
 
       manager1.flush();
@@ -820,8 +831,8 @@ describe('SettingsManager', () => {
       expect(settings.playback.videoAspectMode).toBe('fit');
       expect(settings.transcoding.videoQuality).toBe('high');
       expect(settings.transcoding.audioBitrate).toBe(320);
-      expect(settings.appearance.glassEnabled).toBe(false);
-      expect(settings.appearance.backgroundColor).toBe('#333333');
+      expect(settings.appearance.theme).toBe('pebble');
+      expect(settings.appearance.accentColor).toBe('amber');
       expect(settings.windowState.miniplayerBounds).toEqual({ x: 10, y: 20, width: 300, height: 200 });
     });
 
@@ -1024,39 +1035,68 @@ describe('SettingsManager', () => {
   });
 
   // ========================================================================
-  // 11. macOSVibrancy migration (appearance)
+  // 11. Theme migration (appearance)
   // ========================================================================
 
-  describe('appearance macOSVibrancy migration', () => {
-    it('should migrate macOSVibrancy "none" to glassEnabled false', () => {
-      writeSettingsFile({
-        version: 1,
-        appearance: {
-          macOSVibrancy: 'none',
-        },
-      });
+  describe('appearance theme migration', () => {
+    it('should migrate glassEnabled true to the Glass theme', () => {
+      writeSettingsFile({ version: 2, appearance: { glassEnabled: true } });
 
-      const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
-
-      expect(settings.appearance.glassEnabled).toBe(false);
+      expect(new SettingsManager().getSettings().appearance.theme).toBe('glass');
     });
 
-    it('should migrate macOSVibrancy non-"none" to glassEnabled true', () => {
-      writeSettingsFile({
-        version: 1,
-        appearance: {
-          macOSVibrancy: 'under-window',
-        },
-      });
+    it('should migrate glassEnabled false to the Solid theme', () => {
+      writeSettingsFile({ version: 2, appearance: { glassEnabled: false } });
 
-      const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
-
-      expect(settings.appearance.glassEnabled).toBe(true);
+      expect(new SettingsManager().getSettings().appearance.theme).toBe('solid');
     });
 
-    it('should prefer glassEnabled boolean over macOSVibrancy if both present', () => {
+    it('should use the platform default theme when neither theme nor glassEnabled is stored', () => {
+      writeSettingsFile({ version: 2, appearance: { colorScheme: 'dark' } });
+
+      const settings: AppSettings = new SettingsManager().getSettings();
+
+      expect(settings.appearance.theme).toBe(PLATFORM_DEFAULT_THEME);
+      expect(settings.appearance.colorScheme).toBe('dark');
+    });
+
+    it.each([['solid'], ['glass'], ['pebble']] as const)('should prefer an explicit %s theme over glassEnabled', (theme: PlayerTheme) => {
+      writeSettingsFile({ version: 2, appearance: { theme, glassEnabled: theme !== 'glass' } });
+
+      expect(new SettingsManager().getSettings().appearance.theme).toBe(theme);
+    });
+
+    it.each([['aero'], [''], ['PEBBLE'], [42], [true], [null], [{}]] as const)(
+      'should ignore the malformed theme %j and migrate glassEnabled instead',
+      (theme: unknown) => {
+        writeSettingsFile({ version: 2, appearance: { theme, glassEnabled: false } });
+
+        expect(new SettingsManager().getSettings().appearance.theme).toBe('solid');
+      },
+    );
+
+    it.each([['true'], [1], [0], [null], [[]]] as const)(
+      'should ignore the malformed glassEnabled %j and use the platform default theme',
+      (glassEnabled: unknown) => {
+        writeSettingsFile({ version: 2, appearance: { glassEnabled } });
+
+        expect(new SettingsManager().getSettings().appearance.theme).toBe(PLATFORM_DEFAULT_THEME);
+      },
+    );
+
+    it('should migrate macOSVibrancy "none" to the Solid theme', () => {
+      writeSettingsFile({ version: 1, appearance: { macOSVibrancy: 'none' } });
+
+      expect(new SettingsManager().getSettings().appearance.theme).toBe('solid');
+    });
+
+    it('should migrate macOSVibrancy non-"none" to the Glass theme', () => {
+      writeSettingsFile({ version: 1, appearance: { macOSVibrancy: 'under-window' } });
+
+      expect(new SettingsManager().getSettings().appearance.theme).toBe('glass');
+    });
+
+    it('should prefer glassEnabled over macOSVibrancy if both present', () => {
       writeSettingsFile({
         version: 2,
         appearance: {
@@ -1065,10 +1105,56 @@ describe('SettingsManager', () => {
         },
       });
 
-      const manager: SettingsManager = new SettingsManager();
-      const settings: AppSettings = manager.getSettings();
+      expect(new SettingsManager().getSettings().appearance.theme).toBe('solid');
+    });
 
-      expect(settings.appearance.glassEnabled).toBe(false);
+    it('should drop the old window colour, tint and glass keys and never write them back', () => {
+      writeSettingsFile({
+        version: 2,
+        appearance: {
+          glassEnabled: true,
+          macOSVisualEffectState: 'followWindow',
+          colorScheme: 'light',
+          backgroundColor: '#123456',
+          backgroundHue: 210,
+          backgroundSaturation: 40,
+          backgroundLightness: 20,
+          windowTintHue: 300,
+          windowTintSaturation: 60,
+          windowTintLightness: 45,
+          windowTintAlpha: 0.4,
+        },
+      });
+
+      const manager: SettingsManager = new SettingsManager();
+      expect(manager.getSettings().appearance).toEqual({
+        theme: 'glass',
+        macOSVisualEffectState: 'followWindow',
+        colorScheme: 'light',
+        accentColor: 'blue',
+      });
+
+      manager.updateAppearanceSettings({ accentColor: 'cyan' });
+      manager.flush();
+
+      expect(readSettingsFile().appearance).toEqual({
+        theme: 'glass',
+        macOSVisualEffectState: 'followWindow',
+        colorScheme: 'light',
+        accentColor: 'cyan',
+      });
+    });
+
+    it.each([['mono'], ['green']] as const)('should load the stored %s accent colour', (accentColor: AccentColor) => {
+      writeSettingsFile({ version: 2, appearance: { accentColor } });
+
+      expect(new SettingsManager().getSettings().appearance.accentColor).toBe(accentColor);
+    });
+
+    it.each([['purple'], ['#a166ab'], [''], [7], [null]] as const)('should replace the malformed accent colour %j with blue', (accentColor: unknown) => {
+      writeSettingsFile({ version: 2, appearance: { accentColor } });
+
+      expect(new SettingsManager().getSettings().appearance.accentColor).toBe('blue');
     });
   });
 
@@ -1094,7 +1180,7 @@ describe('SettingsManager', () => {
       expect(afterTrans.transcoding.videoQuality).toBe(before.transcoding.videoQuality);
 
       const afterAppear: AppSettings = manager.updateAppearanceSettings({});
-      expect(afterAppear.appearance.glassEnabled).toBe(before.appearance.glassEnabled);
+      expect(afterAppear.appearance).toEqual(before.appearance);
     });
 
     it('should handle rapid sequential updates correctly', () => {
@@ -1725,14 +1811,10 @@ describe('SettingsManager', () => {
   });
 
   // ===========================================================================
-  // Appearance: colour scheme, background HSL, window tint
+  // Appearance: colour scheme
   // ===========================================================================
 
-  describe('appearance colour scheme, background and tint', () => {
-    type AppearanceNumberField =
-      | 'backgroundHue' | 'backgroundSaturation' | 'backgroundLightness'
-      | 'windowTintHue' | 'windowTintSaturation' | 'windowTintLightness' | 'windowTintAlpha';
-
+  describe('appearance colour scheme', () => {
     it('should accept every colour scheme', () => {
       const schemes: readonly ColorScheme[] = ['dark', 'light', 'system'];
 
@@ -1752,157 +1834,16 @@ describe('SettingsManager', () => {
       expect(result.appearance.colorScheme).toBe('system');
     });
 
-    it.each([
-      ['backgroundHue', 0], ['backgroundHue', 360],
-      ['backgroundSaturation', 0], ['backgroundSaturation', 100],
-      ['backgroundLightness', 0], ['backgroundLightness', 100],
-      ['windowTintHue', 360], ['windowTintSaturation', 100], ['windowTintLightness', 100],
-      ['windowTintAlpha', 1], ['windowTintAlpha', 0.35],
-    ] as const)('should accept %s at %d', (field: AppearanceNumberField, value: number) => {
-      const manager: SettingsManager = new SettingsManager();
-      const update: AppearanceSettingsUpdate = { [field]: value };
+    it('should load the colour scheme from the settings file', () => {
+      writeSettingsFile({ version: 2, appearance: { colorScheme: 'light' } });
 
-      const result: AppSettings = manager.updateAppearanceSettings(update);
-
-      expect(result.appearance[field]).toBe(value);
+      expect(new SettingsManager().getSettings().appearance.colorScheme).toBe('light');
     });
 
-    it.each([
-      ['backgroundHue', -1], ['backgroundHue', 361], ['backgroundHue', 'red'],
-      ['backgroundSaturation', -1], ['backgroundSaturation', 101],
-      ['backgroundLightness', -0.5], ['backgroundLightness', 100.5],
-      ['windowTintHue', -1], ['windowTintHue', 400],
-      ['windowTintSaturation', 101], ['windowTintLightness', -10],
-      ['windowTintAlpha', -0.1], ['windowTintAlpha', 1.5], ['windowTintAlpha', Number.NaN],
-    ] as const)('should reject %s at %s', (field: AppearanceNumberField, value: number | string) => {
-      const manager: SettingsManager = new SettingsManager();
-      const before: AppSettings = manager.getSettings();
-      const update: unknown = { [field]: value, colorScheme: 'light' };
+    it('should replace an unknown colour scheme in the settings file with the default', () => {
+      writeSettingsFile({ version: 2, appearance: { colorScheme: 'neon' } });
 
-      const result: AppSettings = manager.updateAppearanceSettings(update as AppearanceSettingsUpdate);
-
-      expect(result.appearance).toEqual(before.appearance);
-    });
-
-    it.each([
-      [0, 100, 50, '#ff0000'],
-      [120, 100, 50, '#00ff00'],
-      [240, 100, 50, '#0000ff'],
-      [360, 100, 50, '#ff0000'],
-      [60, 100, 50, '#ffff00'],
-      [200, 0, 100, '#ffffff'],
-      [200, 100, 0, '#000000'],
-      [0, 0, 20, '#333333'],
-    ] as const)('should derive the background colour for hsl(%d, %d%%, %d%%) as %s', (hue: number, saturation: number, lightness: number, expected: string) => {
-      const manager: SettingsManager = new SettingsManager();
-
-      const result: AppSettings = manager.updateAppearanceSettings({
-        backgroundHue: hue,
-        backgroundSaturation: saturation,
-        backgroundLightness: lightness,
-      });
-
-      expect(result.appearance.backgroundColor).toBe(expected);
-    });
-
-    it('should derive the background colour from stored HSL values when only one changes', () => {
-      const manager: SettingsManager = new SettingsManager();
-      manager.updateAppearanceSettings({ backgroundHue: 240, backgroundSaturation: 100, backgroundLightness: 50 });
-
-      const result: AppSettings = manager.updateAppearanceSettings({ backgroundHue: 120 });
-
-      expect(result.appearance.backgroundColor).toBe('#00ff00');
-      expect(result.appearance.backgroundSaturation).toBe(100);
-      expect(result.appearance.backgroundLightness).toBe(50);
-    });
-
-    it('should prefer the HSL-derived colour over an explicit backgroundColor in the same update', () => {
-      const manager: SettingsManager = new SettingsManager();
-
-      const result: AppSettings = manager.updateAppearanceSettings({
-        backgroundColor: '#123456',
-        backgroundHue: 0,
-        backgroundSaturation: 100,
-        backgroundLightness: 50,
-      });
-
-      expect(result.appearance.backgroundColor).toBe('#ff0000');
-    });
-
-    it('should leave the background colour alone when only the window tint changes', () => {
-      const manager: SettingsManager = new SettingsManager();
-      manager.updateAppearanceSettings({ backgroundColor: '#123456' });
-
-      const result: AppSettings = manager.updateAppearanceSettings({
-        windowTintHue: 210,
-        windowTintSaturation: 80,
-        windowTintLightness: 40,
-        windowTintAlpha: 0.25,
-      });
-
-      expect(result.appearance.backgroundColor).toBe('#123456');
-      expect(result.appearance.windowTintHue).toBe(210);
-      expect(result.appearance.windowTintSaturation).toBe(80);
-      expect(result.appearance.windowTintLightness).toBe(40);
-      expect(result.appearance.windowTintAlpha).toBe(0.25);
-    });
-
-    it('should load colour scheme, background HSL and tint from the settings file', () => {
-      writeSettingsFile({
-        version: 2,
-        appearance: {
-          colorScheme: 'light',
-          backgroundHue: 200,
-          backgroundSaturation: 30,
-          backgroundLightness: 15,
-          windowTintHue: 300,
-          windowTintSaturation: 60,
-          windowTintLightness: 45,
-          windowTintAlpha: 0.4,
-        },
-      });
-
-      const settings: AppSettings = new SettingsManager().getSettings();
-
-      expect(settings.appearance).toMatchObject({
-        colorScheme: 'light',
-        backgroundHue: 200,
-        backgroundSaturation: 30,
-        backgroundLightness: 15,
-        windowTintHue: 300,
-        windowTintSaturation: 60,
-        windowTintLightness: 45,
-        windowTintAlpha: 0.4,
-      });
-    });
-
-    it('should replace out-of-range appearance values in the settings file with defaults', () => {
-      writeSettingsFile({
-        version: 2,
-        appearance: {
-          colorScheme: 'neon',
-          backgroundHue: 720,
-          backgroundSaturation: -5,
-          backgroundLightness: '12',
-          windowTintHue: -90,
-          windowTintSaturation: 250,
-          windowTintLightness: null,
-          windowTintAlpha: 2,
-        },
-      });
-
-      const settings: AppSettings = new SettingsManager().getSettings();
-
-      expect(settings.appearance).toMatchObject({
-        colorScheme: 'system',
-        backgroundHue: 0,
-        backgroundSaturation: 0,
-        backgroundLightness: 12,
-        windowTintHue: 0,
-        windowTintSaturation: 0,
-        windowTintLightness: 0,
-        windowTintAlpha: 0,
-      });
+      expect(new SettingsManager().getSettings().appearance.colorScheme).toBe('system');
     });
   });
 
@@ -3229,33 +3170,56 @@ describe('SettingsManager', () => {
       vi.resetModules();
     });
 
-    it('should disable glass by default on Windows', async () => {
-      const manager: SettingsManager = await createManagerOn('win32');
+    it.each([['win32', 'solid'], ['linux', 'solid'], ['darwin', 'glass']] as const)(
+      'should default the theme on %s to %s',
+      async (platform: NodeJS.Platform, theme: PlayerTheme) => {
+        const manager: SettingsManager = await createManagerOn(platform);
 
-      expect(manager.getSettings().appearance.glassEnabled).toBe(false);
-    });
+        expect(manager.getSettings().appearance.theme).toBe(theme);
+      },
+    );
 
-    it.each([['darwin'], ['linux']] as const)('should enable glass by default on %s', async (platform: NodeJS.Platform) => {
+    it.each([['win32', 'solid'], ['linux', 'solid'], ['darwin', 'glass']] as const)(
+      'should use the %s default theme (%s) when the file has an appearance section without a theme',
+      async (platform: NodeJS.Platform, theme: PlayerTheme) => {
+        writeSettingsFile({ version: 2, appearance: { colorScheme: 'dark' } });
+
+        const manager: SettingsManager = await createManagerOn(platform);
+
+        expect(manager.getSettings().appearance.theme).toBe(theme);
+        expect(manager.getSettings().appearance.colorScheme).toBe('dark');
+      },
+    );
+
+    it.each([['win32'], ['linux'], ['darwin']] as const)('should default to the blue accent on %s', async (platform: NodeJS.Platform) => {
       const manager: SettingsManager = await createManagerOn(platform);
 
-      expect(manager.getSettings().appearance.glassEnabled).toBe(true);
+      expect(manager.getSettings().appearance.accentColor).toBe('blue');
     });
 
-    it('should use the Windows glass default when the file has an appearance section without it', async () => {
-      writeSettingsFile({ version: 2, appearance: { colorScheme: 'dark' } });
-
-      const manager: SettingsManager = await createManagerOn('win32');
-
-      expect(manager.getSettings().appearance.glassEnabled).toBe(false);
-      expect(manager.getSettings().appearance.colorScheme).toBe('dark');
-    });
-
-    it('should honour glass enabled in the file on Windows', async () => {
+    it('should migrate glass enabled in the file to the Glass theme on Windows', async () => {
       writeSettingsFile({ version: 2, appearance: { glassEnabled: true } });
 
       const manager: SettingsManager = await createManagerOn('win32');
 
-      expect(manager.getSettings().appearance.glassEnabled).toBe(true);
+      expect(manager.getSettings().appearance.theme).toBe('glass');
+    });
+
+    // Linux has no glass; the stored choice is kept and the window treats it as Solid.
+    it('should keep the Glass theme migrated from the file on Linux', async () => {
+      writeSettingsFile({ version: 2, appearance: { glassEnabled: true } });
+
+      const manager: SettingsManager = await createManagerOn('linux');
+
+      expect(manager.getSettings().appearance.theme).toBe('glass');
+    });
+
+    it('should migrate glass disabled in the file to the Solid theme on macOS', async () => {
+      writeSettingsFile({ version: 2, appearance: { glassEnabled: false } });
+
+      const manager: SettingsManager = await createManagerOn('darwin');
+
+      expect(manager.getSettings().appearance.theme).toBe('solid');
     });
 
     it('should use the same non-appearance defaults on every platform', async () => {
