@@ -1148,6 +1148,29 @@ describe('LayoutControls rendered', (): void => {
       expect(seekBar().value).toBe(10);
     });
 
+    it('logs when the seek to the release position fails', async (): Promise<void> => {
+      const failure: Error = new Error('HTTP 500: Internal Server Error');
+      const errorSpy: ReturnType<typeof vi.spyOn> = vi.spyOn(console, 'error').mockImplementation((): void => {});
+      playerSpy('seekToProgress').mockRejectedValue(failure);
+      press(seekBar(), 150);
+
+      release(200);
+      await fixture.whenStable();
+
+      expect(errorSpy).toHaveBeenCalledWith('[LayoutControls] Seek failed:', failure);
+    });
+
+    it('returns to the playback progress when the seek fails', async (): Promise<void> => {
+      vi.spyOn(console, 'error').mockImplementation((): void => {});
+      playerSpy('seekToProgress').mockRejectedValue(new Error('HTTP 500: Internal Server Error'));
+      press(seekBar(), 150);
+
+      release(200);
+      await fixture.whenStable();
+
+      expect(seekBar().value).toBe(10);
+    });
+
     it('stops following the mouse after release', async (): Promise<void> => {
       press(seekBar(), 150);
       release(200);
@@ -1205,6 +1228,30 @@ describe('LayoutControls rendered', (): void => {
       });
 
       it('seeks again once the previous seek has completed', async (): Promise<void> => {
+        press(seekBar(), 150);
+        drag(250);
+        await fixture.whenStable();
+
+        drag(260);
+
+        expect(playerSpy('seekToProgress').mock.calls).toEqual([[75], [80]]);
+      });
+
+      it('logs when a live seek fails', async (): Promise<void> => {
+        const failure: Error = new Error('HTTP 500: Internal Server Error');
+        const errorSpy: ReturnType<typeof vi.spyOn> = vi.spyOn(console, 'error').mockImplementation((): void => {});
+        playerSpy('seekToProgress').mockRejectedValue(failure);
+        press(seekBar(), 150);
+
+        drag(250);
+        await fixture.whenStable();
+
+        expect(errorSpy).toHaveBeenCalledWith('[LayoutControls] Seek failed:', failure);
+      });
+
+      it('seeks again after a live seek has failed', async (): Promise<void> => {
+        vi.spyOn(console, 'error').mockImplementation((): void => {});
+        playerSpy('seekToProgress').mockRejectedValue(new Error('HTTP 500: Internal Server Error'));
         press(seekBar(), 150);
         drag(250);
         await fixture.whenStable();

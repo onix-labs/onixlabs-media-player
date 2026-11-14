@@ -1424,6 +1424,48 @@ async function settle(assertion: () => void): Promise<void> {
   await vi.waitFor(assertion, {interval: 1, timeout: 1000});
 }
 
+/** The promise rejections nothing handled while a test ran. */
+interface UnhandledRejections {
+  readonly reasons: unknown[];
+  stop(): void;
+}
+
+/** The part of Node's `process` that reports unhandled rejections. */
+interface RejectionReporter {
+  on(event: 'unhandledRejection', listener: (reason: unknown) => void): unknown;
+  off(event: 'unhandledRejection', listener: (reason: unknown) => void): unknown;
+}
+
+/**
+ * Starts recording promise rejections that nothing handles.
+ *
+ * jsdom never dispatches `unhandledrejection` for promises settled by test
+ * code, so this listens where the runtime actually reports them: the Node
+ * process the tests run in, which the spec's type configuration does not
+ * declare.
+ *
+ * @returns The recorded reasons and a way to stop recording
+ */
+function trackUnhandledRejections(): UnhandledRejections {
+  const reasons: unknown[] = [];
+  const listener: (reason: unknown) => void = (reason: unknown): void => {
+    reasons.push(reason);
+  };
+  const reporter: RejectionReporter = (globalThis as unknown as {process: RejectionReporter}).process;
+  reporter.on('unhandledRejection', listener);
+  return {reasons, stop: (): void => void reporter.off('unhandledRejection', listener)};
+}
+
+/**
+ * Lets every queued promise reaction run, along with the runtime's check for
+ * unhandled rejections that follows them.
+ */
+function flushPromises(): Promise<void> {
+  return new Promise<void>((resolve: () => void): void => {
+    setTimeout(resolve, 0);
+  });
+}
+
 /**
  * Invokes a listener the service registered on the bridge.
  *
@@ -1599,6 +1641,44 @@ const MENU_COUNTER_CASES: readonly MenuCounterCase[] = [
   {event: 'savePlaylistAs', signalName: 'menuSavePlaylistAs', read: (target: ElectronService): number => target.menuSavePlaylistAs()},
 ];
 
+/** Something that starts a server command nobody awaits. */
+interface BackgroundCommandCase {
+  readonly name: string;
+  /** What the failure is logged as, after the service's prefix */
+  readonly logged: string;
+  readonly trigger: (bridge: BridgeHarness, sse: SseHarness) => void;
+}
+
+const BACKGROUND_COMMAND_CASES: readonly BackgroundCommandCase[] = [
+  {name: 'the play/pause menu item', logged: 'Play/pause failed:', trigger: (bridge: BridgeHarness): void => fireMenu(bridge, 'togglePlayPause')},
+  {name: 'the stop menu item', logged: 'Stop failed:', trigger: (bridge: BridgeHarness): void => fireMenu(bridge, 'stop')},
+  {name: 'the shuffle menu item', logged: 'Toggle shuffle failed:', trigger: (bridge: BridgeHarness): void => fireMenu(bridge, 'toggleShuffle')},
+  {name: 'the repeat menu item', logged: 'Toggle repeat failed:', trigger: (bridge: BridgeHarness): void => fireMenu(bridge, 'toggleRepeat')},
+  {
+    name: 'the Close menu item',
+    logged: 'Close media failed:',
+    trigger: (bridge: BridgeHarness, sse: SseHarness): void => {
+      sse.emitJson('playlist:updated', playlistOf([createMockPlaylistItem({id: 'a'})], {currentIndex: 0}));
+      fireMenu(bridge, 'closeMedia');
+    },
+  },
+  {name: 'the Close All menu item', logged: 'Close all failed:', trigger: (bridge: BridgeHarness): void => fireMenu(bridge, 'closeAll')},
+  {name: 'a recent file chosen in the menu', logged: 'Open recent file failed:', trigger: (bridge: BridgeHarness): void => fireMenu(bridge, 'openRecentFile', '/recent/song.mp3')},
+  {name: 'a recent playlist chosen in the menu', logged: 'Open recent playlist failed:', trigger: (bridge: BridgeHarness): void => fireMenu(bridge, 'openRecentPlaylist', '/recent/list.opp')},
+  {name: 'a media file opened from the OS', logged: 'Open file from the OS failed:', trigger: (bridge: BridgeHarness): void => fireBridge(bridge, 'onOSOpenFile', '/from/finder.mp3')},
+  {name: 'a playlist file opened from the OS', logged: 'Open playlist from the OS failed:', trigger: (bridge: BridgeHarness): void => fireBridge(bridge, 'onOSOpenPlaylist', '/from/finder.opp')},
+  {
+    name: 'a completed download',
+    logged: 'Add downloaded file failed:',
+    trigger: (_bridge: BridgeHarness, sse: SseHarness): void => sse.emitJson('download:complete', createJob({status: 'done', progress: 1, filePath: '/downloads/Clip.mp4'})),
+  },
+  {
+    name: 'a SoundFont change that asks for a restart',
+    logged: 'Restart after SoundFont change failed:',
+    trigger: (_bridge: BridgeHarness, sse: SseHarness): void => sse.emitJson('soundfont:changed', {restart: true, filePath: '/song.mid'}),
+  },
+];
+
 describe('ElectronService public surface', (): void => {
   let service: ElectronService;
   let bridge: BridgeHarness;
@@ -1606,6 +1686,19 @@ describe('ElectronService public surface', (): void => {
   let fetchMock: Stub;
   let errorSpy: Stub;
   let warnSpy: Stub;
+  let unhandled: UnhandledRejections;
+
+  /**
+   * Installs the bridge fake and creates the service, without waiting for its
+   * start-up sequence.
+   *
+   * @returns The service, still starting up
+   */
+  function createInElectron(): ElectronService {
+    (window as unknown as Record<string, unknown>)['mediaPlayer'] = bridge.api;
+    TestBed.configureTestingModule({providers: [{provide: SseClient, useValue: sse.client}]});
+    return TestBed.inject(ElectronService);
+  }
 
   /**
    * Installs the bridge fake, creates the service and waits for its start-up
@@ -1614,9 +1707,7 @@ describe('ElectronService public surface', (): void => {
    * @returns The initialised service
    */
   async function startInElectron(): Promise<ElectronService> {
-    (window as unknown as Record<string, unknown>)['mediaPlayer'] = bridge.api;
-    TestBed.configureTestingModule({providers: [{provide: SseClient, useValue: sse.client}]});
-    const started: ElectronService = TestBed.inject(ElectronService);
+    const started: ElectronService = createInElectron();
     await settle((): void => {
       expect(bridge.api['onOSOpenPlaylist']).toHaveBeenCalled();
     });
@@ -1641,9 +1732,11 @@ describe('ElectronService public surface', (): void => {
     vi.spyOn(console, 'log').mockImplementation((): void => {});
     errorSpy = vi.spyOn(console, 'error').mockImplementation((): void => {}) as unknown as Stub;
     warnSpy = vi.spyOn(console, 'warn').mockImplementation((): void => {}) as unknown as Stub;
+    unhandled = trackUnhandledRejections();
   });
 
   afterEach((): void => {
+    unhandled.stop();
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -1743,6 +1836,30 @@ describe('ElectronService public surface', (): void => {
       for (const name of BRIDGE_LISTENER_NAMES) {
         expect(bridge.api[name], name).toHaveBeenCalledTimes(1);
       }
+    });
+
+    it.each([
+      ['the server port', 'getServerPort'],
+      ['the session token', 'getServerToken'],
+      ['the platform information', 'getPlatformInfo'],
+    ])('should log when %s cannot be read at start-up', async (_what: string, bridgeName: string): Promise<void> => {
+      const failure: Error = new Error('ipc down');
+      bridge.api[bridgeName].mockRejectedValue(failure);
+
+      service = createInElectron();
+
+      await settle((): void => {
+        expect(errorSpy).toHaveBeenCalledWith('[ElectronService] Initialization failed:', failure);
+      });
+    });
+
+    it('should leave no unhandled rejection when start-up fails', async (): Promise<void> => {
+      bridge.api['getServerPort'].mockRejectedValue(new Error('ipc down'));
+
+      service = createInElectron();
+      await flushPromises();
+
+      expect(unhandled.reasons).toEqual([]);
     });
   });
 
@@ -1933,13 +2050,13 @@ describe('ElectronService public surface', (): void => {
       expect(requestAt(fetchMock, 0).init?.body).toBe(JSON.stringify({time: 0}));
     });
 
-    it('should not percent-encode the id when selecting or removing a track', async (): Promise<void> => {
+    it('should percent-encode the id when selecting or removing a track', async (): Promise<void> => {
       await service.selectTrack('a/b c');
       await service.removeFromPlaylist('a/b c');
 
       expect(requestLog(fetchMock)).toEqual([
-        `POST ${SERVER}/playlist/select/a/b c`,
-        `DELETE ${SERVER}/playlist/remove/a/b c`,
+        `POST ${SERVER}/playlist/select/a%2Fb%20c`,
+        `DELETE ${SERVER}/playlist/remove/a%2Fb%20c`,
       ]);
     });
 
@@ -2576,6 +2693,17 @@ describe('ElectronService public surface', (): void => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    it('should do nothing for Close when the selected index is past the end of the playlist', async (): Promise<void> => {
+      sse.emitJson('playlist:updated', playlistOf([createMockPlaylistItem({id: 'a'})], {currentIndex: 3}));
+
+      fireMenu(bridge, 'closeMedia');
+      await flushPromises();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+      expect(unhandled.reasons).toEqual([]);
+    });
+
     it('should stop and then remove the current track for Close', async (): Promise<void> => {
       sse.emitJson('playlist:updated', playlistOf(
         [createMockPlaylistItem({id: 'a'}), createMockPlaylistItem({id: 'b'})],
@@ -2653,6 +2781,34 @@ describe('ElectronService public surface', (): void => {
       fireMenu(bridge, 'openRecentPlaylist', null);
 
       expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // ===========================================================================
+  // Commands nobody awaits
+  // ===========================================================================
+
+  describe('background commands', (): void => {
+    const failure: TypeError = new TypeError('Failed to fetch');
+
+    beforeEach(async (): Promise<void> => {
+      service = await startInElectron();
+      fetchMock.mockRejectedValue(failure);
+    });
+
+    it.each(BACKGROUND_COMMAND_CASES)('should log when the request for $name fails', async ({logged, trigger}: BackgroundCommandCase): Promise<void> => {
+      trigger(bridge, sse);
+
+      await settle((): void => {
+        expect(errorSpy).toHaveBeenCalledWith(`[ElectronService] ${logged}`, failure);
+      });
+    });
+
+    it.each(BACKGROUND_COMMAND_CASES)('should leave no unhandled rejection when the request for $name fails', async ({trigger}: BackgroundCommandCase): Promise<void> => {
+      trigger(bridge, sse);
+      await flushPromises();
+
+      expect(unhandled.reasons).toEqual([]);
     });
   });
 

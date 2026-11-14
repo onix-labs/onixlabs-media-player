@@ -209,6 +209,18 @@ describe('PlayerApi', (): void => {
       expect(server.calls).toEqual([{verb: 'POST', endpoint: '/playlist/select/abc', body: undefined}]);
     });
 
+    it('encodes the id when removing a track', async (): Promise<void> => {
+      await api.removeFromPlaylist('a/b c');
+
+      expect(server.calls).toEqual([{verb: 'DELETE', endpoint: '/playlist/remove/a%2Fb%20c'}]);
+    });
+
+    it('encodes the id when selecting a track', async (): Promise<void> => {
+      await api.selectTrack('a/b c');
+
+      expect(server.calls).toEqual([{verb: 'POST', endpoint: '/playlist/select/a%2Fb%20c', body: undefined}]);
+    });
+
     it.each([[true], [false]])('sets shuffle to %s', async (enabled: boolean): Promise<void> => {
       await api.setShuffle(enabled);
 

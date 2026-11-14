@@ -147,7 +147,7 @@ export class PlayerApi {
    * @param id - The unique ID of the track to remove
    */
   public async removeFromPlaylist(id: string): Promise<void> {
-    await this.server.delete(`/playlist/remove/${id}`);
+    await this.server.delete(`/playlist/remove/${encodeURIComponent(id)}`);
   }
 
   /**
@@ -164,7 +164,7 @@ export class PlayerApi {
    * @param id - The unique ID of the track to select
    */
   public async selectTrack(id: string): Promise<void> {
-    await this.server.post(`/playlist/select/${id}`);
+    await this.server.post(`/playlist/select/${encodeURIComponent(id)}`);
   }
 
   /**

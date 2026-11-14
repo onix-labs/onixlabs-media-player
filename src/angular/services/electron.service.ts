@@ -374,7 +374,11 @@ export class ElectronService implements OnDestroy {
    *                 (required because SSE callbacks run outside Angular)
    */
   public constructor(private readonly ngZone: NgZone) {
-    void this.initialize();
+    // Nothing can await a constructor, so a failed IPC read during start-up
+    // would otherwise leave the service half-initialised without a trace.
+    void this.initialize().catch((error: unknown): void => {
+      console.error('[ElectronService] Initialization failed:', error);
+    });
   }
 
   // ============================================================================
@@ -443,6 +447,22 @@ export class ElectronService implements OnDestroy {
   }
 
   /**
+   * Runs a server command that nothing awaits, logging it if it fails.
+   *
+   * Menu selections, OS file opens and SSE events have no caller to hand a
+   * failure to, so a rejected request would otherwise surface only as an
+   * unhandled promise rejection.
+   *
+   * @param description - What the command does, as it should read in the log
+   * @param command - The command's promise
+   */
+  private runInBackground(description: string, command: Promise<unknown>): void {
+    void command.catch((error: unknown): void => {
+      console.error(`[ElectronService] ${description} failed:`, error);
+    });
+  }
+
+  /**
    * Supplies what each command-style menu selection does to the player.
    *
    * @returns The actions the menu drives
@@ -451,40 +471,32 @@ export class ElectronService implements OnDestroy {
     return {
       togglePlayPause: (): void => {
         const state: string = this.playbackState();
-        if (state === 'playing') {
-          void this.pause();
-        } else {
-          void this.play();
-        }
+        this.runInBackground('Play/pause', state === 'playing' ? this.pause() : this.play());
       },
       stop: (): void => {
-        void this.stop();
+        this.runInBackground('Stop', this.stop());
       },
       toggleShuffle: (): void => {
         const current: boolean = this.playlist().shuffleEnabled;
-        void this.setShuffle(!current);
+        this.runInBackground('Toggle shuffle', this.setShuffle(!current));
       },
       toggleRepeat: (): void => {
         const current: boolean = this.playlist().repeatEnabled;
-        void this.setRepeat(!current);
+        this.runInBackground('Toggle repeat', this.setRepeat(!current));
       },
       // Close media (stop, remove current, move to next)
       closeMedia: (): void => {
-        void this.closeCurrentMedia();
+        this.runInBackground('Close media', this.closeCurrentMedia());
       },
       // Close all (stop playback and clear playlist)
       closeAll: (): void => {
-        void this.stop()
-          .then((): Promise<void> => this.clearPlaylist())
-          .catch((error: unknown): void => {
-            console.error('[ElectronService] Close all failed:', error);
-          });
+        this.runInBackground('Close all', this.stop().then((): Promise<void> => this.clearPlaylist()));
       },
       openRecentFile: (filePath: string): void => {
-        void this.addFilesWithAutoPlay([filePath]);
+        this.runInBackground('Open recent file', this.addFilesWithAutoPlay([filePath]));
       },
       openRecentPlaylist: (playlistPath: string): void => {
-        void this.loadPlaylistFromFile(playlistPath);
+        this.runInBackground('Open recent playlist', this.loadPlaylistFromFile(playlistPath));
       },
     };
   }
@@ -499,7 +511,12 @@ export class ElectronService implements OnDestroy {
       return;
     }
 
-    const currentItem: PlaylistItem = currentPlaylist.items[currentPlaylist.currentIndex];
+    // The index arrives separately from the items, so it can briefly point
+    // past the end of a list that has just shrunk.
+    const currentItem: PlaylistItem | undefined = currentPlaylist.items[currentPlaylist.currentIndex];
+    if (!currentItem) {
+      return;
+    }
 
     // Stop playback
     await this.stop();
@@ -523,14 +540,14 @@ export class ElectronService implements OnDestroy {
     // Handle media files opened from OS
     this.osOpenFileCleanup = this.api.onOSOpenFile((filePath: string): void => {
       this.ngZone.run((): void => {
-        void this.addFilesWithAutoPlay([filePath]);
+        this.runInBackground('Open file from the OS', this.addFilesWithAutoPlay([filePath]));
       });
     });
 
     // Handle playlist files opened from OS
     this.osOpenPlaylistCleanup = this.api.onOSOpenPlaylist((playlistPath: string): void => {
       this.ngZone.run((): void => {
-        void this.loadPlaylistFromFile(playlistPath);
+        this.runInBackground('Open playlist from the OS', this.loadPlaylistFromFile(playlistPath));
       });
     });
   }
@@ -770,7 +787,7 @@ export class ElectronService implements OnDestroy {
         if (job) {
           this.downloadJob.set(job);
           if (job.filePath && this.isMainWindow) {
-            void this.addFilesWithAutoPlay([job.filePath]);
+            this.runInBackground('Add downloaded file', this.addFilesWithAutoPlay([job.filePath]));
           }
         }
       });
@@ -797,7 +814,7 @@ export class ElectronService implements OnDestroy {
           // the event itself is the completion signal — there is nothing left
           // to wait for. This used to be a 100ms guess that guaranteed
           // nothing: a recursive delete can outlast it.
-          void this.play();
+          this.runInBackground('Restart after SoundFont change', this.play());
         }
       });
     },

@@ -386,7 +386,7 @@ const SELECT_CASES: readonly WriteCase[] = [
   {category: 'Audio Visualizations', id: 'max-frame-rate', value: '30', method: 'setMaxFrameRate', args: [30]},
   {category: 'Audio Visualizations', id: 'fft-size', value: '4096', method: 'setFftSize', args: [4096]},
   {category: 'Audio Visualizations', id: 'render-resolution', value: '640x480', method: 'setRenderResolution', args: ['640x480']},
-  {category: 'Audio Visualizations', id: 'crossfade-duration', value: '1500', method: 'setVisualizationCrossfadeDuration', args: [1500]},
+  {category: 'Audio Visualizations', id: 'visualization-crossfade-duration', value: '1500', method: 'setVisualizationCrossfadeDuration', args: [1500]},
   {category: 'Audio Visualizations', id: 'crossfade-style', value: 'blur', method: 'setVisualizationCrossfadeStyle', args: ['blur']},
   {category: 'Playback', id: 'seek-mode', value: 'drag', method: 'setSeekMode', args: ['drag']},
   {category: 'Audio Playback', id: 'preferred-audio-language', value: 'jpn', method: 'setPreferredAudioLanguage', args: ['jpn']},
@@ -488,7 +488,7 @@ const REFLECT_CASES: readonly ReflectCase[] = [
   {name: 'the max frame rate as the selected option', category: 'Audio Visualizations', arrange: (s: FakeSettings): void => s.maxFrameRate.set(15), read: valueOf('max-frame-rate'), expected: '15'},
   {name: 'the FFT size as the selected option', category: 'Audio Visualizations', arrange: (s: FakeSettings): void => s.fftSize.set(512), read: valueOf('fft-size'), expected: '512'},
   {name: 'the render resolution as the selected option', category: 'Audio Visualizations', arrange: (s: FakeSettings): void => s.renderResolution.set('800x600'), read: valueOf('render-resolution'), expected: '800x600'},
-  {name: 'the visualization crossfade duration as the selected option', category: 'Audio Visualizations', arrange: (s: FakeSettings): void => s.visualizationCrossfadeDuration.set(2000), read: valueOf('crossfade-duration'), expected: '2000'},
+  {name: 'the visualization crossfade duration as the selected option', category: 'Audio Visualizations', arrange: (s: FakeSettings): void => s.visualizationCrossfadeDuration.set(2000), read: valueOf('visualization-crossfade-duration'), expected: '2000'},
   {name: 'the visualization crossfade style as the selected option', category: 'Audio Visualizations', arrange: (s: FakeSettings): void => s.visualizationCrossfadeStyle.set('zoom'), read: valueOf('crossfade-style'), expected: 'zoom'},
   // Video
   {name: 'the video aspect mode as the selected option', category: 'Video Playback', arrange: (s: FakeSettings): void => s.videoAspectMode.set('fit'), read: valueOf('video-aspect-mode'), expected: 'fit'},
@@ -818,6 +818,40 @@ describe('ConfigurationView', (): void => {
       expect(get('.accordion-toggle').classList.contains('expanded')).toBe(true);
     });
 
+    it('does not nest the toggle inside another button', (): void => {
+      expect(host.querySelector('button button')).toBeNull();
+    });
+
+    it('offers the category name as a keyboard stop of its own', (): void => {
+      const name: HTMLElement = get<HTMLElement>('.category-item.has-accordion > span');
+
+      expect(name.getAttribute('role')).toBe('button');
+      expect(name.tabIndex).toBe(0);
+    });
+
+    it.each([['Enter'], [' ']])('opens the category when "%s" is pressed on its name', async (key: string): Promise<void> => {
+      get<HTMLElement>('.category-item.has-accordion > span').dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true}));
+      await fixture.whenStable();
+
+      expect(get('.panel-header h2').textContent).toBe('Audio Visualizations');
+    });
+
+    it('keeps Space on the category name from scrolling the sidebar', (): void => {
+      const event: KeyboardEvent = new KeyboardEvent('keydown', {key: ' ', bubbles: true, cancelable: true});
+
+      get<HTMLElement>('.category-item.has-accordion > span').dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('names the category as it appears in the sidebar when pointing at the accordion', async (): Promise<void> => {
+      await open('Audio Visualizations');
+
+      expect(texts('.info-notice span')).toContain(
+        'Expand "Audio Visualizations" in the sidebar to configure individual visualization settings.',
+      );
+    });
+
     it('expands without leaving the current category', async (): Promise<void> => {
       await toggleAccordion();
 
@@ -902,6 +936,23 @@ describe('ConfigurationView', (): void => {
   // ==========================================================================
   // Controls: reading
   // ==========================================================================
+
+  describe('crossfade controls', (): void => {
+    it('labels the visualization crossfade select by an id of its own', async (): Promise<void> => {
+      await open('Audio Visualizations');
+
+      expect(get<HTMLLabelElement>('label[for="visualization-crossfade-duration"]').textContent).toBe('Crossfade Duration');
+      expect(get('#visualization-crossfade-duration').tagName).toBe('SELECT');
+      expect(host.querySelector('#crossfade-duration')).toBeNull();
+    });
+
+    it('labels the track crossfade slider by an id of its own', async (): Promise<void> => {
+      await open('Audio Playback');
+
+      expect(get<HTMLLabelElement>('label[for="crossfade-duration"]').textContent).toBe('Crossfade Duration');
+      expect(get<HTMLInputElement>('#crossfade-duration').type).toBe('range');
+    });
+  });
 
   describe('reflecting settings', (): void => {
     it.each(REFLECT_CASES)('shows $name', async (row: ReflectCase): Promise<void> => {
@@ -1408,6 +1459,20 @@ describe('ConfigurationView', (): void => {
       expect(component.hasCustomSetting('bars', 'barColorTop')).toBe(false);
     });
 
+    it('reports a customised setting of a visualization other than the one shown', async (): Promise<void> => {
+      settings.perVisualizationSettings.set({waveform: {lineWidth: 3}});
+      await fixture.whenStable();
+
+      expect(component.hasCustomSetting('waveform', 'lineWidth')).toBe(true);
+    });
+
+    it('does not credit the shown visualization\'s customised setting to another visualization', async (): Promise<void> => {
+      settings.perVisualizationSettings.set({bars: {barDensity: 'high'}});
+      await fixture.whenStable();
+
+      expect(component.hasCustomSetting('waveform', 'barDensity')).toBe(false);
+    });
+
     it('resets a single setting through the service', async (): Promise<void> => {
       await component.onResetPerVizSetting('bars', 'barDensity');
 
@@ -1824,6 +1889,7 @@ describe('ConfigurationView', (): void => {
       ['onSubtitleBackgroundOpacityChange', 'setSubtitleBackgroundOpacity'],
       ['onSubtitleShadowSpreadChange', 'setSubtitleShadowSpread'],
       ['onSubtitleShadowBlurChange', 'setSubtitleShadowBlur'],
+      ['onSubtitleShadowColorChange', 'setSubtitleShadowColor'],
       ['onWindowTintAlphaChange', 'setWindowTintAlpha'],
       ['onBackgroundColorChange', 'setBackgroundColor'],
       ['onBackgroundHueChange', 'setBackgroundHue'],
@@ -1838,7 +1904,7 @@ describe('ConfigurationView', (): void => {
       ['onGlassEnabledChange', 'setGlassEnabled'],
       ['onMiniplayerOnFocusLossToggle', 'setMiniplayerOnFocusLoss'],
     ] as const)('%s ignores an event that did not come from an input', async (
-      handler: 'onDefaultVolumeChange' | 'onCrossfadeDurationChange' | 'onAutoHideDelayChange' | 'onPreviousTrackThresholdChange' | 'onSkipDurationChange' | 'onSubtitleFontSizeChange' | 'onSubtitleFontColorChange' | 'onSubtitleBackgroundColorChange' | 'onSubtitleBackgroundOpacityChange' | 'onSubtitleShadowSpreadChange' | 'onSubtitleShadowBlurChange' | 'onWindowTintAlphaChange' | 'onBackgroundColorChange' | 'onBackgroundHueChange' | 'onBackgroundSaturationChange' | 'onBackgroundLightnessChange' | 'onWindowTintHueChange' | 'onWindowTintSaturationChange' | 'onWindowTintLightnessChange' | 'onEqualizerToggle' | 'onVideoAdjustmentsToggle' | 'onVideoAdjustmentInvertToggle' | 'onGlassEnabledChange' | 'onMiniplayerOnFocusLossToggle',
+      handler: 'onDefaultVolumeChange' | 'onCrossfadeDurationChange' | 'onAutoHideDelayChange' | 'onPreviousTrackThresholdChange' | 'onSkipDurationChange' | 'onSubtitleFontSizeChange' | 'onSubtitleFontColorChange' | 'onSubtitleBackgroundColorChange' | 'onSubtitleBackgroundOpacityChange' | 'onSubtitleShadowSpreadChange' | 'onSubtitleShadowBlurChange' | 'onSubtitleShadowColorChange' | 'onWindowTintAlphaChange' | 'onBackgroundColorChange' | 'onBackgroundHueChange' | 'onBackgroundSaturationChange' | 'onBackgroundLightnessChange' | 'onWindowTintHueChange' | 'onWindowTintSaturationChange' | 'onWindowTintLightnessChange' | 'onEqualizerToggle' | 'onVideoAdjustmentsToggle' | 'onVideoAdjustmentInvertToggle' | 'onGlassEnabledChange' | 'onMiniplayerOnFocusLossToggle',
       method: SettingsMethod,
     ): Promise<void> => {
       await component[handler](eventFrom('div', 'input'));
@@ -1912,10 +1978,10 @@ describe('ConfigurationView', (): void => {
   });
 
   describe('custom visualization settings with no visualization picked', (): void => {
-    it('reports nothing as customised', (): void => {
+    it('reports a customised setting of the visualization asked about', (): void => {
       settings.perVisualizationSettings.set({bars: {barDensity: 'high'}});
 
-      expect(component.hasCustomSetting('bars', 'barDensity')).toBe(false);
+      expect(component.hasCustomSetting('bars', 'barDensity')).toBe(true);
     });
   });
 

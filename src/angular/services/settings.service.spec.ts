@@ -1457,7 +1457,7 @@ describe('SettingsService persistence', (): void => {
 
       await service.resetVisualizationSetting('bars', 'barDensity');
 
-      expect(errorSpy).toHaveBeenCalledWith('[SettingsService] Failed to reset setting: 500');
+      expect(errorSpy).toHaveBeenCalledWith('[SettingsService] Failed to save visualization: 500');
     });
 
     it('resetting all settings sends the map without that visualization', async (): Promise<void> => {
@@ -1483,7 +1483,63 @@ describe('SettingsService persistence', (): void => {
 
       await service.resetAllVisualizationSettings('bars');
 
-      expect(errorSpy).toHaveBeenCalledWith('[SettingsService] Failed to reset all settings: 500');
+      expect(errorSpy).toHaveBeenCalledWith('[SettingsService] Failed to save visualization: 500');
+    });
+
+    it('resetting one setting drops the custom value straight away', async (): Promise<void> => {
+      const pending: Promise<void> = service.resetVisualizationSetting('bars', 'barDensity');
+
+      expect(service.perVisualizationSettings()).toEqual({bars: {barColorTop: '#ff0000'}, neon: {glowIntensity: 0.9}});
+      await pending;
+    });
+
+    it('resetting all settings drops the visualization\'s custom values straight away', async (): Promise<void> => {
+      const pending: Promise<void> = service.resetAllVisualizationSettings('bars');
+
+      expect(service.perVisualizationSettings()).toEqual({neon: {glowIntensity: 0.9}});
+      await pending;
+    });
+
+    it('a change still waiting on its debounce cannot undo a later reset of that setting', async (): Promise<void> => {
+      void service.setVisualizationSetting('bars', 'barDensity', 'low');
+
+      await service.resetVisualizationSetting('bars', 'barDensity');
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+      expect(sentWrites(fetchSpy).at(-1)?.body).toEqual({
+        perVisualizationSettings: {bars: {barColorTop: '#ff0000'}, neon: {glowIntensity: 0.9}},
+      });
+    });
+
+    it('a change still waiting on its debounce cannot undo a later reset of the whole visualization', async (): Promise<void> => {
+      void service.setVisualizationSetting('bars', 'barDensity', 'low');
+
+      await service.resetAllVisualizationSettings('bars');
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+      expect(sentWrites(fetchSpy).at(-1)?.body).toEqual({perVisualizationSettings: {neon: {glowIntensity: 0.9}}});
+    });
+
+    it('a reset sends an unrelated visualization change that was still waiting on its debounce', async (): Promise<void> => {
+      void service.setMaxFrameRate(30);
+
+      await service.resetVisualizationSetting('bars', 'barDensity');
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
+
+      expect(sentWrites(fetchSpy)).toEqual([expect.objectContaining({
+        body: {
+          maxFrameRate: 30,
+          perVisualizationSettings: {bars: {barColorTop: '#ff0000'}, neon: {glowIntensity: 0.9}},
+        },
+      })]);
+    });
+
+    it('a reset settles a change that was still waiting on its debounce', async (): Promise<void> => {
+      const change: Promise<void> = service.setVisualizationSetting('neon', 'glowIntensity', 0.1);
+
+      await service.resetVisualizationSetting('bars', 'barDensity');
+
+      await expect(change).resolves.toBeUndefined();
     });
   });
 

@@ -347,9 +347,13 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
 
     if (this.settings.seekMode() === 'drag' && !this.liveSeekInFlight) {
       this.liveSeekInFlight = true;
-      void this.mediaPlayer.seekToProgress(percent).finally((): void => {
-        this.liveSeekInFlight = false;
-      });
+      void this.mediaPlayer.seekToProgress(percent)
+        .catch((error: unknown): void => {
+          console.error('[LayoutControls] Seek failed:', error);
+        })
+        .finally((): void => {
+          this.liveSeekInFlight = false;
+        });
     }
   }
 
@@ -381,9 +385,13 @@ export class LayoutControls extends TransportControlsBase implements OnDestroy {
     // Keep showing the drag position until the seek round-trips, so the bar
     // doesn't briefly snap back to the pre-seek position.
     this.seekDragPercent.set(percent);
-    void this.mediaPlayer.seekToProgress(percent).finally((): void => {
-      this.seekDragPercent.set(null);
-    });
+    void this.mediaPlayer.seekToProgress(percent)
+      .catch((error: unknown): void => {
+        console.error('[LayoutControls] Seek failed:', error);
+      })
+      .finally((): void => {
+        this.seekDragPercent.set(null);
+      });
   }
 
   /**

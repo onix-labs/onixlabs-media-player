@@ -1480,19 +1480,7 @@ export class SettingsService implements OnDestroy {
       current[vizId] = remaining;
     }
 
-    // Send the full updated perVisualizationSettings
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
-
-    const response: Response = await this.electron.authFetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({perVisualizationSettings: current}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to reset setting: ${response.status}`);
-    }
+    await this.sendVisualizationReset(current);
   }
 
   /**
@@ -1504,18 +1492,27 @@ export class SettingsService implements OnDestroy {
     const current: PerVisualizationSettings = {...this.perVisualizationSettings()};
     delete current[vizId];
 
-    const serverUrl: string = this.electron.serverUrl();
-    if (!serverUrl) return;
+    await this.sendVisualizationReset(current);
+  }
 
-    const response: Response = await this.electron.authFetch(`${serverUrl}/settings/visualization`, {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({perVisualizationSettings: current}),
-    });
-
-    if (!response.ok) {
-      console.error(`[SettingsService] Failed to reset all settings: ${response.status}`);
-    }
+  /**
+   * Applies a per-visualization map that has had settings removed, and sends
+   * it straight away.
+   *
+   * The map joins the visualization category's queued write and that write
+   * is flushed now, rather than being sent on its own. A change to the same
+   * map made within the debounce interval is still queued at this point, and
+   * would otherwise be sent afterwards and put back what was just reset.
+   * Flushing rather than discarding the queue keeps anything unrelated that
+   * was waiting in it (a frame rate, say): it travels in the same request.
+   *
+   * @param perVisualizationSettings - The whole map, without the reset settings
+   * @returns A promise that resolves once the write completes
+   */
+  private sendVisualizationReset(perVisualizationSettings: PerVisualizationSettings): Promise<void> {
+    const sent: Promise<void> = this.updateSettingGroup('visualization', {perVisualizationSettings});
+    this.flushCategory('visualization');
+    return sent;
   }
 
   /**
