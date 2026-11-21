@@ -42,6 +42,8 @@ Play your music with stunning real-time visualizations. ONIXPlayer supports MP3,
 
 * **Spotlight** — The Reactor tower and frequency rings arranged as a counter-spinning ambient scene
 
+* **Mosaic** — Reactor's split waveform on a low-resolution screen of rounded dots, one side rising and the other sinking as it bleeds away; lit dots cool from near-white through the palette like phosphor afterglow, the bass makes the whole screen glow, and every dot's size comes from overlapping waves rolling out from the centre, each sized by the kick drum as it leaves, so the grid never sits flat; bass hits jump the palette, sometimes at once and sometimes in a quick sweep
+
 **Nostalgia:**
 
 * **Twirl** — A rotating zoom about the centre, drawing the surface into itself

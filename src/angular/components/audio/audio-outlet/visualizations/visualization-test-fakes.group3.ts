@@ -285,6 +285,12 @@ export class WebGLRecording {
   private invoke(method: string, args: unknown[]): unknown {
     this.calls.push(method);
     if (method === 'getExtension') {
+      if (args[0] === 'ANGLE_instanced_arrays') {
+        return {
+          drawArraysInstancedANGLE: (): void => { this.calls.push('drawArraysInstancedANGLE'); },
+          vertexAttribDivisorANGLE: (): void => { this.calls.push('vertexAttribDivisorANGLE'); },
+        };
+      }
       if (args[0] !== 'WEBGL_lose_context') return null;
       return {loseContext: (): void => { this.lostContextCount++; }};
     }

@@ -70,8 +70,11 @@ const INITIAL_STATE: CanvasState = {
 const RECORDED_METHODS: readonly string[] = [
   'clearRect', 'fillRect', 'strokeRect', 'beginPath', 'closePath', 'moveTo', 'lineTo',
   'quadraticCurveTo', 'bezierCurveTo', 'arc', 'rect', 'fill', 'stroke', 'clip',
-  'translate', 'rotate', 'scale', 'setTransform', 'drawImage',
+  'translate', 'rotate', 'scale', 'setTransform', 'drawImage', 'putImageData',
 ];
+
+/** Bytes per pixel in image data. */
+const RGBA_STRIDE: number = 4;
 
 /**
  * Whether a real context would accept a value for a numeric property.
@@ -122,6 +125,12 @@ export class RecordingContext2D {
   /** The canvas this context belongs to. */
   public readonly canvas: HTMLCanvasElement;
 
+  /**
+   * The RGBA of the pixel at a position, as `getImageData` reads it back.
+   * Left null, every pixel reads as transparent black.
+   */
+  public pixelSource: ((x: number, y: number) => readonly number[]) | null = null;
+
   private state: CanvasState = INITIAL_STATE;
   private readonly stack: CanvasState[] = [];
 
@@ -147,6 +156,34 @@ export class RecordingContext2D {
   public save(): void {
     this.stack.push(this.state);
     this.record('save', []);
+  }
+
+  /**
+   * Reads pixels back, from {@link pixelSource}.
+   *
+   * @returns Image data of the requested size
+   */
+  public getImageData(x: number, y: number, width: number, height: number): ImageData {
+    this.record('getImageData', [x, y, width, height]);
+    const image: ImageData = RecordingContext2D.imageData(width, height);
+    if (this.pixelSource) {
+      for (let row: number = 0; row < image.height; row++) {
+        for (let column: number = 0; column < image.width; column++) {
+          image.data.set(this.pixelSource(x + column, y + row), (row * image.width + column) * RGBA_STRIDE);
+        }
+      }
+    }
+    return image;
+  }
+
+  /**
+   * Creates zeroed image data.
+   *
+   * @returns Image data of the requested size
+   */
+  public createImageData(width: number, height: number): ImageData {
+    this.record('createImageData', [width, height]);
+    return RecordingContext2D.imageData(width, height);
   }
 
   /** Pops the state pushed by the matching save. */
@@ -187,6 +224,18 @@ export class RecordingContext2D {
   public forget(): void {
     this.calls.length = 0;
     this.sets.length = 0;
+  }
+
+  /** Builds zeroed image data, at least one pixel in each direction. */
+  private static imageData(width: number, height: number): ImageData {
+    const safeWidth: number = Number.isFinite(width) && width > 0 ? Math.floor(width) : 1;
+    const safeHeight: number = Number.isFinite(height) && height > 0 ? Math.floor(height) : 1;
+    return {
+      data: new Uint8ClampedArray(safeWidth * safeHeight * RGBA_STRIDE),
+      width: safeWidth,
+      height: safeHeight,
+      colorSpace: 'srgb',
+    } as ImageData;
   }
 
   private record(method: string, args: readonly unknown[]): void {
@@ -274,6 +323,9 @@ export class RecordingWebGL {
   /** Number of times the context has been deliberately lost. */
   public contextLosses: number = 0;
 
+  /** When false, the ANGLE_instanced_arrays extension is refused. */
+  public instancingAvailable: boolean = true;
+
   private program: FakeProgram | null = null;
   private framebuffer: FakeGlObject | null = null;
   private serial: number = 0;
@@ -322,9 +374,17 @@ export class RecordingWebGL {
     return 0;
   }
 
-  public extension(name: string): {loseContext: () => void} | null {
-    if (name !== 'WEBGL_lose_context') return null;
-    return {loseContext: (): void => { this.contextLosses++; }};
+  public extension(name: string): object | null {
+    if (name === 'WEBGL_lose_context') {
+      return {loseContext: (): void => { this.contextLosses++; }};
+    }
+    if (name === 'ANGLE_instanced_arrays' && this.instancingAvailable) {
+      return {
+        drawArraysInstancedANGLE: (...args: unknown[]): void => this.record('drawArraysInstancedANGLE', args),
+        vertexAttribDivisorANGLE: (...args: unknown[]): void => this.record('vertexAttribDivisorANGLE', args),
+      };
+    }
+    return null;
   }
 
   public createTexture(): FakeGlObject | null {
