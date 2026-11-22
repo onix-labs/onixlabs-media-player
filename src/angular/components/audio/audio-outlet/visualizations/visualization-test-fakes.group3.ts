@@ -66,6 +66,9 @@ export class FakeGradient {
 /** Bytes per pixel in an RGBA image buffer. */
 const RGBA_STRIDE: number = 4;
 
+/** MAX_TEXTURE_SIZE the fake WebGL context reports: what most desktop graphics cards allow. */
+const MAX_TEXTURE_SIZE: number = 16_384;
+
 /** Drawing state a real context starts with. */
 const DEFAULT_STATE: Readonly<Record<string, unknown>> = {
   globalAlpha: 1,
@@ -285,9 +288,12 @@ export class WebGLRecording {
   private invoke(method: string, args: unknown[]): unknown {
     this.calls.push(method);
     if (method === 'getExtension') {
+      if (args[0] === 'OES_texture_float' || args[0] === 'OES_texture_float_linear') return {};
       if (args[0] !== 'WEBGL_lose_context') return null;
       return {loseContext: (): void => { this.lostContextCount++; }};
     }
+    // The only parameter asked for by number is MAX_TEXTURE_SIZE.
+    if (method === 'getParameter') return MAX_TEXTURE_SIZE;
     // Truthy for every create*, get*Parameter and get*Location call.
     return {};
   }

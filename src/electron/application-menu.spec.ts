@@ -363,7 +363,7 @@ describe('application-menu', (): void => {
       expect(signatureCategory).toBeDefined();
 
       const signatureItems: Record<string, unknown>[] = getSubmenu(signatureCategory!);
-      const expectedNames: readonly string[] = ['Reactor', 'Spotlight'];
+      const expectedNames: readonly string[] = ['Reactor', 'Spotlight', 'Singularity'];
 
       for (const name of expectedNames) {
         const item: Record<string, unknown> | undefined = findSubmenuItem(signatureItems, name);
@@ -683,6 +683,7 @@ describe('application-menu', (): void => {
 
     it.each([
       {path: ['Signature', 'Reactor'], id: 'water'},
+      {path: ['Signature', 'Singularity'], id: 'singularity'},
       {path: ['Nostalgia', 'Twirl'], id: 'ambience-zoom'},
       {path: ['Simple', 'Album Art'], id: 'album-art'},
     ])('Visualizations > $path selects the $id visualization', ({path, id}: {path: string[]; id: string}): void => {
