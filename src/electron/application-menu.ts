@@ -37,7 +37,7 @@ const VISUALIZATION_CATEGORIES: ReadonlyArray<{
     items: [
       {id: 'water', name: 'Reactor'},
       {id: 'spotlight', name: 'Spotlight'},
-      {id: 'mosaic', name: 'Mosaic'},
+      {id: 'singularity', name: 'Singularity'},
     ],
   },
   {

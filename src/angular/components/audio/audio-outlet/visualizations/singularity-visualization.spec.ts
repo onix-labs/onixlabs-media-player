@@ -1,30 +1,32 @@
 /**
- * @fileoverview Unit tests for the Mosaic visualization.
+ * @fileoverview Unit tests for the Singularity visualization.
  *
  * Tests cover:
- * - Layout: surface creation, the scene pixel budget, the dot grid and its
- *   physical-pixel sizing
- * - Dots: the scene shrunk to one pixel of light per dot and handed to the
- *   graphics card, which draws every dot on black in a single call
- * - The graphics card: setup, and refusing to run without WebGL or instancing
+ * - Layout: surface creation, the scene pixel budget, the light surface and
+ *   the physical-pixel cell the waves are measured in
+ * - The screen: both halves of the scene handed to the graphics card, which
+ *   bends and colours every pixel in a single pass
+ * - The graphics card: setup, and refusing to run without WebGL or float
+ *   textures
  * - Waveform: only the left half drawn; rest position and amplitude
- * - Trail: per-frame fade, blur, the outward bleed and the rise
+ * - Trail: per-frame blur, the outward bleed and the rise
  * - Mirroring: the right half is the left flipped through the centre
  * - Afterglow: the colour ramp handed to the graphics card, from unlit, through
  *   the deep shade and main colour, to near-white
- * - Bass glow, and the overlapping waves that give every dot its size, each
- *   sized by the kick as it left the centre
+ * - Bass glow, and the overlapping waves that bend the picture, each sized by
+ *   the kick as it left the centre
  * - Hue jumps: grace period, cooldown, snapping and sweeping
  * - Fade-out, FFT size changes, destroy
  * - Edge inputs never hand the canvas a NaN or an infinity
  *
  * Canvas 2D, WebGL and Web Audio are faked; see visualization-test-fakes.group1.
- * Dot sizes are read from the sizes handed to the graphics card each frame.
+ * The waves are read from the table of swell by distance handed to the graphics
+ * card each frame.
  *
- * @module app/components/audio/audio-outlet/visualizations/mosaic-visualization.spec
+ * @module app/components/audio/audio-outlet/visualizations/singularity-visualization.spec
  */
 
-import {MosaicVisualization} from './mosaic-visualization';
+import {SingularityVisualization} from './singularity-visualization';
 import {
   bassHeavy,
   CanvasFakes,
@@ -44,12 +46,14 @@ import {
 const WIDTH: number = 640;
 const HEIGHT: number = 360;
 
-/** Dot pitch at a device pixel ratio of 1. */
-const PITCH: number = 18;
+/** Cell size at a device pixel ratio of 1. */
+const PITCH: number = 16;
 
-/** Dots across and down a 640x360 canvas at that pitch. */
-const COLUMNS: number = 36;
-const ROWS: number = 20;
+/** Distance between neighbouring entries of the swell table, in cells. */
+const FIELD_STEP: number = 0.01;
+
+/** Distance from the centre to a corner at the fixture size, in cells. */
+const MAX_DISTANCE: number = Math.hypot(WIDTH / 2, HEIGHT / 2) / PITCH;
 
 /** Strips the trail is redrawn in each frame. */
 const BLEED_COLUMNS: number = 32;
@@ -60,25 +64,25 @@ const START_MS: number = 100_000;
 /** Gap the bass trigger enforces between hits, in milliseconds. */
 const COOLDOWN_MS: number = 8000;
 
-/** The surfaces Mosaic creates, in the order it creates them. */
+/** The surfaces Singularity creates, in the order it creates them. */
 interface Surfaces {
   readonly main: RecordingContext2D;
   readonly scene: RecordingContext2D;
   readonly scratch: RecordingContext2D;
-  readonly dots: RecordingContext2D;
+  readonly light: RecordingContext2D;
 }
 
-describe('MosaicVisualization', (): void => {
+describe('SingularityVisualization', (): void => {
   let fakes: CanvasFakes;
   let analyser: FakeAnalyser;
   let canvas: HTMLCanvasElement;
-  let viz: MosaicVisualization;
+  let viz: SingularityVisualization;
   let now: number;
 
   /** The recording contexts, named for the surface each belongs to. */
   function surfaces(): Surfaces {
-    const [main, scene, scratch, dots]: RecordingContext2D[] = fakes.contexts;
-    return {main, scene, scratch, dots};
+    const [main, scene, scratch, light]: RecordingContext2D[] = fakes.contexts;
+    return {main, scene, scratch, light};
   }
 
   /** Draws one frame after letting `elapsedMs` pass. */
@@ -98,69 +102,9 @@ describe('MosaicVisualization', (): void => {
     now += COOLDOWN_MS;
   }
 
-  /** Side of a dot of size 1: the pitch less a tenth of it for the gap. */
-  const UNIT_SIDE: number = PITCH * 0.9;
-
-  /** Side of a dot at rest, between the waves: 1.2 times size 1, a little over its cell. */
-  const REST_SIDE: number = UNIT_SIDE * 1.2;
-
-  /** How far the waves have swollen a dot above its rest size. */
-  function swellOf(side: number): number {
-    return side - REST_SIDE;
-  }
-
-  /** Furthest any dot sits from the centre at the fixture size, in dots. */
-  const MAX_DISTANCE: number = Math.hypot(17.5, 9.5);
-
-  /** A dot as the graphics card was last asked to draw it. */
-  interface DrawnDot {
-    readonly index: number;
-    readonly x: number;
-    readonly distance: number;
-    readonly side: number;
-
-    /** How far the dot's light was pulled outward from the centre by the lenses, in dots. */
-    readonly pull: number;
-
-    /** How far the dot's light was pulled across that, which a lens never does, in dots. */
-    readonly sideways: number;
-  }
-
   /** The WebGL fake, typed as the context it stands in for, for its constants. */
   function gl(): WebGLRenderingContext {
     return fakes.webgl as unknown as WebGLRenderingContext;
-  }
-
-  /**
-   * The dots as last drawn: each dot's size is read from the sizes last handed
-   * to the graphics card, and its place from its index in the grid, which
-   * overhangs the canvas by 4px on the left and fits it exactly top to bottom.
-   */
-  function drawnDots(): DrawnDot[] {
-    const uploads: Float32Array[] = fakes.webgl.callsTo('bufferSubData')
-      .map((call: RecordedGlCall): Float32Array => call.args[2] as Float32Array);
-    const scales: Float32Array | undefined = uploads.filter((data: Float32Array): boolean => data.length === COLUMNS * ROWS).at(-1);
-    const warps: Float32Array | undefined = uploads.filter((data: Float32Array): boolean => data.length === COLUMNS * ROWS * 2).at(-1);
-    if (!scales || !warps) return [];
-    const dots: DrawnDot[] = [];
-    for (let i: number = 0; i < scales.length; i++) {
-      const x: number = -4 + ((i % COLUMNS) + 0.5) * PITCH;
-      const y: number = (Math.floor(i / COLUMNS) + 0.5) * PITCH;
-      const distance: number = Math.hypot(x - WIDTH / 2, y - HEIGHT / 2) / PITCH;
-      const outX: number = distance > 0 ? (x - WIDTH / 2) / PITCH / distance : 0;
-      const outY: number = distance > 0 ? (y - HEIGHT / 2) / PITCH / distance : 0;
-      const warpX: number = warps[i * 2];
-      const warpY: number = warps[i * 2 + 1];
-      dots.push({
-        index: i,
-        x,
-        distance,
-        side: UNIT_SIDE * scales[i],
-        pull: warpX * outX + warpY * outY,
-        sideways: warpX * outY - warpY * outX,
-      });
-    }
-    return dots;
   }
 
   /** Forgets everything recorded so far, on every canvas. */
@@ -176,15 +120,59 @@ describe('MosaicVisualization', (): void => {
     frame();
   }
 
-  /** The biggest dot drawn. */
-  function crest(): DrawnDot {
-    return drawnDots().reduce((best: DrawnDot, dot: DrawnDot): DrawnDot => (dot.side > best.side ? dot : best));
+  /** The last value a uniform was set to. */
+  function uniform(name: string): number {
+    return fakes.webgl.uniformWrites(name).at(-1)![0] as number;
+  }
+
+  /** The table of swell by distance last handed to the graphics card. */
+  function field(): Float32Array {
+    const upload: RecordedGlCall = fakes.webgl.callsTo('texImage2D')
+      .filter((call: RecordedGlCall): boolean => call.args[8] instanceof Float32Array).at(-1)!;
+    return upload.args[8] as Float32Array;
+  }
+
+  /** The waves' combined swell at a distance from the centre, in cells. */
+  function swellAt(distance: number): number {
+    return field()[Math.round(distance / FIELD_STEP)];
+  }
+
+  /** The swell at every distance on screen, centre to corner. */
+  function onScreen(): number[] {
+    return Array.from(field().slice(0, Math.floor(MAX_DISTANCE / FIELD_STEP) + 1));
+  }
+
+  /** The biggest swell on screen, and its distance from the centre in cells. */
+  function crest(): {swell: number; distance: number} {
+    const swells: number[] = onScreen();
+    let best: number = 0;
+    for (let i: number = 1; i < swells.length; i++) {
+      if (swells[i] > swells[best]) best = i;
+    }
+    return {swell: swells[best], distance: best * FIELD_STEP};
+  }
+
+  /**
+   * How far the lenses pull the light outward at a distance, in cells, down
+   * the middle of the screen: the swell's slope times the lens strength and
+   * the middle's magnification, as the screen program works it out.
+   */
+  function pullAt(distance: number): number {
+    const swells: Float32Array = field();
+    const index: number = Math.round(distance / FIELD_STEP);
+    const slope: number = swells[index + 1] - swells[Math.max(0, index - 1)];
+    return slope * uniform('uLens') * uniform('uCentreMagnify');
+  }
+
+  /** The source of every shader handed to the graphics card. */
+  function shaderSources(): string {
+    return fakes.webgl.callsTo('shaderSource').map((call: RecordedGlCall): string => call.args[1] as string).join('');
   }
 
   /** The afterglow ramp handed to the graphics card: RGB for each step of light. */
   function ramp(): Uint8Array {
     const upload: RecordedGlCall = fakes.webgl.callsTo('texImage2D')
-      .filter((call: RecordedGlCall): boolean => call.args.length === 9).at(-1)!;
+      .filter((call: RecordedGlCall): boolean => call.args[8] instanceof Uint8Array).at(-1)!;
     return upload.args[8] as Uint8Array;
   }
 
@@ -194,14 +182,14 @@ describe('MosaicVisualization', (): void => {
     return [bytes[step * 3], bytes[step * 3 + 1], bytes[step * 3 + 2]];
   }
 
-  /** The colour of a fully lit dot: the ramp's near-white end, which follows the hue. */
+  /** The colour of a fully lit pixel: the ramp's near-white end, which follows the hue. */
   function hotColour(): number[] {
     return rampColour(255);
   }
 
   /** The bass glow last handed to the graphics card. */
   function glow(): number {
-    return fakes.webgl.uniformWrites('uGlow').at(-1)![0] as number;
+    return uniform('uGlow');
   }
 
   /** Sum of the channels of a colour. */
@@ -214,7 +202,7 @@ describe('MosaicVisualization', (): void => {
     return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
   }
 
-  /** Draws `count` frames, collecting a fully lit dot's colour after each. */
+  /** Draws `count` frames, collecting a fully lit pixel's colour after each. */
   function coloursOver(count: number): number[][] {
     const colours: number[][] = [];
     for (let i: number = 0; i < count; i++) {
@@ -247,7 +235,7 @@ describe('MosaicVisualization', (): void => {
 
     analyser = new FakeAnalyser();
     canvas = document.createElement('canvas');
-    viz = new MosaicVisualization({canvas, analyser: analyser.asNode()});
+    viz = new SingularityVisualization({canvas, analyser: analyser.asNode()});
   });
 
   afterEach((): void => {
@@ -261,12 +249,12 @@ describe('MosaicVisualization', (): void => {
   // ==========================================================================
 
   describe('identity', (): void => {
-    it('is listed as Mosaic under Signature', (): void => {
-      expect(viz.name).toBe('Mosaic');
+    it('is listed as Singularity under Signature', (): void => {
+      expect(viz.name).toBe('Singularity');
       expect(viz.category).toBe('Signature');
     });
 
-    it('always renders at the native resolution, so the dots stay crisp', (): void => {
+    it('always renders at the native resolution, so the lenses stay smooth', (): void => {
       expect(viz.rendersAtNativeResolution).toBe(true);
     });
   });
@@ -318,14 +306,24 @@ describe('MosaicVisualization', (): void => {
       expect(surfaces().scene.callsTo('setTransform').at(-1)?.args).toEqual([1 / 3, 0, 0, 1 / 3, 0, 0]);
     });
 
+    it('holds both halves side by side on the light surface, at the scene\'s resolution', (): void => {
+      viz.resize(1920, 1080);
+
+      const light: HTMLCanvasElement = surfaces().light.canvas;
+      expect([light.width, light.height]).toEqual([640, 360]);
+    });
+
     it('does not resize the surfaces again when the size is unchanged', (): void => {
       viz.resize(WIDTH, HEIGHT);
       const scene: HTMLCanvasElement = surfaces().scene.canvas;
-      const spy: ReturnType<typeof vi.spyOn> = vi.spyOn(scene, 'width', 'set');
+      const light: HTMLCanvasElement = surfaces().light.canvas;
+      const sceneSpy: ReturnType<typeof vi.spyOn> = vi.spyOn(scene, 'width', 'set');
+      const lightSpy: ReturnType<typeof vi.spyOn> = vi.spyOn(light, 'width', 'set');
 
       viz.resize(WIDTH, HEIGHT);
 
-      expect(spy).not.toHaveBeenCalled();
+      expect(sceneSpy).not.toHaveBeenCalled();
+      expect(lightSpy).not.toHaveBeenCalled();
     });
 
     it('clears the main canvas', (): void => {
@@ -336,52 +334,74 @@ describe('MosaicVisualization', (): void => {
   });
 
   // ==========================================================================
-  // Dots
+  // Cells
   // ==========================================================================
 
-  describe('dots', (): void => {
-    it('holds one pixel per dot, 18-pixel dots at a device pixel ratio of 1', (): void => {
+  describe('cells', (): void => {
+    /** The cell size last handed to the graphics card, in canvas pixels. */
+    function pitch(): number {
       viz.resize(WIDTH, HEIGHT);
+      frame();
+      return uniform('uPitch');
+    }
 
-      const dots: HTMLCanvasElement = surfaces().dots.canvas;
-      expect([dots.width, dots.height]).toEqual([COLUMNS, ROWS]);
+    it('measures the waves in 16-pixel cells at a device pixel ratio of 1', (): void => {
+      expect(pitch()).toBe(PITCH);
     });
 
-    it('halves the dot in canvas pixels on a 2x display, keeping it 18 physical pixels', (): void => {
-      setDevicePixelRatio(2);
-      viz.resize(WIDTH, HEIGHT);
+    it('shrinks the cell in canvas pixels on a denser display, keeping it 16 physical pixels', (): void => {
+      setDevicePixelRatio(1.5);
 
-      const dots: HTMLCanvasElement = surfaces().dots.canvas;
-      expect([dots.width, dots.height]).toEqual([Math.ceil(WIDTH / 9), Math.ceil(HEIGHT / 9)]);
+      expect(pitch()).toBeCloseTo(PITCH / 1.5);
     });
 
     it('accounts for a canvas that is stretched to a larger display', (): void => {
-      vi.spyOn(canvas, 'clientWidth', 'get').mockReturnValue(WIDTH * 2);
-      viz.resize(WIDTH, HEIGHT);
+      vi.spyOn(canvas, 'clientWidth', 'get').mockReturnValue(WIDTH * 1.5);
 
-      expect(surfaces().dots.canvas.width).toBe(Math.ceil(WIDTH / 9));
+      expect(pitch()).toBeCloseTo(PITCH / 1.5);
     });
 
-    it('never makes a dot smaller than six canvas pixels', (): void => {
-      setDevicePixelRatio(16);
-      viz.resize(WIDTH, HEIGHT);
+    it('never makes a cell smaller than eight canvas pixels', (): void => {
+      setDevicePixelRatio(4);
 
-      expect(surfaces().dots.canvas.width).toBe(Math.ceil(WIDTH / 6));
+      expect(pitch()).toBe(8);
     });
+  });
 
-    it('adds the scene\'s light over black, boosted', (): void => {
+  // ==========================================================================
+  // The screen
+  // ==========================================================================
+
+  describe('the screen', (): void => {
+    it('adds both halves of the scene\'s light over black', (): void => {
       viz.resize(WIDTH, HEIGHT);
       frame();
 
-      const dots: RecordingContext2D = surfaces().dots;
-      const fill: RecordedCall = dots.callsTo('fillRect')[0];
-      expect(fill.args).toEqual([0, 0, COLUMNS, ROWS]);
+      const light: RecordingContext2D = surfaces().light;
+      const fill: RecordedCall = light.callsTo('fillRect')[0];
+      expect(fill.args).toEqual([0, 0, WIDTH, HEIGHT]);
       expect(fill.state.fillStyle).toBe('rgb(0, 0, 0)');
-      const excite: RecordedCall = dots.callsTo('drawImage')[0];
-      expect(excite.args[0]).toBe(surfaces().scene.canvas);
-      expect(excite.state.globalCompositeOperation).toBe('lighter');
-      expect(excite.state.filter).toBe('brightness(2.2)');
-      expect(excite.state.imageSmoothingQuality).toBe('high');
+      const [left]: RecordedCall[] = light.callsTo('drawImage');
+      expect(left.args).toEqual([surfaces().scene.canvas, 0, 0, WIDTH / 2, HEIGHT]);
+      expect(left.state.globalCompositeOperation).toBe('lighter');
+      expect(left.state.filter).toBe('brightness(0.8)');
+    });
+
+    it('draws the same half again, flipped both ways through the centre, for the right half', (): void => {
+      viz.resize(WIDTH, HEIGHT);
+      frame();
+
+      const light: RecordingContext2D = surfaces().light;
+      const [left, right]: RecordedCall[] = light.callsTo('drawImage');
+      expect(right.args).toEqual(left.args);
+      expect(right.state.globalCompositeOperation).toBe('lighter');
+      expect(light.callsTo('translate')[0].args).toEqual([WIDTH, HEIGHT]);
+      expect(light.callsTo('scale')[0].args).toEqual([-1, -1]);
+
+      // The flip comes between the two draws.
+      const order: string[] = light.calls.map((call: RecordedCall): string => call.method)
+        .filter((method: string): boolean => ['drawImage', 'translate', 'scale'].includes(method));
+      expect(order).toEqual(['drawImage', 'translate', 'scale', 'drawImage']);
     });
 
     it('hands the light to the graphics card each frame, never reading it back', (): void => {
@@ -391,54 +411,19 @@ describe('MosaicVisualization', (): void => {
       const light: RecordedGlCall[] = fakes.webgl.callsTo('texImage2D')
         .filter((call: RecordedGlCall): boolean => call.args.length === 6);
       expect(light).toHaveLength(1);
-      expect(light[0].args[5]).toBe(surfaces().dots.canvas);
-      expect(surfaces().dots.callsTo('getImageData')).toEqual([]);
+      expect(light[0].args[5]).toBe(surfaces().light.canvas);
+      expect(surfaces().light.callsTo('getImageData')).toEqual([]);
     });
 
-    it('lines the left half up with the grid, which overhangs the canvas evenly', (): void => {
-      viz.resize(WIDTH, HEIGHT);
-      frame();
-
-      // 36 dots of 18 overhang 640 by 8, so 4 each side; 20 of 18 fit 360 exactly.
-      const excite: RecordedCall = surfaces().dots.callsTo('drawImage')[0];
-      const expected: readonly number[] = [4 / PITCH, 0, WIDTH / 2 / PITCH, HEIGHT / PITCH];
-      excite.args.slice(1).forEach((value: unknown, index: number): void => {
-        expect(value as number).toBeCloseTo(expected[index]);
-      });
-    });
-
-    it('draws the same half again, flipped both ways through the centre, for the right half', (): void => {
-      viz.resize(WIDTH, HEIGHT);
-      frame();
-
-      const dots: RecordingContext2D = surfaces().dots;
-      const [left, right]: RecordedCall[] = dots.callsTo('drawImage');
-      expect(right.args).toEqual(left.args);
-      expect(right.state.globalCompositeOperation).toBe('lighter');
-
-      // A point reflection through the canvas centre, in dot coordinates.
-      const centreX: number = (WIDTH / 2 + 4) / PITCH;
-      const centreY: number = HEIGHT / 2 / PITCH;
-      const [x, y]: readonly unknown[] = dots.callsTo('translate')[0].args;
-      expect(x as number).toBeCloseTo(centreX * 2);
-      expect(y as number).toBeCloseTo(centreY * 2);
-      expect(dots.callsTo('scale')[0].args).toEqual([-1, -1]);
-
-      // The flip comes between the two draws.
-      const order: string[] = dots.calls.map((call: RecordedCall): string => call.method)
-        .filter((method: string): boolean => ['drawImage', 'translate', 'scale'].includes(method));
-      expect(order).toEqual(['drawImage', 'translate', 'scale', 'drawImage']);
-    });
-
-    it('draws every dot on black in a single call, then lays it onto the canvas', (): void => {
+    it('draws the whole screen in a single pass, then lays it onto the canvas', (): void => {
       viz.resize(WIDTH, HEIGHT);
       framesThenRecord(200);
 
-      expect(fakes.webgl.callsTo('clearColor').at(-1)?.args).toEqual([0, 0, 0, 1]);
-      const draws: RecordedGlCall[] = fakes.webgl.callsTo('drawArraysInstancedANGLE');
+      const draws: RecordedGlCall[] = fakes.webgl.callsTo('drawArrays');
       expect(draws).toHaveLength(1);
-      expect(draws[0].args).toEqual([gl().TRIANGLE_STRIP, 0, 4, COLUMNS * ROWS]);
-      expect(drawnDots()).toHaveLength(COLUMNS * ROWS);
+      expect(draws[0].args).toEqual([gl().TRIANGLE_STRIP, 0, 4]);
+      // The square was handed over once, when Singularity was built.
+      expect(fakes.webgl.callsTo('bufferData')).toEqual([]);
 
       const laid: RecordedCall = surfaces().main.callsTo('drawImage').at(-1)!;
       expect(laid.args.slice(1)).toEqual([0, 0]);
@@ -446,49 +431,20 @@ describe('MosaicVisualization', (): void => {
         .toEqual([WIDTH, HEIGHT]);
     });
 
-    it('hands the graphics card every dot\'s cell once, on resize', (): void => {
-      viz.resize(WIDTH, HEIGHT);
-
-      const cells: Float32Array = fakes.webgl.callsTo('bufferData')
+    it('covers the screen with one square', (): void => {
+      const square: Float32Array = fakes.webgl.callsTo('bufferData')
         .map((call: RecordedGlCall): unknown => call.args[1])
-        .find((data: unknown): boolean => data instanceof Float32Array && data.length === COLUMNS * ROWS * 2) as Float32Array;
-      expect(Array.from(cells.slice(0, 4))).toEqual([0, 0, 1, 0]);
-      expect(Array.from(cells.slice(COLUMNS * 2, COLUMNS * 2 + 2))).toEqual([0, 1]);
+        .find((data: unknown): boolean => data instanceof Float32Array) as Float32Array;
 
-      forgetAll();
-      frame();
-      expect(fakes.webgl.callsTo('bufferData')).toEqual([]);
-      expect(fakes.webgl.uniformWrites('uGrid').at(-1)).toEqual([COLUMNS, ROWS]);
+      expect(Array.from(square)).toEqual([-1, -1, 1, -1, -1, 1, 1, 1]);
     });
 
-    it('rounds the dots, colours them from the light and ramp, and stacks the biggest on top', (): void => {
-      viz.resize(WIDTH, HEIGHT);
-      analyser.spectrum = bassHeavy(64);
-      // Not forgetting anything: the shaders were handed over when Mosaic was built.
-      frames(60);
+    it('bends each pixel\'s light along the swell, adds the glow and colours it from the ramp', (): void => {
+      const sources: string = shaderSources();
 
-      const sources: string = fakes.webgl.callsTo('shaderSource')
-        .map((call: RecordedGlCall): string => call.args[1] as string).join('');
-      expect(sources).toContain('discard');
-      expect(sources).toContain('texture2D(uLight, vLightUv).r + uGlow');
-      expect(sources).toContain('aScale / uMaxScale');
-
-      const sides: number[] = drawnDots().map((dot: DrawnDot): number => dot.side / UNIT_SIDE);
-      expect(fakes.webgl.uniformWrites('uMaxScale').at(-1)![0]).toBeCloseTo(Math.max(...sides));
-      expect(fakes.webgl.uniformWrites('uCorner').at(-1)).toEqual([0.22]);
-    });
-
-    it('turns on the depth test, so bigger dots cover smaller ones whatever the order', (): void => {
-      expect(fakes.webgl.callsTo('enable').map((call: RecordedGlCall): unknown => call.args[0]))
-        .toContain(gl().DEPTH_TEST);
-    });
-
-    it('grows the dots on an enormous screen rather than draw more than forty thousand', (): void => {
-      viz.resize(7680, 4320);
-
-      const dots: HTMLCanvasElement = surfaces().dots.canvas;
-      expect(dots.width * dots.height).toBeLessThanOrEqual(40_600);
-      expect(dots.width).toBeLessThan(Math.ceil(7680 / PITCH));
+      expect(sources).toContain('outward * slope * uLens * magnify * uPitch');
+      expect(sources).toContain('texture2D(uLight, source / uCanvas).r + uGlow');
+      expect(sources).toContain('texture2D(uRamp');
     });
 
     it('never draws the scene onto the screen directly', (): void => {
@@ -507,9 +463,16 @@ describe('MosaicVisualization', (): void => {
   // ==========================================================================
 
   describe('the graphics card', (): void => {
-    /** Builds another Mosaic on a fresh canvas. */
-    function build(): MosaicVisualization {
-      return new MosaicVisualization({canvas: document.createElement('canvas'), analyser: analyser.asNode()});
+    /** Builds another Singularity on a fresh canvas. */
+    function build(): SingularityVisualization {
+      return new SingularityVisualization({canvas: document.createElement('canvas'), analyser: analyser.asNode()});
+    }
+
+    /** The filter each texture is read with, in the order the textures were made. */
+    function filters(): unknown[] {
+      return fakes.webgl.callsTo('texParameteri')
+        .filter((call: RecordedGlCall): boolean => call.args[1] === gl().TEXTURE_MAG_FILTER)
+        .map((call: RecordedGlCall): unknown => call.args[2]);
     }
 
     it('will not start without WebGL', (): void => {
@@ -518,10 +481,24 @@ describe('MosaicVisualization', (): void => {
       expect(build).toThrow('Failed to get WebGL context');
     });
 
-    it('will not start without instanced drawing', (): void => {
-      fakes.webgl.instancingAvailable = false;
+    it('will not start without float textures', (): void => {
+      fakes.webgl.floatTexturesAvailable = false;
 
-      expect(build).toThrow('WebGL instanced drawing is not available');
+      expect(build).toThrow('WebGL float textures are not available');
+    });
+
+    it('reads the light and the swell smoothly, and the ramp step by step', (): void => {
+      // The light texture is made first, then the ramp, then the swell.
+      expect(filters()).toEqual([gl().LINEAR, gl().NEAREST, gl().LINEAR]);
+    });
+
+    it('reads the swell entry by entry on a card that cannot blend float textures', (): void => {
+      fakes.webgl.floatFilteringAvailable = false;
+      fakes.webgl.forget();
+
+      build();
+
+      expect(filters()).toEqual([gl().LINEAR, gl().NEAREST, gl().NEAREST]);
     });
 
     it('reports a shader that will not compile, or a program that will not link', (): void => {
@@ -554,7 +531,7 @@ describe('MosaicVisualization', (): void => {
       frames(3);
 
       const rampUploads: RecordedGlCall[] = fakes.webgl.callsTo('texImage2D')
-        .filter((call: RecordedGlCall): boolean => call.args.length === 9);
+        .filter((call: RecordedGlCall): boolean => call.args[8] instanceof Uint8Array);
       expect(rampUploads.length).toBeLessThan(3);
     });
 
@@ -595,7 +572,7 @@ describe('MosaicVisualization', (): void => {
       viz.resize(WIDTH, HEIGHT);
       frame();
 
-      const lift: number = (127 / 128) * HEIGHT * 0.45;
+      const lift: number = (127 / 128) * HEIGHT * 0.3;
       expect(surfaces().scene.callsTo('moveTo')[0].args[1]).toBeCloseTo(HEIGHT / 2 + lift);
     });
 
@@ -608,7 +585,7 @@ describe('MosaicVisualization', (): void => {
       expect(widths).toHaveLength(3);
       expect(widths[0]).toBeGreaterThan(widths[1]);
       expect(widths[1]).toBeGreaterThan(widths[2]);
-      // The scene only carries light; the dots give it its colour.
+      // The scene only carries light; the ramp gives it its colour.
       expect(strokes.map((call: RecordedCall): unknown => call.state.strokeStyle))
         .toEqual(['rgba(255, 255, 255, 0.35)', 'rgba(255, 255, 255, 0.75)', 'rgb(255, 255, 255)']);
     });
@@ -641,14 +618,14 @@ describe('MosaicVisualization', (): void => {
       return (strip.args[6] as number) + ((strip.args[8] as number) - HEIGHT) / 2 - ripple;
     }
 
-    it('redraws the scene from a copy, faded and blurred, in strips', (): void => {
+    it('redraws the scene from a copy, blurred, in strips, without fading it', (): void => {
       viz.resize(WIDTH, HEIGHT);
       frame();
 
       expect(strips()).toHaveLength(BLEED_COLUMNS);
       for (const strip of strips()) {
-        expect(strip.state.globalAlpha).toBeCloseTo(0.965);
-        expect(strip.state.filter).toBe('blur(1px)');
+        expect(strip.state.globalAlpha).toBe(1);
+        expect(strip.state.filter).toBe('blur(0.95px)');
       }
     });
 
@@ -697,22 +674,22 @@ describe('MosaicVisualization', (): void => {
   // ==========================================================================
 
   describe('afterglow', (): void => {
-    it('leaves unlit dots dark in silence', (): void => {
+    it('leaves unlit pixels black in silence', (): void => {
       viz.resize(WIDTH, HEIGHT);
       frame();
 
-      expect(brightnessOf(rampColour(0))).toBeLessThan(40);
+      expect(rampColour(0)).toEqual([0, 0, 0]);
       expect(glow()).toBe(0);
     });
 
-    it('shows a fully lit dot as near-white', (): void => {
+    it('shows a fully lit pixel as near-white', (): void => {
       viz.resize(WIDTH, HEIGHT);
       frame();
 
       for (const channel of hotColour()) expect(channel).toBeGreaterThan(200);
     });
 
-    it('cools steadily from near-white to dark as the light fades', (): void => {
+    it('cools steadily from near-white to black as the light fades', (): void => {
       viz.resize(WIDTH, HEIGHT);
       frame();
 
@@ -725,11 +702,11 @@ describe('MosaicVisualization', (): void => {
       viz.resize(WIDTH, HEIGHT);
       frame();
 
-      // 0.3 is the deep shade, 0.65 the main colour.
-      const deep: number[] = rampColour(Math.round(0.3 * 255));
-      const main: number[] = rampColour(Math.round(0.65 * 255));
+      // 0.5 is the deep shade, 0.8 the main colour.
+      const deep: number[] = rampColour(Math.round(0.5 * 255));
+      const main: number[] = rampColour(Math.round(0.8 * 255));
       expect(brightnessOf(deep)).toBeLessThan(brightnessOf(main));
-      // At the starting blue, the deep shade leans toward violet: more red, relative to its brightness.
+      // At the starting blue, the deep shade leans toward magenta: more red, relative to its brightness.
       expect(deep[0] / brightnessOf(deep)).toBeGreaterThan(main[0] / brightnessOf(main));
     });
   });
@@ -739,7 +716,7 @@ describe('MosaicVisualization', (): void => {
   // ==========================================================================
 
   describe('bass glow', (): void => {
-    it('lifts every dot while the bass is heavy', (): void => {
+    it('lifts every pixel while the bass is heavy', (): void => {
       viz.resize(WIDTH, HEIGHT);
       frame();
       expect(glow()).toBe(0);
@@ -747,7 +724,7 @@ describe('MosaicVisualization', (): void => {
       analyser.spectrum = bassHeavy(64);
       frames(70);
 
-      expect(glow()).toBeCloseTo(0.3, 2);
+      expect(glow()).toBeCloseTo(0.5, 2);
     });
 
     it('rises quickly and dies away slowly', (): void => {
@@ -760,18 +737,19 @@ describe('MosaicVisualization', (): void => {
       frames(10);
 
       expect(glow()).toBeLessThan(full);
-      expect(glow()).toBeGreaterThan(0.05);
+      expect(glow()).toBeGreaterThan(0.1);
     });
   });
 
   // ==========================================================================
-  // Bass ripples
+  // Waves
   // ==========================================================================
 
   describe('waves', (): void => {
     /**
-     * How far a wave travels each frame, in dots, with Math.random held at 0.9:
-     * the usual speed reaches the corners in 240 frames, and 0.9 picks 1.4 times it.
+     * How far a wave travels each frame, in cells, with Math.random held at
+     * 0.9: the usual speed reaches the corners in 240 frames, and 0.9 picks
+     * 1.4 times it.
      */
     const SPEED: number = (MAX_DISTANCE / 240) * 1.4;
 
@@ -782,64 +760,6 @@ describe('MosaicVisualization', (): void => {
       return queue;
     }
 
-    /** The size of each drawn dot, smallest to biggest. */
-    function sides(): number[] {
-      return drawnDots().map((dot: DrawnDot): number => dot.side).sort((a: number, b: number): number => a - b);
-    }
-
-    /** The side of the dot nearest the centre this frame, or 0 when it is too small to draw. */
-    function centreSide(): number {
-      const near: DrawnDot | undefined = drawnDots().find((dot: DrawnDot): boolean => dot.distance < 1);
-      return near ? near.side : 0;
-    }
-
-    it('roll across the whole grid in silence, so it is never left flat', (): void => {
-      viz.resize(WIDTH, HEIGHT);
-
-      for (let i: number = 0; i < 300; i++) {
-        forgetAll();
-        frame();
-        const all: number[] = sides();
-        // Gentle in silence, but never uniform.
-        expect(all.at(-1)! - all[0]).toBeGreaterThan(UNIT_SIDE * 0.1);
-      }
-    });
-
-    it('start out already filling the screen', (): void => {
-      viz.resize(WIDTH, HEIGHT);
-      fakes.forget();
-
-      frame();
-
-      // All but the middle, where the first wave is only just easing in.
-      expect(drawnDots().length).toBeGreaterThan(COLUMNS * ROWS * 0.6);
-      expect(Math.max(...drawnDots().map((dot: DrawnDot): number => dot.distance))).toBeGreaterThan(MAX_DISTANCE - 1);
-    });
-
-    it('keep every dot overlapping its neighbours in silence, swelling only gently', (): void => {
-      viz.resize(WIDTH, HEIGHT);
-
-      framesThenRecord(200);
-
-      expect(drawnDots()).toHaveLength(COLUMNS * ROWS);
-      for (const side of sides()) {
-        expect(side).toBeGreaterThan(PITCH);
-        expect(side).toBeLessThan(REST_SIDE + UNIT_SIDE);
-      }
-    });
-
-    it('never shrink a dot below its rest size, so no black shows, whatever the waves do', (): void => {
-      viz.resize(WIDTH, HEIGHT);
-      for (let i: number = 0; i < 40; i++) {
-        analyser.spectrum = i % 4 === 0 ? bassHeavy(64) : flat(0);
-        frames(10);
-      }
-      fakes.forget();
-      frame();
-
-      for (const side of sides()) expect(side).toBeGreaterThanOrEqual(REST_SIDE - 1e-9);
-    });
-
     /** Plays a kick for two frames out of every `period`, for `count` frames. */
     function kicks(count: number, period: number): void {
       for (let i: number = 0; i < count; i++) {
@@ -848,47 +768,63 @@ describe('MosaicVisualization', (): void => {
       }
     }
 
-    it('swell the dots past their cells, over their neighbours, with heavy kicks', (): void => {
+    it('roll across the whole screen in silence, so it is never left still', (): void => {
       viz.resize(WIDTH, HEIGHT);
-      kicks(199, 40);
-      fakes.forget();
+
+      for (let i: number = 0; i < 300; i++) {
+        forgetAll();
+        frame();
+        const swells: number[] = onScreen();
+        // Gentle in silence, but never even.
+        expect(Math.max(...swells) - Math.min(...swells)).toBeGreaterThan(0.05);
+      }
+    });
+
+    it('start out already filling the screen', (): void => {
+      viz.resize(WIDTH, HEIGHT);
+      fakes.webgl.forget();
+
       frame();
 
-      expect(crest().side).toBeGreaterThan(PITCH * 1.5);
-      // Most dots overlap their cells; only each new wave, still easing in at the centre, starts small.
-      const all: number[] = sides();
-      expect(all[Math.floor(all.length / 2)]).toBeGreaterThan(UNIT_SIDE);
+      const corner: number[] = onScreen().slice(Math.floor((MAX_DISTANCE - 3) / FIELD_STEP));
+      expect(Math.max(...corner)).toBeGreaterThan(0.05);
+    });
+
+    it('stay gentle in silence', (): void => {
+      viz.resize(WIDTH, HEIGHT);
+
+      framesThenRecord(200);
+
+      expect(crest().swell).toBeGreaterThan(0.1);
+      expect(crest().swell).toBeLessThan(0.5);
     });
 
     it('start a wave at once on a kick, sized by it, and keep that size as it travels', (): void => {
       viz.resize(WIDTH, HEIGHT);
       framesThenRecord(200);
-      const silent: number = crest().side;
+      const silent: number = crest().swell;
 
-      // Long enough after the last quiet wave (one every 117 frames) for a kick to start one.
-      frames(93);
       analyser.spectrum = bassHeavy(64);
       frames(3);
       analyser.spectrum = flat(0);
 
-      framesThenRecord(30);
-      const early: DrawnDot = crest();
+      framesThenRecord(50);
+      const early: {swell: number; distance: number} = crest();
       framesThenRecord(20);
-      const later: DrawnDot = crest();
+      const later: {swell: number; distance: number} = crest();
 
-      expect(swellOf(early.side)).toBeGreaterThan(swellOf(silent) * 2);
-      expect(swellOf(later.side)).toBeGreaterThan(swellOf(silent) * 2);
+      expect(early.swell).toBeGreaterThan(silent * 2);
+      expect(later.swell).toBeGreaterThan(silent * 2);
       // It left with the kick and rolls outward.
-      // Within a dot: the biggest dot is the one sitting nearest the crest.
-      expect(Math.abs(early.distance - 33 * SPEED)).toBeLessThan(1);
+      expect(Math.abs(early.distance - 53 * SPEED)).toBeLessThan(1);
       expect(later.distance).toBeGreaterThan(early.distance);
     });
 
     it('hear a kick that climbs only a little each frame, as smoothed music does', (): void => {
       const random: ReturnType<typeof vi.spyOn> = vi.spyOn(Math, 'random').mockReturnValue(0.9);
       viz.resize(WIDTH, HEIGHT);
-      // A steady 0.4 bed long enough for its average to settle and the last quiet wave (at 59
-      // frames) to clear six dots, but not so long that the next one is due.
+      // A steady 0.4 bed long enough for its average to settle and the first wave to clear
+      // eight cells, but not so long that the next quiet one is due.
       analyser.spectrum = (index: number): number => (index < 64 ? 102 : 0);
       frames(95);
       const before: number = random.mock.calls.length;
@@ -900,6 +836,7 @@ describe('MosaicVisualization', (): void => {
         frame();
       }
 
+      // One wave: a speed and the gap the next quiet one waits for.
       expect(random.mock.calls.length - before).toBe(2);
     });
 
@@ -932,7 +869,8 @@ describe('MosaicVisualization', (): void => {
     it('ignore a climb in a quiet passage', (): void => {
       const random: ReturnType<typeof vi.spyOn> = vi.spyOn(Math, 'random').mockReturnValue(0.9);
       viz.resize(WIDTH, HEIGHT);
-      frames(40);
+      // Long enough for the first wave to clear eight cells, so a kick could start one.
+      frames(70);
       const before: number = random.mock.calls.length;
 
       // Up to 0.2: a clear climb, but under the loudness floor.
@@ -942,8 +880,8 @@ describe('MosaicVisualization', (): void => {
       expect(random.mock.calls.length - before).toBe(0);
     });
 
-    it('bunch up with fast kicks, but never closer than three dots apart', (): void => {
-      // Kicks every 10 frames come about every 2.3 dots; only one in three may start a wave.
+    it('bunch up with fast kicks, but never closer than eight cells apart', (): void => {
+      // Kicks every 10 frames come about every 1.3 cells; only one in six may start a wave.
       const random: ReturnType<typeof vi.spyOn> = vi.spyOn(Math, 'random').mockReturnValue(0.9);
       viz.resize(WIDTH, HEIGHT);
       const seeded: number = random.mock.calls.length;
@@ -951,10 +889,10 @@ describe('MosaicVisualization', (): void => {
       kicks(400, 10);
 
       // Each wave picks a speed and the gap the next quiet one waits for: two picks. At most one
-      // wave every six dots of travel, and more than the one every 13.6 dots silence would bring.
+      // wave every eight cells of travel, and more than the one every 15.4 cells silence would bring.
       const started: number = (random.mock.calls.length - seeded) / 2;
-      expect(started).toBeLessThanOrEqual(Math.ceil((400 * SPEED) / 6));
-      expect(started).toBeGreaterThan(Math.floor((400 * SPEED) / 13.6));
+      expect(started).toBeLessThanOrEqual(Math.ceil((400 * SPEED) / 8));
+      expect(started).toBeGreaterThan(Math.floor((400 * SPEED) / 15.4));
     });
 
     it('follow each other at uneven gaps in silence', (): void => {
@@ -977,138 +915,121 @@ describe('MosaicVisualization', (): void => {
 
       gap = 1;
       picks = 0;
-      viz.resize(WIDTH + 36, HEIGHT);
+      viz.resize(WIDTH + 32, HEIGHT);
       seeded = picks;
       quietFrames(300);
       const longGaps: number = picks - seeded;
 
-      // Six dots apart at one end of the range, nine at the other.
+      // Ten cells apart at one end of the range, sixteen at the other.
       expect(shortGaps).toBeGreaterThan(longGaps);
-    });
-
-    it('swell the dots hugely down the middle, tapering away toward the left and right', (): void => {
-      viz.resize(WIDTH, HEIGHT);
-      kicks(199, 40);
-      fakes.forget();
-      frame();
-
-      /** The biggest swell among the dots whose middles fall within a band of x. */
-      function biggestSwell(inBand: (x: number) => boolean): number {
-        return Math.max(...drawnDots().filter((dot: DrawnDot): boolean => inBand(dot.x))
-          .map((dot: DrawnDot): number => swellOf(dot.side)));
-      }
-
-      const middle: number = biggestSwell((x: number): boolean => Math.abs(x - WIDTH / 2) < PITCH);
-      const halfway: number = biggestSwell((x: number): boolean => Math.abs(Math.abs(x - WIDTH / 2) - WIDTH / 4) < PITCH);
-      const edges: number = biggestSwell((x: number): boolean => Math.abs(x - WIDTH / 2) > WIDTH / 2 - PITCH);
-
-      expect(middle).toBeGreaterThan(halfway * 1.5);
-      expect(halfway).toBeGreaterThan(edges * 1.5);
-      expect(edges).toBeGreaterThan(0);
     });
 
     it('travel at speeds of their own, so a fast one catches and passes a slow one', (): void => {
       const queue: number[] = queueRandom();
       viz.resize(WIDTH, HEIGHT);
-      // Long enough for the first quiet wave to clear six dots, so a kick may start one.
-      frames(79);
+      /** The usual speed, in cells a frame. */
+      const usual: number = MAX_DISTANCE / 240;
+      // Long enough for the first quiet wave to clear eight cells, so a kick may start one.
+      frames(Math.ceil(8 / usual) + 1);
 
       // A slow kick wave: half the usual speed, and the longest quiet gap after it.
       queue.push(0, 1);
       analyser.spectrum = bassHeavy(64);
       frames(2);
       analyser.spectrum = flat(0);
-      frames(148);
+      // Until it too has cleared eight cells.
+      frames(Math.ceil(8 / (usual * 0.5)) + 5);
 
-      // A fast one, 150 frames later: one and a half times the usual speed.
+      // A fast one: one and a half times the usual speed.
       queue.push(1, 0.5);
       analyser.spectrum = bassHeavy(64);
       frames(2);
       analyser.spectrum = flat(0);
+      const ahead: number = crest().distance;
       framesThenRecord(3);
-      const apart: number = crest().side;
+      const apart: number = crest().swell;
 
-      // The slow one left 6.2 dots ahead and the fast one gains 0.083 dots a frame on it: they
-      // meet after 75, about nine dots out.
-      framesThenRecord(70);
-      const crossing: DrawnDot = crest();
+      // The fast one gains the usual speed on the slow one each frame, so they meet when it has
+      // closed the gap, half again further out.
+      const meet: number = Math.round(ahead / usual);
+      framesThenRecord(meet - 5);
+      const crossing: {swell: number; distance: number} = crest();
 
-      expect(swellOf(crossing.side)).toBeGreaterThan(swellOf(apart) * 1.5);
-      expect(Math.abs(crossing.distance - 9.3)).toBeLessThan(1);
+      expect(crossing.swell).toBeGreaterThan(apart * 1.5);
+      expect(Math.abs(crossing.distance - ahead * 1.5)).toBeLessThan(1);
     });
 
-    it('bend the picture like lenses, pulling each dot\'s light toward the nearest crest', (): void => {
+    it('bend the picture like lenses, pulling the light toward the nearest crest', (): void => {
       viz.resize(WIDTH, HEIGHT);
       framesThenRecord(200);
-      const silentPull: number = Math.max(...drawnDots().map((dot: DrawnDot): number => Math.abs(dot.pull)));
+      const silentPull: number = Math.max(...onScreen().map((_: number, index: number): number =>
+        Math.abs(pullAt(index * FIELD_STEP))));
 
-      // A single strong wave, well clear of the quiet ones.
-      frames(93);
+      // A single strong wave, about seven cells out: the middle column runs eleven from the centre.
       analyser.spectrum = bassHeavy(64);
       frames(3);
       analyser.spectrum = flat(0);
-      // About five dots out: the middle column only runs ten dots from the centre.
-      framesThenRecord(43);
+      framesThenRecord(50);
 
-      const dots: DrawnDot[] = drawnDots();
       const crestDistance: number = crest().distance;
-      // Down the middle column, where the lenses are strongest.
-      const middle: DrawnDot[] = dots.filter((dot: DrawnDot): boolean => Math.abs(dot.x - WIDTH / 2) < PITCH);
-      const inside: DrawnDot[] = middle.filter((dot: DrawnDot): boolean =>
-        dot.distance > crestDistance - 4 && dot.distance < crestDistance - 1);
-      const outside: DrawnDot[] = middle.filter((dot: DrawnDot): boolean =>
-        dot.distance > crestDistance + 1 && dot.distance < crestDistance + 4);
-
-      expect(inside.length).toBeGreaterThan(0);
-      expect(outside.length).toBeGreaterThan(0);
-      for (const dot of inside) expect(dot.pull).toBeGreaterThan(0);
-      for (const dot of outside) expect(dot.pull).toBeLessThan(0);
-      // A strong kick's lens moves the light several dots, far more than a quiet wave's.
-      const strongest: number = Math.max(...dots.map((dot: DrawnDot): number => Math.abs(dot.pull)));
+      for (const distance of [crestDistance - 3, crestDistance - 2, crestDistance - 1]) {
+        expect(pullAt(distance)).toBeGreaterThan(0);
+      }
+      for (const distance of [crestDistance + 1, crestDistance + 2, crestDistance + 3]) {
+        expect(pullAt(distance)).toBeLessThan(0);
+      }
+      // A strong kick's lens moves the light several cells, far more than a quiet wave's.
+      const strongest: number = Math.max(...onScreen().map((_: number, index: number): number =>
+        Math.abs(pullAt(index * FIELD_STEP))));
       expect(strongest).toBeGreaterThan(2);
       expect(strongest).toBeGreaterThan(silentPull * 2);
-      for (const dot of dots) expect(Math.abs(dot.sideways)).toBeLessThan(1e-4);
     });
 
     it('bend the picture most down the middle, least at the left and right', (): void => {
       viz.resize(WIDTH, HEIGHT);
-      kicks(199, 40);
-      forgetAll();
       frame();
 
-      /** The strongest pull among the dots whose middles fall within a band of x. */
-      function strongestPull(inBand: (x: number) => boolean): number {
-        return Math.max(...drawnDots().filter((dot: DrawnDot): boolean => inBand(dot.x))
-          .map((dot: DrawnDot): number => Math.abs(dot.pull)));
-      }
-
-      const middle: number = strongestPull((x: number): boolean => Math.abs(x - WIDTH / 2) < PITCH);
-      const edges: number = strongestPull((x: number): boolean => Math.abs(x - WIDTH / 2) > WIDTH / 2 - PITCH);
-      expect(middle).toBeGreaterThan(edges * 3);
-    });
-
-    it('read the light smoothly, so a lens can pull it from between two dots', (): void => {
-      const filters: unknown[] = fakes.webgl.callsTo('texParameteri')
-        .filter((call: RecordedGlCall): boolean => call.args[1] === gl().TEXTURE_MAG_FILTER)
-        .map((call: RecordedGlCall): unknown => call.args[2]);
-      // The light texture is made first, then the ramp, which is read step by step.
-      expect(filters).toEqual([gl().LINEAR, gl().NEAREST]);
+      expect(uniform('uCentreMagnify')).toBe(0.8);
+      expect(uniform('uEdgeMagnify')).toBe(0.2);
+      expect(shaderSources()).toContain('(uCentreMagnify - uEdgeMagnify) * across * across');
     });
 
     it('ease in as they leave the centre, so nothing pops', (): void => {
       viz.resize(WIDTH, HEIGHT);
       analyser.spectrum = bassHeavy(64);
-      fakes.forget();
       frame();
-      let last: number = centreSide();
+      let last: number = swellAt(0.5);
 
       for (let i: number = 0; i < 200; i++) {
         forgetAll();
         frame();
-        const side: number = centreSide();
-        expect(Math.abs(side - last)).toBeLessThan(PITCH * 0.15);
-        last = side;
+        const swell: number = swellAt(0.5);
+        expect(Math.abs(swell - last)).toBeLessThan(0.05);
+        last = swell;
       }
+    });
+
+    it('keep the table as fine as the graphics card allows on an enormous screen', (): void => {
+      fakes.webgl.maxTextureSize = 4096;
+      viz = new SingularityVisualization({canvas: document.createElement('canvas'), analyser: analyser.asNode()});
+      viz.resize(7680, 4320);
+      frame();
+
+      expect(field().length).toBeLessThanOrEqual(4096);
+      const step: number = uniform('uFieldStep');
+      expect(step).toBeGreaterThan(FIELD_STEP);
+      expect(uniform('uFieldSize')).toBe(field().length);
+      // The lenses bend by the same amount whatever the step.
+      expect(uniform('uLens')).toBeCloseTo(60 / (2 * step));
+    });
+
+    it('use the finest table while it fits', (): void => {
+      viz.resize(WIDTH, HEIGHT);
+      frame();
+
+      expect(uniform('uFieldStep')).toBe(FIELD_STEP);
+      expect(field().length).toBe(Math.ceil(MAX_DISTANCE / FIELD_STEP) + 2);
+      expect(uniform('uLens')).toBeCloseTo(60 / (2 * FIELD_STEP));
     });
 
     it('keep drawing sensibly however long they run, and whatever the bass does', (): void => {
@@ -1117,12 +1038,12 @@ describe('MosaicVisualization', (): void => {
         analyser.spectrum = i % 2 === 0 ? bassHeavy(64) : flat(0);
         frames(10);
         expect(fakes.unusableCalls()).toEqual([]);
-        for (const dot of drawnDots()) expect(Number.isFinite(dot.side)).toBe(true);
+        expect(field().every(Number.isFinite)).toBe(true);
         forgetAll();
       }
       frame();
 
-      expect(drawnDots().length).toBeGreaterThan(0);
+      expect(crest().swell).toBeGreaterThan(0);
     });
   });
 
@@ -1164,7 +1085,7 @@ describe('MosaicVisualization', (): void => {
       expect(difference(colours[0], before)).toBeLessThan(40);
       expect(snaps(colours)).toBe(0);
       expect(difference(colours.at(-1)!, before)).toBeGreaterThan(40);
-      expect(difference(colours.at(-1)!, colours.at(-2)!)).toBeLessThanOrEqual(2);
+      expect(difference(colours.at(-1)!, colours.at(-2)!)).toBeLessThanOrEqual(4);
     });
 
     it('wait out the cooldown between hits', (): void => {

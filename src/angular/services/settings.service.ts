@@ -35,7 +35,7 @@ import {VIDEO_ADJUSTMENT_PRESETS, VIDEO_ADJ_CUSTOM_PRESET, NEUTRAL_VIDEO_ADJUSTM
  * - pulsar: Pulsing concentric rings with curved waveforms (nostalgia category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Concentric tower wrapped in counter-spinning rings (signature category)
- * - mosaic: Split waveform lighting a low-resolution screen of rounded dots (signature category)
+ * - singularity: Split waveform bent like a lens by waves rolling out from the centre (signature category)
  * - infinity: Dual orbiting circles with spectrum cycling
  */
 
@@ -426,7 +426,7 @@ export const VISUALIZATION_METADATA: readonly VisualizationMetadata[] = [
   // Signature category
   {id: 'spotlight', name: 'Spotlight', category: 'Signature'},
   {id: 'water', name: 'Reactor', category: 'Signature'},
-  {id: 'mosaic', name: 'Mosaic', category: 'Signature'},
+  {id: 'singularity', name: 'Singularity', category: 'Signature'},
   {id: 'infinity', name: 'Infinity', category: 'Bars & Waves'},
   // Nostalgia category
   {id: 'ambience-zoom', name: 'Twirl', category: 'Nostalgia'},
@@ -521,7 +521,7 @@ export const VISUALIZATION_OPTIONS: readonly VisualizationOption[] = [
   // Signature category
   {value: 'water', label: 'Signature : Reactor', description: 'Concentric glowing tower wrapped in spiralling frequency rings'},
   {value: 'spotlight', label: 'Signature : Spotlight', description: 'Concentric tower wrapped in counter-spinning frequency rings'},
-  {value: 'mosaic', label: 'Signature : Mosaic', description: 'A split waveform bleeding away across a low-resolution screen of rounded dots'},
+  {value: 'singularity', label: 'Signature : Singularity', description: 'A split waveform bleeding away, bent by waves rolling out from the centre'},
   // Nostalgia category
   {value: 'ambience-zoom', label: 'Nostalgia : Twirl', description: 'Rotating zoom about the centre'},
   {value: 'ambience-stretch', label: 'Nostalgia : Warp', description: 'Cubic radial distortion'},

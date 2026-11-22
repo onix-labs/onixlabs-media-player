@@ -289,6 +289,9 @@ export interface RecordedGlCall {
   readonly framebuffer: FakeGlObject | null;
 }
 
+/** MAX_TEXTURE_SIZE a fresh fake reports: what most desktop graphics cards allow. */
+const DEFAULT_MAX_TEXTURE_SIZE: number = 16_384;
+
 /** Pattern matching the names of WebGL enum constants. */
 const GL_CONSTANT_PATTERN: RegExp = /^[A-Z][A-Z0-9_]*$/;
 
@@ -323,8 +326,14 @@ export class RecordingWebGL {
   /** Number of times the context has been deliberately lost. */
   public contextLosses: number = 0;
 
-  /** When false, the ANGLE_instanced_arrays extension is refused. */
-  public instancingAvailable: boolean = true;
+  /** When false, the OES_texture_float extension is refused. */
+  public floatTexturesAvailable: boolean = true;
+
+  /** When false, the OES_texture_float_linear extension is refused. */
+  public floatFilteringAvailable: boolean = true;
+
+  /** Widest texture the context reports it allows, as MAX_TEXTURE_SIZE. */
+  public maxTextureSize: number = DEFAULT_MAX_TEXTURE_SIZE;
 
   private program: FakeProgram | null = null;
   private framebuffer: FakeGlObject | null = null;
@@ -378,14 +387,21 @@ export class RecordingWebGL {
     if (name === 'WEBGL_lose_context') {
       return {loseContext: (): void => { this.contextLosses++; }};
     }
-    if (name === 'ANGLE_instanced_arrays' && this.instancingAvailable) {
-      return {
-        drawArraysInstancedANGLE: (...args: unknown[]): void => this.record('drawArraysInstancedANGLE', args),
-        vertexAttribDivisorANGLE: (...args: unknown[]): void => this.record('vertexAttribDivisorANGLE', args),
-      };
-    }
+    if (name === 'OES_texture_float' && this.floatTexturesAvailable) return {};
+    if (name === 'OES_texture_float_linear' && this.floatFilteringAvailable) return {};
     return null;
   }
+
+  /** Answers getParameter. Only MAX_TEXTURE_SIZE is known; anything else is null. */
+  public parameter(name: number): unknown {
+    return name === this.constant('MAX_TEXTURE_SIZE') ? this.maxTextureSize : null;
+  }
+
+  /**
+   * The number standing in for a WebGL enum constant. Set by
+   * {@link createRecordingWebGL}, which hands every constant a distinct number.
+   */
+  public constant: (name: string) => number = (): number => 0;
 
   public createTexture(): FakeGlObject | null {
     this.record('createTexture', []);
@@ -472,6 +488,7 @@ const GL_QUERY_METHODS: Readonly<Record<string, keyof RecordingWebGL>> = {
   getUniformLocation: 'uniformLocation',
   getAttribLocation: 'attribLocation',
   getExtension: 'extension',
+  getParameter: 'parameter',
 };
 
 /**
@@ -482,8 +499,14 @@ const GL_QUERY_METHODS: Readonly<Record<string, keyof RecordingWebGL>> = {
 export function createRecordingWebGL(): RecordingWebGL {
   const constants: Map<string, number> = new Map<string, number>();
   const recorders: Map<string, (...args: unknown[]) => void> = new Map<string, (...args: unknown[]) => void>();
+  const constant: (name: string) => number = (name: string): number => {
+    if (!constants.has(name)) constants.set(name, constants.size + 1);
+    return constants.get(name)!;
+  };
+  const fake: RecordingWebGL = new RecordingWebGL();
+  fake.constant = constant;
 
-  return new Proxy<RecordingWebGL>(new RecordingWebGL(), {
+  return new Proxy<RecordingWebGL>(fake, {
     get: (target: RecordingWebGL, property: string | symbol): unknown => {
       if (typeof property !== 'string') return undefined;
 
@@ -493,10 +516,7 @@ export function createRecordingWebGL(): RecordingWebGL {
         return typeof member === 'function' ? member.bind(target) : member;
       }
 
-      if (GL_CONSTANT_PATTERN.test(property)) {
-        if (!constants.has(property)) constants.set(property, constants.size + 1);
-        return constants.get(property);
-      }
+      if (GL_CONSTANT_PATTERN.test(property)) return constant(property);
 
       if (!recorders.has(property)) {
         recorders.set(property, (...args: unknown[]): void => target.record(property, args));

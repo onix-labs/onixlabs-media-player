@@ -747,7 +747,7 @@ const VALID_VISUALIZATION_TYPES: readonly string[] = [
   'onix',
   'modern',
   'spotlight',
-  'mosaic',
+  'singularity',
   'hallucia',
   'hawking',
   'ambience-zoom',

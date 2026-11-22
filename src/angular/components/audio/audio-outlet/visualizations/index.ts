@@ -16,7 +16,7 @@
  * - pulsar: Pulsing concentric rings with curved waveforms (nostalgia category)
  * - water: Reactor - concentric tower wrapped in frequency rings (signature category)
  * - spotlight: Spotlight - concentric tower wrapped in counter-spinning rings (signature category)
- * - mosaic: Mosaic - a split waveform lighting a low-resolution screen of rounded dots (signature category)
+ * - singularity: Singularity - a split waveform bent like a lens by waves rolling out from the centre (signature category)
  * - hallucia: Hallucia - spectral differential rotation field winding bands into spirals (nostalgia category)
  * - ambience-zoom, ambience-stretch, ambience-ripple: Twirl, Warp and Ripple,
  *   the three feedback warps, filed under Nostalgia. Their ids are older than
@@ -37,7 +37,7 @@ export {InfinityVisualization} from './infinity-visualization';
 export {OnixVisualization} from './onix-visualization';
 export {ModernVisualization} from './modern-visualization';
 export {SpotlightVisualization} from './spotlight-visualization';
-export {MosaicVisualization} from './mosaic-visualization';
+export {SingularityVisualization} from './singularity-visualization';
 export {HalluciaVisualization} from './hallucia-visualization';
 export {BlankVisualization} from './blank-visualization';
 export {LogoVisualization} from './logo-visualization';
@@ -61,7 +61,7 @@ import {InfinityVisualization} from './infinity-visualization';
 import {OnixVisualization} from './onix-visualization';
 import {ModernVisualization} from './modern-visualization';
 import {SpotlightVisualization} from './spotlight-visualization';
-import {MosaicVisualization} from './mosaic-visualization';
+import {SingularityVisualization} from './singularity-visualization';
 import {HalluciaVisualization} from './hallucia-visualization';
 import {BlankVisualization} from './blank-visualization';
 import {LogoVisualization} from './logo-visualization';
@@ -89,7 +89,7 @@ const VISUALIZATION_CONSTRUCTORS: Record<string, new (config: VisualizationConfi
   onix: OnixVisualization,
   modern: ModernVisualization,
   spotlight: SpotlightVisualization,
-  mosaic: MosaicVisualization,
+  singularity: SingularityVisualization,
   hallucia: HalluciaVisualization,
   hawking: HawkingVisualization,
   'ambience-zoom': AmbienceTwirlVisualization,
@@ -115,7 +115,7 @@ export const VISUALIZATION_METADATA: Record<string, {name: string; category: str
   onix: {name: 'Onix', category: 'Bars & Waves'},
   modern: {name: 'Modern', category: 'Bars & Waves'},
   spotlight: {name: 'Spotlight', category: 'Signature'},
-  mosaic: {name: 'Mosaic', category: 'Signature'},
+  singularity: {name: 'Singularity', category: 'Signature'},
   hallucia: {name: 'Hallucia', category: 'Nostalgia'},
   hawking: {name: 'Hawking', category: 'Bars & Waves'},
   'ambience-zoom': {name: 'Twirl', category: 'Nostalgia'},
@@ -164,7 +164,7 @@ const NOSTALGIA_TYPES: readonly string[] =
  *
  * Categories (in order):
  * - Bars & Waves: bars, waveform, modern, tunnel, infinity, neon, hawking, onix
- * - Signature: water (Reactor), spotlight, mosaic
+ * - Signature: water (Reactor), spotlight, singularity
  * - Nostalgia: twirl, warp, ripple, pulsar, hallucia
  * - Simple: blank, logo, album-art
  */
@@ -172,7 +172,7 @@ export const VISUALIZATION_TYPES: string[] = [
   // Bars & Waves
   'bars', 'waveform', 'modern', 'tunnel', 'infinity', 'neon', 'hawking', 'onix',
   // Signature
-  'water', 'spotlight', 'mosaic',
+  'water', 'spotlight', 'singularity',
   // Nostalgia
   ...NOSTALGIA_TYPES,
   // Simple
