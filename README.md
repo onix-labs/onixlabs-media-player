@@ -42,7 +42,7 @@ Play your music with stunning real-time visualizations. ONIXPlayer supports MP3,
 
 * **Spotlight** — The Reactor tower and frequency rings arranged as a counter-spinning ambient scene
 
-* **Singularity** — Reactor's split waveform, one side rising and the other sinking as it bleeds away, cooling from near-white through the palette like phosphor afterglow; overlapping waves roll out from the centre and bend the picture like lenses, each sized by the kick drum as it leaves, so it never sits still; the bass makes the whole screen glow, and bass hits jump the palette, sometimes at once and sometimes in a quick sweep
+* **Singularity** — Reactor's split waveform, turned through the centre and spreading up and down as it bleeds away, cooling from near-white through the palette like phosphor afterglow; overlapping waves roll out from the centre and bend the picture like lenses, each sized by the kick drum as it leaves, so it never sits still; the bass makes the whole screen glow, and bass hits jump the palette, sometimes at once and sometimes in a quick sweep
 
 **Nostalgia:**
 
