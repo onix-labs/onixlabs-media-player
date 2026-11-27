@@ -6,11 +6,11 @@
  *   1. Scene - Reactor's horizontal waveform, laid flat and split in the middle.
  *      Only the left half is ever drawn: it runs from the left edge to the centre
  *      on a half-width trail surface that, every frame, is pushed away from the
- *      centre, lifted straight up, blurred and rippled, so it bleeds and distorts
- *      away up and out toward its edge. The right half is the same surface
- *      flipped horizontally and vertically, so it is the left half rotated
- *      through the centre and its trail sinks straight down instead. A bass hit
- *      reverses which side rises.
+ *      centre, spread evenly up and down, blurred and rippled, so it bleeds and
+ *      distorts away out toward its edge. The right half is the same surface
+ *      turned through the centre (flipped horizontally and vertically). Near the
+ *      centre line each side is blended with its mirror image, so the two halves
+ *      meet without a seam.
  *
  *   2. Light - the scene's brightness picks each pixel's colour from a ramp:
  *      near-white at full strength, through the main colour, into a deeper and
@@ -30,11 +30,11 @@
  *      crest magnifies the picture and the waveform bends as the rings pass
  *      through it. The bending is strongest down the middle of the screen and
  *      tapers away toward the left and right edges. The waves are measured in
- *      cells about 16 physical pixels across, so they keep their size whatever
- *      the display's pixel density.
+ *      cells of CELL_SIZE canvas pixels.
  *
  * The screen is drawn by the graphics card in a single pass over every pixel,
- * onto a WebGL surface that is then laid onto the canvas.
+ * reading the half-width scene directly, onto a WebGL surface that is then laid
+ * onto the canvas.
  *
  * The colour drifts slowly round the hue wheel, as Reactor's does. Every so
  * often (gated by a cooldown) a bass hit also jumps the hue: sometimes the whole
@@ -59,6 +59,9 @@ interface Rgb {
   b: number;
 }
 
+/** Waves that can be spreading at once; a new one replaces the furthest out. */
+const MAX_RINGS: number = 8;
+
 /**
  * Covers the screen with one square (aCorner, -1 to 1), handing each pixel its
  * position in canvas pixels, top-down.
@@ -74,39 +77,60 @@ void main() {
 `;
 
 /**
- * Lights one pixel. The waves bend it like a lens: it reads its light from a
- * spot pulled along the swell's slope, toward the nearest crest, by more down
- * the middle of the screen than at the edges. The swell is read from the table
- * by distance from the centre, measured in cells. The bass glow is added and
- * the pixel is coloured from the afterglow ramp.
+ * Lights one pixel.
+ *
+ * The waves bend it like a lens: it reads its light from a spot pulled along
+ * the swell's slope, toward the nearest crest, by more down the middle of the
+ * screen than at the edges. Each wave's swell is a bell curve around its crest
+ * (radius and strength in uRings, in cells), so the slope is summed exactly
+ * from the waves themselves; a free slot has no strength and adds nothing.
+ *
+ * The light is read from the half-width scene: as it is on the left, and
+ * turned through the centre on the right. The scene is white drawn over
+ * transparency, so its light is its opacity; the browser hands the colour
+ * over un-premultiplied, which makes any visible pixel fully white, so the
+ * colour channels cannot be used. Close to the centre line it is
+ * blended with the light mirrored across it, half and half on the line itself,
+ * so both sides read the same there and no seam shows. The bass glow is added
+ * and the pixel is coloured from the afterglow ramp.
  */
 const SCREEN_FRAGMENT_SHADER: string = `
 precision highp float;
 varying vec2 vPixel;
 uniform vec2 uCanvas;
-uniform float uPitch;
 uniform sampler2D uLight;
 uniform sampler2D uRamp;
-uniform sampler2D uField;
-uniform float uFieldSize;
-uniform float uFieldStep;
+uniform vec2 uRings[${MAX_RINGS}];
+uniform float uCell;
+uniform float uRingWidth;
 uniform float uLens;
 uniform float uCentreMagnify;
 uniform float uEdgeMagnify;
+uniform float uGain;
 uniform float uGlow;
-float swellAt(float distance) {
-  return texture2D(uField, vec2((distance / uFieldStep + 0.5) / uFieldSize, 0.5)).r;
+uniform float uSeam;
+float lightAt(vec2 pixel) {
+  vec2 halfSize = vec2(uCanvas.x * 0.5, uCanvas.y);
+  vec2 left = pixel.x < halfSize.x ? pixel : uCanvas - pixel;
+  return texture2D(uLight, left / halfSize).a;
 }
 void main() {
   vec2 centre = uCanvas * 0.5;
-  vec2 offset = (vPixel - centre) / uPitch;
+  vec2 offset = (vPixel - centre) / uCell;
   float distance = length(offset);
+  float slope = 0.0;
+  for (int r = 0; r < ${MAX_RINGS}; r++) {
+    float along = (distance - uRings[r].x) / uRingWidth;
+    slope -= uRings[r].y * along * exp(-along * along);
+  }
+  slope *= 2.0 / uRingWidth;
   vec2 outward = distance > 0.0 ? offset / distance : vec2(0.0);
-  float across = max(0.0, 1.0 - abs(offset.x) / (centre.x / uPitch));
+  float across = max(0.0, 1.0 - abs(vPixel.x - centre.x) / centre.x);
   float magnify = uEdgeMagnify + (uCentreMagnify - uEdgeMagnify) * across * across;
-  float slope = swellAt(distance + uFieldStep) - swellAt(distance - uFieldStep);
-  vec2 source = vPixel + outward * slope * uLens * magnify * uPitch;
-  float light = min(1.0, texture2D(uLight, source / uCanvas).r + uGlow);
+  vec2 source = vPixel + outward * slope * uLens * magnify * uCell;
+  float seam = 0.5 * (1.0 - smoothstep(0.0, uSeam, abs(source.x - centre.x)));
+  float light = mix(lightAt(source), lightAt(vec2(uCanvas.x - source.x, source.y)), seam);
+  light = min(1.0, light * uGain + uGlow);
   float rampStep = floor(light * 255.0);
   gl_FragColor = vec4(texture2D(uRamp, vec2((rampStep + 0.5) / 256.0, 0.5)).rgb, 1.0);
 }
@@ -114,8 +138,8 @@ void main() {
 
 /** The uniforms the screen program reads. */
 const SCREEN_UNIFORMS: readonly string[] = [
-  'uCanvas', 'uPitch', 'uLight', 'uRamp', 'uField', 'uFieldSize', 'uFieldStep', 'uLens',
-  'uCentreMagnify', 'uEdgeMagnify', 'uGlow',
+  'uCanvas', 'uLight', 'uRamp', 'uRings', 'uCell', 'uRingWidth', 'uLens',
+  'uCentreMagnify', 'uEdgeMagnify', 'uGain', 'uGlow', 'uSeam',
 ];
 
 /**
@@ -125,11 +149,15 @@ const SCREEN_UNIFORMS: readonly string[] = [
 export class SingularityVisualization extends Canvas2DVisualization {
   // --- Cells and lenses ----------------------------------------------------
 
-  /** Size of the cell the waves are measured in, in physical (device) pixels. */
-  private static readonly TILE_PHYSICAL_SIZE: number = 16;
+  /** Size of the cell the waves are measured in, in canvas pixels. */
+  private static readonly CELL_SIZE: number = 8;
 
-  /** Smallest cell allowed, in canvas pixels. */
-  private static readonly MIN_TILE_SIZE: number = 8;
+  /**
+   * How far either side of the centre line each half is blended with its
+   * mirror image, as a fraction of the screen width. Half and half on the line
+   * itself, easing to none at this distance.
+   */
+  private static readonly SEAM_BLEND_FRACTION: number = 0.05;
 
   /** How brightly the scene lights the screen, as a multiple of its own light. */
   private static readonly LIGHT_GAIN: number = 0.8;
@@ -141,13 +169,6 @@ export class SingularityVisualization extends Canvas2DVisualization {
    * moves the light about seven cells down the middle of the screen.
    */
   private static readonly LENS_STRENGTH: number = 60;
-
-  /**
-   * Finest resolution of the per-frame table of wave swell by distance, in
-   * cells. On a screen so big that the table would be wider than the graphics
-   * card allows a texture to be, it is made coarser to fit.
-   */
-  private static readonly FIELD_STEP: number = 0.01;
 
   // --- Afterglow colour ramp ------------------------------------------------
 
@@ -172,6 +193,9 @@ export class SingularityVisualization extends Canvas2DVisualization {
   private static readonly HOT_SATURATION: number = 100;
   private static readonly HOT_LIGHTNESS: number = 92;
 
+  /** Colour of an unlit pixel. */
+  private static readonly UNLIT: Rgb = {r: 0, g: 0, b: 0};
+
   /** Steps in the colour ramp, one per byte of light. */
   private static readonly RAMP_STEPS: number = 256;
 
@@ -185,11 +209,6 @@ export class SingularityVisualization extends Canvas2DVisualization {
   private static readonly GLOW_RELEASE: number = 0.03;
 
   // --- Bass ripples --------------------------------------------------------
-
-  /**
-   * Ripples that can be spreading at once; a new one replaces the furthest out.
-   */
-  private static readonly MAX_RINGS: number = 8;
 
   /**
    * Closest a kick may start a ripple behind the last one, in cells. Kicks
@@ -233,18 +252,17 @@ export class SingularityVisualization extends Canvas2DVisualization {
   private static readonly FALLBACK_SAMPLE_RATE: number = 44_100;
 
   /**
-   * How fast the kick envelope follows the kick up and lets it go (fraction
-   * per frame). It rises at once and fades over about a second, so a kick
-   * landing between two ripples still swells the next one.
+   * How fast the kick envelope lets the kick go (fraction per frame). It rises
+   * with the kick at once and fades over about a second, so a kick landing
+   * between two ripples still swells the next one.
    */
-  private static readonly KICK_ATTACK: number = 1;
   private static readonly KICK_RELEASE: number = 0.03;
 
   /** Strength (0-1) of a ripple that leaves the centre in silence, so the waves never stop. */
   private static readonly RING_MIN_STRENGTH: number = 0.25;
 
   /** Frames a ripple at the usual speed takes to reach the corners (about four seconds). */
-  private static readonly RING_FRAMES: number = 240;
+  private static readonly RING_FRAMES: number = 256;
 
   /**
    * Range of speeds a ripple may travel at, as multiples of the usual speed;
@@ -267,7 +285,7 @@ export class SingularityVisualization extends Canvas2DVisualization {
   private static readonly EDGE_MAGNIFY: number = 0.2;
 
   /** Widths a ripple travels beyond the corners before it is dropped, its tail long gone. */
-  private static readonly RING_TAIL: number = 3;
+  private static readonly RING_TAIL: number = 4;
 
   // --- Waveform -------------------------------------------------------------
 
@@ -294,7 +312,7 @@ export class SingularityVisualization extends Canvas2DVisualization {
   private static readonly COLOR_MAIN: string = 'rgba(255, 255, 255, 0.75)';
   private static readonly COLOR_HIGHLIGHT: string = 'rgb(255, 255, 255)';
 
-  // --- Trail (bleed / fade / distort) ---------------------------------------
+  // --- Trail (bleed / distort) ----------------------------------------------
 
   /**
    * Most pixels the half-width trail may hold. 320x360, half of 640x360.
@@ -322,15 +340,6 @@ export class SingularityVisualization extends Canvas2DVisualization {
   /** Per-frame advance of the ripple phase (radians). */
   private static readonly RIPPLE_SPEED: number = 0.06;
 
-  /**
-   * Per-frame rise of the left half's trail, as a fraction of height. The right
-   * half is its flipped copy, so its trail sinks by the same amount.
-   */
-  private static readonly RISE_FRACTION: number = 0.004;
-
-  /** Per-frame fade of the trail (low = long-lived trails). */
-  private static readonly TRAIL_FADE: number = 0;
-
   /** Blur applied to the trail each frame, in trail pixels. */
   private static readonly TRAIL_BLUR: number = 0.95;
 
@@ -341,10 +350,6 @@ export class SingularityVisualization extends Canvas2DVisualization {
 
   /** Starting hue (degrees) - blue, matching Reactor. */
   private static readonly START_HUE: number = 220;
-
-  /** Saturation and lightness of an unlit pixel (percent). */
-  private static readonly BACKGROUND_SATURATION: number = 40;
-  private static readonly BACKGROUND_LIGHTNESS: number = 0;
 
   // --- Bass trigger ---------------------------------------------------------
 
@@ -366,7 +371,7 @@ export class SingularityVisualization extends Canvas2DVisualization {
   /** Half the hue wheel; a sweep takes the shorter way round (degrees). */
   private static readonly HALF_TURN_DEGREES: number = 180;
 
-  /** Per-frame progress of a sweeping hue change (0.05 = twenty frames). */
+  /** Per-frame progress of a sweeping hue change (0.15 = about seven frames). */
   private static readonly HUE_SWEEP_RATE: number = 0.15;
 
   public readonly name: string = 'Singularity';
@@ -384,7 +389,7 @@ export class SingularityVisualization extends Canvas2DVisualization {
   private freqArray: Uint8Array<ArrayBuffer>;
 
   /** Hue the scene is heading for (degrees). */
-  private hue: number;
+  private hue: number = SingularityVisualization.START_HUE;
 
   /** Hue a sweeping change started from (degrees). */
   private sweepFromHue: number = 0;
@@ -396,7 +401,7 @@ export class SingularityVisualization extends Canvas2DVisualization {
   private cachedHue: number = -1;
 
   /** The afterglow colour ramp: RGB for each byte of light, unlit to near-white. */
-  private readonly ramp: Uint8ClampedArray = new Uint8ClampedArray(SingularityVisualization.RAMP_STEPS * 3);
+  private readonly ramp: Uint8Array = new Uint8Array(SingularityVisualization.RAMP_STEPS * 3);
 
   /** Whether the ramp has changed since it was last handed to the graphics card. */
   private rampDirty: boolean = true;
@@ -420,34 +425,25 @@ export class SingularityVisualization extends Canvas2DVisualization {
   private glowLevel: number = 0;
 
   /** Radius of each ripple's crest, in cells; negative when the slot is free. */
-  private readonly rings: Float32Array = new Float32Array(SingularityVisualization.MAX_RINGS).fill(-1);
+  private readonly rings: Float32Array = new Float32Array(MAX_RINGS).fill(-1);
 
   /** Strength of each ripple (0-1), fixed from the kick as it left the centre. */
-  private readonly ringStrengths: Float32Array = new Float32Array(SingularityVisualization.MAX_RINGS);
+  private readonly ringStrengths: Float32Array = new Float32Array(MAX_RINGS);
 
   /** Speed of each ripple, as a multiple of the usual speed. */
-  private readonly ringSpeeds: Float32Array = new Float32Array(SingularityVisualization.MAX_RINGS);
+  private readonly ringSpeeds: Float32Array = new Float32Array(MAX_RINGS);
+
+  /** Each ripple's radius and eased strength, as handed to the graphics card. */
+  private readonly ringUniform: Float32Array = new Float32Array(MAX_RINGS * 2);
 
   /** Phase of the trail ripple (radians). */
   private ripplePhase: number = 0;
 
-  /** +1 while the left half rises and the right sinks, -1 the other way round; flipped by each bass trigger. */
-  private riseDirection: number = 1;
-
   /** Pre-allocated points of the left half of the waveform (avoids per-frame allocation). */
   private readonly points: Point[];
 
-  /** Size of a cell, the unit the waves are measured in, recomputed on resize. */
-  private tileSize: number = 0;
-
   /** Distance from the centre to the furthest corner, in cells. */
   private maxDistance: number = 0;
-
-  /** The waves' combined swell at each distance from the centre, rebuilt each frame. */
-  private field: Float32Array = new Float32Array(0);
-
-  /** Distance between neighbouring entries of the swell table, in cells. */
-  private fieldStep: number = SingularityVisualization.FIELD_STEP;
 
   // --- Graphics card --------------------------------------------------------
 
@@ -455,21 +451,12 @@ export class SingularityVisualization extends Canvas2DVisualization {
   private readonly glCanvas: HTMLCanvasElement;
   private readonly gl: WebGLRenderingContext;
 
-  /** The screen program, its uniforms and its one attribute. */
-  private readonly program: WebGLProgram;
+  /** Where each of the screen program's uniforms lives. */
   private readonly uniforms: Record<string, WebGLUniformLocation | null> = {};
-  private readonly cornerAttribute: number;
 
-  /** The square covering the screen. */
-  private readonly cornerBuffer: WebGLBuffer;
-
-  /** The scene's light, the afterglow ramp, and the swell by distance. */
+  /** The scene's light (texture unit 0) and the afterglow ramp (unit 1). */
   private readonly lightTexture: WebGLTexture;
   private readonly rampTexture: WebGLTexture;
-  private readonly fieldTexture: WebGLTexture;
-
-  /** Widest texture the graphics card allows, which bounds the swell table. */
-  private readonly maxTextureSize: number;
 
   /** Set once destroy() runs so a trailing frame cannot resurrect the surfaces. */
   private destroyed: boolean = false;
@@ -478,55 +465,62 @@ export class SingularityVisualization extends Canvas2DVisualization {
   private sceneCanvas: HTMLCanvasElement | null = null;
   private sceneCtx: CanvasRenderingContext2D | null = null;
 
-  /** Scratch surface used while bleeding the trail. */
+  /** Scratch surface the trail is copied onto before being redrawn. */
   private scratchCanvas: HTMLCanvasElement | null = null;
   private scratchCtx: CanvasRenderingContext2D | null = null;
-
-  /** Both halves of the scene side by side, handed to the graphics card each frame. */
-  private lightCanvas: HTMLCanvasElement | null = null;
-  private lightCtx: CanvasRenderingContext2D | null = null;
 
   public constructor(config: VisualizationConfig) {
     super(config);
     this.dataArray = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
     this.freqArray = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
-    this.hue = SingularityVisualization.START_HUE;
     this.points = SingularityVisualization.allocatePoints(SingularityVisualization.HALF_SAMPLES);
 
     this.glCanvas = document.createElement('canvas');
     const gl: WebGLRenderingContext | null = this.glCanvas.getContext('webgl', {alpha: false, antialias: false});
     if (!gl) throw new Error('Failed to get WebGL context');
     this.gl = gl;
-    // The swell is handed over as floating-point numbers, read smoothly if the card can.
-    if (!gl.getExtension('OES_texture_float')) throw new Error('WebGL float textures are not available');
-    const smoothField: boolean = gl.getExtension('OES_texture_float_linear') !== null;
-    this.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
 
-    this.program = this.createProgram(SCREEN_VERTEX_SHADER, SCREEN_FRAGMENT_SHADER);
-    for (const name of SCREEN_UNIFORMS) this.uniforms[name] = gl.getUniformLocation(this.program, name);
-    this.cornerAttribute = gl.getAttribLocation(this.program, 'aCorner');
+    // There is only one program, square and pair of textures, so they are
+    // bound once here and stay bound; each frame only refreshes what changed.
+    const program: WebGLProgram = this.createProgram(SCREEN_VERTEX_SHADER, SCREEN_FRAGMENT_SHADER);
+    gl.useProgram(program);
+    for (const name of SCREEN_UNIFORMS) this.uniforms[name] = gl.getUniformLocation(program, name);
 
-    this.cornerBuffer = this.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.cornerBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.createBuffer());
     // The screen's corners, in triangle-strip order.
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const corner: number = gl.getAttribLocation(program, 'aCorner');
+    gl.enableVertexAttribArray(corner);
+    gl.vertexAttribPointer(corner, 2, gl.FLOAT, false, 0, 0);
+
+    gl.activeTexture(gl.TEXTURE1);
+    this.rampTexture = this.createTexture(gl.NEAREST);
+    gl.activeTexture(gl.TEXTURE0);
     // The light is read smoothly, so a lens can pull it from between two pixels.
     this.lightTexture = this.createTexture(gl.LINEAR);
-    this.rampTexture = this.createTexture(gl.NEAREST);
-    this.fieldTexture = this.createTexture(smoothField ? gl.LINEAR : gl.NEAREST);
+
+    const u: Record<string, WebGLUniformLocation | null> = this.uniforms;
+    gl.uniform1i(u['uLight'], 0);
+    gl.uniform1i(u['uRamp'], 1);
+    gl.uniform1f(u['uCell'], SingularityVisualization.CELL_SIZE);
+    gl.uniform1f(u['uRingWidth'], SingularityVisualization.RING_WIDTH);
+    gl.uniform1f(u['uLens'], SingularityVisualization.LENS_STRENGTH);
+    gl.uniform1f(u['uCentreMagnify'], SingularityVisualization.CENTRE_MAGNIFY);
+    gl.uniform1f(u['uEdgeMagnify'], SingularityVisualization.EDGE_MAGNIFY);
+    gl.uniform1f(u['uGain'], SingularityVisualization.LIGHT_GAIN);
   }
 
   public override draw(): void {
     if (this.destroyed) return;
     this.updateFade();
 
-    const ctx: CanvasRenderingContext2D = this.ctx;
-    const width: number = this.width;
-    const height: number = this.height;
-    if (width <= 0 || height <= 0) return;
-
-    if (!this.sceneCanvas || !this.scratchCanvas || !this.lightCanvas) this.onResize();
-    if (!this.sceneCtx || !this.scratchCtx || !this.lightCtx) return;
+    if (this.width <= 0 || this.height <= 0) return;
+    if (!this.sceneCanvas || !this.scratchCanvas) this.onResize();
+    const scene: HTMLCanvasElement | null = this.sceneCanvas;
+    const sceneCtx: CanvasRenderingContext2D | null = this.sceneCtx;
+    const scratch: HTMLCanvasElement | null = this.scratchCanvas;
+    const scratchCtx: CanvasRenderingContext2D | null = this.scratchCtx;
+    if (!scene || !sceneCtx || !scratch || !scratchCtx) return;
 
     // Advance time-based state. A bass hit may start a ring and jump the hue.
     this.updateAudio();
@@ -540,14 +534,13 @@ export class SingularityVisualization extends Canvas2DVisualization {
     this.analyser.getByteTimeDomainData(this.dataArray);
 
     // Age the scene, then lay the fresh waveform over it.
-    this.bleedTrail();
-    this.drawWaveform(this.sceneCtx);
+    this.bleedTrail(scene, sceneCtx, scratch, scratchCtx);
+    this.drawWaveform(sceneCtx);
 
-    // Join both halves of the scene, have the graphics card bend and colour
-    // it through the waves, and lay that down.
-    this.composeLight(this.lightCtx);
-    this.renderScreen();
-    ctx.drawImage(this.glCanvas, 0, 0);
+    // Have the graphics card turn, bend and colour the scene through the
+    // waves, and lay that down.
+    this.renderScreen(scene);
+    this.ctx.drawImage(this.glCanvas, 0, 0);
 
     this.applyFadeOverlay();
   }
@@ -570,7 +563,7 @@ export class SingularityVisualization extends Canvas2DVisualization {
     const width: number = this.width;
     const height: number = this.height;
 
-    if (!this.sceneCanvas) {
+    if (!this.sceneCanvas || !this.sceneCtx) {
       const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
       this.sceneCanvas = offscreen.canvas;
       this.sceneCtx = offscreen.ctx;
@@ -579,11 +572,6 @@ export class SingularityVisualization extends Canvas2DVisualization {
       const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
       this.scratchCanvas = offscreen.canvas;
       this.scratchCtx = offscreen.ctx;
-    }
-    if (!this.lightCanvas) {
-      const offscreen: OffscreenCanvasPair = this.createOffscreenCanvas();
-      this.lightCanvas = offscreen.canvas;
-      this.lightCtx = offscreen.ctx;
     }
     if (this.glCanvas.width !== width || this.glCanvas.height !== height) {
       this.glCanvas.width = width;
@@ -601,14 +589,14 @@ export class SingularityVisualization extends Canvas2DVisualization {
       this.scratchCanvas.width = scene.width;
       this.scratchCanvas.height = scene.height;
     }
-    this.applySurfaceTransform(this.sceneCtx!, halfWidth, height);
-    // Both halves, at the scene's own resolution.
-    if (this.lightCanvas.width !== scene.width * 2 || this.lightCanvas.height !== scene.height) {
-      this.lightCanvas.width = scene.width * 2;
-      this.lightCanvas.height = scene.height;
-    }
+    this.applySurfaceTransform(this.sceneCtx, halfWidth, height);
 
-    this.layoutCells(width, height);
+    const gl: WebGLRenderingContext = this.gl;
+    gl.viewport(0, 0, width, height);
+    gl.uniform2f(this.uniforms['uCanvas'], width, height);
+    gl.uniform1f(this.uniforms['uSeam'], width * SingularityVisualization.SEAM_BLEND_FRACTION);
+
+    this.maxDistance = Math.hypot(width / 2, height / 2) / SingularityVisualization.CELL_SIZE;
     this.seedRings();
     this.ctx.clearRect(0, 0, width, height);
   }
@@ -616,121 +604,40 @@ export class SingularityVisualization extends Canvas2DVisualization {
   // === Screen ===============================================================
 
   /**
-   * How many canvas pixels make up one physical pixel.
-   *
-   * The canvas is sized in CSS pixels at most, and may be smaller still, so a
-   * canvas pixel covers devicePixelRatio physical pixels or more.
-   *
-   * @param width - Canvas width
-   * @returns Canvas pixels per physical pixel
+   * Draws the whole screen in a single pass: the scene, the ramp when it has
+   * changed, the waves and the glow are handed over, and the graphics card
+   * turns, bends, glows and colours every pixel.
    */
-  private canvasPixelsPerPhysicalPixel(width: number): number {
-    const dpr: number = typeof window !== 'undefined' && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
-    const cssWidth: number = this.canvas.clientWidth > 0 ? this.canvas.clientWidth : width;
-    return width / (cssWidth * dpr);
-  }
-
-  /**
-   * Sizes the cell the waves are measured in, and sizes the swell table to
-   * reach the furthest corner, at its finest resolution or as fine as the
-   * graphics card's widest texture allows.
-   */
-  private layoutCells(width: number, height: number): void {
-    let pitch: number = SingularityVisualization.TILE_PHYSICAL_SIZE * this.canvasPixelsPerPhysicalPixel(width);
-    if (!Number.isFinite(pitch) || pitch < SingularityVisualization.MIN_TILE_SIZE) pitch = SingularityVisualization.MIN_TILE_SIZE;
-    this.tileSize = pitch;
-    this.maxDistance = Math.hypot(width / 2, height / 2) / pitch;
-    this.fieldStep = Math.max(SingularityVisualization.FIELD_STEP, this.maxDistance / (this.maxTextureSize - 2));
-    this.field = new Float32Array(Math.ceil(this.maxDistance / this.fieldStep) + 2);
-  }
-
-  /**
-   * Lays the half-width trail across the left half of the light surface, then
-   * again rotated through the centre - flipped horizontally and vertically - to
-   * fill the right, boosted by LIGHT_GAIN.
-   */
-  private composeLight(ctx: CanvasRenderingContext2D): void {
-    const width: number = this.lightCanvas!.width;
-    const height: number = this.lightCanvas!.height;
-
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgb(0, 0, 0)';
-    ctx.fillRect(0, 0, width, height);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.filter = `brightness(${SingularityVisualization.LIGHT_GAIN})`;
-    ctx.drawImage(this.sceneCanvas!, 0, 0, width / 2, height);
-    ctx.translate(width, height);
-    ctx.scale(-1, -1);
-    ctx.drawImage(this.sceneCanvas!, 0, 0, width / 2, height);
-    ctx.restore();
-  }
-
-  /**
-   * Draws the whole screen in a single pass: the light and the swell are
-   * handed over, and the graphics card bends, glows and colours every pixel.
-   */
-  private renderScreen(): void {
+  private renderScreen(scene: HTMLCanvasElement): void {
     const gl: WebGLRenderingContext = this.gl;
-    this.buildField();
 
-    gl.viewport(0, 0, this.width, this.height);
-    gl.useProgram(this.program);
-
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.lightTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.lightCanvas!);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.rampTexture);
     if (this.rampDirty) {
-      const bytes: Uint8Array = new Uint8Array(this.ramp.buffer);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, SingularityVisualization.RAMP_STEPS, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, bytes);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, SingularityVisualization.RAMP_STEPS, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, this.ramp);
+      gl.activeTexture(gl.TEXTURE0);
       this.rampDirty = false;
     }
-    gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, this.fieldTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, this.field.length, 1, 0, gl.LUMINANCE, gl.FLOAT, this.field);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, scene);
 
-    const u: Record<string, WebGLUniformLocation | null> = this.uniforms;
-    gl.uniform2f(u['uCanvas'], this.width, this.height);
-    gl.uniform1f(u['uPitch'], this.tileSize);
-    gl.uniform1i(u['uLight'], 0);
-    gl.uniform1i(u['uRamp'], 1);
-    gl.uniform1i(u['uField'], 2);
-    gl.uniform1f(u['uFieldSize'], this.field.length);
-    gl.uniform1f(u['uFieldStep'], this.fieldStep);
-    gl.uniform1f(u['uLens'], SingularityVisualization.LENS_STRENGTH / (2 * this.fieldStep));
-    gl.uniform1f(u['uCentreMagnify'], SingularityVisualization.CENTRE_MAGNIFY);
-    gl.uniform1f(u['uEdgeMagnify'], SingularityVisualization.EDGE_MAGNIFY);
-    gl.uniform1f(u['uGlow'], SingularityVisualization.GLOW_AMOUNT * this.glowLevel * this.glowLevel);
+    this.fillRingUniform();
+    gl.uniform2fv(this.uniforms['uRings'], this.ringUniform);
+    gl.uniform1f(this.uniforms['uGlow'], SingularityVisualization.GLOW_AMOUNT * this.glowLevel * this.glowLevel);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.cornerBuffer);
-    gl.enableVertexAttribArray(this.cornerAttribute);
-    gl.vertexAttribPointer(this.cornerAttribute, 2, gl.FLOAT, false, 0, 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
-  /** Sums every wave's swell into the table by distance from the centre. */
-  private buildField(): void {
-    const field: Float32Array = this.field;
-    const step: number = this.fieldStep;
+  /**
+   * Hands each wave's crest radius and strength over in pairs. A wave eases in
+   * over its first width, so a new one does not pop at the centre; a free slot
+   * has no strength.
+   */
+  private fillRingUniform(): void {
     const width: number = SingularityVisualization.RING_WIDTH;
-    // Past three widths a ripple's swell is under a thousandth: leave it out.
-    const reach: number = 3 * width;
-    field.fill(0);
-    for (let r: number = 0; r < SingularityVisualization.MAX_RINGS; r++) {
+    for (let r: number = 0; r < MAX_RINGS; r++) {
       const radius: number = this.rings[r];
-      if (radius < 0) continue;
-      // Eases in over its first width, so a new wave does not pop at the centre.
-      const easeIn: number = radius < width ? radius / width : 1;
-      const strength: number = this.ringStrengths[r] * easeIn;
-      const first: number = Math.max(0, Math.ceil((radius - reach) / step));
-      const last: number = Math.min(field.length - 1, Math.floor((radius + reach) / step));
-      for (let b: number = first; b <= last; b++) {
-        const offset: number = (b * step - radius) / width;
-        field[b] += strength * Math.exp(-offset * offset);
-      }
+      const easeIn: number = radius < width ? Math.max(0, radius) / width : 1;
+      this.ringUniform[r * 2] = radius;
+      this.ringUniform[r * 2 + 1] = radius < 0 ? 0 : this.ringStrengths[r] * easeIn;
     }
   }
 
@@ -747,7 +654,7 @@ export class SingularityVisualization extends Canvas2DVisualization {
     this.rings.fill(-1);
     const limit: number = this.ringLimit();
     let radius: number = 0;
-    for (let r: number = 0; r < SingularityVisualization.MAX_RINGS && radius <= limit; r++) {
+    for (let r: number = 0; r < MAX_RINGS && radius <= limit; r++) {
       this.rings[r] = radius;
       this.ringStrengths[r] = SingularityVisualization.RING_MIN_STRENGTH;
       this.ringSpeeds[r] = this.pickRingSpeed();
@@ -774,7 +681,7 @@ export class SingularityVisualization extends Canvas2DVisualization {
   private advanceRings(): void {
     const speed: number = this.maxDistance / SingularityVisualization.RING_FRAMES;
     const limit: number = this.ringLimit();
-    for (let r: number = 0; r < SingularityVisualization.MAX_RINGS; r++) {
+    for (let r: number = 0; r < MAX_RINGS; r++) {
       if (this.rings[r] < 0) continue;
       this.rings[r] += speed * this.ringSpeeds[r];
       if (this.rings[r] > limit) this.rings[r] = -1;
@@ -784,7 +691,7 @@ export class SingularityVisualization extends Canvas2DVisualization {
   /** How far the youngest ripple has travelled, in cells; infinite when there are none. */
   private newestRingRadius(): number {
     let newest: number = Number.POSITIVE_INFINITY;
-    for (let r: number = 0; r < SingularityVisualization.MAX_RINGS; r++) {
+    for (let r: number = 0; r < MAX_RINGS; r++) {
       if (this.rings[r] >= 0 && this.rings[r] < newest) newest = this.rings[r];
     }
     return newest;
@@ -796,7 +703,7 @@ export class SingularityVisualization extends Canvas2DVisualization {
    */
   private startRing(): void {
     let slot: number = 0;
-    for (let r: number = 0; r < SingularityVisualization.MAX_RINGS; r++) {
+    for (let r: number = 0; r < MAX_RINGS; r++) {
       if (this.rings[r] < 0) { slot = r; break; }
       if (this.rings[r] > this.rings[slot]) slot = r;
     }
@@ -871,7 +778,8 @@ export class SingularityVisualization extends Canvas2DVisualization {
   }
 
   /**
-   * Creates a texture clamped at its edges, so it may be any size.
+   * Creates a texture clamped at its edges, so it may be any size, and leaves
+   * it bound to the active texture unit.
    *
    * @param filter - gl.NEAREST to read it pixel for pixel, gl.LINEAR to blend between pixels
    * @returns The texture
@@ -893,32 +801,35 @@ export class SingularityVisualization extends Canvas2DVisualization {
 
   /**
    * Ages the left half by one frame. The trail is copied out and drawn back
-   * faded and blurred in vertical strips; each strip is lifted straight up,
-   * pushed away from the centre (the surface's right edge), and spread and
-   * rippled up or down in proportion to its distance from the centre, so the
-   * waveform bleeds, fades and distorts away up and out. The right half is the
-   * flipped copy, so its trail sinks and spreads away the other way.
+   * blurred in vertical strips; each strip is pushed away from the centre (the
+   * surface's right edge), and spread evenly up and down and rippled in
+   * proportion to its distance from the centre, so the waveform bleeds and
+   * distorts away out toward the edge. It neither rises nor sinks, so neither
+   * the top nor the bottom of a half fills up more than the other.
+   *
+   * Each strip is blurred on its own rather than the trail in one pass: the
+   * soft edges that leaves between strips build up over the frames into the
+   * fine streaks that give the trail its detail.
    */
-  private bleedTrail(): void {
-    const scene: HTMLCanvasElement = this.sceneCanvas!;
-    const ctx: CanvasRenderingContext2D = this.sceneCtx!;
-    const scratch: HTMLCanvasElement = this.scratchCanvas!;
+  private bleedTrail(
+    scene: HTMLCanvasElement,
+    sceneCtx: CanvasRenderingContext2D,
+    scratch: HTMLCanvasElement,
+    scratchCtx: CanvasRenderingContext2D
+  ): void {
     const width: number = scene.width;
     const height: number = scene.height;
     const columns: number = SingularityVisualization.BLEED_COLUMNS;
     const columnWidth: number = width / columns;
     const stretch: number = SingularityVisualization.BLEED_STRETCH;
-    const rise: number = -height * SingularityVisualization.RISE_FRACTION * this.riseDirection;
 
-    this.copySurface(this.scratchCtx!, scene);
+    this.copySurface(scratchCtx, scene);
 
     // Work in the surface's own pixels while redrawing it from the scratch.
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-    ctx.globalAlpha = 1 - SingularityVisualization.TRAIL_FADE;
-    ctx.filter = `blur(${SingularityVisualization.TRAIL_BLUR}px)`;
-    ctx.imageSmoothingEnabled = true;
+    sceneCtx.save();
+    sceneCtx.setTransform(1, 0, 0, 1, 0, 0);
+    sceneCtx.clearRect(0, 0, width, height);
+    sceneCtx.filter = `blur(${SingularityVisualization.TRAIL_BLUR}px)`;
     for (let c: number = 0; c < columns; c++) {
       const sourceX: number = c * columnWidth;
       // 0 at the centre (the right edge), 1 at the outer edge.
@@ -927,13 +838,13 @@ export class SingularityVisualization extends Canvas2DVisualization {
       const ripple: number = Math.sin(this.ripplePhase + c * SingularityVisualization.RIPPLE_STEP)
         * height * SingularityVisualization.BLEED_RIPPLE * reach;
       const targetX: number = width + (sourceX - width) * stretch;
-      ctx.drawImage(
+      sceneCtx.drawImage(
         scratch,
         sourceX, 0, columnWidth, height,
-        targetX, -spread / 2 + ripple + rise, columnWidth * stretch, height + spread
+        targetX, -spread / 2 + ripple, columnWidth * stretch, height + spread
       );
     }
-    ctx.restore();
+    sceneCtx.restore();
   }
 
   /** Draws the left half of the waveform onto the scene, from the left edge to the centre. */
@@ -984,9 +895,8 @@ export class SingularityVisualization extends Canvas2DVisualization {
    *   kick starts a ripple at once if the last is RING_MIN_SPACING out, and
    *   otherwise a quieter one follows once the last is fillSpacing out;
    * - when the bass is over BASS_THRESHOLD and the hue cooldown has passed, it
-   *   reverses which side's trail rises and jumps the hue. Some jumps recolour
-   *   everything at once; the rest sweep the new colour in over a fraction of a
-   *   second.
+   *   jumps the hue. Some jumps recolour everything at once; the rest sweep the
+   *   new colour in over a fraction of a second.
    */
   private updateAudio(): void {
     // Seed the cooldown on the first frame so the first hue jump is held off for a
@@ -1007,8 +917,9 @@ export class SingularityVisualization extends Canvas2DVisualization {
     this.glowLevel += (bassLevel - this.glowLevel) * follow;
 
     const kickLevel: number = this.kickLevel();
-    const kickFollow: number = kickLevel > this.kickEnvelope ? SingularityVisualization.KICK_ATTACK : SingularityVisualization.KICK_RELEASE;
-    this.kickEnvelope += (kickLevel - this.kickEnvelope) * kickFollow;
+    this.kickEnvelope = kickLevel > this.kickEnvelope
+      ? kickLevel
+      : this.kickEnvelope + (kickLevel - this.kickEnvelope) * SingularityVisualization.KICK_RELEASE;
     const kick: boolean = kickLevel > this.previousKick
       && kickLevel >= this.kickAverage + SingularityVisualization.ONSET_MARGIN
       && kickLevel >= SingularityVisualization.ONSET_FLOOR;
@@ -1020,11 +931,10 @@ export class SingularityVisualization extends Canvas2DVisualization {
       this.fillSpacing = this.pickFillSpacing();
     }
 
-    const now: number = performance.now();
     if (bassLevel < SingularityVisualization.BASS_THRESHOLD) return;
+    const now: number = performance.now();
     if (now - this.lastBassTriggerTime < SingularityVisualization.BASS_COOLDOWN_MS) return;
     this.lastBassTriggerTime = now;
-    this.riseDirection = -this.riseDirection;
 
     const from: number = this.currentHue();
     this.hue = (this.hue + SingularityVisualization.HUE_JUMP_DEGREES) % 360;
@@ -1075,7 +985,7 @@ export class SingularityVisualization extends Canvas2DVisualization {
     this.cachedHue = hueInt;
 
     const stops: readonly {at: number; color: Rgb}[] = [
-      {at: 0, color: this.hslToRgb(hue, SingularityVisualization.BACKGROUND_SATURATION, SingularityVisualization.BACKGROUND_LIGHTNESS)},
+      {at: 0, color: SingularityVisualization.UNLIT},
       {
         at: SingularityVisualization.DEEP_STOP,
         color: this.hslToRgb(hue + SingularityVisualization.DEEP_HUE_SHIFT, SingularityVisualization.DEEP_SATURATION, SingularityVisualization.DEEP_LIGHTNESS),
@@ -1092,9 +1002,9 @@ export class SingularityVisualization extends Canvas2DVisualization {
       const from: {at: number; color: Rgb} = stops[stop];
       const to: {at: number; color: Rgb} = stops[stop + 1];
       const t: number = (at - from.at) / (to.at - from.at);
-      this.ramp[step * 3] = from.color.r + (to.color.r - from.color.r) * t;
-      this.ramp[step * 3 + 1] = from.color.g + (to.color.g - from.color.g) * t;
-      this.ramp[step * 3 + 2] = from.color.b + (to.color.b - from.color.b) * t;
+      this.ramp[step * 3] = Math.round(from.color.r + (to.color.r - from.color.r) * t);
+      this.ramp[step * 3 + 1] = Math.round(from.color.g + (to.color.g - from.color.g) * t);
+      this.ramp[step * 3 + 2] = Math.round(from.color.b + (to.color.b - from.color.b) * t);
     }
     this.rampDirty = true;
   }
@@ -1105,8 +1015,6 @@ export class SingularityVisualization extends Canvas2DVisualization {
     this.sceneCtx = null;
     this.scratchCanvas = null;
     this.scratchCtx = null;
-    this.lightCanvas = null;
-    this.lightCtx = null;
     this.gl.getExtension('WEBGL_lose_context')?.loseContext();
   }
 }
