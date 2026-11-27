@@ -14,26 +14,22 @@
   min-width: 280px;
   min-height: 0;
   flex: 1;
-  // Always use dark mode colors since playlist sits on dark background
-  border-left: 1px solid $white-10;
-  transition: transform 0.3s ease, opacity 0.3s ease, width 0.3s ease, min-width 0.3s ease, border-color 0.2s ease, background 0.2s ease;
+  transition: transform 0.3s ease, opacity 0.3s ease, width 0.3s ease, min-width 0.3s ease, background 0.2s ease;
 
   &.hidden {
     width: 0;
     min-width: 0;
     opacity: 0;
     pointer-events: none;
-    border-left: none;
   }
 
+  // Always use dark mode colors since playlist sits on dark background
   &.drag-over {
     background: rgba(74, 222, 128, 0.1);
-    border-left-color: rgba(74, 222, 128, 0.5);
   }
 
   &.drag-invalid {
     background: rgba(239, 68, 68, 0.1);
-    border-left-color: rgba(239, 68, 68, 0.5);
     cursor: not-allowed;
   }
 }
@@ -252,23 +248,19 @@
 // =============================================================================
 //
 // The playlist is part of the outlet's recessed Pebble well (see
-// layout-outlet.scss), set off from the media by a hairline. Nothing divides
+// layout-outlet.scss), with nothing dividing it from the media. Nothing divides
 // the header from the rows or the rows from each other, which sit inset from
 // the playlist's sides; a hovered row and the
 // current track are rounded tiles, the current track raised off the well in
 // the button surface with its icon in the status colour.
 @include player-theme.pebble {
   .playlist-container {
-    border-left-color: var(--pebble-border);
-
     &.drag-over {
       background: color-mix(in srgb, var(--pebble-success) 10%, transparent);
-      border-left-color: var(--pebble-success);
     }
 
     &.drag-invalid {
       background: color-mix(in srgb, var(--pebble-danger) 10%, transparent);
-      border-left-color: var(--pebble-danger);
     }
   }
 

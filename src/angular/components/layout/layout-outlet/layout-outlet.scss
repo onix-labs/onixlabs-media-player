@@ -45,7 +45,6 @@
   align-items: center;
   padding: 0.25rem;
   gap: 0.25rem;
-  border-top: 0.0625rem solid $white-10;
 
   // Always use dark mode colors since background is always dark
   button {
@@ -305,7 +304,6 @@
     // The well's bottom edge is drawn over the bar's padding, so the bottom
     // gives it an extra pixel to look as wide as the sides.
     padding-bottom: calc(0.25rem + 0.0625rem);
-    border-top-color: var(--pebble-border);
 
     button {
       color: var(--pebble-text-muted);
